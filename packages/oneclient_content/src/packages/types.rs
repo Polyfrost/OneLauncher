@@ -282,6 +282,12 @@ impl VersionDetail {
     pub fn primary_file(&self) -> Option<&VersionFile> {
         self.files.iter().find(|f| f.primary).or(self.files.first())
     }
+
+    #[must_use]
+    pub fn is_cached(&self) -> bool {
+        self.primary_file()
+            .is_some_and(|file| file.url.is_empty() && file.fingerprint.is_none())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -348,6 +354,33 @@ pub struct LinkedArtifactInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_provider_file_with_no_url_is_not_a_cached_one() {
+        let version = |fingerprint: Option<&str>| VersionDetail {
+            version_id: "1".into(),
+            project_id: "2".into(),
+            name: String::new(),
+            version_number: String::new(),
+            changelog: None,
+            game_versions: Vec::new(),
+            loaders: Vec::new(),
+            published: chrono::Utc::now(),
+            downloads: 0,
+            files: vec![VersionFile {
+                sha1: String::new(),
+                url: String::new(),
+                file_name: String::new(),
+                primary: true,
+                size: 0,
+                fingerprint: fingerprint.map(Into::into),
+            }],
+            dependencies: Vec::new(),
+        };
+
+        assert!(version(None).is_cached());
+        assert!(!version(Some("123")).is_cached());
+    }
 
     #[test]
     fn modrinth_version_page_needs_only_ids() {

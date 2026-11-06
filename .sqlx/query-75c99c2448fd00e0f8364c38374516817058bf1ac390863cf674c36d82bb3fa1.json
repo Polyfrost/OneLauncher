@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n\t\tSELECT\n\t\t\tcluster_id, hash, provider as \"provider!: i64\", project_id,\n\t\t\tinstalled_version_id, installed_version_name,\n\t\t\tlatest_version_id, latest_version_name,\n\t\t\tdisplay_name, checked_at, skipped\n\t\tFROM browser_package_updates\n\t\t",
+  "query": "\n\t\tSELECT\n\t\t\tcluster_id, hash, provider as \"provider!: i64\", project_id,\n\t\t\tinstalled_version_id, installed_version_name,\n\t\t\tlatest_version_id, latest_version_name,\n\t\t\tdisplay_name, checked_at, skipped, pin_version_id\n\t\tFROM browser_package_updates\n\t\tWHERE cluster_id = ?\n\t\t",
   "describe": {
     "columns": [
       {
@@ -123,10 +123,21 @@
             "name": "skipped"
           }
         }
+      },
+      {
+        "name": "pin_version_id",
+        "ordinal": 11,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "browser_package_updates",
+            "name": "pin_version_id"
+          }
+        }
       }
     ],
     "parameters": {
-      "Right": 0
+      "Right": 1
     },
     "nullable": [
       false,
@@ -139,8 +150,9 @@
       false,
       false,
       false,
-      false
+      false,
+      true
     ]
   },
-  "hash": "2005ac6f15d4c5fe36d5bfa87191e6be22264a2ca3e91155cb01f2debd39b319"
+  "hash": "75c99c2448fd00e0f8364c38374516817058bf1ac390863cf674c36d82bb3fa1"
 }

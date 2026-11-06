@@ -1,8 +1,9 @@
 use sqlx::SqlitePool;
 
 use crate::models::{
-    ArtifactRow, ClusterArtifactRow, ClusterDependencyEdgeRow, ClusterKind, LinkedArtifactRow,
-    OverrideType, ProviderReleaseRow, ReleaseDependencyRow, SeenStatus, UnsyncedReleaseRow,
+    ArtifactRow, ClusterArtifactRow, ClusterDependencyEdgeRow, ClusterKind, ClusterReleaseRow,
+    LinkedArtifactRow, OverrideType, ProviderReleaseRow, ReleaseDependencyRow, SeenStatus,
+    UnsyncedReleaseRow,
 };
 
 pub async fn get_artifact_by_hash(
@@ -341,12 +342,60 @@ pub async fn get_release_by_hash(
 			display_name, display_version, published_at, mc_versions, mc_loaders
 		FROM provider_releases
 		WHERE hash = ?
+		ORDER BY published_at DESC, provider, project_id, version_id
 		LIMIT 1
 		"#,
         hash
     )
     .fetch_optional(pool)
     .await
+}
+
+pub async fn get_project_release_by_hash(
+    pool: &SqlitePool,
+    provider_id: i64,
+    project_id: &str,
+    hash: &str,
+) -> Result<Option<ProviderReleaseRow>, sqlx::Error> {
+    sqlx::query_as!(
+        ProviderReleaseRow,
+        r#"
+		SELECT
+			provider as "provider!: i64", project_id, version_id, hash,
+			display_name, display_version, published_at, mc_versions, mc_loaders
+		FROM provider_releases
+		WHERE provider = ? AND project_id = ? AND hash = ?
+		ORDER BY published_at DESC, version_id
+		LIMIT 1
+		"#,
+        provider_id,
+        project_id,
+        hash
+    )
+    .fetch_optional(pool)
+    .await
+}
+
+pub async fn release_dependencies_synced(
+    pool: &SqlitePool,
+    provider_id: i64,
+    project_id: &str,
+    version_id: &str,
+) -> Result<bool, sqlx::Error> {
+    let synced = sqlx::query_scalar!(
+        r#"
+		SELECT dependencies_synced_at IS NOT NULL as "synced!: bool"
+		FROM provider_releases
+		WHERE provider = ? AND project_id = ? AND version_id = ?
+		"#,
+        provider_id,
+        project_id,
+        version_id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(synced.unwrap_or(false))
 }
 
 /// Replaces a release's recorded dependency list.
@@ -412,6 +461,28 @@ pub async fn replace_release_dependencies(
 	.await?;
 
 	tx.commit().await
+}
+
+pub async fn mark_release_dependencies_unavailable(
+	pool: &SqlitePool,
+	provider_id: i64,
+	project_id: &str,
+	version_id: &str,
+) -> Result<(), sqlx::Error> {
+	sqlx::query!(
+		r#"
+		UPDATE provider_releases
+		SET dependencies_unavailable_at = datetime('now')
+		WHERE provider = ? AND project_id = ? AND version_id = ?
+		"#,
+		provider_id,
+		project_id,
+		version_id
+	)
+	.execute(pool)
+	.await?;
+
+	Ok(())
 }
 
 pub async fn list_release_dependencies(
@@ -483,11 +554,63 @@ pub async fn list_releases_missing_dependencies(
 			pr.version_id
 		FROM cluster_artifacts ca
 		JOIN provider_releases pr ON pr.hash = ca.hash
-		WHERE ca.cluster_id = ? AND pr.dependencies_synced_at IS NULL
+		WHERE ca.cluster_id = ?
+			AND pr.dependencies_synced_at IS NULL
+			AND pr.dependencies_unavailable_at IS NULL
 		"#,
 		cluster_id
 	)
 	.fetch_all(pool)
+	.await
+}
+
+pub async fn list_cluster_releases(
+	pool: &SqlitePool,
+	cluster_id: i64,
+) -> Result<Vec<ClusterReleaseRow>, sqlx::Error> {
+	sqlx::query_as!(
+		ClusterReleaseRow,
+		r#"
+		SELECT
+			ca.hash,
+			ca.enabled,
+			pr.provider as "provider!: i64",
+			pr.project_id,
+			pr.version_id,
+			pr.display_name,
+			(pr.dependencies_synced_at IS NOT NULL
+				OR pr.dependencies_unavailable_at IS NOT NULL) as "dependencies_settled!: bool"
+		FROM cluster_artifacts ca
+		JOIN provider_releases pr ON pr.hash = ca.hash
+		WHERE ca.cluster_id = ?
+		ORDER BY pr.published_at DESC, pr.provider, pr.project_id, pr.version_id
+		"#,
+		cluster_id
+	)
+	.fetch_all(pool)
+	.await
+}
+
+pub async fn get_release_by_version(
+	pool: &SqlitePool,
+	provider_id: i64,
+	version_id: &str,
+) -> Result<Option<ProviderReleaseRow>, sqlx::Error> {
+	sqlx::query_as!(
+		ProviderReleaseRow,
+		r#"
+		SELECT
+			provider as "provider!: i64", project_id, version_id, hash,
+			display_name, display_version, published_at, mc_versions, mc_loaders
+		FROM provider_releases
+		WHERE provider = ? AND version_id = ?
+		ORDER BY project_id
+		LIMIT 1
+		"#,
+		provider_id,
+		version_id
+	)
+	.fetch_optional(pool)
 	.await
 }
 

@@ -2050,10 +2050,11 @@ impl Actions {
         // Bounded a hanging network would otherwise hold the launch for
         // reqwest's much longer timeouts
         let budget = update_budget(manual, UPDATE_CHECK_BUDGET);
+        let bundles = Arc::clone(&state.bundles);
         let check = match off_ui(async move {
             tokio::time::timeout(
                 budget,
-                oneclient_core::refresh_browser_package_updates(cluster_id, &content),
+                oneclient_core::refresh_browser_package_updates(cluster_id, &bundles, &content),
             )
             .await
         })
@@ -2171,8 +2172,14 @@ impl Actions {
                     1,
                     oneclient_events::TaskCategory::Packages,
                 );
-                match oneclient_core::apply_browser_package_update(update, Some(&child), &content)
-                    .await
+                match oneclient_core::apply_browser_package_update(
+                    update,
+                    &state.bundles,
+                    None,
+                    Some(&child),
+                    &content,
+                )
+                .await
                 {
                     Ok(_) => applied += 1,
                     // Not a reason to hold the game back the cache row survives
@@ -2398,6 +2405,8 @@ impl Actions {
 
                     let result = oneclient_core::apply_browser_package_update(
                         &update,
+                        &state.bundles,
+                        None,
                         Some(&child),
                         &state.services.content(),
                     )

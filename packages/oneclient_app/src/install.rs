@@ -358,8 +358,10 @@ pub async fn install_package(
     if oneclient_content::packages::resolves_dependencies(project.content_type) {
         match oneclient_content::packages::resolve_required(
             provider,
+            &project,
             &version,
             cluster_id,
+            &state.bundles,
             &state.services.content(),
         )
         .await
@@ -475,6 +477,20 @@ pub async fn install_package(
 
     if let Ok((artifact, _)) = &result {
         mark_new(cluster_id, &artifact.hash, state).await;
+
+        if let Err(err) = oneclient_content::packages::hold_against_bundle_pin(
+            cluster_id,
+            &artifact.hash,
+            provider,
+            &project.id,
+            &version.version_id,
+            &state.bundles,
+            &content,
+        )
+        .await
+        {
+            tracing::warn!(%err, "could not hold the picked version against the bundle");
+        }
     }
 
     Ok(PackageInstall {

@@ -14,7 +14,7 @@ pub async fn list_for_cluster(
 			cluster_id, hash, provider as "provider!: i64", project_id,
 			installed_version_id, installed_version_name,
 			latest_version_id, latest_version_name,
-			display_name, checked_at, skipped
+			display_name, checked_at, skipped, pin_version_id
 		FROM browser_package_updates
 		WHERE cluster_id = ?
 		"#,
@@ -32,7 +32,7 @@ pub async fn list_all(pool: &SqlitePool) -> Result<Vec<BrowserPackageUpdateRow>,
 			cluster_id, hash, provider as "provider!: i64", project_id,
 			installed_version_id, installed_version_name,
 			latest_version_id, latest_version_name,
-			display_name, checked_at, skipped
+			display_name, checked_at, skipped, pin_version_id
 		FROM browser_package_updates
 		"#,
     )
@@ -54,8 +54,11 @@ pub async fn upsert(
     latest_version_id: &str,
     latest_version_name: &str,
     display_name: &str,
+    skipped: bool,
+    pin_version_id: Option<&str>,
 ) -> Result<BrowserPackageUpdateRow, sqlx::Error> {
     let checked_at = Utc::now().to_rfc3339();
+    let skipped = i64::from(skipped);
 
     sqlx::query_as!(
         BrowserPackageUpdateRow,
@@ -64,9 +67,9 @@ pub async fn upsert(
 			cluster_id, hash, provider, project_id,
 			installed_version_id, installed_version_name,
 			latest_version_id, latest_version_name,
-			display_name, checked_at, skipped
+			display_name, checked_at, skipped, pin_version_id
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(cluster_id, hash) DO UPDATE SET
 			provider = excluded.provider,
 			project_id = excluded.project_id,
@@ -77,15 +80,17 @@ pub async fn upsert(
 			checked_at = excluded.checked_at,
 			skipped = CASE
 				WHEN browser_package_updates.latest_version_id = excluded.latest_version_id
-				THEN browser_package_updates.skipped
-				ELSE 0
+					AND (browser_package_updates.pin_version_id IS NOT NULL OR excluded.pin_version_id IS NULL)
+				THEN MAX(browser_package_updates.skipped, excluded.skipped)
+				ELSE excluded.skipped
 			END,
-			latest_version_id = excluded.latest_version_id
+			latest_version_id = excluded.latest_version_id,
+			pin_version_id = excluded.pin_version_id
 		RETURNING
 			cluster_id, hash, provider as "provider!: i64", project_id,
 			installed_version_id, installed_version_name,
 			latest_version_id, latest_version_name,
-			display_name, checked_at, skipped
+			display_name, checked_at, skipped, pin_version_id
 		"#,
         cluster_id,
         hash,
@@ -96,7 +101,9 @@ pub async fn upsert(
         latest_version_id,
         latest_version_name,
         display_name,
-        checked_at
+        checked_at,
+        skipped,
+        pin_version_id
     )
     .fetch_one(pool)
     .await
@@ -193,7 +200,7 @@ mod tests {
 
     async fn record(pool: &SqlitePool, hash: &str, latest: &str) -> BrowserPackageUpdateRow {
         upsert(
-            pool, 1, hash, 0, "proj", "v1", "1.0.0", latest, "2.0.0", "Mod",
+            pool, 1, hash, 0, "proj", "v1", "1.0.0", latest, "2.0.0", "Mod", false, None,
         )
         .await
         .expect("upsert")
@@ -217,6 +224,53 @@ mod tests {
 
         let row = record(&pool, "abc", "v3").await;
         assert_eq!(row.skipped, 0, "a different version is a new question");
+    }
+
+    #[tokio::test]
+    async fn a_hold_survives_taking_a_new_version_id() {
+        let pool = pool().await;
+        record(&pool, "abc", "1.2.0").await;
+        set_skipped(&pool, 1, "abc", true).await.expect("skip");
+
+        let row = upsert(
+            &pool, 1, "abc", 0, "proj", "v1", "1.0.0", "AbC123", "1.2.0", "Mod", true, None,
+        )
+        .await
+        .expect("upsert");
+
+        assert_eq!(row.skipped, 1);
+    }
+
+    #[tokio::test]
+    async fn a_pin_on_a_skipped_version_asks_again() {
+        let pool = pool().await;
+        record(&pool, "abc", "v2").await;
+        set_skipped(&pool, 1, "abc", true).await.expect("skip");
+
+        let pin = || {
+            upsert(
+                &pool,
+                1,
+                "abc",
+                0,
+                "proj",
+                "v1",
+                "1.0.0",
+                "v2",
+                "2.0.0",
+                "Mod",
+                false,
+                Some("v2"),
+            )
+        };
+        assert_eq!(pin().await.expect("upsert").skipped, 0);
+
+        set_skipped(&pool, 1, "abc", true).await.expect("skip");
+        assert_eq!(
+            pin().await.expect("upsert").skipped,
+            1,
+            "a skip made against the pin is a hold"
+        );
     }
 
     #[tokio::test]

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n\t\tINSERT INTO browser_package_updates (\n\t\t\tcluster_id, hash, provider, project_id,\n\t\t\tinstalled_version_id, installed_version_name,\n\t\t\tlatest_version_id, latest_version_name,\n\t\t\tdisplay_name, checked_at, skipped\n\t\t)\n\t\tVALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)\n\t\tON CONFLICT(cluster_id, hash) DO UPDATE SET\n\t\t\tprovider = excluded.provider,\n\t\t\tproject_id = excluded.project_id,\n\t\t\tinstalled_version_id = excluded.installed_version_id,\n\t\t\tinstalled_version_name = excluded.installed_version_name,\n\t\t\tlatest_version_name = excluded.latest_version_name,\n\t\t\tdisplay_name = excluded.display_name,\n\t\t\tchecked_at = excluded.checked_at,\n\t\t\tskipped = CASE\n\t\t\t\tWHEN browser_package_updates.latest_version_id = excluded.latest_version_id\n\t\t\t\tTHEN browser_package_updates.skipped\n\t\t\t\tELSE 0\n\t\t\tEND,\n\t\t\tlatest_version_id = excluded.latest_version_id\n\t\tRETURNING\n\t\t\tcluster_id, hash, provider as \"provider!: i64\", project_id,\n\t\t\tinstalled_version_id, installed_version_name,\n\t\t\tlatest_version_id, latest_version_name,\n\t\t\tdisplay_name, checked_at, skipped\n\t\t",
+  "query": "\n\t\tSELECT\n\t\t\tcluster_id, hash, provider as \"provider!: i64\", project_id,\n\t\t\tinstalled_version_id, installed_version_name,\n\t\t\tlatest_version_id, latest_version_name,\n\t\t\tdisplay_name, checked_at, skipped, pin_version_id\n\t\tFROM browser_package_updates\n\t\t",
   "describe": {
     "columns": [
       {
@@ -123,10 +123,21 @@
             "name": "skipped"
           }
         }
+      },
+      {
+        "name": "pin_version_id",
+        "ordinal": 11,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "browser_package_updates",
+            "name": "pin_version_id"
+          }
+        }
       }
     ],
     "parameters": {
-      "Right": 10
+      "Right": 0
     },
     "nullable": [
       false,
@@ -139,8 +150,9 @@
       false,
       false,
       false,
-      false
+      false,
+      true
     ]
   },
-  "hash": "5183d452802d8bbec7f2a52ceba7ffe26960fdc25855f6cc993d6ab5deb84c02"
+  "hash": "80d9ed835b1b6fabb784111b23d4728e348df8b1b70827a37c32a3de835e4f31"
 }

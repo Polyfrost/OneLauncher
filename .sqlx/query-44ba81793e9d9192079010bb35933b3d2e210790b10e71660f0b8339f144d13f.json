@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n\t\tSELECT DISTINCT\n\t\t\tpr.provider as \"provider!: i64\",\n\t\t\tpr.project_id,\n\t\t\tpr.version_id\n\t\tFROM cluster_artifacts ca\n\t\tJOIN provider_releases pr ON pr.hash = ca.hash\n\t\tWHERE ca.cluster_id = ? AND pr.dependencies_synced_at IS NULL\n\t\t",
+  "query": "\n\t\tSELECT DISTINCT\n\t\t\tpr.provider as \"provider!: i64\",\n\t\t\tpr.project_id,\n\t\t\tpr.version_id\n\t\tFROM cluster_artifacts ca\n\t\tJOIN provider_releases pr ON pr.hash = ca.hash\n\t\tWHERE ca.cluster_id = ?\n\t\t\tAND pr.dependencies_synced_at IS NULL\n\t\t\tAND pr.dependencies_unavailable_at IS NULL\n\t\t",
   "describe": {
     "columns": [
       {
@@ -46,5 +46,5 @@
       false
     ]
   },
-  "hash": "fdc04bf11551836313c20bd93c75aa0d1ea74c60af1909959c4e11c0bad5628f"
+  "hash": "44ba81793e9d9192079010bb35933b3d2e210790b10e71660f0b8339f144d13f"
 }

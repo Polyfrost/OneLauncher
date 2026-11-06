@@ -1,19 +1,24 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::models::ClusterRow;
 use oneclient_events::VersionRange;
 
+use crate::bundles::BundlesManager;
+use crate::bundles::install::resolve_bundle_version;
 use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
 use crate::packages::local_manifest::read_jar_mod_id;
+use crate::packages::metadata_cache::with_recorded_dependencies;
 use crate::packages::provider::PackageProvider;
 use crate::packages::store::{PackageStore, artifact_absolute_path};
 use crate::packages::types::{
     DependencyKind, ProjectDetail, ReleaseType, SearchFilters, VersionDependency, VersionDetail,
     VersionSummary,
 };
+use crate::packages::updates::{BundlePins, cluster_bundle_pins, unfit_pins};
+use crate::packages::{cached_project_detail, get_version_cached};
 
 /// Caps the transitive walk so a provider serving a cycle can't spin forever
 const MAX_DEPTH: usize = 4;
@@ -34,6 +39,8 @@ pub struct DependencyResolution {
     /// already-present ones are filtered out
     pub install: Vec<ResolvedDependency>,
     pub unresolved: Vec<String>,
+    pub exact: Vec<(String, String)>,
+    pub switched_off: Vec<String>,
 }
 
 impl DependencyResolution {
@@ -42,11 +49,73 @@ impl DependencyResolution {
     }
 }
 
-#[tracing::instrument(level = "debug", skip(root, ctx), fields(project_id = %root.project_id, version_id = %root.version_id))]
+#[tracing::instrument(level = "debug", skip(project, root, bundles, ctx), fields(project_id = %root.project_id, version_id = %root.version_id))]
 pub async fn resolve_required(
+    provider_id: ProviderId,
+    project: &ProjectDetail,
+    root: &VersionDetail,
+    cluster_id: i64,
+    bundles: &BundlesManager,
+    ctx: &ContentCtx,
+) -> ContentResult<DependencyResolution> {
+    let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    let mut pins = cluster_bundle_pins(&cluster, bundles, ctx)
+        .await
+        .unwrap_or_else(|err| {
+            tracing::debug!(%err, "resolving dependencies with no readable pins");
+            BundlePins::new()
+        });
+
+    loop {
+        let resolution =
+            resolve_required_or_unpinned(provider_id, root, cluster_id, &mut pins, ctx).await?;
+        let unfit = unfit_pins(
+            provider_id,
+            project,
+            root,
+            &resolution.install,
+            &pins,
+            &cluster,
+            ctx,
+        )
+        .await
+        .unwrap_or_else(|err| {
+            tracing::debug!(%err, "could not check a dependency's pin");
+            Vec::new()
+        });
+        if unfit.is_empty() {
+            return Ok(resolution);
+        }
+        for pin in unfit {
+            pins.remove(&pin);
+        }
+    }
+}
+
+pub(crate) async fn resolve_required_or_unpinned(
     provider_id: ProviderId,
     root: &VersionDetail,
     cluster_id: i64,
+    pins: &mut BundlePins,
+    ctx: &ContentCtx,
+) -> ContentResult<DependencyResolution> {
+    loop {
+        let resolution = resolve_required_pinned(provider_id, root, cluster_id, pins, ctx).await?;
+        let before = pins.len();
+        for project_id in &resolution.unresolved {
+            pins.remove(&(provider_id, project_id.clone()));
+        }
+        if pins.len() == before {
+            return Ok(resolution);
+        }
+    }
+}
+
+pub(crate) async fn resolve_required_pinned(
+    provider_id: ProviderId,
+    root: &VersionDetail,
+    cluster_id: i64,
+    pins: &BundlePins,
     ctx: &ContentCtx,
 ) -> ContentResult<DependencyResolution> {
     let mut resolution = DependencyResolution::default();
@@ -57,8 +126,27 @@ pub async fn resolve_required(
     let provider = ctx.providers.get(provider_id)?;
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
 
+    let releases: Vec<_> = artifact_dao::list_cluster_releases(&ctx.db, cluster_id)
+        .await?
+        .into_iter()
+        .filter(|release| release.provider == provider_id as i64)
+        .collect();
+    let running: HashSet<&str> = releases
+        .iter()
+        .filter(|release| release.enabled != 0)
+        .map(|release| release.project_id.as_str())
+        .collect();
+    let switched_off: HashMap<&str, &str> = releases
+        .iter()
+        .filter(|release| !running.contains(release.project_id.as_str()))
+        .map(|release| (release.project_id.as_str(), release.display_name.as_str()))
+        .collect();
+
     // Seeded with installed projects and the root against refetches and self-referencing graphs
-    let mut seen = installed_project_ids(provider_id, cluster_id, ctx).await?;
+    let mut seen: HashSet<String> = releases
+        .iter()
+        .map(|release| release.project_id.clone())
+        .collect();
     seen.insert(root.project_id.clone());
 
     // Read only once something fails to resolve, it opens every jar in the cluster
@@ -75,10 +163,15 @@ pub async fn resolve_required(
         if let Some(project_id) = &dep.project_id
             && seen.contains(project_id)
         {
+            if let Some(version_id) = dep.version_id {
+                resolution.exact.push((project_id.clone(), version_id));
+            } else if let Some(name) = switched_off.get(project_id.as_str()) {
+                resolution.switched_off.push((*name).to_string());
+            }
             continue;
         }
 
-        let resolved = match resolve_one(provider, &dep, &cluster, ctx).await {
+        let resolved = match resolve_dependency(provider, &dep, &cluster, pins, ctx).await {
             Ok(Some(resolved)) => resolved,
             Ok(None) => {
                 if !installed_under_mod_id(provider, &dep, cluster_id, &mut installed_mod_ids, ctx)
@@ -99,6 +192,12 @@ pub async fn resolve_required(
                 continue;
             }
         };
+
+        if let Some(version_id) = &dep.version_id {
+            resolution
+                .exact
+                .push((resolved.version.project_id.clone(), version_id.clone()));
+        }
 
         // A version-pinned dependency only reveals its project once fetched so dedupe again here
         if !seen.insert(resolved.version.project_id.clone()) {
@@ -131,6 +230,65 @@ fn dependency_label(dep: &VersionDependency) -> String {
         .clone()
         .or_else(|| dep.version_id.clone())
         .unwrap_or_else(|| "unknown".to_string())
+}
+
+async fn resolve_dependency(
+    provider: &dyn PackageProvider,
+    dep: &VersionDependency,
+    cluster: &ClusterRow,
+    pins: &BundlePins,
+    ctx: &ContentCtx,
+) -> ContentResult<Option<ResolvedDependency>> {
+    let (project_id, version) = match (&dep.project_id, &dep.version_id) {
+        (project_id, Some(version_id)) => {
+            let project_id = match project_id {
+                Some(project_id) => project_id.clone(),
+                None => {
+                    artifact_dao::get_release_by_version(&ctx.db, provider.id() as i64, version_id)
+                        .await?
+                        .map(|release| release.project_id)
+                        .unwrap_or_default()
+                }
+            };
+            let version = get_version_cached(ctx, provider.id(), &project_id, version_id).await?;
+            (version.project_id.clone(), version)
+        }
+        (Some(project_id), None) => {
+            let Some(pin) = pins.get(&(provider.id(), project_id.clone())) else {
+                return resolve_one(provider, dep, cluster, ctx).await;
+            };
+            let version =
+                resolve_bundle_version(provider.id(), project_id, &pin.version_id, &pin.sha1, ctx)
+                    .await?;
+            (project_id.clone(), version)
+        }
+        (None, None) => return Ok(None),
+    };
+
+    let version = with_recorded_dependencies(ctx, provider.id(), version).await?;
+    let project = dependency_project(provider, &project_id, &version, ctx).await?;
+    Ok(Some(ResolvedDependency { project, version }))
+}
+
+async fn dependency_project(
+    provider: &dyn PackageProvider,
+    project_id: &str,
+    version: &VersionDetail,
+    ctx: &ContentCtx,
+) -> ContentResult<ProjectDetail> {
+    let artifact = match version.primary_file() {
+        Some(file) => {
+            artifact_dao::get_artifact_by_hash(&ctx.db, &polyio::normalize_hash(&file.sha1)).await?
+        }
+        None => None,
+    };
+
+    match artifact.and_then(|artifact| ContentType::from_repr(artifact.content_type as u8)) {
+        Some(content_type) => {
+            Ok(cached_project_detail(ctx, provider.id(), project_id, content_type).await)
+        }
+        None => provider.get_project(project_id, ctx).await,
+    }
 }
 
 pub(crate) async fn resolve_one(
@@ -688,19 +846,6 @@ fn fits_cluster(version: &VersionSummary, cluster: &ClusterRow, loader: GameLoad
     }
 
     version.loaders.is_empty() || version.loaders.iter().any(|l| loader.compatible_with(*l))
-}
-
-async fn installed_project_ids(
-    provider_id: ProviderId,
-    cluster_id: i64,
-    ctx: &ContentCtx,
-) -> ContentResult<HashSet<String>> {
-    Ok(PackageStore::list_linked_artifacts(cluster_id, ctx)
-        .await?
-        .into_iter()
-        .filter(|linked| linked.provider == Some(provider_id))
-        .filter_map(|linked| linked.project_id)
-        .collect())
 }
 
 /// Bundles can ship a library from outside the provider, like Fabric Language Kotlin on 1.8.9

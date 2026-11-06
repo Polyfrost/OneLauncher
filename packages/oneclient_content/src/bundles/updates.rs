@@ -8,6 +8,7 @@ use oneclient_db::dao::bundle as bundle_catalog_dao;
 use oneclient_db::dao::cluster as cluster_dao;
 use oneclient_db::dao::cluster_bisect as bisect_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
+use oneclient_db::dao::cluster_flag::{self as flag_dao, ClusterFlag};
 use oneclient_db::dao::cluster_optional_mod as optional_dao;
 use oneclient_db::models::ClusterPatch;
 use oneclient_db::models::{
@@ -601,6 +602,13 @@ pub async fn apply_bundle_updates_with(
             "bundle content not fully downloaded, nothing applied; the cluster keeps its current content"
         );
         return Ok(result);
+    }
+
+    if !check.removals_available.is_empty()
+        || !check.updates_available.is_empty()
+        || !check.additions_available.is_empty()
+    {
+        flag_dao::set(&ctx.db, cluster_id, ClusterFlag::PinsUnsettled, None).await?;
     }
 
     let wants = match PackageStore::get_cluster(cluster_id, ctx).await {

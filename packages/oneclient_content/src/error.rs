@@ -63,4 +63,15 @@ impl ContentError {
             _ => false,
         }
     }
+
+    #[must_use]
+    pub fn is_gone(&self) -> bool {
+        matches!(
+            self,
+            Self::Request(oneclient_net::RequestError::HttpStatus {
+                status: 404 | 410,
+                ..
+            })
+        )
+    }
 }

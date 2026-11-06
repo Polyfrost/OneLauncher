@@ -44,10 +44,14 @@ pub use dependents::{
 };
 pub use oneclient_common::domain::{ContentType, GameLoader, HashAlgorithm, ProviderId};
 pub use provider::{PackageProvider, PackageProviderRegistry};
+pub(crate) use metadata_cache::cached_version_by_hash;
 pub use store::{LiveSync, LocalImportReport, PackageStore};
 pub use types::*;
 pub use updates::{
-    BrowserPackageUpdate, BrowserUpdateCheck, apply_browser_package_update,
-    cached_browser_package_updates, check_browser_package_updates, refresh_browser_package_updates,
-    skip_browser_package_update,
+    BrowserPackageUpdate, BrowserUpdateCheck, StagedPackageUpdate, apply_browser_package_update,
+    bundle_changes_left,
+    apply_staged_package_update, cached_browser_package_updates, check_browser_package_updates,
+    cluster_wants_bundle_catalog, ensure_staged_versions_agree, hold_against_bundle_pin,
+    hold_import_against_bundle_pin, pins_must_settle, refresh_all_browser_package_updates, refresh_browser_package_updates, settle_pins,
+    skip_browser_package_update, stage_browser_package_update,
 };

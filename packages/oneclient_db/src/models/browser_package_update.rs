@@ -15,4 +15,5 @@ pub struct BrowserPackageUpdateRow {
     pub display_name: String,
     pub checked_at: String,
     pub skipped: i64,
+    pub pin_version_id: Option<String>,
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n\t\tSELECT\n\t\t\tprovider as \"provider!: i64\", project_id, version_id, hash,\n\t\t\tdisplay_name, display_version, published_at, mc_versions, mc_loaders\n\t\tFROM provider_releases\n\t\tWHERE hash = ?\n\t\tLIMIT 1\n\t\t",
+  "query": "\n\t\tSELECT\n\t\t\tprovider as \"provider!: i64\", project_id, version_id, hash,\n\t\t\tdisplay_name, display_version, published_at, mc_versions, mc_loaders\n\t\tFROM provider_releases\n\t\tWHERE provider = ? AND project_id = ? AND hash = ?\n\t\tORDER BY published_at DESC, version_id\n\t\tLIMIT 1\n\t\t",
   "describe": {
     "columns": [
       {
@@ -104,7 +104,7 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 3
     },
     "nullable": [
       false,
@@ -118,5 +118,5 @@
       false
     ]
   },
-  "hash": "e9fceeb38ba1df37e7713046653944691cece457a493bd67c52f399e35bf1501"
+  "hash": "772e0fd395f9fcfc5bcc501e3ce2d12a11faad604a27a24e343f57ecbd917713"
 }

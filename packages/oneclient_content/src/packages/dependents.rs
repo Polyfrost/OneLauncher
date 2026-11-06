@@ -178,6 +178,23 @@ pub async fn ensure_cluster_dependencies(cluster_id: i64, ctx: &ContentCtx) -> C
 				.await
 			{
 				Ok(version) => version,
+				Err(err) if err.is_gone() => {
+					if let Err(err) = artifact_dao::mark_release_dependencies_unavailable(
+						&ctx.db,
+						release.provider,
+						&release.project_id,
+						&release.version_id,
+					)
+					.await
+					{
+						tracing::warn!(
+							project_id = %release.project_id,
+							%err,
+							"failed to record a deleted version's dependency list"
+						);
+					}
+					return;
+				}
 				Err(err) => {
 					tracing::debug!(
 						project_id = %release.project_id,

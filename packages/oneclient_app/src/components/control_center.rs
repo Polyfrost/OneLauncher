@@ -13,7 +13,7 @@ use crate::{
         use_remove_account, use_settings_snapshot,
     },
     i18n::{t, tf},
-    theme::{colors, rounded, text_size},
+    theme::{colors, counterpart, rounded, system_aware, text_size},
     ui::{border_all_color, divider},
 };
 
@@ -299,11 +299,32 @@ impl Component for QuickSettings {
             }
         };
 
+        let system_dark =
+            *Platform::get().current_window().preferred_theme.read() == PreferredTheme::Dark;
+        let active = system_aware(&settings.theme, system_dark);
+        let flipped = counterpart(&active);
+        let dark_on = !colors::active_theme().colors.light;
+
         rect()
             .horizontal()
             .width(Size::fill())
             .content(Content::Flex)
             .spacing(8.)
+            .child(
+                QuickTile {
+                    enabled: flipped.is_some(),
+                    ..QuickTile::new(
+                        IconType::Moon01,
+                        t("oneclient.components.control_center.dark_mode"),
+                        dark_on,
+                    )
+                }
+                .on_press(move |_| {
+                    if let Some(id) = flipped.clone() {
+                        dispatch.edit_settings(|s| s.theme = id);
+                    }
+                }),
+            )
             .child(
                 QuickTile::new(
                     IconType::Discord,

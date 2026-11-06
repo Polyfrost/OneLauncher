@@ -13,7 +13,7 @@ use crate::hooks::{
 };
 use crate::i18n::t;
 use crate::routes::Route;
-use crate::theme::{SYSTEM_THEME, resolve_theme};
+use crate::theme::theme_display_name;
 use crate::utils::{home_cluster, sort_clusters_for_home};
 use crate::view::onboarding::{matching_new_cluster_id, pkg_key};
 
@@ -104,11 +104,7 @@ impl Component for OnboardingSummary {
                 items: &items,
                 selected: &selected,
                 language: &language,
-                theme: if settings.theme == SYSTEM_THEME {
-                    "System".to_string()
-                } else {
-                    resolve_theme(&settings.theme).name.clone()
-                },
+                theme: theme_display_name(&settings.theme),
                 reduce_motion,
                 parallax: settings.dynamic_background_enabled,
                 account_name,

@@ -1,6 +1,6 @@
 use freya::prelude::*;
 
-use crate::components::{Icon, IconType, ScrollArea};
+use crate::components::{Icon, IconType, ScrollArea, TooltipPlacement, use_tooltip_anchor};
 use crate::hooks::use_overlay_claim_when;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, window_logical_size};
@@ -19,6 +19,7 @@ pub struct Dropdown {
     height: Size,
     outlined: bool,
     checked: Option<Vec<bool>>,
+    tooltip: Option<Box<str>>,
     key: DiffKey,
 }
 
@@ -33,6 +34,7 @@ impl Dropdown {
             height: Size::px(24.),
             outlined: false,
             checked: None,
+            tooltip: None,
             key: DiffKey::None,
         }
     }
@@ -68,6 +70,11 @@ impl Dropdown {
         self.on_select = Some(handler.into());
         self
     }
+
+    pub fn tooltip(mut self, tooltip: impl Into<Box<str>>) -> Self {
+        self.tooltip = Some(tooltip.into());
+        self
+    }
 }
 
 impl KeyExt for Dropdown {
@@ -83,6 +90,7 @@ impl Component for Dropdown {
 
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
+        let tooltip = use_tooltip_anchor(self.tooltip.clone(), TooltipPlacement::Top);
 
         let mut button_area = use_state(|| None::<Area>);
         let mut list_area = use_state(|| None::<Area>);
@@ -149,7 +157,8 @@ impl Component for Dropdown {
                 }
             })
             .child(
-                rect()
+                tooltip
+                    .attach(rect())
                     .width(Size::fill())
                     .height(self.height.clone())
                     .horizontal()
@@ -168,8 +177,8 @@ impl Component for Dropdown {
                     .maybe(focus().is_focused(), |el| {
                         el.border(border_all_color(1., colors::brand()))
                     })
-                    .on_pointer_enter(move |_| hovering.set(true))
-                    .on_pointer_leave(move |_| hovering.set(false))
+                    .on_pointer_over(move |_| hovering.set(true))
+                    .on_pointer_out(move |_| hovering.set(false))
                     .on_global_pointer_up(on_global_pointer_up)
                     .on_sized(move |e: Event<SizedEventData>| {
                         button_area.set_if_modified(Some(e.area));

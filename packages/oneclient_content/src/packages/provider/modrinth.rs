@@ -100,6 +100,9 @@ impl PackageProvider for ModrinthProvider {
                     groups.push(vec![format!("categories:{category}")]);
                 }
             }
+            if let Some(side) = filters.side {
+                groups.push(side.modrinth_facets());
+            }
             if !groups.is_empty() {
                 params.append_pair(
                     "facets",

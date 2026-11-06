@@ -1,11 +1,14 @@
 use freya::{
-    animation::{AnimNum, Ease, OnCreation, use_animation},
+    animation::{AnimNum, Ease, use_animation},
     prelude::*,
 };
 use oneclient_events::Level;
 
 use crate::{
-    components::{Button, ButtonVariant, Icon, IconType, OverlayPopup, ScrollArea, progress_track},
+    components::{
+        Button, ButtonVariant, Icon, IconType, OverlayPopup, ScrollArea, popup_surface,
+        progress_track, use_popup_intro,
+    },
     hooks::{use_dispatch, use_link_confirm, use_notifications_snapshot},
     i18n::{t, tf},
     notifications::{InboxEntry, NotificationActionKind},
@@ -42,12 +45,7 @@ impl Component for NotificationPanel {
     fn render(&self) -> impl IntoElement {
         let inbox = use_notifications_snapshot().inbox;
 
-        let intro = use_animation(|conf| {
-            conf.on_creation(OnCreation::Run);
-            AnimNum::new(0., 1.).time(200).ease(Ease::Out)
-        });
-
-        let progress = intro.read().value();
+        let progress = use_popup_intro();
 
         let mut rows: Vec<Element> = Vec::new();
         // Toast-only notices are ephemeral: never surface them in the center
@@ -78,31 +76,12 @@ impl Component for NotificationPanel {
             .scrollbar_gutter(true)
             .children(rows);
 
-        rect()
-            .vertical()
+        popup_surface(progress)
             .content(Content::Flex)
             .width(Size::px(368.))
             .height(Size::px(480.))
             .padding(Gaps::new_all(12.))
             .spacing(8.)
-            .opacity(progress)
-            .margin(Gaps::new((1.0 - progress) * -8.0, 0., 0., 0.))
-            .background(colors::page_elevated().with_a(220))
-            .backdrop_blur(12.)
-            .corner_radius(rounded(12.))
-            .border(
-                Border::new()
-                    .fill(colors::component_border())
-                    .width(1.)
-                    .alignment(BorderAlignment::Inner),
-            )
-            .shadow(Shadow::from((
-                0.,
-                8.,
-                32.,
-                0.,
-                Color::from_argb(120, 0, 0, 0),
-            )))
             .child(
                 label()
                     .text(t("oneclient.components.notifications.title"))

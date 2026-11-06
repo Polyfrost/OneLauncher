@@ -1,18 +1,16 @@
-use freya::animation::{AnimNum, Ease, OnCreation, use_animation};
 use freya::prelude::*;
 
-use crate::components::OverlayPopup;
+use crate::components::{OVERLAY_BASE_LEVEL, OverlayPopup, popup_surface, use_popup_intro};
 use crate::hooks::{use_chat_allowed, use_dispatch, use_social_open, use_social_popped_notice};
 use crate::i18n::t;
 use crate::theme::{self, colors, rounded, text_size};
 
-use super::common::{CARD_RADIUS_PX, ROW_RADIUS_PX, inset_border, popup_shadow};
+use super::common::{ROW_RADIUS_PX, inset_border};
 use super::panel::{PanelMode, SocialPanel};
 use super::window::{MAIN_FOCUSED, track_focus};
 
 const DOCKED_WIDTH_PX: f32 = 348.;
 const DOCKED_EDGE_PX: f32 = 12.;
-const DOCKED_LEVEL: u8 = 3;
 pub const DOCKED_INSET_PX: f32 = DOCKED_EDGE_PX + DOCKED_WIDTH_PX;
 
 fn docked_panel_height() -> f32 {
@@ -36,14 +34,11 @@ impl Component for SocialOverlay {
             return rect().into_element();
         }
 
-        rect()
-            .position(Position::new_global().top(0.).left(0.))
-            .width(Size::window_percent(100.))
-            .height(Size::window_percent(100.))
-            .layer(Layer::Overlay)
-            .maybe_child(open.then(|| DockedPanel.into_element()))
-            .maybe_child((notice && !open).then(|| PoppedNotice.into_element()))
-            .into_element()
+        if open {
+            DockedPanel.into_element()
+        } else {
+            PoppedNotice.into_element()
+        }
     }
 }
 
@@ -52,17 +47,10 @@ struct DockedPanel;
 
 impl Component for DockedPanel {
     fn render(&self) -> impl IntoElement {
-        let intro = use_animation(|conf| {
-            conf.on_creation(OnCreation::Run);
-            AnimNum::new(0., 1.).time(90).ease(Ease::Out)
-        });
-        let progress = intro.read().value();
-
         let height = docked_panel_height();
         let dispatch = use_dispatch();
 
         OverlayPopup::new()
-            .overlay_level(DOCKED_LEVEL)
             .position(
                 Position::new_global()
                     .top(theme::NAVBAR_HEIGHT_PX)
@@ -70,16 +58,10 @@ impl Component for DockedPanel {
             )
             .on_close(move |()| dispatch.close_social())
             .child(
-                rect()
+                popup_surface(use_popup_intro())
                     .width(Size::px(DOCKED_WIDTH_PX))
                     .height(Size::px(height))
-                    .opacity(progress)
-                    .corner_radius(rounded(CARD_RADIUS_PX))
                     .overflow(Overflow::Clip)
-                    .background(colors::page().with_a(196))
-                    .backdrop_blur(40.)
-                    .border(inset_border(colors::component_border()))
-                    .shadow(popup_shadow())
                     .child(SocialPanel {
                         mode: PanelMode::Launcher,
                         expanded: false,
@@ -97,11 +79,11 @@ impl Component for PoppedNotice {
 
         rect()
             .position(
-                Position::new_absolute()
+                Position::new_global()
                     .top(theme::NAVBAR_HEIGHT_PX + 8.)
                     .right(DOCKED_EDGE_PX),
             )
-            .layer(Layer::Overlay)
+            .layer(Layer::OverlayLevel(OVERLAY_BASE_LEVEL))
             .horizontal()
             .height(Size::px(40.))
             .padding(Gaps::new(0., 8., 0., 14.))

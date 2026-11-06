@@ -11,8 +11,8 @@ mod external_import;
 pub use external_import::{AlternativePick, ExternalImportJob};
 mod modpacks;
 
-pub(crate) use modpacks::{listed, modpack_job_in_shared_dir};
 pub use modpacks::modpack_job_running;
+pub(crate) use modpacks::{listed, modpack_job_in_shared_dir};
 mod release_migration;
 mod share;
 pub use share::{
@@ -185,12 +185,11 @@ impl Actions {
             .due(cluster_id, Instant::now())
     }
 
-    fn record_bundle_checks(&self, cluster_ids: impl IntoIterator<Item = ClusterId>) {
-        let now = Instant::now();
-        let mut log = self.bundle_checks.lock().unwrap();
-        for cluster_id in cluster_ids {
-            log.record(cluster_id, now);
-        }
+    fn record_bundle_check(&self, cluster_id: ClusterId) {
+        self.bundle_checks
+            .lock()
+            .unwrap()
+            .record(cluster_id, Instant::now());
     }
 
     fn with_engine(&self, mutate: impl FnOnce(&mut AppState)) {
@@ -1703,7 +1702,7 @@ impl Actions {
             };
 
             if result.settled() {
-                actions.record_bundle_checks([cluster_id]);
+                actions.record_bundle_check(cluster_id);
             }
 
             let failures: Vec<String> = result
@@ -1866,24 +1865,12 @@ impl Actions {
         });
     }
 
-    async fn resolve_bundle_updates_before_launch(
+    async fn sync_bundle_catalog(
         &self,
         state: &Arc<oneclient_core::LauncherState>,
         cluster_id: ClusterId,
         manual: bool,
-    ) -> Option<UpdateCheck> {
-        if !manual && !self.bundle_check_due(cluster_id) {
-            tracing::debug!(cluster_id, "bundle update check skipped, checked recently");
-            return Some(UpdateCheck::default());
-        }
-
-        let content = state.services.content();
-
-        if let Ok(false) = oneclient_core::cluster_has_bundle_content(cluster_id, &content).await {
-            tracing::debug!(cluster_id, "bundle update check skipped, no bundle content");
-            return Some(UpdateCheck::default());
-        }
-
+    ) -> bool {
         self.station
             .clone()
             .write_channel(AppChannel::Launcher)
@@ -1892,7 +1879,7 @@ impl Actions {
 
         let sync = {
             let bundles = state.bundles.clone();
-            let content = content.clone();
+            let content = state.services.content();
             let budget = update_budget(manual, BUNDLE_SYNC_BUDGET);
             off_ui(async move { tokio::time::timeout(budget, bundles.sync(&content)).await })
         };
@@ -1918,6 +1905,51 @@ impl Actions {
             .launcher
             .syncing_bundles = false;
 
+        synced
+    }
+
+    async fn resolve_bundle_updates_before_launch(
+        &self,
+        state: &Arc<oneclient_core::LauncherState>,
+        cluster_id: ClusterId,
+        manual: bool,
+    ) -> Option<UpdateCheck> {
+        let revision = state.bundles.catalog_revision();
+        if !manual
+            && !self.bundle_check_due(cluster_id)
+            && bundle_changes_left(state, cluster_id).await.is_empty()
+        {
+            tracing::debug!(cluster_id, "bundle update check skipped, checked recently");
+            return Some(UpdateCheck {
+                catalog: Some(revision),
+                ..UpdateCheck::default()
+            });
+        }
+
+        let content = state.services.content();
+
+        if let Ok(false) = oneclient_core::cluster_has_bundle_content(cluster_id, &content).await {
+            let wants_catalog = oneclient_core::cluster_wants_bundle_catalog(cluster_id, &content)
+                .await
+                .unwrap_or(true);
+            if wants_catalog {
+                let synced = self.sync_bundle_catalog(state, cluster_id, manual).await;
+                if synced {
+                    self.record_bundle_check(cluster_id);
+                }
+                return Some(UpdateCheck {
+                    failed: !synced,
+                    ..UpdateCheck::default()
+                });
+            }
+
+            tracing::debug!(cluster_id, "bundle update check skipped, no bundle content");
+            return Some(UpdateCheck::default());
+        }
+
+        let synced = self.sync_bundle_catalog(state, cluster_id, manual).await;
+        let revision = state.bundles.catalog_revision();
+
         // Bundle content is forced, so the update mode never gates it and the
         // modal never lists it
         // A failed update leaves the cluster half updated, e.g. a mod that
@@ -1925,6 +1957,7 @@ impl Actions {
         // refuse to launch rather than hand Fabric a set that cannot load
         let mut changed = false;
         let mut incomplete = !synced;
+        let mut unsettled = false;
         let mut failures = Vec::new();
         for attempt in 1..=2 {
             let deadline = (!manual).then(|| Instant::now() + BUNDLE_APPLY_BUDGET);
@@ -1944,7 +1977,7 @@ impl Actions {
             {
                 Ok(result) => {
                     if synced && result.settled() {
-                        self.record_bundle_checks([cluster_id]);
+                        self.record_bundle_check(cluster_id);
                     }
 
                     changed |= !result.updates_applied.is_empty()
@@ -1955,6 +1988,7 @@ impl Actions {
                         result.failures().cloned().collect()
                     } else if attempt == 1 {
                         incomplete = true;
+                        unsettled = true;
                         tracing::warn!(
                             cluster_id,
                             failed = result.downloads_failed.len(),
@@ -1974,6 +2008,8 @@ impl Actions {
                     return Some(UpdateCheck {
                         found: changed,
                         failed: true,
+                        unsettled: true,
+                        ..UpdateCheck::default()
                     });
                 }
                 Err(err) => vec![format!("{err:#}")],
@@ -2003,34 +2039,12 @@ impl Actions {
             return Some(UpdateCheck {
                 found: changed,
                 failed: incomplete,
+                unsettled,
+                catalog: Some(revision),
             });
         }
 
-        let details = failures.join("\n");
-        let (title, body) = if manual {
-            (
-                t("oneclient.actions.update_check.mods_failed.title"),
-                tf(
-                    "oneclient.actions.update_check.mods_failed.body",
-                    &[&failures.len(), &details],
-                ),
-            )
-        } else {
-            (
-                t("oneclient.actions.launch_updates_failed.title"),
-                tf(
-                    "oneclient.actions.launch_updates_failed.body",
-                    &[&failures.len(), &details],
-                ),
-            )
-        };
-        state
-            .services
-            .events
-            .notify(title)
-            .body(body)
-            .error()
-            .send();
+        notify_mods_failed(state, &failures, manual);
         None
     }
 
@@ -2038,24 +2052,39 @@ impl Actions {
     /// the package manager's "Update available" markers honest
     ///
     /// Returns once the launch may proceed nothing is still downloading then
-    /// Never fails the launch every error logs and lets the game start
     async fn resolve_package_updates_before_launch(
         &self,
         state: &Arc<oneclient_core::LauncherState>,
         cluster_id: ClusterId,
         manual: bool,
-    ) -> Option<bool> {
+        bundles_unsettled: bool,
+        catalog: Option<u64>,
+    ) -> Option<UpdateCheck> {
+        let unchecked = || {
+            Some(UpdateCheck {
+                failed: true,
+                ..UpdateCheck::default()
+            })
+        };
+
         let content = state.services.content();
 
         // Bounded a hanging network would otherwise hold the launch for
         // reqwest's much longer timeouts
         let budget = update_budget(manual, UPDATE_CHECK_BUDGET);
-        let bundles = Arc::clone(&state.bundles);
+        let bundles = state.bundles.clone();
         let check = match off_ui(async move {
-            tokio::time::timeout(
-                budget,
-                oneclient_core::refresh_browser_package_updates(cluster_id, &bundles, &content),
-            )
+            tokio::time::timeout(budget, async {
+                if manual {
+                    oneclient_core::refresh_all_browser_package_updates(
+                        cluster_id, &bundles, &content,
+                    )
+                    .await
+                } else {
+                    oneclient_core::refresh_browser_package_updates(cluster_id, &bundles, &content)
+                        .await
+                }
+            })
             .await
         })
         .await
@@ -2065,20 +2094,64 @@ impl Actions {
                 tracing::warn!(
                     cluster_id,
                     error = %err,
-                    "browser package update check failed, launching anyway"
+                    "browser package update check failed"
                 );
-                return None;
+                return unchecked();
             }
             Err(_elapsed) => {
                 tracing::debug!(
                     cluster_id,
                     "browser package update check exceeded its launch budget"
                 );
-                return None;
+                return unchecked();
             }
         };
 
-        let pending = check.pending();
+        let bundled = check.bundled_pending();
+        let pins = match pins_left_alone(&check, &bundled, bundles_unsettled) {
+            Some(outcome) => outcome,
+            None => {
+                self.apply_pins_for_launch(state, &bundled, manual, catalog)
+                    .await
+            }
+        };
+
+        let deferred = match pins {
+            PinOutcome::Applied => {
+                let content = state.services.content();
+                if let Err(err) = oneclient_core::settle_pins(cluster_id, &content).await {
+                    tracing::warn!(cluster_id, error = %err, "could not settle the pins");
+                }
+                false
+            }
+            PinOutcome::Frozen => false,
+            PinOutcome::Deferred(failures) | PinOutcome::Incomplete(failures) => {
+                if manual {
+                    notify_mods_failed(state, &failures, manual);
+                }
+                tracing::warn!(cluster_id, ?failures, "pins did not settle, launching anyway");
+                true
+            }
+        };
+
+        let plain = self
+            .resolve_plain_updates(state, cluster_id, manual, check.pending())
+            .await;
+
+        Some(UpdateCheck {
+            found: (!bundled.is_empty() && !deferred) || plain == Some(true),
+            failed: deferred || plain.is_none(),
+            ..UpdateCheck::default()
+        })
+    }
+
+    async fn resolve_plain_updates(
+        &self,
+        state: &Arc<oneclient_core::LauncherState>,
+        cluster_id: ClusterId,
+        manual: bool,
+        pending: Vec<oneclient_core::BrowserPackageUpdate>,
+    ) -> Option<bool> {
         let mode = match self.cluster_update_mode(state, cluster_id).await {
             PackageUpdateMode::Skip if manual => PackageUpdateMode::Prompt,
             mode => mode,
@@ -2114,11 +2187,19 @@ impl Actions {
             .resolve_bundle_updates_before_launch(state, cluster_id, manual)
             .await?;
         let packages = self
-            .resolve_package_updates_before_launch(state, cluster_id, manual)
-            .await;
+            .resolve_package_updates_before_launch(
+                state,
+                cluster_id,
+                manual,
+                bundles.unsettled,
+                bundles.catalog,
+            )
+            .await?;
         Some(UpdateCheck {
-            found: loader == Some(true) || bundles.found || packages == Some(true),
-            failed: loader.is_none() || bundles.failed || packages.is_none(),
+            found: loader == Some(true) || bundles.found || packages.found,
+            failed: loader.is_none() || bundles.failed || packages.failed,
+            unsettled: bundles.unsettled,
+            ..UpdateCheck::default()
         })
     }
 
@@ -2144,6 +2225,97 @@ impl Actions {
             .unwrap_or_default()
     }
 
+    async fn apply_pins_for_launch(
+        &self,
+        state: &Arc<oneclient_core::LauncherState>,
+        updates: &[oneclient_core::BrowserPackageUpdate],
+        unbounded: bool,
+        catalog: Option<u64>,
+    ) -> PinOutcome {
+        let state = state.clone();
+        let updates = updates.to_vec();
+        let budget = update_budget(unbounded, BUNDLE_APPLY_BUDGET);
+        let (outcome, applied, session_id) = off_ui(async move {
+            let content = state.services.content();
+            let session = oneclient_events::GroupedProgressSession::start(
+                &state.services.events,
+                t("oneclient.actions.package_updates.updating"),
+            );
+            session.expect(
+                oneclient_events::TaskCategory::Packages,
+                updates.len() as u64,
+                updates.len() as u64,
+            );
+            let names = || updates.iter().map(|u| u.display_name.clone()).collect();
+
+            let stage = async {
+                let mut staged = Vec::with_capacity(updates.len());
+                for update in &updates {
+                    let child = session.child(
+                        update.display_name.clone(),
+                        1,
+                        oneclient_events::TaskCategory::Packages,
+                    );
+                    let result = oneclient_core::stage_browser_package_update(
+                        update,
+                        &state.bundles,
+                        Some(&child),
+                        &content,
+                    )
+                    .await;
+                    child.finish();
+                    staged.push(result?);
+                }
+                Ok::<_, oneclient_content::ContentError>(staged)
+            };
+
+            let mut applied = 0usize;
+            let outcome = match tokio::time::timeout(budget, stage).await {
+                Ok(Ok(_))
+                    if catalog.is_some_and(|seen| seen != state.bundles.catalog_revision()) =>
+                {
+                    tracing::debug!("bundle catalog moved during the update check");
+                    PinOutcome::Deferred(names())
+                }
+                Ok(Ok(staged)) => {
+                    let mut failures = Vec::new();
+                    for update in &staged {
+                        match oneclient_core::apply_staged_package_update(update, &content).await {
+                            Ok(_) => applied += 1,
+                            Err(err) => {
+                                tracing::warn!(error = %err, "pinned package update failed");
+                                failures.push(format!("{err:#}"));
+                            }
+                        }
+                    }
+                    if failures.is_empty() {
+                        PinOutcome::Applied
+                    } else {
+                        PinOutcome::Incomplete(failures)
+                    }
+                }
+                Ok(Err(err)) => {
+                    tracing::warn!(
+                        error = %err,
+                        "pinned package updates could not be staged, they go at the next launch"
+                    );
+                    PinOutcome::Deferred(vec![format!("{err:#}")])
+                }
+                Err(_elapsed) => {
+                    tracing::debug!("pinned package updates exceeded their launch budget");
+                    PinOutcome::Deferred(names())
+                }
+            };
+
+            (outcome, applied, session.detach())
+        })
+        .await;
+
+        self.finish_update_session(session_id, applied).await;
+
+        outcome
+    }
+
     /// One grouped progress notification so the pre-launch pause shows something
     async fn apply_updates_for_launch(
         &self,
@@ -2166,35 +2338,54 @@ impl Actions {
             );
 
             let mut applied = 0usize;
-            for update in &updates {
-                let child = session.child(
-                    update.display_name.clone(),
-                    1,
-                    oneclient_events::TaskCategory::Packages,
-                );
-                match oneclient_core::apply_browser_package_update(
-                    update,
-                    &state.bundles,
-                    Some(&child),
-                    &content,
-                )
-                .await
-                {
-                    Ok(_) => applied += 1,
-                    // Not a reason to hold the game back the cache row survives
-                    // so the next launch offers it again
-                    Err(err) => tracing::warn!(
-                        package = %update.display_name,
-                        error = %err,
-                        "automatic package update failed"
-                    ),
+            let mut pending = updates;
+            loop {
+                let mut failed = Vec::new();
+                for update in &pending {
+                    let child = session.child(
+                        update.display_name.clone(),
+                        1,
+                        oneclient_events::TaskCategory::Packages,
+                    );
+                    match oneclient_core::apply_browser_package_update(
+                        update,
+                        &state.bundles,
+                        Some(&child),
+                        &content,
+                    )
+                    .await
+                    {
+                        Ok(_) => applied += 1,
+                        // Not a reason to hold the game back the cache row survives
+                        // so the next launch offers it again
+                        Err(err) => {
+                            tracing::warn!(
+                                package = %update.display_name,
+                                error = %err,
+                                "automatic package update failed"
+                            );
+                            failed.push(update.clone());
+                        }
+                    }
+                    child.finish();
                 }
-                child.finish();
+                let landed = failed.len() < pending.len();
+                pending = failed;
+                if pending.is_empty() || !landed {
+                    break;
+                }
             }
 
             (applied, session.detach())
         })
         .await;
+
+        self.finish_update_session(session_id, applied).await;
+
+        applied == total
+    }
+
+    async fn finish_update_session(&self, session_id: uuid::Uuid, applied: usize) {
         let spec = (applied > 0).then(|| NotificationSpec {
             title: t("oneclient.actions.package_updates.updated.title").to_string(),
             body: if applied == 1 {
@@ -2225,8 +2416,6 @@ impl Actions {
         if applied > 0 {
             super::invalidate_cluster_queries().await;
         }
-
-        applied == total
     }
 
     async fn resolve_bundle_choices_before_launch(
@@ -2536,6 +2725,83 @@ async fn cluster_busy_elsewhere(cluster_id: ClusterId) -> Option<(&'static str, 
 struct UpdateCheck {
     found: bool,
     failed: bool,
+    unsettled: bool,
+    catalog: Option<u64>,
+}
+
+#[derive(Debug, PartialEq)]
+enum PinOutcome {
+    Applied,
+    Frozen,
+    Deferred(Vec<String>),
+    Incomplete(Vec<String>),
+}
+
+fn pins_left_alone(
+    check: &oneclient_core::BrowserUpdateCheck,
+    bundled: &[oneclient_core::BrowserPackageUpdate],
+    bundles_unsettled: bool,
+) -> Option<PinOutcome> {
+    if check.pins_frozen {
+        Some(PinOutcome::Frozen)
+    } else if !check.unchecked_pins.is_empty() {
+        Some(PinOutcome::Deferred(check.unchecked_pins.clone()))
+    } else if bundled.is_empty() {
+        Some(PinOutcome::Applied)
+    } else if bundles_unsettled {
+        Some(PinOutcome::Deferred(
+            bundled.iter().map(|u| u.display_name.clone()).collect(),
+        ))
+    } else {
+        None
+    }
+}
+
+async fn bundle_changes_left(
+    state: &Arc<oneclient_core::LauncherState>,
+    cluster_id: ClusterId,
+) -> Vec<String> {
+    off_ui({
+        let state = state.clone();
+        async move {
+            oneclient_core::bundle_changes_left(
+                cluster_id,
+                &state.bundles,
+                &state.services.content(),
+            )
+            .await
+        }
+    })
+    .await
+    .unwrap_or_else(|err| vec![format!("{err:#}")])
+}
+
+fn notify_mods_failed(state: &oneclient_core::LauncherState, failures: &[String], manual: bool) {
+    let details = failures.join("\n");
+    let (title, body) = if manual {
+        (
+            t("oneclient.actions.update_check.mods_failed.title"),
+            tf(
+                "oneclient.actions.update_check.mods_failed.body",
+                &[&failures.len(), &details],
+            ),
+        )
+    } else {
+        (
+            t("oneclient.actions.launch_updates_failed.title"),
+            tf(
+                "oneclient.actions.launch_updates_failed.body",
+                &[&failures.len(), &details],
+            ),
+        )
+    };
+    state
+        .services
+        .events
+        .notify(title)
+        .body(body)
+        .error()
+        .send();
 }
 
 static UPDATE_CHECKS: Mutex<BTreeSet<ClusterId>> = Mutex::new(BTreeSet::new());
@@ -2561,7 +2827,11 @@ struct ClusterWrite(ClusterId);
 
 impl ClusterWrite {
     fn take(cluster_id: ClusterId) -> Self {
-        *CLUSTER_WRITES.lock().unwrap().entry(cluster_id).or_default() += 1;
+        *CLUSTER_WRITES
+            .lock()
+            .unwrap()
+            .entry(cluster_id)
+            .or_default() += 1;
         Self(cluster_id)
     }
 }
@@ -2849,6 +3119,40 @@ mod tests {
             display_name: "Sodium".into(),
             skipped: false,
         }
+    }
+
+    #[test]
+    fn pins_wait_for_a_bisect_a_failed_lookup_and_an_unsettled_bundle_update() {
+        let bundled = [update("a")];
+        let check = oneclient_core::BrowserUpdateCheck::default();
+
+        assert_eq!(pins_left_alone(&check, &bundled, false), None);
+        assert_eq!(
+            pins_left_alone(&check, &[], true),
+            Some(PinOutcome::Applied),
+        );
+        assert_eq!(
+            pins_left_alone(&check, &bundled, true),
+            Some(PinOutcome::Deferred(vec!["Sodium".to_string()])),
+        );
+
+        let unchecked = oneclient_core::BrowserUpdateCheck {
+            unchecked_pins: vec!["Lithium".to_string()],
+            ..check.clone()
+        };
+        assert_eq!(
+            pins_left_alone(&unchecked, &bundled, false),
+            Some(PinOutcome::Deferred(vec!["Lithium".to_string()])),
+        );
+
+        let frozen = oneclient_core::BrowserUpdateCheck {
+            pins_frozen: true,
+            ..unchecked
+        };
+        assert_eq!(
+            pins_left_alone(&frozen, &bundled, true),
+            Some(PinOutcome::Frozen),
+        );
     }
 
     #[test]

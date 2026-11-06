@@ -1157,7 +1157,7 @@ async fn jar_dependencies(state: &Arc<LauncherState>, hash: &str) -> Option<JarD
         return Some(known);
     }
 
-    let deps = read_jar_dependencies(&artifact_path(state, hash).await?).await;
+    let deps = read_jar_dependencies(&artifact_path(state, hash).await?, None).await;
     if deps != JarDependencies::default()
         && let Ok(mut cache) = JAR_DEPENDENCIES.lock()
     {
@@ -1335,11 +1335,11 @@ async fn dependency_graph(state: &Arc<LauncherState>, session: &Session) -> Grap
             continue;
         };
         let index = requires.len();
+        for id in deps.bundled() {
+            bundled.entry(id).or_default().push(index);
+        }
         for id in deps.provides {
             own.entry(id).or_insert(index);
-        }
-        for id in deps.bundled {
-            bundled.entry(id).or_default().push(index);
         }
         requires.push(deps.requires);
     }

@@ -9,7 +9,7 @@ use oneclient_common::domain::GameLoader;
 use oneclient_common::parse_mc_version;
 use oneclient_common::search::normalize_query;
 use oneclient_content::packages::types::ProjectSummary;
-use oneclient_content::packages::types::SearchSort;
+use oneclient_content::packages::types::{SearchSide, SearchSort};
 use oneclient_content::packages::{ContentType, ProviderId};
 use oneclient_core::VersionMetadata;
 use oneclient_core::clusters::Cluster;
@@ -89,6 +89,20 @@ fn loaders() -> [(Option<GameLoader>, &'static str); 4] {
         (Some(GameLoader::Fabric), "Fabric"),
         (Some(GameLoader::Forge), "Forge"),
         (Some(GameLoader::NeoForge), "NeoForge"),
+    ]
+}
+
+fn sides() -> [(Option<SearchSide>, &'static str); 3] {
+    [
+        (None, t("oneclient.browser.index.side.any")),
+        (
+            Some(SearchSide::Client),
+            t("oneclient.browser.index.side.client"),
+        ),
+        (
+            Some(SearchSide::Server),
+            t("oneclient.browser.index.side.server"),
+        ),
     ]
 }
 
@@ -219,6 +233,7 @@ impl Component for BrowserBody {
         let selected_categories = use_state(|| saved.categories.clone());
         let sort = use_state(|| saved.sort);
         let loader = use_state(|| saved.loader);
+        let side = use_state(|| saved.side);
         let page = use_state(|| saved.page);
 
         {
@@ -231,6 +246,7 @@ impl Component for BrowserBody {
                     categories: selected_categories.read().clone(),
                     sort: *sort.read(),
                     loader: *loader.read(),
+                    side: *side.read(),
                     page: *page.read(),
                 };
                 store.write().insert(key.clone(), snapshot);
@@ -269,12 +285,15 @@ impl Component for BrowserBody {
             provider.set(ProviderId::Modrinth);
         }
         let provider_id = *provider.read();
+        let side_filterable =
+            content_type == ContentType::Mod && provider_id == ProviderId::Modrinth;
+        let picked_side = (*side.read()).filter(|_| side_filterable);
 
         let mut page_state = page;
         // Normalised like the search key so a query differing only by a space does not reset the page
         let sort_by = *sort.read();
         let signature = format!(
-            "{provider_id:?}|{}|{compat}|{}|{sort_by:?}|{picked_loader:?}",
+            "{provider_id:?}|{}|{compat}|{}|{sort_by:?}|{picked_loader:?}|{picked_side:?}",
             normalize_query(&debounced_query.read()).to_lowercase(),
             cats.join(",")
         );
@@ -294,6 +313,7 @@ impl Component for BrowserBody {
             loaders,
             cats.clone(),
             sort_by,
+            picked_side,
             *page.read(),
         );
         let categories_query = use_package_categories(provider_id, content_type);
@@ -466,6 +486,7 @@ impl Component for BrowserBody {
                                 pending,
                                 sort,
                                 loader_filterable.then_some(loader),
+                                side_filterable.then_some(side),
                                 view_mode,
                             ))
                             .child(
@@ -608,6 +629,7 @@ fn results_toolbar(
     pending: bool,
     sort: State<SearchSort>,
     loader: Option<State<Option<GameLoader>>>,
+    side: Option<State<Option<SearchSide>>>,
     view_mode: State<ViewLayout>,
 ) -> impl IntoElement {
     // Blank rather than a stale count while a page is in flight
@@ -636,6 +658,7 @@ fn results_toolbar(
                 .color(colors::fg_primary().with_a(140)),
         )
         .child(rect().width(Size::flex(1.0)))
+        .maybe_child(side.map(|side| SidePicker { side }))
         .maybe_child(loader.map(|loader| LoaderPicker { loader }))
         .child(SortPicker { sort })
         .child(
@@ -701,6 +724,34 @@ impl Component for LoaderPicker {
             .on_select(move |idx: usize| {
                 if let Some((picked, _)) = loaders().get(idx) {
                     loader.set(*picked);
+                }
+            })
+    }
+}
+
+#[derive(PartialEq)]
+struct SidePicker {
+    side: State<Option<SearchSide>>,
+}
+
+impl Component for SidePicker {
+    fn render(&self) -> impl IntoElement {
+        let mut side = self.side;
+        let current = *side.read();
+
+        let labels: Vec<String> = sides().iter().map(|(_, l)| (*l).to_string()).collect();
+        let selected = sides()
+            .iter()
+            .find(|(s, _)| *s == current)
+            .map_or(t("oneclient.browser.index.side.any"), |(_, l)| *l);
+
+        Dropdown::new(selected, labels)
+            .width(Size::px(132.))
+            .height(Size::px(30.))
+            .tooltip(t("oneclient.browser.index.side.tooltip"))
+            .on_select(move |idx: usize| {
+                if let Some((picked, _)) = sides().get(idx) {
+                    side.set(*picked);
                 }
             })
     }

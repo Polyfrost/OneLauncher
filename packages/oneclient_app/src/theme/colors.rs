@@ -118,6 +118,7 @@ pub fn apply(theme: &str, accent: Option<&str>) {
 
 pub(super) fn refresh_active() {
     ACTIVE.set(ACTIVE.with_borrow(|theme| theme.as_ref().map(|theme| resolve_theme(&theme.id))));
+    bump_revision();
 }
 
 pub fn preview(theme: Option<Theme>) {

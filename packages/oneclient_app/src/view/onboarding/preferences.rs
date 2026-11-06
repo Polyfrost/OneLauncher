@@ -54,7 +54,7 @@ impl Component for OnboardingPreferences {
                 t("oneclient.onboarding.preferences.title"),
                 t("oneclient.onboarding.preferences.subtitle"),
             ))
-            .child(theme_cards(&settings.theme, dispatch))
+            .child(theme_cards(&settings.theme))
             .child(
                 rect()
                     .vertical()

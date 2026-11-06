@@ -106,7 +106,7 @@ impl App for OneClientApp {
         let platform = Platform::get().current_window();
         let system_dark = *platform.preferred_theme.read() == PreferredTheme::Dark;
         let scale_factor = *platform.scale_factor.read() as f32;
-        let theme_id = theme::system_aware(&appearance.theme, system_dark).to_string();
+        let theme_id = theme::system_aware(&appearance.theme, system_dark);
         theme::colors::apply(&theme_id, appearance.accent_color.as_deref());
         theme::set_scale_factor(scale_factor);
         let deps = (theme_id, appearance.accent_color, scale_factor.to_bits());

@@ -76,11 +76,54 @@ pub fn themes() -> Vec<Rc<Theme>> {
 
 pub const SYSTEM_THEME: &str = "system";
 
-pub fn system_aware(id: &str, system_dark: bool) -> &str {
-    match id {
-        SYSTEM_THEME if system_dark => "dark",
-        SYSTEM_THEME => "light",
-        id => id,
+pub fn system_theme_id(dark: &str) -> String {
+    format!("{SYSTEM_THEME}:{dark}")
+}
+
+pub fn family_name(name: &str) -> String {
+    name.split_whitespace()
+        .filter(|word| !matches!(*word, "Dark" | "Light"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+pub fn counterpart(id: &str) -> Option<String> {
+    THEMES.with_borrow(|themes| {
+        let theme = themes.iter().find(|theme| theme.id == id)?;
+        let family = family_name(&theme.name);
+        themes
+            .iter()
+            .find(|other| {
+                other.colors.light != theme.colors.light && family_name(&other.name) == family
+            })
+            .map(|other| other.id.clone())
+    })
+}
+
+pub fn light_variant(dark: &str) -> Option<String> {
+    counterpart(dark).filter(|_| !resolve_theme(dark).colors.light)
+}
+
+pub fn system_pair(id: &str) -> Option<(String, String)> {
+    let dark = match id {
+        SYSTEM_THEME => "dark",
+        id => id.strip_prefix(SYSTEM_THEME)?.strip_prefix(':')?,
+    };
+    Some((dark.to_string(), light_variant(dark)?))
+}
+
+pub fn system_aware(id: &str, system_dark: bool) -> String {
+    match system_pair(id) {
+        Some((dark, _)) if system_dark => dark,
+        Some((_, light)) => light,
+        None => id.to_string(),
+    }
+}
+
+pub fn theme_display_name(id: &str) -> String {
+    match system_pair(id) {
+        Some((dark, _)) => format!("{} System", family_name(&resolve_theme(&dark).name)),
+        None => resolve_theme(id).name.clone(),
     }
 }
 
@@ -138,6 +181,27 @@ pub async fn save_theme(mut theme: Theme) -> anyhow::Result<String> {
     );
     colors::refresh_active();
     Ok(id)
+}
+
+pub async fn duplicate_theme(id: &str) -> anyhow::Result<String> {
+    let mut theme = (*resolve_theme(id)).clone();
+    theme.name = format!("{} Copy", theme.name);
+    theme.dir = None;
+    save_theme(theme).await
+}
+
+pub async fn export_theme(id: &str, path: &Path) -> anyhow::Result<()> {
+    let json = serde_json::to_vec_pretty(&*resolve_theme(id))?;
+    polyio::write(path, json).await?;
+    Ok(())
+}
+
+pub async fn delete_theme(id: &str) -> anyhow::Result<()> {
+    let dir = oneclient_common::paths::themes_dir()?;
+    polyio::remove_file(dir.join(format!("{id}.json"))).await?;
+    THEMES.set(load_themes().into_iter().map(Rc::new).collect());
+    colors::refresh_active();
+    Ok(())
 }
 
 pub fn pixel_font_size_of(family: &str) -> Option<f32> {

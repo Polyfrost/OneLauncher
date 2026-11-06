@@ -17,7 +17,7 @@ use crate::packages::types::{
     DependencyKind, ProjectDetail, ReleaseType, SearchFilters, VersionDependency, VersionDetail,
     VersionSummary,
 };
-use crate::packages::updates::{BundlePins, cluster_bundle_pins, unfit_pins};
+use crate::packages::updates::{BundlePins, cluster_bundle_pins};
 use crate::packages::{cached_project_detail, get_version_cached};
 
 /// Caps the transitive walk so a provider serving a cycle can't spin forever
@@ -49,10 +49,9 @@ impl DependencyResolution {
     }
 }
 
-#[tracing::instrument(level = "debug", skip(project, root, bundles, ctx), fields(project_id = %root.project_id, version_id = %root.version_id))]
+#[tracing::instrument(level = "debug", skip(root, bundles, ctx), fields(project_id = %root.project_id, version_id = %root.version_id))]
 pub async fn resolve_required(
     provider_id: ProviderId,
-    project: &ProjectDetail,
     root: &VersionDetail,
     cluster_id: i64,
     bundles: &BundlesManager,
@@ -66,30 +65,7 @@ pub async fn resolve_required(
             BundlePins::new()
         });
 
-    loop {
-        let resolution =
-            resolve_required_or_unpinned(provider_id, root, cluster_id, &mut pins, ctx).await?;
-        let unfit = unfit_pins(
-            provider_id,
-            project,
-            root,
-            &resolution.install,
-            &pins,
-            &cluster,
-            ctx,
-        )
-        .await
-        .unwrap_or_else(|err| {
-            tracing::debug!(%err, "could not check a dependency's pin");
-            Vec::new()
-        });
-        if unfit.is_empty() {
-            return Ok(resolution);
-        }
-        for pin in unfit {
-            pins.remove(&pin);
-        }
-    }
+    resolve_required_or_unpinned(provider_id, root, cluster_id, &mut pins, ctx).await
 }
 
 pub(crate) async fn resolve_required_or_unpinned(
@@ -481,249 +457,29 @@ fn compare_releases(a: &Release, b: &Release) -> std::cmp::Ordering {
     })
 }
 
-fn semver_release(version: &str) -> Option<Release> {
-    let version = version
-        .split_once('+')
-        .map_or(version, |(version, _)| version);
-    let (core, prerelease) = match version.split_once('-') {
-        Some((core, "")) => (core, Some(Vec::new())),
-        Some((core, tag)) => (core, Some(tag.split('.').map(str::to_owned).collect())),
-        None => (version, None),
-    };
-
-    let identifier = |part: &String| {
-        !part.is_empty() && part.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
-    };
-    if !core.starts_with(|c: char| c.is_ascii_digit())
-        || !prerelease.iter().flatten().all(identifier)
-    {
-        return None;
-    }
-
-    Some(Release {
-        core: numeric_parts(core)?,
-        prerelease,
-    })
-}
-
-pub(crate) fn compare_semver(a: &str, b: &str) -> Option<std::cmp::Ordering> {
-    Some(compare_releases(&semver_release(a)?, &semver_release(b)?))
-}
-
 fn satisfies(range: &VersionRange, version: &str, mc_version: &str) -> bool {
-    release_number(version, mc_version)
-        .is_some_and(|found| within(range, &found, |bound| release_number(bound, "")))
-}
+    let Some(found) = release_number(version, mc_version) else {
+        return false;
+    };
 
-fn within(range: &VersionRange, found: &Release, read: impl Fn(&str) -> Option<Release>) -> bool {
-    let bound = |bound: &Option<String>| bound.as_deref().and_then(&read);
+    let bound =
+        |bound: &Option<String>| bound.as_deref().and_then(|bound| release_number(bound, ""));
 
     if let Some(min) = bound(&range.min) {
-        let ordering = compare_releases(found, &min);
+        let ordering = compare_releases(&found, &min);
         if ordering.is_lt() || (ordering.is_eq() && !range.min_inclusive) {
             return false;
         }
     }
 
     if let Some(max) = bound(&range.max) {
-        let ordering = compare_releases(found, &max);
+        let ordering = compare_releases(&found, &max);
         if ordering.is_gt() || (ordering.is_eq() && !range.max_inclusive) {
             return false;
         }
     }
 
     true
-}
-
-pub(crate) fn rules_out(ranges: &[VersionRange], version: &str, mc_version: &str) -> bool {
-    release_number(version, mc_version).is_some()
-        && !ranges
-            .iter()
-            .any(|range| satisfies(range, version, mc_version))
-}
-
-fn semver_within(range: &VersionRange, version: &str) -> bool {
-    use std::cmp::Ordering;
-
-    let holds = |bound: &Option<String>, inclusive: bool, beyond: Ordering| {
-        let Some(bound) = bound else {
-            return true;
-        };
-        match compare_semver(version, bound) {
-            Some(ordering) => ordering != beyond && (ordering.is_ne() || inclusive),
-            None => inclusive && version == bound,
-        }
-    };
-
-    holds(&range.min, range.min_inclusive, Ordering::Less)
-        && holds(&range.max, range.max_inclusive, Ordering::Greater)
-}
-
-pub(crate) fn semver_rules_out(ranges: &[VersionRange], version: &str) -> bool {
-    !ranges.iter().any(|range| semver_within(range, version))
-}
-
-pub(crate) fn number_among(ranges: &[VersionRange], version: &str, mc_version: &str) -> bool {
-    ranges
-        .iter()
-        .any(|range| satisfies(range, version, mc_version))
-}
-
-const MAVEN_QUALIFIERS: [&str; 7] = ["alpha", "beta", "milestone", "rc", "snapshot", "", "sp"];
-const MAVEN_RELEASE: usize = 5;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum MavenItem {
-    Number(u128),
-    Text(String),
-    List(Vec<MavenItem>),
-}
-
-impl MavenItem {
-    fn read(text: &str, digits: bool, before_digit: bool) -> Self {
-        if digits {
-            return Self::Number(text.parse().unwrap_or(u128::MAX));
-        }
-        Self::Text(
-            match text {
-                "a" if before_digit => "alpha",
-                "b" if before_digit => "beta",
-                "m" if before_digit => "milestone",
-                "ga" | "final" | "release" => "",
-                "cr" => "rc",
-                other => other,
-            }
-            .to_string(),
-        )
-    }
-
-    fn is_null(&self) -> bool {
-        self.against_nothing().is_eq() && !matches!(self, Self::List(items) if !items.is_empty())
-    }
-
-    fn against_nothing(&self) -> std::cmp::Ordering {
-        use std::cmp::Ordering;
-
-        match self {
-            Self::Number(number) => number.cmp(&0),
-            Self::Text(text) => maven_rank(text).0.cmp(&MAVEN_RELEASE),
-            Self::List(items) => items
-                .iter()
-                .map(Self::against_nothing)
-                .find(|ordering| ordering.is_ne())
-                .unwrap_or(Ordering::Equal),
-        }
-    }
-}
-
-fn maven_rank(text: &str) -> (usize, &str) {
-    MAVEN_QUALIFIERS
-        .iter()
-        .position(|known| *known == text)
-        .map_or((MAVEN_QUALIFIERS.len(), text), |rank| (rank, ""))
-}
-
-fn open_qualifier(lists: &mut Vec<Vec<MavenItem>>) {
-    if lists.last().is_some_and(|list| !list.is_empty()) {
-        lists.push(Vec::new());
-    }
-}
-
-fn maven_items(version: &str) -> Vec<MavenItem> {
-    let version = version.trim().to_ascii_lowercase();
-    let mut lists = vec![Vec::new()];
-    let mut start = 0;
-    let mut digits = false;
-
-    for (index, c) in version.char_indices() {
-        if matches!(c, '.' | '-') {
-            let text = &version[start..index];
-            lists.last_mut().unwrap().push(if text.is_empty() {
-                MavenItem::Number(0)
-            } else {
-                MavenItem::read(text, digits, false)
-            });
-            start = index + 1;
-            if c == '-' {
-                lists.push(Vec::new());
-            }
-            continue;
-        }
-
-        let digit = c.is_ascii_digit();
-        if digit != digits && index > start {
-            if digit {
-                open_qualifier(&mut lists);
-            }
-            let item = MavenItem::read(&version[start..index], digits, digit);
-            lists.last_mut().unwrap().push(item);
-            lists.push(Vec::new());
-            start = index;
-        }
-        digits = digit;
-    }
-    if start < version.len() {
-        if !digits {
-            open_qualifier(&mut lists);
-        }
-        let item = MavenItem::read(&version[start..], digits, false);
-        lists.last_mut().unwrap().push(item);
-    }
-
-    lists.into_iter().rev().fold(Vec::new(), |inner, mut list| {
-        list.push(MavenItem::List(inner));
-        for index in (0..list.len()).rev() {
-            if list[index].is_null() {
-                list.remove(index);
-            } else if !matches!(list[index], MavenItem::List(_)) {
-                break;
-            }
-        }
-        list
-    })
-}
-
-fn compare_maven_items(a: &[MavenItem], b: &[MavenItem]) -> std::cmp::Ordering {
-    use std::cmp::Ordering;
-
-    (0..a.len().max(b.len()))
-        .map(|index| match (a.get(index), b.get(index)) {
-            (Some(a), Some(b)) => match (a, b) {
-                (MavenItem::Number(a), MavenItem::Number(b)) => a.cmp(b),
-                (MavenItem::Text(a), MavenItem::Text(b)) => maven_rank(a).cmp(&maven_rank(b)),
-                (MavenItem::List(a), MavenItem::List(b)) => compare_maven_items(a, b),
-                (MavenItem::Number(_), _) | (MavenItem::List(_), MavenItem::Text(_)) => {
-                    Ordering::Greater
-                }
-                (MavenItem::Text(_) | MavenItem::List(_), _) => Ordering::Less,
-            },
-            (Some(a), None) => a.against_nothing(),
-            (None, Some(b)) => b.against_nothing().reverse(),
-            (None, None) => Ordering::Equal,
-        })
-        .find(|ordering| ordering.is_ne())
-        .unwrap_or(Ordering::Equal)
-}
-
-pub(crate) fn maven_fits(ranges: &[VersionRange], version: &str) -> Option<bool> {
-    use std::cmp::Ordering;
-
-    if version.contains("${") || !version.contains(|c: char| c.is_ascii_digit()) {
-        return None;
-    }
-
-    let found = maven_items(version);
-    let holds = |bound: &Option<String>, inclusive: bool, beyond: Ordering| {
-        bound.as_deref().is_none_or(|bound| {
-            let ordering = compare_maven_items(&found, &maven_items(bound));
-            ordering != beyond && (ordering.is_ne() || inclusive)
-        })
-    };
-
-    Some(ranges.iter().any(|range| {
-        holds(&range.min, range.min_inclusive, Ordering::Less)
-            && holds(&range.max, range.max_inclusive, Ordering::Greater)
-    }))
 }
 
 async fn search_mod(
@@ -1162,83 +918,6 @@ mod tests {
             "1.0.0-alpha",
             "26.3"
         ));
-    }
-
-    #[test]
-    fn a_declared_version_reads_the_way_fabric_does() {
-        let at_least = [VersionRange::at_least("1.0")];
-
-        assert!(semver_rules_out(&at_least, "1.0-fabric"));
-        assert!(!semver_rules_out(&at_least, "1.0+beta"));
-        assert!(!semver_rules_out(&at_least, "1.0.0+1.21.1"));
-        assert!(!semver_rules_out(&at_least, "1.1-fabric"));
-
-        assert!(semver_rules_out(&at_least, "v2.0"));
-        assert!(semver_rules_out(&at_least, "not.a.version"));
-        assert!(semver_rules_out(&at_least, "2.0-beta_1"));
-        assert!(!semver_rules_out(&[VersionRange::default()], "v2.0"));
-
-        let text = [VersionRange::at_least("v2.0")];
-        assert!(!semver_rules_out(&text, "v2.0"));
-        assert!(semver_rules_out(&text, "2.0"));
-
-        let suffixed = [VersionRange::at_least("1.0-fabric")];
-        assert!(!semver_rules_out(&suffixed, "1.0-fabric"));
-        assert!(!semver_rules_out(&suffixed, "1.0"));
-        assert!(semver_rules_out(&suffixed, "1.0-alpha"));
-
-        let below_two = [VersionRange {
-            max: Some("2-".to_string()),
-            ..VersionRange::default()
-        }];
-        assert!(!semver_rules_out(&below_two, "1.9"));
-        assert!(semver_rules_out(&below_two, "2.0-alpha"));
-    }
-
-    #[test]
-    fn a_forge_version_follows_mavens_order() {
-        let fits = |spec: &[VersionRange], version| maven_fits(spec, version).unwrap();
-        let at_least = |min| [VersionRange::at_least(min)];
-
-        assert!(!fits(&at_least("1.0"), "1.0-m1"));
-        assert!(!fits(&at_least("1.0"), "1.0-alpha2"));
-        assert!(fits(&at_least("1.0-rc2"), "1.0-rc10"));
-        assert!(!fits(&at_least("1.0-rc2"), "1.0-rc1"));
-        assert!(fits(&at_least("1.0"), "1.0-neoforge"));
-        assert!(fits(&at_least("1.0"), "1.0.0.final"));
-        assert!(fits(&at_least("1.0-cr1"), "1.0-rc1"));
-        assert!(fits(&at_least("1.20.1-47.2.0"), "1.20.1-47.2.20"));
-        assert!(fits(&at_least("1.0-beta"), "1.0-rc1"));
-        assert!(!fits(&at_least("1.0"), "1.0-snapshot"));
-        assert!(fits(&at_least("1.0"), "1.0-sp1"));
-        assert!(!fits(&at_least("2.0"), "v3.0"), "text sorts below numbers");
-        assert!(!fits(&at_least("1.0-rc3"), "1.0.RC2"));
-        assert!(fits(&at_least("1.0-rc2"), "1.0.RC3"));
-        assert!(fits(&[VersionRange::exactly("1.0-rc2")], "1.0.RC2"));
-        assert!(fits(&[VersionRange::exactly("1.0-rc")], "1.0.rc"));
-        assert!(!fits(&at_least("1.0.0-x2"), "1.0.0.x1"));
-
-        let below_two = [VersionRange {
-            max: Some("2.0".to_string()),
-            ..VersionRange::default()
-        }];
-        assert!(fits(&below_two, "2.0-rc1"));
-        assert!(!fits(&below_two, "2.0"));
-        assert!(fits(&[VersionRange::exactly("1.2")], "1.2.0"));
-
-        assert_eq!(maven_fits(&at_least("1.0"), "${file.jarVersion}"), None);
-        assert_eq!(maven_fits(&at_least("1.0"), "@VERSION@"), None);
-        assert_eq!(maven_fits(&at_least("1.0"), ""), None);
-    }
-
-    #[test]
-    fn only_a_readable_version_outside_every_range_is_ruled_out() {
-        let ranges = [VersionRange::at_least("2.0"), VersionRange::exactly("1.0")];
-
-        assert!(rules_out(&ranges, "1.5", "26.3"));
-        assert!(!rules_out(&ranges, "1.0", "26.3"));
-        assert!(!rules_out(&ranges, "2.1", "26.3"));
-        assert!(!rules_out(&ranges, "beta", "26.3"));
     }
 
     #[test]

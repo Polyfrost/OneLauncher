@@ -1345,17 +1345,6 @@ impl Actions {
 
                     let mut deferred = false;
                     for row in &report.imported {
-                        if let Err(err) = oneclient_content::packages::hold_import_against_bundle_pin(
-                            cluster_id,
-                            &row.hash,
-                            &state.bundles,
-                            &state.services.content(),
-                        )
-                        .await
-                        {
-                            tracing::warn!(%err, "could not hold the imported version against the bundle");
-                        }
-
                         let live = oneclient_content::packages::PackageStore::sync_live_content(
                             cluster_id,
                             row,
@@ -2072,24 +2061,7 @@ impl Actions {
         bundles_unsettled: bool,
         catalog: Option<u64>,
     ) -> Option<UpdateCheck> {
-        let must_settle = off_ui({
-            let state = state.clone();
-            async move {
-                oneclient_core::pins_must_settle(
-                    cluster_id,
-                    &state.bundles,
-                    &state.services.content(),
-                )
-                .await
-            }
-        })
-        .await
-        .unwrap_or(true);
-        let unchecked = |reason: String| {
-            if must_settle {
-                notify_mods_failed(state, &[reason], manual);
-                return None;
-            }
+        let unchecked = || {
             Some(UpdateCheck {
                 failed: true,
                 ..UpdateCheck::default()
@@ -2125,14 +2097,14 @@ impl Actions {
                     error = %err,
                     "browser package update check failed"
                 );
-                return unchecked(format!("{err:#}"));
+                return unchecked();
             }
             Err(_elapsed) => {
                 tracing::debug!(
                     cluster_id,
                     "browser package update check exceeded its launch budget"
                 );
-                return unchecked("ran out of time".to_string());
+                return unchecked();
             }
         };
 
@@ -2140,7 +2112,7 @@ impl Actions {
         let pins = match pins_left_alone(&check, &bundled, bundles_unsettled) {
             Some(outcome) => outcome,
             None => {
-                self.apply_pins_for_launch(state, &bundled, manual || must_settle, catalog)
+                self.apply_pins_for_launch(state, &bundled, manual, catalog)
                     .await
             }
         };
@@ -2154,10 +2126,12 @@ impl Actions {
                 false
             }
             PinOutcome::Frozen => false,
-            PinOutcome::Deferred(_) if !must_settle => true,
             PinOutcome::Deferred(failures) | PinOutcome::Incomplete(failures) => {
-                notify_mods_failed(state, &failures, manual);
-                return None;
+                if manual {
+                    notify_mods_failed(state, &failures, manual);
+                }
+                tracing::warn!(cluster_id, ?failures, "pins did not settle, launching anyway");
+                true
             }
         };
 
@@ -2213,13 +2187,6 @@ impl Actions {
         let bundles = self
             .resolve_bundle_updates_before_launch(state, cluster_id, manual)
             .await?;
-        if bundles.unsettled {
-            let left = bundle_changes_left(state, cluster_id).await;
-            if !left.is_empty() {
-                notify_mods_failed(state, &left, manual);
-                return None;
-            }
-        }
         let packages = self
             .resolve_package_updates_before_launch(
                 state,
@@ -2300,13 +2267,6 @@ impl Actions {
                     child.finish();
                     staged.push(result?);
                 }
-                let java_major = match updates.first() {
-                    Some(update) => {
-                        oneclient_core::launch_java_major(&state, update.cluster_id).await
-                    }
-                    None => None,
-                };
-                oneclient_core::ensure_staged_versions_agree(&staged, java_major, &content).await?;
                 Ok::<_, oneclient_content::ContentError>(staged)
             };
 
@@ -2379,10 +2339,6 @@ impl Actions {
             );
 
             let mut applied = 0usize;
-            let java_major = match updates.first() {
-                Some(update) => oneclient_core::launch_java_major(&state, update.cluster_id).await,
-                None => None,
-            };
             let mut pending = updates;
             loop {
                 let mut failed = Vec::new();
@@ -2395,7 +2351,6 @@ impl Actions {
                     match oneclient_core::apply_browser_package_update(
                         update,
                         &state.bundles,
-                        java_major,
                         Some(&child),
                         &content,
                     )
@@ -2637,12 +2592,9 @@ impl Actions {
                         oneclient_events::TaskCategory::Packages,
                     );
 
-                    let java_major =
-                        oneclient_core::launch_java_major(&state, update.cluster_id).await;
                     let result = oneclient_core::apply_browser_package_update(
                         &update,
                         &state.bundles,
-                        java_major,
                         Some(&child),
                         &state.services.content(),
                     )

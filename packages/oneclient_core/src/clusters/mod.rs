@@ -27,8 +27,7 @@ pub use modpack_import::{
     remove_imported_modpack,
 };
 pub use prepare::{
-    estimate_cluster_download, launch_java_major, prepare_cluster, prepare_cluster_locked,
-    required_java_major,
+    estimate_cluster_download, prepare_cluster, prepare_cluster_locked, required_java_major,
 };
 pub use provision::{ensure_from_bundles, ensure_from_versions};
 pub use release_migration::{

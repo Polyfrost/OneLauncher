@@ -36,7 +36,7 @@ pub use changelog::{ChangelogEntry, fetch_changelog};
 pub use clusters::{
     Cluster, ClusterError, ClusterManager, ClusterStage, ClusterUpdate, CreateClusterOptions,
     apply_bundle_java_override, ensure_from_bundles, ensure_from_versions,
-    estimate_cluster_download, required_java_major,
+    estimate_cluster_download, launch_java_major, required_java_major,
 };
 pub use disable_warnings::{DisableWarnings, fetch_disable_warnings};
 pub use error::{LauncherError, LauncherResult, SentryExclusion};

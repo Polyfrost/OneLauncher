@@ -6,25 +6,38 @@ use oneclient_common::patch::Patch;
 use oneclient_db::dao::cluster_flag::{self as flag_dao, ClusterFlag};
 use oneclient_events::GroupedProgressSession;
 
+use super::Cluster;
 use crate::LauncherResult;
 use crate::state::LauncherState;
 
-#[tracing::instrument(skip(state, progress))]
-pub async fn apply_bundle_java_override(
+pub(super) async fn java_major_to_apply(
     state: &Arc<LauncherState>,
-    cluster_id: i64,
-    search_for_java: bool,
-    auto_install_java: bool,
-    progress: Option<&GroupedProgressSession>,
-) -> LauncherResult<()> {
-    let db = &state.services.db;
-    let cluster = state.clusters.get(cluster_id).await?;
-    if !cluster.uses_bundles() {
-        return Ok(());
-    }
-    let Some(profile_name) = cluster.setting_profile_name.as_deref() else {
-        return Ok(());
+    cluster: &Cluster,
+) -> LauncherResult<Option<u32>> {
+    let Some((_, major)) = pending_override(state, cluster).await? else {
+        return Ok(None);
     };
+    let path = own_java_path(state, cluster).await?;
+    Ok(path.is_none().then_some(major))
+}
+
+async fn own_java_path(
+    state: &Arc<LauncherState>,
+    cluster: &Cluster,
+) -> LauncherResult<Option<String>> {
+    let global = state.settings.read().global_game_settings.clone();
+    let name = cluster.setting_profile_name.as_deref();
+    let profile = get_profile_or_default(&state.services.db, &global, name).await?;
+    Ok(profile.java_path)
+}
+
+async fn pending_override(
+    state: &Arc<LauncherState>,
+    cluster: &Cluster,
+) -> LauncherResult<Option<(String, u32)>> {
+    if !cluster.uses_bundles() || cluster.setting_profile_name.is_none() {
+        return Ok(None);
+    }
 
     let archives = state
         .bundles
@@ -35,11 +48,11 @@ pub async fn apply_bundle_java_override(
         )
         .await?;
     if archives.is_empty() {
-        return Ok(());
+        return Ok(None);
     }
 
     let taken = oneclient_content::bundles::taken_bundle_names(
-        cluster_id,
+        cluster.id,
         &archives,
         &state.services.content(),
     )
@@ -55,22 +68,23 @@ pub async fn apply_bundle_java_override(
         });
 
     let Some((bundle, major)) = overrides.next() else {
-        return Ok(());
+        return Ok(None);
     };
 
-    let applied = major.to_string();
-    if flag_dao::get(db, cluster_id, ClusterFlag::BundleJavaOverride)
-        .await?
-        .as_deref()
-        == Some(&applied)
-    {
-        return Ok(());
+    let applied = flag_dao::get(
+        &state.services.db,
+        cluster.id,
+        ClusterFlag::BundleJavaOverride,
+    )
+    .await?;
+    if applied.as_deref() == Some(major.to_string().as_str()) {
+        return Ok(None);
     }
 
     for (other, other_major) in overrides {
         if other_major != major {
             tracing::warn!(
-                cluster_id,
+                cluster_id = cluster.id,
                 bundle,
                 major,
                 other,
@@ -80,10 +94,23 @@ pub async fn apply_bundle_java_override(
         }
     }
 
-    let global = state.settings.read().global_game_settings.clone();
-    let profile = get_profile_or_default(db, &global, Some(profile_name)).await?;
+    Ok(Some((bundle.to_string(), major)))
+}
 
-    if profile.java_path.is_none() {
+#[tracing::instrument(skip(state, progress))]
+pub async fn apply_bundle_java_override(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+    search_for_java: bool,
+    auto_install_java: bool,
+    progress: Option<&GroupedProgressSession>,
+) -> LauncherResult<()> {
+    let cluster = state.clusters.get(cluster_id).await?;
+    let Some((bundle, major)) = pending_override(state, &cluster).await? else {
+        return Ok(());
+    };
+
+    if own_java_path(state, &cluster).await?.is_none() {
         let runtime = state
             .java
             .prepare(major, search_for_java, auto_install_java, progress)
@@ -117,10 +144,10 @@ pub async fn apply_bundle_java_override(
     }
 
     flag_dao::set(
-        db,
+        &state.services.db,
         cluster_id,
         ClusterFlag::BundleJavaOverride,
-        Some(&applied),
+        Some(&major.to_string()),
     )
     .await?;
     Ok(())

@@ -5615,6 +5615,20 @@ async fn serve_catalog(
 }
 
 #[tokio::test]
+async fn pins_are_held_to_the_java_a_bundle_will_switch_the_launch_to() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let mut pack = manifest(vec![managed_file(true)]);
+    pack.java_version_override = Some(21);
+    seed_bundle_with_pack(&state, pack).await;
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+
+    assert_eq!(
+        oneclient_core::launch_java_major(&state, cluster_id).await,
+        Some(21)
+    );
+}
+
+#[tokio::test]
 async fn a_revision_moves_only_once_the_archives_are_in() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
     let arrived = Arc::new(tokio::sync::Notify::new());

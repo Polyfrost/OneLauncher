@@ -207,6 +207,39 @@ pub async fn required_java_major(
     Ok(info.java_version.map(|java| java.major_version))
 }
 
+pub async fn launch_java_major(state: &Arc<LauncherState>, cluster_id: i64) -> Option<u32> {
+    let cluster = state.clusters.get(cluster_id).await.ok()?;
+
+    let pending = super::java_override::java_major_to_apply(state, &cluster)
+        .await
+        .inspect_err(|err| tracing::debug!(cluster_id, %err, "could not read the bundle java"))
+        .ok()?;
+    if pending.is_some() {
+        return pending;
+    }
+
+    let global = state.settings.read().global_game_settings.clone();
+    let profile = state
+        .clusters
+        .resolve_settings(&global, &cluster)
+        .await
+        .ok()?;
+
+    if let Ok(Some(runtime)) = state
+        .java
+        .runtime_for_profile(profile.java_path.as_deref())
+        .await
+    {
+        return Some(runtime.major);
+    }
+
+    required_java_major(state, cluster_id)
+        .await
+        .inspect_err(|err| tracing::debug!(cluster_id, %err, "could not tell the java version"))
+        .ok()
+        .flatten()
+}
+
 pub(crate) async fn resolved_loader_version(
     state: &Arc<LauncherState>,
     cluster: &Cluster,

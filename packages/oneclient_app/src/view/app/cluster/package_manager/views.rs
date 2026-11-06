@@ -8,9 +8,9 @@ use oneclient_content::packages::ContentType;
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
-    Button, CardLayout, ChevronToggle, ContextMenu, FilterMenu, FilterOption, Icon, IconType,
-    LazySection, OVERLAY_BASE_LEVEL, OverlayPopup, PackageEntry, PackageRow, ScrollArea, Segment,
-    SegmentedControl, TextInput, bundled_delete_action, package_context_menu, run_guarded,
+    Button, CardLayout, ChevronToggle, ContextMenu, CopyStatus, FilterMenu, FilterOption, Icon,
+    IconType, LazySection, OVERLAY_BASE_LEVEL, OverlayPopup, PackageEntry, PackageRow, ScrollArea,
+    Segment, SegmentedControl, TextInput, bundled_delete_action, package_context_menu, run_guarded,
     use_shared_delete,
 };
 use crate::hooks::{ClusterAction, Selection, use_cluster_mutation, use_dispatch};
@@ -388,6 +388,7 @@ pub(super) fn toolbar_bar(
     bulk: &Bulk,
     noun_plural: &'static str,
     export: Vec<PackageEntry>,
+    header: Option<String>,
 ) -> impl IntoElement {
     let local_tab = matches!(tabs.get(active_idx), Some(Tab::Local));
 
@@ -446,7 +447,7 @@ pub(super) fn toolbar_bar(
             export.len(),
             noun_one(content_type),
             noun_plural,
-            move || package_list_text(&export, content_type),
+            move || package_list_text(&export, content_type, header.as_deref()),
         ));
     }
     controls.push(
@@ -1039,7 +1040,11 @@ impl Component for ContentBox {
             .cloned();
         let copies_open = copies_target.is_some();
         let copies_popup = copies_target.map(|item| {
-            let rows = std::iter::once(item.clone())
+            let mut loaded = item.clone();
+            if item.copies.iter().any(|copy| copy.copy_status.is_some()) {
+                loaded.copy_status = Some(CopyStatus::Loaded);
+            }
+            let rows = std::iter::once(loaded)
                 .chain(item.copies.iter().cloned())
                 .map(|entry| {
                     let for_menu = entry.clone();

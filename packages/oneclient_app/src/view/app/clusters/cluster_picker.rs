@@ -31,6 +31,7 @@ pub struct ClusterPickerButton {
     pub only: Option<Vec<i64>>,
     pub width: Size,
     pub height: f32,
+    pub disabled: bool,
     pub on_pick: EventHandler<Cluster>,
 }
 
@@ -41,6 +42,7 @@ impl Component for ClusterPickerButton {
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
         let on_pick = self.on_pick.clone();
+        let disabled = self.disabled;
 
         rect()
             .width(self.width.clone())
@@ -62,13 +64,20 @@ impl Component for ClusterPickerButton {
                     .maybe(focus().is_focused(), |el| {
                         el.border(border_all_color(1., colors::brand()))
                     })
-                    .cursor(CursorIcon::Pointer)
+                    .cursor(if disabled {
+                        CursorIcon::NotAllowed
+                    } else {
+                        CursorIcon::Pointer
+                    })
                     .a11y_id(a11y_id)
-                    .a11y_focusable(true)
+                    .a11y_focusable(!disabled)
                     .a11y_role(AccessibilityRole::Button)
-                    .on_pointer_enter(move |_| hovered.set(true))
-                    .on_pointer_leave(move |_| hovered.set(false))
-                    .on_press(move |_| open.set(true))
+                    .maybe(disabled, |el| el.opacity(colors::disabled_opacity()))
+                    .maybe(!disabled, |el| {
+                        el.on_pointer_enter(move |_| hovered.set(true))
+                            .on_pointer_leave(move |_| hovered.set(false))
+                            .on_press(move |_| open.set(true))
+                    })
                     .child(
                         label()
                             .text(self.label.clone())

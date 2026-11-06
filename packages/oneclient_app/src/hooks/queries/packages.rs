@@ -5,7 +5,7 @@ use freya::query::{Query, QueryCapability, UseQuery, use_query};
 use oneclient_common::domain::GameLoader;
 use oneclient_common::search::normalize_query;
 use oneclient_content::packages::types::{
-    DEFAULT_PAGE_SIZE, Page, ProjectDetail, ProjectSummary, SearchFilters, SearchSort,
+    DEFAULT_PAGE_SIZE, Page, ProjectDetail, ProjectSummary, SearchFilters, SearchSide, SearchSort,
     VersionSummary,
 };
 use oneclient_content::packages::{CachedPackageMeta, ContentType, ProviderId};
@@ -40,6 +40,7 @@ pub struct PackageSearchKeys {
     pub loaders: Vec<GameLoader>,
     pub categories: Vec<String>,
     pub sort: SearchSort,
+    pub side: Option<SearchSide>,
     pub page: usize,
 }
 
@@ -62,6 +63,7 @@ impl QueryCapability for PackageSearchQuery {
                     loaders: (!keys.loaders.is_empty()).then(|| keys.loaders.clone()),
                     categories: (!keys.categories.is_empty()).then(|| keys.categories.clone()),
                     sort: Some(keys.sort),
+                    side: keys.side,
                     offset: Some(keys.page * BROWSE_PAGE_SIZE),
                     limit: Some(BROWSE_PAGE_SIZE),
                 },
@@ -80,6 +82,7 @@ pub fn use_package_search(
     loaders: Vec<GameLoader>,
     categories: Vec<String>,
     sort: SearchSort,
+    side: Option<SearchSide>,
     page: usize,
 ) -> UseQuery<PackageSearchQuery> {
     use_query(Query::new(
@@ -93,6 +96,7 @@ pub fn use_package_search(
             loaders,
             categories,
             sort,
+            side,
             page,
         },
         PackageSearchQuery,
@@ -112,7 +116,7 @@ pub fn search_total(query: &UseQuery<PackageSearchQuery>) -> usize {
 }
 
 pub fn search_pending(query: &UseQuery<PackageSearchQuery>) -> bool {
-    super::state::query_is_busy(query)
+    super::state::query_is_busy(query) && super::state::settled_or_loading(query).is_none()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

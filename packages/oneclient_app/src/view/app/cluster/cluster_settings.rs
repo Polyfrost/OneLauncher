@@ -1500,6 +1500,7 @@ impl Component for MigrateFromRow {
                 only: Some(sources.iter().map(|source| source.id).collect()),
                 width: Size::px(220.),
                 height: 34.,
+                disabled: false,
                 on_pick: (move |cluster: Cluster| picked.set(Some(cluster.id))).into(),
             }
             .into_element()

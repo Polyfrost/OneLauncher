@@ -1,3 +1,4 @@
+use std::sync::LazyLock;
 use std::time::Instant;
 
 use freya::prelude::*;
@@ -82,6 +83,20 @@ pub fn fmt_date(ts: chrono::DateTime<chrono::Utc>) -> String {
     ts.format("%Y-%m-%d %H:%M").to_string()
 }
 
+pub fn fmt_local_datetime(ts: chrono::DateTime<chrono::FixedOffset>) -> String {
+    static LOCALE: LazyLock<chrono::Locale> = LazyLock::new(|| {
+        sys_locale::get_locale()
+            .and_then(|code| chrono::Locale::try_from(code.replace('-', "_").as_str()).ok())
+            .unwrap_or(chrono::Locale::en_US)
+    });
+
+    ts.with_timezone(&chrono::Local)
+        .format_localized("%x %X", *LOCALE)
+        .to_string()
+}
+
+/// Shortest band is a minute nothing re-renders on a timer so a seconds counter
+/// would freeze at whatever it read when the row was drawn
 pub fn relative_time(created_at: Instant) -> String {
     let secs = created_at.elapsed().as_secs();
     match secs {

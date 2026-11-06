@@ -9,14 +9,15 @@ use oneclient_common::domain::GameLoader;
 use oneclient_common::parse_mc_version;
 use oneclient_common::search::normalize_query;
 use oneclient_content::packages::types::ProjectSummary;
-use oneclient_content::packages::types::SearchSort;
+use oneclient_content::packages::types::{SearchSide, SearchSort};
 use oneclient_content::packages::{ContentType, ProviderId};
 use oneclient_core::VersionMetadata;
 use oneclient_core::clusters::Cluster;
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
-    Dropdown, Icon, IconType, Pagination, ScrollArea, Segment, SegmentedControl, TextInput,
+    Dropdown, Icon, IconType, Pagination, ScrollArea, Segment, SegmentedControl, TabBar, TabItem,
+    TextInput,
 };
 use crate::hooks::use_cluster;
 use crate::hooks::{
@@ -88,6 +89,20 @@ fn loaders() -> [(Option<GameLoader>, &'static str); 4] {
         (Some(GameLoader::Fabric), "Fabric"),
         (Some(GameLoader::Forge), "Forge"),
         (Some(GameLoader::NeoForge), "NeoForge"),
+    ]
+}
+
+fn sides() -> [(Option<SearchSide>, &'static str); 3] {
+    [
+        (None, t("oneclient.browser.index.side.any")),
+        (
+            Some(SearchSide::Client),
+            t("oneclient.browser.index.side.client"),
+        ),
+        (
+            Some(SearchSide::Server),
+            t("oneclient.browser.index.side.server"),
+        ),
     ]
 }
 
@@ -218,6 +233,7 @@ impl Component for BrowserBody {
         let selected_categories = use_state(|| saved.categories.clone());
         let sort = use_state(|| saved.sort);
         let loader = use_state(|| saved.loader);
+        let side = use_state(|| saved.side);
         let page = use_state(|| saved.page);
 
         {
@@ -230,6 +246,7 @@ impl Component for BrowserBody {
                     categories: selected_categories.read().clone(),
                     sort: *sort.read(),
                     loader: *loader.read(),
+                    side: *side.read(),
                     page: *page.read(),
                 };
                 store.write().insert(key.clone(), snapshot);
@@ -268,12 +285,15 @@ impl Component for BrowserBody {
             provider.set(ProviderId::Modrinth);
         }
         let provider_id = *provider.read();
+        let side_filterable =
+            content_type == ContentType::Mod && provider_id == ProviderId::Modrinth;
+        let picked_side = (*side.read()).filter(|_| side_filterable);
 
         let mut page_state = page;
         // Normalised like the search key so a query differing only by a space does not reset the page
         let sort_by = *sort.read();
         let signature = format!(
-            "{provider_id:?}|{}|{compat}|{}|{sort_by:?}|{picked_loader:?}",
+            "{provider_id:?}|{}|{compat}|{}|{sort_by:?}|{picked_loader:?}|{picked_side:?}",
             normalize_query(&debounced_query.read()).to_lowercase(),
             cats.join(",")
         );
@@ -293,6 +313,7 @@ impl Component for BrowserBody {
             loaders,
             cats.clone(),
             sort_by,
+            picked_side,
             *page.read(),
         );
         let categories_query = use_package_categories(provider_id, content_type);
@@ -418,15 +439,21 @@ impl Component for BrowserBody {
                         };
                         (verb, c.name.clone())
                     }),
-                (self.pick_cluster && targets_cluster).then(|| ClusterPicker {
+                self.pick_cluster.then(|| ClusterPicker {
                     cluster_id,
                     package_type: package_type.clone(),
+                    disabled: !targets_cluster,
                 }),
                 provider,
                 curseforge_blocked,
                 query,
                 controls_width,
             ))
+            .child(TypePicker {
+                cluster_id,
+                package_type: package_type.clone(),
+                pick_cluster: self.pick_cluster,
+            })
             .child(
                 rect()
                     .horizontal()
@@ -438,12 +465,6 @@ impl Component for BrowserBody {
                             .vertical()
                             .width(Size::px(CATEGORY_SIDEBAR_W))
                             .height(Size::fill())
-                            .spacing(14.)
-                            .child(TypePicker {
-                                cluster_id,
-                                package_type: package_type.clone(),
-                                pick_cluster: self.pick_cluster,
-                            })
                             .maybe(!all_categories.is_empty(), |el| {
                                 el.child(CategorySidebar {
                                     categories: all_categories,
@@ -465,6 +486,7 @@ impl Component for BrowserBody {
                                 pending,
                                 sort,
                                 loader_filterable.then_some(loader),
+                                side_filterable.then_some(side),
                                 view_mode,
                             ))
                             .child(
@@ -607,6 +629,7 @@ fn results_toolbar(
     pending: bool,
     sort: State<SearchSort>,
     loader: Option<State<Option<GameLoader>>>,
+    side: Option<State<Option<SearchSide>>>,
     view_mode: State<ViewLayout>,
 ) -> impl IntoElement {
     // Blank rather than a stale count while a page is in flight
@@ -635,6 +658,7 @@ fn results_toolbar(
                 .color(colors::fg_primary().with_a(140)),
         )
         .child(rect().width(Size::flex(1.0)))
+        .maybe_child(side.map(|side| SidePicker { side }))
         .maybe_child(loader.map(|loader| LoaderPicker { loader }))
         .child(SortPicker { sort })
         .child(
@@ -705,6 +729,34 @@ impl Component for LoaderPicker {
     }
 }
 
+#[derive(PartialEq)]
+struct SidePicker {
+    side: State<Option<SearchSide>>,
+}
+
+impl Component for SidePicker {
+    fn render(&self) -> impl IntoElement {
+        let mut side = self.side;
+        let current = *side.read();
+
+        let labels: Vec<String> = sides().iter().map(|(_, l)| (*l).to_string()).collect();
+        let selected = sides()
+            .iter()
+            .find(|(s, _)| *s == current)
+            .map_or(t("oneclient.browser.index.side.any"), |(_, l)| *l);
+
+        Dropdown::new(selected, labels)
+            .width(Size::px(132.))
+            .height(Size::px(30.))
+            .tooltip(t("oneclient.browser.index.side.tooltip"))
+            .on_select(move |idx: usize| {
+                if let Some((picked, _)) = sides().get(idx) {
+                    side.set(*picked);
+                }
+            })
+    }
+}
+
 /// Falls back to the bare version while the manifest hasn't arrived or doesn't cover it
 fn version_name(metadata: &[VersionMetadata], cluster: &Cluster) -> String {
     if cluster.user_created {
@@ -734,37 +786,56 @@ impl Component for TypePicker {
     fn render(&self) -> impl IntoElement {
         let cluster_id = self.cluster_id;
         let pick_cluster = self.pick_cluster;
-        let current = self.package_type.clone();
+        let current = self.package_type.as_str();
         let cluster = use_cluster(cluster_id);
         let datapacks = cluster
             .as_ref()
             .is_none_or(|c| supports_datapacks(&c.mc_version));
         let mod_loader = cluster.as_ref().is_none_or(|c| !c.lacks_mod_loader());
 
-        let types: Vec<(&str, &str)> = browse_types()
+        let tabs = browse_types()
             .into_iter()
             .filter(|(slug, _)| datapacks || *slug != DATAPACK_SLUG)
             .filter(|(slug, _)| mod_loader || !LOADER_SLUGS.contains(slug))
-            .collect();
-        let labels: Vec<String> = types
-            .iter()
-            .map(|(_, title)| (*title).to_string())
-            .collect();
-        let selected = type_title(&self.package_type).to_string();
-
-        Dropdown::new(selected, labels)
-            .width(Size::px(CATEGORY_SIDEBAR_W))
-            .height(Size::px(30.))
-            .on_select(move |idx: usize| {
-                let picked = types.get(idx).filter(|(slug, _)| *slug != current);
-                if let Some((slug, _)) = picked {
-                    let _ = RouterContext::get().push(Route::Browser {
-                        cluster_id,
-                        package_type: (*slug).to_string(),
-                        pick_cluster,
-                    });
+            .map(|(slug, title)| {
+                let active = slug == current;
+                let tab = TabItem::new(title, active);
+                if active {
+                    return tab;
                 }
-            })
+                let route = Route::Browser {
+                    cluster_id,
+                    package_type: slug.to_string(),
+                    pick_cluster,
+                };
+                tab.on_press(move |_| {
+                    let _ = RouterContext::get().push(route.clone());
+                })
+            });
+
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .height(Size::px(38.))
+            .cross_align(Alignment::Center)
+            .border(
+                Border::new()
+                    .fill(colors::component_border())
+                    .width(BorderWidth {
+                        top: 0.,
+                        right: 0.,
+                        bottom: 1.,
+                        left: 0.,
+                    }),
+            )
+            .child(
+                TabBar::new()
+                    .width(Size::auto())
+                    .height(Size::fill())
+                    .spacing(22.)
+                    .font_size(text_size(13.))
+                    .tabs(tabs),
+            )
     }
 }
 
@@ -773,6 +844,7 @@ impl Component for TypePicker {
 struct ClusterPicker {
     cluster_id: i64,
     package_type: String,
+    disabled: bool,
 }
 
 impl Component for ClusterPicker {
@@ -797,6 +869,7 @@ impl Component for ClusterPicker {
                 only: None,
                 width: Size::px(240.),
                 height: 28.,
+                disabled: self.disabled,
                 on_pick: (move |cluster: Cluster| {
                     let to_type = browsable_type(&package_type, &cluster);
                     let carried = (to_type == package_type)

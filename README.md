@@ -6,7 +6,6 @@
 The monorepo containing the code for OneLauncher, OneClient, and their core backend.
 
 OneClient is a Minecraft client featuring fully 100% open-source components, offering many packaged and pre-configured mods in one click.
-OneLauncher is a WIP Minecraft launcher giving power-users the greatest customization whilst featuring a clean UI.
 
 </div>
 
@@ -20,10 +19,26 @@ as well as our [GitHub releases](https://github.com/Polyfrost/OneLauncher/releas
 | Installer 🔄      | DMG 🔄                        | AppImage 🔄                                             |
 |                  | App Bundle 🔄                 | DEB                                                     |
 |                  |                               | RPM                                                     |
+|                  |                               | *[RPM (COPR)](https://copr.fedorainfracloud.org/coprs/polyfrost/OneClient/) 🔄 |
 |                  |                               | [AUR](https://aur.archlinux.org/packages/oneclient-bin) |
 
 > 🔄 = Has support for autoupdating built-in
 
+<details>
+
+<summary><h3>COPR Installation</h3></summary>
+
+On supported distributions (RHEL, Fedora, Bazzite etc.), you can make use of the Fedora COPR instead of using the AppImage or manually installing the RPM file.
+1. First you have to enable the repository:
+```
+sudo dnf copr enable polyfrost/OneClient
+```
+2. Then you can install the package:
+```
+sudo dnf install oneclient-bin
+```
+
+</details>
 
 ## Contributing
 

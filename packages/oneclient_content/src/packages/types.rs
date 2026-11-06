@@ -19,6 +19,23 @@ pub struct SearchFilters {
     pub loaders: Option<Vec<GameLoader>>,
     pub categories: Option<Vec<String>>,
     pub sort: Option<SearchSort>,
+    pub side: Option<SearchSide>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SearchSide {
+    Client,
+    Server,
+}
+
+impl SearchSide {
+    pub fn modrinth_facets(self) -> Vec<String> {
+        let facet = match self {
+            Self::Client => "client_side:required",
+            Self::Server => "server_side:required",
+        };
+        vec![facet.to_string()]
+    }
 }
 
 impl SearchFilters {

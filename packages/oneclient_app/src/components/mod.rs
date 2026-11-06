@@ -127,7 +127,8 @@ pub(crate) use package_row::{
     package_icon, pill, remote_icon, run_guarded, set_enabled_action, toggle_action,
 };
 pub use package_row::{
-    CardLayout, PackageEntry, PackageRow, github_badge, package_context_menu, provider_badge,
+    CardLayout, CopyStatus, PackageEntry, PackageRow, github_badge, package_context_menu,
+    provider_badge,
 };
 pub use package_update_popup::PackageUpdatePopup;
 pub use pagination::Pagination;

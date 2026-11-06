@@ -8,9 +8,6 @@ pub enum BundleError {
     #[error("invalid loader value '{0}' in bundles manifest")]
     InvalidLoader(i64),
 
-    #[error("bundle path has no file name: {0}")]
-    InvalidPath(String),
-
     #[error("failed to parse polymrpack manifest")]
     InvalidManifest,
 

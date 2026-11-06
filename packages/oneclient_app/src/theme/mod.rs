@@ -18,6 +18,9 @@ pub const HOME_PADDING_PX: f32 = 48.;
 pub const DEFAULT_FONT: &str = "Poppins";
 pub const MONO_FONT: &str = "JetBrains Mono";
 const MINECRAFT_FONT: &str = "Minecraft";
+const PIXEL_BOOST_MAX: f32 = 2.5;
+const PIXEL_BOOST_END: f32 = 17.;
+const PIXEL_BOOST_RANGE: f32 = 8.;
 
 const BUILTIN_THEMES: [&str; 4] = ["dark", "light", "minecraft-dark", "minecraft-light"];
 
@@ -222,17 +225,14 @@ pub fn set_scale_factor(scale: f32) {
 }
 
 pub fn text_size(size: f32) -> f32 {
-    let Some(step) = colors::active_theme()
+    if !colors::active_theme()
         .pixel_font_size
-        .filter(|step| *step > 0.)
-    else {
-        return size;
-    };
-    let scale = SCALE_FACTOR.get();
-    if scale < 1.5 {
+        .is_some_and(|step| step > 0.)
+    {
         return size;
     }
-    (size * scale / step).round().max(1.) * step / scale
+    let t = ((PIXEL_BOOST_END - size) / PIXEL_BOOST_RANGE).clamp(0., 1.);
+    size + PIXEL_BOOST_MAX * t * t
 }
 
 pub fn pixel_icon(path: &str) -> Option<(String, f32)> {

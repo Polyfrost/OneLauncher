@@ -42,6 +42,12 @@ impl From<oneclient_core::settings::ViewLayout> for CardLayout {
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum CopyStatus {
+    Loaded,
+    Skipped,
+}
+
 #[derive(Clone, PartialEq)]
 pub struct PackageEntry {
     pub package_id: String,
@@ -69,9 +75,7 @@ pub struct PackageEntry {
     pub deleted: bool,
     /// Only set for browser-installed content bundle packages use the bundle update flow
     pub update_available: bool,
-    pub shadowed: bool,
-    /// The user's own copy, older than the bundle's the loader picks over it
-    pub outranked: bool,
+    pub copy_status: Option<CopyStatus>,
     /// Other copies of this mod the loader ignores, folded into this row
     pub copies: Vec<PackageEntry>,
     /// Recency badge state cleared once the user views the list
@@ -105,6 +109,29 @@ impl PackageEntry {
             SeenStatus::New => Some(new_badge()),
             SeenStatus::Updated => Some(updated_badge()),
             SeenStatus::Seen => None,
+        }
+    }
+
+    pub fn added_label(&self) -> Option<String> {
+        self.copy_status?;
+        let added = chrono::DateTime::parse_from_rfc3339(self.added_at.as_deref()?).ok()?;
+        Some(tf(
+            "oneclient.components.package_row.added",
+            &[&crate::ui::fmt_local_datetime(added)],
+        ))
+    }
+
+    pub fn copy_badge(&self) -> Option<Element> {
+        match self.copy_status? {
+            CopyStatus::Loaded => Some(status_tag(
+                t("oneclient.components.package_row.loaded"),
+                colors::success(),
+            )),
+            CopyStatus::Skipped => Some(pill(
+                None,
+                t("oneclient.components.package_row.skipped").to_string(),
+                colors::fg_secondary(),
+            )),
         }
     }
 
@@ -578,6 +605,9 @@ fn list_card(
         .corner_radius(rounded(8.))
         .background(colors::card())
         .content(Content::Flex)
+        .maybe(item.copy_status == Some(CopyStatus::Skipped), |el| {
+            el.opacity(0.5)
+        })
         .on_secondary_down(on_secondary(on_context.clone()))
         .child(package_info(item, package_type, cluster_id, icon))
         .maybe_child(on_copies.map(|on_press| copies_button(copies, on_press)))
@@ -609,7 +639,11 @@ pub(crate) fn grid_card(
         (false, false) => colors::component_bg_disabled(),
     };
 
-    let alpha = if enabled { 255u8 } else { 115u8 };
+    let alpha = if enabled && item.copy_status != Some(CopyStatus::Skipped) {
+        255u8
+    } else {
+        115u8
+    };
 
     let border = if !hovering {
         colors::component_border()
@@ -661,8 +695,7 @@ pub(crate) fn grid_card(
     });
 
     let badged = item.is_outdated()
-        || item.shadowed
-        || item.outranked
+        || item.copy_status.is_some()
         || item.bisect_role.is_some()
         || item.modpack.is_some()
         || item.recency_badge().is_some()
@@ -683,8 +716,7 @@ pub(crate) fn grid_card(
             .maybe_child(on_copies.map(|on_press| copies_button(copies, on_press)))
             .maybe_child(item.modpack.as_deref().map(modpack_badge))
             .maybe_child(item.is_outdated().then(outdated_badge))
-            .maybe_child(item.shadowed.then(shadowed_badge))
-            .maybe_child(item.outranked.then(outranked_badge))
+            .maybe_child(item.copy_badge())
             .maybe_child(item.bisect_badge())
             .maybe_child(item.recency_badge())
             .into_element()
@@ -774,6 +806,9 @@ fn grid_meta(
             ),
             muted,
         ));
+    }
+    if let Some(added) = item.added_label() {
+        parts.push(meta_text(added, muted));
     }
     if let Some(version) = &item.version {
         parts.push(meta_text(version.clone(), muted));
@@ -926,6 +961,17 @@ fn package_info(
     let package_id = item.package_id.clone();
     let package_type = package_type.to_string();
     let title = item.name.clone();
+    let author = (!item.author.is_empty()).then(|| {
+        tf(
+            "oneclient.components.package_row.by_author",
+            &[&item.author],
+        )
+    });
+    let byline = author
+        .into_iter()
+        .chain(item.added_label())
+        .collect::<Vec<_>>()
+        .join(" \u{b7} ");
 
     rect()
         .horizontal()
@@ -983,18 +1029,14 @@ fn package_info(
                         })
                         .maybe_child(item.modpack.as_deref().map(modpack_badge))
                         .maybe_child(item.is_outdated().then(outdated_badge))
-                        .maybe_child(item.shadowed.then(shadowed_badge))
-                        .maybe_child(item.outranked.then(outranked_badge))
+                        .maybe_child(item.copy_badge())
                         .maybe_child(item.bisect_badge())
                         .maybe_child(item.recency_badge()),
                 )
-                .maybe(!item.author.is_empty(), |el| {
+                .maybe(!byline.is_empty(), |el| {
                     el.child(
                         label()
-                            .text(tf(
-                                "oneclient.components.package_row.by_author",
-                                &[&item.author],
-                            ))
+                            .text(byline)
                             .font_size(text_size(10.))
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis)
@@ -1109,22 +1151,6 @@ fn copies_button(ignored: usize, on_press: EventHandler<()>) -> Element {
             colors::brand(),
         ))
         .into_element()
-}
-
-fn shadowed_badge() -> Element {
-    pill(
-        None,
-        t("oneclient.components.package_row.shadowed").to_string(),
-        colors::brand(),
-    )
-}
-
-fn outranked_badge() -> Element {
-    pill(
-        None,
-        t("oneclient.components.package_row.outranked").to_string(),
-        colors::brand(),
-    )
 }
 
 fn new_badge() -> Element {

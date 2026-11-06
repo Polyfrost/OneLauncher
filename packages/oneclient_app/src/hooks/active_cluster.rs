@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use freya::prelude::*;
 use oneclient_common::domain::GameLoader;
 use oneclient_content::packages::ProviderId;
-use oneclient_content::packages::types::SearchSort;
+use oneclient_content::packages::types::{SearchSide, SearchSort};
 use oneclient_db::models::ClusterId;
 
 use crate::hooks::ClusterAction;
@@ -148,6 +148,7 @@ pub struct BrowserUiState {
     pub categories: Vec<String>,
     pub sort: SearchSort,
     pub loader: Option<GameLoader>,
+    pub side: Option<SearchSide>,
     pub page: usize,
 }
 
@@ -159,6 +160,7 @@ impl Default for BrowserUiState {
             categories: Vec::new(),
             sort: SearchSort::Relevance,
             loader: None,
+            side: None,
             page: 0,
         }
     }

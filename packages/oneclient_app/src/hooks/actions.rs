@@ -68,18 +68,18 @@ const BUNDLE_APPLY_BUDGET: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Default)]
 struct BundleCheckLog {
-    checked_at: HashMap<ClusterId, (Instant, u64)>,
+    checked_at: HashMap<ClusterId, Instant>,
 }
 
 impl BundleCheckLog {
-    fn due(&self, cluster_id: ClusterId, now: Instant, revision: u64) -> bool {
-        self.checked_at.get(&cluster_id).is_none_or(|(last, seen)| {
-            *seen != revision || now.duration_since(*last) >= BUNDLE_CHECK_INTERVAL
-        })
+    fn due(&self, cluster_id: ClusterId, now: Instant) -> bool {
+        self.checked_at
+            .get(&cluster_id)
+            .is_none_or(|last| now.duration_since(*last) >= BUNDLE_CHECK_INTERVAL)
     }
 
-    fn record(&mut self, cluster_id: ClusterId, now: Instant, revision: u64) {
-        self.checked_at.insert(cluster_id, (now, revision));
+    fn record(&mut self, cluster_id: ClusterId, now: Instant) {
+        self.checked_at.insert(cluster_id, now);
     }
 }
 
@@ -178,18 +178,18 @@ impl Actions {
         let _ = self.pump.send(signal);
     }
 
-    fn bundle_check_due(&self, cluster_id: ClusterId, revision: u64) -> bool {
+    fn bundle_check_due(&self, cluster_id: ClusterId) -> bool {
         self.bundle_checks
             .lock()
             .unwrap()
-            .due(cluster_id, Instant::now(), revision)
+            .due(cluster_id, Instant::now())
     }
 
-    fn record_bundle_check(&self, cluster_id: ClusterId, revision: u64) {
+    fn record_bundle_check(&self, cluster_id: ClusterId) {
         self.bundle_checks
             .lock()
             .unwrap()
-            .record(cluster_id, Instant::now(), revision);
+            .record(cluster_id, Instant::now());
     }
 
     fn with_engine(&self, mutate: impl FnOnce(&mut AppState)) {
@@ -1674,7 +1674,6 @@ impl Actions {
         spawn_in_window(async move {
             let _write = write;
             let Ok(state) = launcher::state() else { return };
-            let revision = state.bundles.catalog_revision();
             let result = match off_ui({
                 let state = state.clone();
                 async move {
@@ -1703,7 +1702,7 @@ impl Actions {
             };
 
             if result.settled() {
-                actions.record_bundle_check(cluster_id, revision);
+                actions.record_bundle_check(cluster_id);
             }
 
             let failures: Vec<String> = result
@@ -1917,7 +1916,7 @@ impl Actions {
     ) -> Option<UpdateCheck> {
         let revision = state.bundles.catalog_revision();
         if !manual
-            && !self.bundle_check_due(cluster_id, revision)
+            && !self.bundle_check_due(cluster_id)
             && bundle_changes_left(state, cluster_id).await.is_empty()
         {
             tracing::debug!(cluster_id, "bundle update check skipped, checked recently");
@@ -1936,7 +1935,7 @@ impl Actions {
             if wants_catalog {
                 let synced = self.sync_bundle_catalog(state, cluster_id, manual).await;
                 if synced {
-                    self.record_bundle_check(cluster_id, state.bundles.catalog_revision());
+                    self.record_bundle_check(cluster_id);
                 }
                 return Some(UpdateCheck {
                     failed: !synced,
@@ -1978,7 +1977,7 @@ impl Actions {
             {
                 Ok(result) => {
                     if synced && result.settled() {
-                        self.record_bundle_check(cluster_id, revision);
+                        self.record_bundle_check(cluster_id);
                     }
 
                     changed |= !result.updates_applied.is_empty()
@@ -3182,46 +3181,37 @@ mod tests {
 
     #[test]
     fn a_cluster_that_was_never_checked_is_due() {
-        assert!(BundleCheckLog::default().due(1, Instant::now(), 0));
+        assert!(BundleCheckLog::default().due(1, Instant::now()));
     }
 
     #[test]
     fn a_relaunch_inside_the_window_reuses_the_last_check() {
         let mut log = BundleCheckLog::default();
         let now = Instant::now();
-        log.record(1, now, 0);
+        log.record(1, now);
 
-        assert!(!log.due(1, now, 0));
-        assert!(!log.due(1, now + BUNDLE_CHECK_INTERVAL / 2, 0));
+        assert!(!log.due(1, now));
+        assert!(!log.due(1, now + BUNDLE_CHECK_INTERVAL / 2));
     }
 
     #[test]
     fn the_window_reopens_once_the_interval_has_passed() {
         let mut log = BundleCheckLog::default();
         let now = Instant::now();
-        log.record(1, now, 0);
+        log.record(1, now);
 
-        assert!(log.due(1, now + BUNDLE_CHECK_INTERVAL, 0));
-        assert!(log.due(1, now + BUNDLE_CHECK_INTERVAL * 2, 0));
+        assert!(log.due(1, now + BUNDLE_CHECK_INTERVAL));
+        assert!(log.due(1, now + BUNDLE_CHECK_INTERVAL * 2));
     }
 
     #[test]
     fn clusters_are_throttled_independently() {
         let mut log = BundleCheckLog::default();
         let now = Instant::now();
-        log.record(1, now, 0);
+        log.record(1, now);
 
-        assert!(!log.due(1, now, 0));
-        assert!(log.due(2, now, 0));
-    }
-
-    #[test]
-    fn a_newer_catalog_reopens_the_window() {
-        let mut log = BundleCheckLog::default();
-        let now = Instant::now();
-        log.record(1, now, 3);
-
-        assert!(log.due(1, now, 4));
+        assert!(!log.due(1, now));
+        assert!(log.due(2, now));
     }
 
     #[test]

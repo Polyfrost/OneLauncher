@@ -34,6 +34,31 @@ fn is_sidebar_route(route: &Route) -> bool {
     )
 }
 
+const SETTINGS_KEY: &str = ",";
+const BACK_KEY: &str = "[";
+const FORWARD_KEY: &str = "]";
+
+/// The character of a Cmd (macOS) or Ctrl chord with no other modifier, matched
+/// by what the key types so it follows the keyboard layout
+fn shortcut_character(key: &Key, modifiers: Modifiers) -> Option<&str> {
+    let primary = Modifiers::ctrl_or_meta();
+    let others = (Modifiers::META | Modifiers::CONTROL | Modifiers::SHIFT | Modifiers::ALT)
+        .difference(primary);
+    let held = modifiers.contains(primary) && !modifiers.intersects(others);
+
+    match key {
+        Key::Character(character) if held => Some(character.as_str()),
+        _ => None,
+    }
+}
+
+fn navigate_forward() {
+    let router = RouterContext::get();
+    if router.can_go_forward() {
+        router.go_forward();
+    }
+}
+
 fn is_cluster_route(route: &Route) -> bool {
     matches!(
         route,
@@ -108,6 +133,7 @@ impl Component for AnimatedAppOutlet {
         let route = use_route::<Route>();
         let at_home = matches!(&route, Route::Home {});
         let escape = escape_action(&route);
+        let in_settings = is_sidebar_route(&route);
 
         let mut origin_route = use_state(|| route.clone());
         let mut last_route = use_state(|| route.clone());
@@ -139,6 +165,28 @@ impl Component for AnimatedAppOutlet {
                 return;
             }
 
+            if !key_claims.any()
+                && let Some(character) = shortcut_character(&e.key, e.modifiers)
+            {
+                match character {
+                    SETTINGS_KEY => {
+                        if !in_settings {
+                            let _ = RouterContext::get().push(Route::SettingsLauncher {});
+                        }
+                        return;
+                    }
+                    BACK_KEY => {
+                        navigate_back(at_home);
+                        return;
+                    }
+                    FORWARD_KEY => {
+                        navigate_forward();
+                        return;
+                    }
+                    _ => {}
+                }
+            }
+
             if e.key != Key::Named(NamedKey::Escape) || key_claims.any() {
                 return;
             }
@@ -163,12 +211,7 @@ impl Component for AnimatedAppOutlet {
             }
             match e.button() {
                 Some(MouseButton::Back) => navigate_back(at_home),
-                Some(MouseButton::Forward) => {
-                    let router = RouterContext::get();
-                    if router.can_go_forward() {
-                        router.go_forward();
-                    }
-                }
+                Some(MouseButton::Forward) => navigate_forward(),
                 _ => {}
             }
         };
@@ -287,5 +330,22 @@ mod tests {
             EscapeAction::ExitSection
         );
         assert_eq!(escape_action(&Route::Clusters {}), EscapeAction::Back);
+    }
+
+    #[test]
+    fn only_a_bare_primary_chord_is_a_shortcut() {
+        let key = Key::Character("[".to_string());
+        let primary = Modifiers::ctrl_or_meta();
+        let other = if cfg!(target_os = "macos") {
+            Modifiers::CONTROL
+        } else {
+            Modifiers::META
+        };
+
+        assert_eq!(shortcut_character(&key, primary), Some("["));
+        for extra in [Modifiers::SHIFT, Modifiers::ALT, other] {
+            assert_eq!(shortcut_character(&key, primary | extra), None);
+        }
+        assert_eq!(shortcut_character(&key, Modifiers::empty()), None);
     }
 }

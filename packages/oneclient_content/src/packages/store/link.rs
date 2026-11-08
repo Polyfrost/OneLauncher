@@ -88,6 +88,12 @@ pub async fn sweep_staging_files(dir: &Path) {
 /// written to a staging name and renamed into place so the destination is never missing even for a moment
 #[tracing::instrument(level = "debug")]
 pub async fn link_or_copy(src: &Path, dest: &Path) -> ContentResult<()> {
+    materialize_file(src, dest, false).await
+}
+
+/// Same as [`link_or_copy`], except `copy` never makes a link
+#[tracing::instrument(level = "debug")]
+pub async fn materialize_file(src: &Path, dest: &Path, copy: bool) -> ContentResult<()> {
     if let Some(parent) = dest.parent() {
         polyio::create_dir_all(parent).await?;
     }
@@ -95,8 +101,11 @@ pub async fn link_or_copy(src: &Path, dest: &Path) -> ContentResult<()> {
     let staging = staging_path(dest);
     remove_entry(&staging).await?;
 
-    if polyio::symlink_file(src, &staging).await.is_err() {
-        polyio::copy(src, &staging).await?;
+    if (copy || polyio::symlink_file(src, &staging).await.is_err())
+        && let Err(err) = polyio::copy(src, &staging).await
+    {
+        remove_entry(&staging).await.ok();
+        return Err(err.into());
     }
 
     if let Err(err) = polyio::rename(&staging, dest).await {
@@ -318,6 +327,42 @@ pub async fn try_link_materialized(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn copy_mode_replaces_a_link_with_an_independent_copy() {
+        let root = polyio::testing::ScratchDir::new("copy_mod_files");
+        polyio::create_dir_all(root.path()).await.unwrap();
+        let src = root.join("cache.jar");
+        let dest = root.join("mods/mod.jar");
+        polyio::write(&src, b"cached".as_slice()).await.unwrap();
+        link_or_copy(&src, &dest).await.unwrap();
+
+        materialize_file(&src, &dest, true).await.unwrap();
+        assert_ne!(
+            polyio::file_id(&src).await.unwrap(),
+            polyio::file_id(&dest).await.unwrap()
+        );
+        polyio::write(&dest, b"edited".as_slice()).await.unwrap();
+        assert_eq!(polyio::read(&src).await.unwrap(), b"cached");
+    }
+
+    #[tokio::test]
+    async fn failed_copy_preserves_destination_and_clears_staging() {
+        let root = polyio::testing::ScratchDir::new("failed_mod_copy");
+        polyio::create_dir_all(root.path()).await.unwrap();
+        let dest = root.join("mod.jar");
+        polyio::write(&dest, b"existing".as_slice()).await.unwrap();
+        polyio::write(staging_path(&dest), b"stale".as_slice())
+            .await
+            .unwrap();
+        assert!(
+            materialize_file(&root.join("missing.jar"), &dest, true)
+                .await
+                .is_err()
+        );
+        assert_eq!(polyio::read_to_string(&dest).await.unwrap(), "existing");
+        assert!(polyio::symlink_metadata(staging_path(&dest)).await.is_err());
+    }
 
     fn cluster() -> ClusterRow {
         ClusterRow {

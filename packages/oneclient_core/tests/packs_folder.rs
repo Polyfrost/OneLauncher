@@ -87,14 +87,14 @@ async fn packs_survive_hand_edits_and_dedicated_clusters_keep_their_own() {
         .unwrap();
     std::fs::remove_file(&source).unwrap();
 
-    materialize_content(&state.services, &shared, &shared_dir, false)
+    materialize_content(&state.services, &shared, &shared_dir, false, false)
         .await
         .unwrap();
     let placed = shared_dir.join("resourcepacks/pack.zip");
     assert_eq!(std::fs::read(&placed).unwrap(), pack("one"));
 
     std::fs::write(&placed, pack("edited by hand")).unwrap();
-    materialize_content(&state.services, &shared, &shared_dir, false)
+    materialize_content(&state.services, &shared, &shared_dir, false, false)
         .await
         .unwrap();
     assert_eq!(
@@ -144,7 +144,7 @@ async fn packs_survive_hand_edits_and_dedicated_clusters_keep_their_own() {
         "the startup split hands the shared cluster the pack only the dedicated one had"
     );
 
-    materialize_content(&state.services, &dedicated, &own_dir, false)
+    materialize_content(&state.services, &dedicated, &own_dir, false, false)
         .await
         .unwrap();
     let own_packs = own_dir.join("resourcepacks");
@@ -234,7 +234,7 @@ async fn packs_survive_hand_edits_and_dedicated_clusters_keep_their_own() {
     oneclient_core::game::leave_shared_folder(&state.services, &leaving, &leaving_dir, None)
         .await
         .unwrap();
-    materialize_content(&state.services, &leaving, &leaving_dir, false)
+    materialize_content(&state.services, &leaving, &leaving_dir, false, false)
         .await
         .unwrap();
     assert!(leaving_dir.join("resourcepacks/leaving.zip").exists());
@@ -259,7 +259,7 @@ async fn packs_survive_hand_edits_and_dedicated_clusters_keep_their_own() {
         "a pack the leaving cluster had off is not handed over"
     );
 
-    materialize_content(&state.services, &shared, &shared_dir, false)
+    materialize_content(&state.services, &shared, &shared_dir, false, false)
         .await
         .unwrap();
     assert_eq!(
@@ -331,7 +331,7 @@ async fn packs_survive_hand_edits_and_dedicated_clusters_keep_their_own() {
     );
 
     let rejoined = state.clusters.get(leaving.id).await.unwrap();
-    materialize_content(&state.services, &rejoined, &shared_dir, false)
+    materialize_content(&state.services, &rejoined, &shared_dir, false, false)
         .await
         .unwrap();
     assert!(

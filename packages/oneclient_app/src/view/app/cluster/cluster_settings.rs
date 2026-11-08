@@ -138,6 +138,21 @@ impl Component for ClusterSettings {
         } else {
             Vec::new()
         };
+        let copy_mod_files_row: Vec<Element> = if mod_loader {
+            vec![profile_row(
+                generation,
+                "CopyModFilesRow",
+                ToggleRow {
+                    field: ToggleField::CopyModFiles,
+                    cluster_id,
+                    value: profile.copy_mod_files,
+                    global: global.copy_mod_files.unwrap_or(false),
+                }
+                .into_element(),
+            )]
+        } else {
+            Vec::new()
+        };
         let problem_mod_row: Vec<Element> = if mod_loader {
             vec![super::FindProblemModRow { cluster_id }.into_element()]
         } else {
@@ -211,12 +226,14 @@ impl Component for ClusterSettings {
                         }
                         .into_element(),
                     ))
+                    .append_children(copy_mod_files_row)
                     .append_children(migrate_row)
                     .child(section_header(t("oneclient.cluster.settings.section.game")))
                     .child(profile_row(
                         generation,
                         "ToggleRow",
                         ToggleRow {
+                            field: ToggleField::Fullscreen,
                             cluster_id,
                             value: profile.force_fullscreen,
                             global: global.force_fullscreen.unwrap_or(false),
@@ -331,6 +348,7 @@ enum Field {
     MemMax,
     JavaPath,
     BrowserUpdateMode,
+    CopyModFiles,
 }
 
 fn profile_row(generation: u32, slot: &'static str, row: impl IntoElement) -> Element {
@@ -349,6 +367,7 @@ fn clear_update(field: Field) -> ProfileUpdate {
         Field::MemMax => u.mem_max = Patch::Clear,
         Field::JavaPath => u.java_path = Patch::Clear,
         Field::BrowserUpdateMode => u.browser_update_mode = Patch::Clear,
+        Field::CopyModFiles => u.copy_mod_files = Patch::Clear,
     }
     u
 }
@@ -394,8 +413,15 @@ fn override_cell(
         .into_element()
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum ToggleField {
+    Fullscreen,
+    CopyModFiles,
+}
+
 #[derive(PartialEq)]
 struct ToggleRow {
+    field: ToggleField,
     cluster_id: i64,
     value: Option<bool>,
     global: bool,
@@ -403,6 +429,7 @@ struct ToggleRow {
 
 impl Component for ToggleRow {
     fn render(&self) -> impl IntoElement {
+        let field = self.field;
         let cluster_id = self.cluster_id;
         let overridden = self.value.is_some();
         let global = self.global;
@@ -419,27 +446,44 @@ impl Component for ToggleRow {
                     return;
                 }
                 last.set(v);
-                dispatch.update_cluster_profile(
-                    cluster_id,
-                    ProfileUpdate {
-                        force_fullscreen: Patch::Set(v),
-                        ..Default::default()
-                    },
-                );
+                let mut update = ProfileUpdate::default();
+                match field {
+                    ToggleField::Fullscreen => update.force_fullscreen = Patch::Set(v),
+                    ToggleField::CopyModFiles => update.copy_mod_files = Patch::Set(v),
+                }
+                dispatch.update_cluster_profile(cluster_id, update);
             });
         }
 
         let on_reset: EventHandler<()> = (move |()| {
             last.set(global);
             state.set(global);
-            dispatch.update_cluster_profile(cluster_id, clear_update(Field::ForceFullscreen));
+            dispatch.update_cluster_profile(
+                cluster_id,
+                clear_update(match field {
+                    ToggleField::Fullscreen => Field::ForceFullscreen,
+                    ToggleField::CopyModFiles => Field::CopyModFiles,
+                }),
+            );
         })
         .into();
 
+        let (icon, title, description) = match field {
+            ToggleField::Fullscreen => (
+                IconType::Maximize01,
+                "oneclient.cluster.settings.force_fullscreen.title",
+                "oneclient.cluster.settings.force_fullscreen.description",
+            ),
+            ToggleField::CopyModFiles => (
+                IconType::Copy01,
+                "oneclient.cluster.settings.copy_mod_files.title",
+                "oneclient.cluster.settings.copy_mod_files.description",
+            ),
+        };
         settings_row(
-            IconType::Maximize01,
-            t("oneclient.cluster.settings.force_fullscreen.title"),
-            t("oneclient.cluster.settings.force_fullscreen.description"),
+            icon,
+            t(title),
+            t(description),
             override_cell(toggle(state), overridden, on_reset),
         )
     }

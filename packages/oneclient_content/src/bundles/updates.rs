@@ -363,6 +363,16 @@ async fn check_bundle_updates_inner(
         &bundle_packages,
     ));
     let installed_keys = planned_addition_keys.clone();
+    let tracked_hashes: HashSet<&str> = bundle_packages
+        .iter()
+        .map(|row| row.hash.as_str())
+        .collect();
+    let live_or_tracked: Vec<_> = all_linked
+        .iter()
+        .filter(|item| item.enabled || tracked_hashes.contains(item.hash.as_str()))
+        .collect();
+    let (live_managed_keys, _) = installed_bundle_keys(ctx, live_or_tracked).await?;
+    planned_addition_keys.retain(|key| !key.starts_with("m:") || live_managed_keys.contains(key));
     let opt_outs = TypeOptOuts::load(
         cluster_id,
         &archives,

@@ -318,6 +318,7 @@ pub async fn materialize_content(
     if mods_in_cluster {
         let mut mod_entries =
             link_desired(&cluster_dir, &mods, copy_mod_files, &mut failed_copies).await;
+        mods_copied(&failed_copies)?;
         mod_entries.extend(held_mods);
         let spared = if isolated {
             failed_imports
@@ -351,6 +352,7 @@ pub async fn materialize_content(
     }
 
     let mut entries = link_desired(game_dir, &rest, copy_mod_files, &mut failed_copies).await;
+    mods_copied(&failed_copies)?;
     entries.extend(held_rest);
     manifest::save(
         game_dir,
@@ -358,11 +360,6 @@ pub async fn materialize_content(
         &MaterializedManifest::new(cluster.id, entries),
     )
     .await;
-
-    // There's no link to fall back to, and the game would start without the mod
-    if !failed_copies.is_empty() {
-        return Err(GameError::ModCopyFailed(removal_summary(&failed_copies)).into());
-    }
 
     sync_fabric_dep_overrides(cluster, game_dir).await?;
 
@@ -1883,6 +1880,16 @@ async fn held_in_place(
     (mods, rest)
 }
 
+/// There's no link to fall back to, and the game would start without the mod.
+/// Called before the cleanup and manifest save, so the previous file stays and
+/// the previous manifest still describes it
+fn mods_copied(failed: &[String]) -> LauncherResult<()> {
+    if failed.is_empty() {
+        return Ok(());
+    }
+    Err(GameError::ModCopyFailed(removal_summary(failed)).into())
+}
+
 /// Mods that couldn't be copied are added to `failed_copies`
 async fn link_desired(
     root: &Path,
@@ -2969,7 +2976,9 @@ mod tests {
         assert_eq!(polyio::file_id(&mod_jar).await.unwrap(), copied);
 
         // same size, different bytes
-        polyio::write(&mod_jar, b"CONTENT".as_slice()).await.unwrap();
+        polyio::write(&mod_jar, b"CONTENT".as_slice())
+            .await
+            .unwrap();
         link_desired(&game_dir, &desired, true, &mut failed).await;
         assert_eq!(polyio::read(&mod_jar).await.unwrap(), b"content");
 

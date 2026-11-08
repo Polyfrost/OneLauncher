@@ -435,6 +435,8 @@ async fn start(
         format!("-XX:ErrorFile={}%p.log", error_file.replace('%', "%%")),
     );
 
+    oneclient_cluster::logs::censor_username(&account.username);
+
     let mut mc_args = arguments::minecraft_arguments(
         arg_map.get(&ArgumentType::Game).map(Vec::as_slice),
         version_info.minecraft_arguments.as_deref(),

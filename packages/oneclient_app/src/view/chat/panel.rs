@@ -122,6 +122,7 @@ impl Component for SocialPanel {
                     conversation,
                     own_id,
                     expanded: self.expanded,
+                    windowed: self.mode == PanelMode::Window,
                     on_back: back_to_list.clone(),
                 }
                 .into_element()

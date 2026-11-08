@@ -603,7 +603,7 @@ impl Component for InviteRow {
 pub(super) fn accent_button(
     text: &'static str,
     on_press: impl Into<EventHandler<Event<PressEventData>>>,
-) -> impl IntoElement {
+) -> Rect {
     rect()
         .height(Size::px(28.))
         .padding(Gaps::new_symmetric(0., 12.))

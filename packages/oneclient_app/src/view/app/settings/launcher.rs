@@ -16,6 +16,7 @@ use crate::hooks::{
     use_discard_leftovers, use_dispatch, use_launcher, use_leftovers, use_settings_snapshot,
 };
 use crate::i18n::{t, tf};
+use crate::layout::SearchItem;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, note, path_block};
 
@@ -482,4 +483,114 @@ fn confirm_move(
                 .child(card),
         )
         .into_element()
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "launcher.discord_rpc",
+        icon: IconType::Link03,
+        title: "oneclient.settings.launcher.discord_rpc.title",
+        description: "oneclient.settings.launcher.discord_rpc.description",
+        keywords: &["discord", "rpc", "rich presence"],
+        route: Route::SettingsLauncher {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "launcher.folder",
+        icon: IconType::Folder,
+        title: "oneclient.settings.launcher.data_folder.title",
+        description: "oneclient.layout.search.launcher.folder.description",
+        keywords: &[
+            "data dir",
+            "directory",
+            "folder",
+            "open",
+            "move",
+            "change",
+            "relocate",
+            "location",
+            "drive",
+            "disk",
+        ],
+        route: Route::SettingsLauncher {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "launcher.crash_reporting",
+        icon: IconType::AlertTriangle,
+        title: "oneclient.settings.launcher.crash_reporting.title",
+        description: "oneclient.settings.launcher.crash_reporting.description",
+        keywords: &["crash", "report", "sentry", "telemetry", "errors"],
+        route: Route::SettingsLauncher {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "launcher.start_maximized",
+        icon: IconType::Maximize01,
+        title: "oneclient.settings.launcher.start_maximized.title",
+        description: "oneclient.settings.launcher.start_maximized.description",
+        keywords: &["maximized", "window", "fullscreen", "startup"],
+        route: Route::SettingsLauncher {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "launcher.terms",
+        icon: IconType::File02,
+        title: "oneclient.settings.launcher.terms.title",
+        description: "oneclient.layout.search.launcher.terms.description",
+        keywords: &["terms", "privacy", "tos", "policy", "consent"],
+        route: Route::SettingsLauncher {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "launcher.launch_behaviour",
+        icon: IconType::Eye,
+        title: "oneclient.settings.launcher.launch_behaviour.title",
+        description: "oneclient.settings.launcher.launch_behaviour.description",
+        keywords: &["while playing", "hide", "close", "minimize", "launch behaviour", "launch behavior"],
+        route: Route::SettingsLauncher {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "launcher.open_game_log",
+        icon: IconType::Terminal,
+        title: "oneclient.settings.launcher.open_game_log.title",
+        description: "oneclient.settings.launcher.open_game_log.description",
+        keywords: &["log", "console", "output", "game log"],
+        route: Route::SettingsLauncher {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "launcher.run_in_background",
+        icon: IconType::Moon01,
+        title: "oneclient.settings.launcher.run_in_background.title",
+        description: "oneclient.settings.launcher.run_in_background.description",
+        keywords: &["background", "tray", "close", "minimize"],
+        route: Route::SettingsLauncher {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "launcher.tray_icon",
+        icon: IconType::LayoutTop,
+        title: "oneclient.settings.launcher.tray_icon.title",
+        description: "oneclient.settings.launcher.tray_icon.description",
+        keywords: &["tray", "system tray", "menu bar", "icon"],
+        route: Route::SettingsLauncher {},
+    }
 }

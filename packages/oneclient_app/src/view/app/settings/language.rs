@@ -1,9 +1,11 @@
 use freya::prelude::*;
 
 use super::settings_page;
+use crate::Route;
 use crate::components::{Icon, IconType};
 use crate::hooks::{Actions, use_dispatch, use_settings_snapshot};
 use crate::i18n::{t, tf};
+use crate::layout::SearchItem;
 use crate::theme::{colors, rounded, text_size};
 use crate::translations;
 use crate::view::app::settings::section_header;
@@ -83,4 +85,18 @@ fn language_row(code: Option<String>, is_selected: bool, dispatch: Actions) -> i
                 .into_element()
         }))
         .into_element()
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "language.select",
+        icon: IconType::Globe01,
+        title: "oneclient.layout.settings.tab.language",
+        description: "oneclient.layout.search.language.select.description",
+        keywords: &[
+            "language", "locale", "english", "spanish", "french", "german", "russian",
+            "japanese", "chinese",
+        ],
+        route: Route::SettingsLanguage {},
+    }
 }

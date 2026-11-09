@@ -250,6 +250,17 @@ pub async fn describe_payload(path: &Path) -> LauncherResult<ShareMeta> {
     })
 }
 
+pub async fn measure_share(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+    options: ExportOptions,
+) -> LauncherResult<u64> {
+    let staging = polyio::tempdir().await?;
+    let payload = staging.dir_path().join(format!("share.{SHARE_EXTENSION}"));
+    export_cluster_with(state, cluster_id, &payload, options, None).await?;
+    Ok(polyio::stat(&payload).await?.len())
+}
+
 #[tracing::instrument(skip(state, store, ledger, progress))]
 pub async fn share_cluster(
     state: &Arc<LauncherState>,

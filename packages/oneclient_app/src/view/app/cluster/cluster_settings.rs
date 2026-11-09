@@ -1732,7 +1732,7 @@ impl Component for SyncFilesModal {
                 .color(colors::fg_secondary())
                 .into_element(),
         ];
-        content.extend(settings_file_picker(choice));
+        content.extend(settings_file_picker(choice, false));
         content.push(
             rect()
                 .horizontal()

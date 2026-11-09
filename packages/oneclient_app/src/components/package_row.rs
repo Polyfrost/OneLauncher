@@ -1248,3 +1248,104 @@ pub(crate) fn pill(icon: Option<Element>, text: String, accent: Color) -> Elemen
         )
         .into_element()
 }
+
+#[cfg(test)]
+mod tests {
+    use freya_testing::prelude::*;
+    use tokio::sync::mpsc;
+
+    use super::*;
+    use crate::hooks::{
+        Actions, DisableConfirmState, EssentialGuardState, use_provide_disable_confirm,
+        use_provide_essential_guard, use_provide_station,
+    };
+    use crate::state::AppState;
+
+    const MARGIN: f32 = 20.;
+
+    fn new_mod() -> PackageEntry {
+        PackageEntry {
+            package_id: "sodium-extra".to_string(),
+            bundle_name: None,
+            provider: ProviderId::Modrinth,
+            github_hosted: false,
+            github_url: None,
+            name: "Sodium Extra".to_string(),
+            file_name: "sodium-extra.jar".to_string(),
+            author: "FlashyReese".to_string(),
+            version: None,
+            description: String::new(),
+            icon_url: None,
+            size: 0,
+            categories: Vec::new(),
+            enabled: true,
+            installed: true,
+            hash: Some("hash".to_string()),
+            manifest_default: false,
+            hidden: false,
+            opted_in: true,
+            advanced: false,
+            deleted: false,
+            update_available: false,
+            copy_status: None,
+            copies: Vec::new(),
+            seen_status: SeenStatus::New,
+            essential: None,
+            bisect_role: None,
+            locked: false,
+            modpack: None,
+            added_at: None,
+            published_at: None,
+        }
+    }
+
+    fn app() -> impl IntoElement {
+        let station = use_provide_station(AppState::default);
+        use_hook(move || {
+            let (pump, _) = mpsc::unbounded_channel();
+            let (events, _) = oneclient_events::EventBus::channel();
+            GlobalContexts::get().insert_context(Actions::new(station, pump, events));
+        });
+        use_provide_essential_guard(EssentialGuardState(use_state(|| None)));
+        use_provide_disable_confirm(DisableConfirmState(use_state(|| None)));
+        let mut selections = use_consume::<State<u32>>();
+
+        rect().padding(Gaps::new_all(MARGIN)).child(
+            rect()
+                .width(Size::px(GRID_MIN_W))
+                .height(Size::px(CARD_GRID_H))
+                .child(
+                    PackageRow::new(new_mod(), 1, "mod")
+                        .layout(CardLayout::Grid)
+                        .selection(true, true, move |()| *selections.write() += 1),
+                ),
+        )
+    }
+
+    #[test]
+    fn clicking_a_grid_badge_while_selecting_selects_the_card() {
+        let (mut test, selections) = TestingRunner::new(
+            app,
+            Size2D::new(400., 200.),
+            |runner| runner.provide_root_context(|| State::create(0u32)),
+            1.,
+        );
+        test.sync_and_update();
+
+        let badge = test
+            .find(|node, element| {
+                Label::try_downcast(element)
+                    .filter(|label| label.text == "New")
+                    .map(|_| node.layout().area)
+            })
+            .expect("the New badge is mounted");
+        // The badge straddles the card's bottom edge, so this point is on the
+        // badge and still inside the card, whose own press toggles the mod
+        let y = MARGIN + CARD_GRID_H - 2.;
+        assert!(badge.min_y() < y && y < badge.max_y());
+
+        test.click_cursor((badge.center().x as f64, y as f64));
+
+        assert_eq!(test.run_in(|| *selections.peek()), 1);
+    }
+}

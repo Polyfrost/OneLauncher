@@ -1,0 +1,43 @@
+name: Nix Updater
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Check for a new release
+        id: update
+        run: |
+          nix run nixpkgs#nix-update -- --flake oneclient --url https://github.com/Polyfrost/OneLauncher --version-regex 'oneclient-(.*)'
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build the new version
+        if: steps.update.outputs.changed == 'true'
+        run: nix build .#oneclient --print-build-logs
+
+      - name: Commit and push
+        if: steps.update.outputs.changed == 'true'
+        run: |
+          version=$(nix eval --raw .#oneclient.version)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "oneclient: update to ${version}"
+          git push

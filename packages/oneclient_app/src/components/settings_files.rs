@@ -8,6 +8,7 @@ use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const LIST_HEIGHT: f32 = 300.;
+const ROW_HEIGHT: f32 = 28.;
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct FileChoice {
@@ -98,13 +99,9 @@ pub fn settings_file_picker(choice: FileChoice) -> Vec<Element> {
             .width(Size::fill())
             .height(Size::Inner)
             .max_height(Size::px(LIST_HEIGHT))
-            .child(
-                rect().vertical().width(Size::fill()).spacing(2.).children(
-                    files
-                        .iter()
-                        .map(|path| file_row(path.clone(), choice.is_chosen(path), choice)),
-                ),
-            )
+            .lazy(files.len(), ROW_HEIGHT, 2., move |i| {
+                file_row(files[i].clone(), choice.is_chosen(&files[i]), choice)
+            })
             .into_element(),
     };
 
@@ -162,6 +159,7 @@ fn file_row(path: String, selected: bool, choice: FileChoice) -> Element {
     rect()
         .horizontal()
         .width(Size::fill())
+        .height(Size::fill())
         .spacing(10.)
         .padding(Gaps::new(6., 8., 6., 8.))
         .cross_align(Alignment::Center)

@@ -49,5 +49,5 @@ pub use types::*;
 pub use updates::{
     BrowserPackageUpdate, BrowserUpdateCheck, apply_browser_package_update,
     cached_browser_package_updates, check_browser_package_updates, refresh_browser_package_updates,
-    skip_browser_package_update,
+    refresh_browser_package_updates_for, skip_browser_package_update,
 };

@@ -91,7 +91,7 @@ pub use mutations::{
     ClusterAction, ClusterMutation, invalidate_cluster_content_queries, invalidate_cluster_queries,
     invalidate_profile_queries, use_cluster_mutation,
 };
-pub use package_updates::{package_updates, stale_hashes, use_package_updates};
+pub use package_updates::{PackageUpdatesQuery, package_updates, stale_hashes, use_package_updates};
 pub use packages::ALL_VERSIONS;
 pub use packages::{
     BROWSE_PAGE_SIZE, VERSIONS_PAGE_SIZE, category_list, content_type_for_slug, package_meta_batch,

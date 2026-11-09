@@ -832,13 +832,24 @@ impl Component for PackageManager {
             .into()
         };
 
+        let checkable: Vec<(String, String)> = chosen
+            .iter()
+            .filter(|p| p.update_checkable())
+            .filter_map(|p| Some((p.hash.clone()?, p.name.clone())))
+            .collect();
+
         let bulk = Bulk {
             selection,
             order,
             count: chosen.len(),
             deletable: deletable.len() + bundled_deletable.len(),
+            checkable: checkable.len(),
             set_enabled,
             delete: (move |()| confirm_delete.set(true)).into(),
+            check_updates: {
+                let dispatch = dispatch.clone();
+                (move |()| dispatch.check_package_updates(cluster_id, checkable.clone())).into()
+            },
         };
 
         let delete_dialog = confirm_delete.read().then(|| {

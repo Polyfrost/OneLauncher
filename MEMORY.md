@@ -15,11 +15,13 @@ next steps. Update it whenever a feature lands or a placeholder is replaced.
 
 | Area | Status | Notes |
 |---|---|---|
-| Offline accounts | done | Nickname + local UUID (`MD5("OfflinePlayer:<name>")`), no Microsoft call, `--userType legacy` |
+| Offline accounts | done | Nickname + local UUID (`MD5("OfflinePlayer:<name>")`), no Microsoft call, `--userType legacy`, `--accessToken 0` |
+| Offline skins/capes | done (needs in-game test) | Local HTTP texture server + `--userProperties`; UI preview comes from the local server, no Mojang request |
 | Microsoft sign-in | optional | Uses `REMIXCLIENT_MICROSOFT_CLIENT_ID`, fallback is the upstream app id — replace before public release |
 | Portable mode | done | `--portable` / `-p`, `portable.txt` marker, `RemixClient-data` next to the exe, separate IPC |
 | World backups | done | Auto before launch (changed worlds only, retention 5), manual backup + restore from Worlds → right-click → Backups… |
 | Offline skins/capes | done (needs in-game test) | Local HTTP texture server + `--userProperties`, shared dialog in Accounts and Wardrobe |
+| Branch / commits | done | Work lives on `remix/offline-and-rebrand`; `ce9849e7` features, `8e2a73d1` review fixes |
 | Crash autopsy | done | Suspected mods get a one-click **Disable** button |
 | Discord RPC | done | App ID `1569698419491217500`; Discord desktop must be running; large image optional |
 | Russian | done | `lang/ru_RU.json`, 100% of keys; machine-translated + curated, proofreading welcome |
@@ -71,6 +73,10 @@ C:\Users\user\msvc.cmd cargo test -p oneclient_core --lib offline_skin -j 1
   Windows pagefile (`os error 1455`) while linking integration tests. Use `--lib`
   and `-j 1`.
 - Release build: `C:\Users\user\msvc.cmd cargo build --release -p oneclient_app`.
+  On this machine the default `lto = "fat"` profile crashes `link.exe`
+  (`STATUS_STACK_BUFFER_OVERRUN`, 0xc0000409). Use:
+  `set CARGO_PROFILE_RELEASE_LTO=thin&& set CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16`
+  before the build; that links fine (~8 min incremental).
 - MSI (when ready): `cargo packager -p oneclient_app --release -f wix`.
   `cargo-packager` does not build the binary itself; build release first.
 
@@ -126,6 +132,13 @@ skins live in `<data>/skins/<account uuid>/`.
 
 - Discord RPC requires the Discord desktop app open; closing it removes the status.
 - Offline skins still need a real-game verification on the user's target version.
+- Verified by a free-tier review subagent (Qwen 3.8 Flash) on 2026-11-10 and fixed:
+  `--userProperties` must be `{"textures":[{"name":"textures","value":<base64>}]}`
+  (a bare base64 string is dropped by authlib); offline UI no longer calls
+  `sessionserver.mojang.com`; 128x64 skins accepted; a failed texture-server bind
+  is retried; offline launches send `--accessToken 0`.
+- `CredentialsStore::add_offline_account` is memory-only (tests only); production
+  must use `add_offline_account_and_save`.
 - World backup zips currently read each file into memory; very large worlds can be slow
   and the 180 s timeout may skip them.
 - Update check fails until the GitHub repository exists (expected).

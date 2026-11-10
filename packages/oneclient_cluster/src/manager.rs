@@ -927,9 +927,9 @@ async fn copy_from_shared(
         on_progress(&format!("Syncing {name}"), done, total);
         let src = shared.join(name);
         if src.is_dir() {
-            polyio::copy_dir(&src, &dest.join(name), &[]).await?;
+            polyio::copy_dir_replacing(&src, &dest.join(name), &[]).await?;
         } else if src.is_file() {
-            polyio::copy(&src, dest.join(name)).await?;
+            polyio::copy_replacing(&src, dest.join(name)).await?;
         }
         done += 1;
     }
@@ -1055,6 +1055,45 @@ mod tests {
         assert!(!dest.join("saves/New/session.lock").exists());
         assert!(!dest.join("saves/junk").exists());
         assert!(!dest.join("screenshots").exists());
+    }
+
+    #[tokio::test]
+    async fn syncing_replaces_read_only_files_already_in_the_cluster() {
+        let shared = polyio::tempdir().await.expect("shared dir");
+        let dest = polyio::tempdir().await.expect("dest dir");
+        let (shared, dest) = (shared.dir_path(), dest.dir_path());
+        let pack = "config/skyblocker/item-repo/.git/objects/pack/pack-1.pack";
+
+        let set_read_only = |path: &std::path::Path, read_only: bool| {
+            let mut perms = std::fs::metadata(path).unwrap().permissions();
+            #[allow(clippy::permissions_set_readonly_false)]
+            perms.set_readonly(read_only);
+            std::fs::set_permissions(path, perms).unwrap();
+        };
+        for (root, body) in [(shared, "shared"), (dest, "mine")] {
+            let path = root.join(pack);
+            polyio::create_dir_all(path.parent().unwrap())
+                .await
+                .unwrap();
+            polyio::write(&path, body.as_bytes().to_vec()).await.unwrap();
+            set_read_only(&path, true);
+        }
+
+        let result = copy_from_shared(shared, dest, false, |_, _, _| {}).await;
+
+        let copied = std::fs::read_to_string(dest.join(pack));
+        let original = std::fs::read_to_string(shared.join(pack));
+        let leftovers: Vec<_> = std::fs::read_dir(dest.join(pack).parent().unwrap())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        set_read_only(&shared.join(pack), false);
+        set_read_only(&dest.join(pack), false);
+
+        result.unwrap();
+        assert_eq!(copied.unwrap(), "shared");
+        assert_eq!(original.unwrap(), "shared");
+        assert_eq!(leftovers, vec![std::ffi::OsString::from("pack-1.pack")]);
     }
 
     #[tokio::test]

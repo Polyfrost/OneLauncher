@@ -35,7 +35,7 @@ next steps. Update it whenever a feature lands or a placeholder is replaced.
 | CurseForge | works | Embedded upstream key; override with `REMIXCLIENT_CURSEFORGE_API_KEY` |
 | Updater | done (endpoint pending) | Endpoint `https://github.com/RemixClient/RemixClient/releases/latest/download/latest.json`; new minisign key pair generated |
 | Linux/mac packaging | partial | IDs renamed to `org.remixclient.RemixClient`; macOS `OneClient.icon` assets remain; untested |
-| App icon | done | New R icon → PNG set, `icon.ico` (16–256), `icon.icns` (16–1024), tray, StoreLogo; source `C:\Users\user\Desktop\remix-icon.png` |
+| App icon | done | Real design from the user's image (`design/icon-source.jpg`): transparent master `C:\Users\user\Desktop\remix-icon.png` → PNG set, `icon.ico` (16–256), `icon.icns` (16–1024), tray, StoreLogo. Generator: `%TEMP%\remix-icon-tool` (Rust + `image`) |
 | HUD (axe/sword/totem + presets) | researched, blocked on decision | See "HUD research" below. No existing mod covers the combo; own companion mod recommended. Needs: target version + loader |
 | QA sandbox | research | Subagent researching Windows Sandbox / separate desktop / UI automation |
 
@@ -122,7 +122,9 @@ skins live in `<data>/skins/<account uuid>/`.
 2. Updater endpoint → real repository releases (`latest.json` + signed artifacts).
 3. Discord large image key → upload `remixclient_logo` in the Developer Portal and set
    `REMIXCLIENT_DISCORD_LARGE_IMAGE`.
-4. App icon — done (regenerate from `remix-icon.png` with the PowerShell script if it changes).
+4. App icon — done. Regenerate with the Rust tool in `%TEMP%\remix-icon-tool`
+   (`remix-icon-tool.exe design/icon-source.jpg`); it finds the square, makes it
+   transparent and writes every size.
 5. ToS/Privacy — done, bundled; bump the version constants when the text changes.
 6. Microsoft/CurseForge keys → own values for public builds.
 7. `org.polyfrost.*` identifiers in Linux/mac packaging — done, untested.

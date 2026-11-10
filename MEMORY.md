@@ -36,7 +36,7 @@ next steps. Update it whenever a feature lands or a placeholder is replaced.
 | Updater | done (endpoint pending) | Endpoint `https://github.com/RemixClient/RemixClient/releases/latest/download/latest.json`; new minisign key pair generated |
 | Linux/mac packaging | partial | IDs renamed to `org.remixclient.RemixClient`; macOS `OneClient.icon` assets remain; untested |
 | App icon | done | New R icon → PNG set, `icon.ico` (16–256), `icon.icns` (16–1024), tray, StoreLogo; source `C:\Users\user\Desktop\remix-icon.png` |
-| HUD (axe/sword/totem + presets) | research | In-game HUD needs a mod; subagent researching existing mods vs companion mod |
+| HUD (axe/sword/totem + presets) | researched, blocked on decision | See "HUD research" below. No existing mod covers the combo; own companion mod recommended. Needs: target version + loader |
 | QA sandbox | research | Subagent researching Windows Sandbox / separate desktop / UI automation |
 
 ## Keys, secrets and endpoints
@@ -127,6 +127,20 @@ skins live in `<data>/skins/<account uuid>/`.
 6. Microsoft/CurseForge keys → own values for public builds.
 7. `org.polyfrost.*` identifiers in Linux/mac packaging — done, untested.
 8. MSI + code signing decision.
+
+## HUD research (free-tier subagent, Modrinth API, 2026-11-10)
+
+- Existing mods cover armor bars and durability numbers, never the requested
+  «axe + sword + totem + one-shot hit animation + presets» combo.
+- Candidates (all: no preset system; launcher would have to write each mod's own
+  `config/` file): `ukus-armor-hud` (MIT, 10M downloads, config file), `armor-hud`
+  (MIT), `durability-viewer-updated` (MIT, thresholds), `detail-armor-bar-reconstructed`
+  (MIT), `betterhudfabric` (AGPL, Cloth Config), `totem-counter-mx` and `inventorio`
+  (All-Rights-Reserved — cannot be bundled), `durability101`, `show-durability`.
+- Recommendation: write a small MIT companion mod for **Fabric 1.21.1** (widget +
+  one frame animation + a preset JSON the launcher can generate). Bundling 2–3 MIT
+  mods is only a stopgap: inconsistent settings, no hit animation.
+- Still needed from the user: confirm 1.21.1 Fabric as the first target (or 1.8.9).
 
 ## Known issues / reminders
 

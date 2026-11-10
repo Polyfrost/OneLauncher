@@ -13,6 +13,12 @@ const WINDOWS_PREFERENCES: [(&str, &str, u8); 2] = [
     ("dedicated", "Dedicated GPU", 2),
 ];
 
+pub const DEFAULT: Option<&str> = if cfg!(windows) {
+    Some("dedicated")
+} else {
+    None
+};
+
 pub fn detect() -> Vec<Gpu> {
     cfg_select! {
         target_os = "linux" => linux::detect()

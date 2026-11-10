@@ -479,7 +479,7 @@ async fn start(
 
     let (mut command, wrapper) = base_command(&profile, &java.absolute_path);
 
-    if let Some(gpu) = profile.gpu() {
+    if let Some(gpu) = profile.gpu().or(crate::game::gpu::DEFAULT) {
         crate::game::gpu::select(&mut command, &java.absolute_path, gpu).await;
     }
 

@@ -10,7 +10,9 @@ const RECONNECT_BACKOFF: Duration = Duration::from_secs(60);
 
 const IDLE_POLL: Duration = Duration::from_secs(3600);
 
-const LARGE_IMAGE: &str = "onelauncher_logo_512";
+/// Optional Rich Presence art asset. Without it Discord shows the application
+/// icon uploaded in the Developer Portal, so no asset has to exist on day one.
+const LARGE_IMAGE: Option<&str> = option_env!("REMIXCLIENT_DISCORD_LARGE_IMAGE");
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Presence {
@@ -55,6 +57,10 @@ pub struct DiscordRpc {
 impl DiscordRpc {
     pub fn spawn(enabled: bool) -> Self {
         let (tx, rx) = mpsc::channel();
+
+        // A fork without its own Discord application cannot present upstream's
+        // app identity, so Rich Presence stays off until a client id is supplied.
+        let enabled = enabled && !DISCORD_CLIENT_ID.is_empty();
 
         std::thread::Builder::new()
             .name("discord-rpc".to_owned())
@@ -142,6 +148,7 @@ impl Worker {
     }
 
     fn set_enabled(&mut self, enabled: bool) {
+        let enabled = enabled && !DISCORD_CLIENT_ID.is_empty();
         if self.enabled == enabled {
             return;
         }
@@ -162,16 +169,19 @@ impl Worker {
         }
 
         let state = self.presence.state();
+        let mut assets = Assets::new();
+        if let Some(key) = LARGE_IMAGE {
+            assets = assets.large_image(key).large_text("RemixClient");
+        }
         let activity = Activity::new()
             .details(self.presence.details())
             .state(&state)
             .timestamps(Timestamps::new().start(self.presence_since))
-            .assets(
-                Assets::new()
-                    .large_image(LARGE_IMAGE)
-                    .large_text("OneClient"),
-            )
-            .buttons(vec![Button::new("Website", "https://polyfrost.org/")]);
+            .assets(assets)
+            .buttons(vec![Button::new(
+                "GitHub",
+                "https://github.com/RemixClient/RemixClient",
+            )]);
 
         if let Err(err) = self.client.set_activity(activity) {
             tracing::warn!("Discord RPC set_activity failed: {err}");

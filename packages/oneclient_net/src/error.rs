@@ -64,7 +64,7 @@ pub enum RequestError {
     },
 
     #[error(
-        "OneClient did not contact {url} because the Terms of Service and Privacy Policy were \
+        "RemixClient did not contact {url} because the Terms of Service and Privacy Policy were \
          declined. Accept them in Settings to turn Polyfrost services back on."
     )]
     ConsentRequired { url: String },
@@ -92,16 +92,16 @@ impl NetworkFailure {
     pub fn user_message(self) -> &'static str {
         match self {
             Self::Certificate => {
-                "Something on this network or machine is intercepting secure connections, so OneClient cannot verify it is really talking to the servers it needs. This is usually antivirus HTTPS scanning, a school or workplace filter, or a VPN. Try another network, turn off HTTPS/SSL scanning in your antivirus, or ask your network administrator to allow OneClient."
+                "Something on this network or machine is intercepting secure connections, so RemixClient cannot verify it is really talking to the servers it needs. This is usually antivirus HTTPS scanning, a school or workplace filter, or a VPN. Try another network, turn off HTTPS/SSL scanning in your antivirus, or ask your network administrator to allow RemixClient."
             }
             Self::Handshake => {
-                "OneClient reached the server but the two could not agree on a secure connection. A proxy, filter, or antivirus in between is usually using outdated encryption settings. Try another network or turn off HTTPS/SSL scanning in your antivirus."
+                "RemixClient reached the server but the two could not agree on a secure connection. A proxy, filter, or antivirus in between is usually using outdated encryption settings. Try another network or turn off HTTPS/SSL scanning in your antivirus."
             }
             Self::Dns => {
-                "OneClient could not look up the address of the server. Check your internet connection, disable any VPN or proxy, and try a different DNS server such as 1.1.1.1."
+                "RemixClient could not look up the address of the server. Check your internet connection, disable any VPN or proxy, and try a different DNS server such as 1.1.1.1."
             }
             Self::Generic => {
-                "OneClient could not reach the server. Check your internet connection, and any firewall, proxy, or VPN that could be blocking it."
+                "RemixClient could not reach the server. Check your internet connection, and any firewall, proxy, or VPN that could be blocking it."
             }
         }
     }

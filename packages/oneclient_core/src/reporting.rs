@@ -51,15 +51,15 @@ pub fn init(enabled: bool) -> Option<ClientInitGuard> {
         return None;
     }
 
-    if cfg!(debug_assertions) && option_env!("ONECLIENT_SENTRY_DSN").is_none() {
-        tracing::debug!("crash reporting skipped: debug build without an explicit DSN");
+    if SENTRY_DSN.is_empty() {
+        tracing::debug!("crash reporting skipped: this build has no DSN");
         return None;
     }
 
     let guard = sentry::init((
         SENTRY_DSN,
         ClientOptions::new()
-            .release(format!("oneclient@{}", env!("CARGO_PKG_VERSION")))
+            .release(format!("remixclient@{}", env!("CARGO_PKG_VERSION")))
             .environment(ENVIRONMENT)
             .attach_stacktrace(true)
             .send_default_pii(false)

@@ -130,7 +130,7 @@ fn guidance_for_service_error(
                 "Microsoft or Minecraft temporarily blocked the sign-in because there were too many recent attempts.",
                 &[
                     "Wait about an hour before trying again",
-                    "Restart OneClient after waiting",
+                    "Restart RemixClient after waiting",
                     "Try signing in once more",
                     "If it keeps happening, wait longer before retrying so the temporary limit can clear",
                 ],
@@ -158,7 +158,7 @@ fn guidance_for_step(step: MinecraftAuthStep) -> Option<AuthErrorGuidance> {
             AuthErrorGuidance::new(
                 "Your saved Microsoft sign-in has expired or was revoked, so your Minecraft session could not be renewed.",
                 &[
-                    "Sign out of the affected Minecraft account in OneClient",
+                    "Sign out of the affected Minecraft account in RemixClient",
                     "Sign in to the account again",
                     "Once the new sign-in finishes, try launching Minecraft again",
                 ],
@@ -170,7 +170,7 @@ fn guidance_for_step(step: MinecraftAuthStep) -> Option<AuthErrorGuidance> {
                 "Open your system date and time settings",
                 "Turn on automatic time zone and automatic time, if available",
                 "Use the sync option in your settings to synchronise the clock",
-                "Restart OneClient and try signing in again",
+                "Restart RemixClient and try signing in again",
                 "If it persists, check Xbox status (https://support.xbox.com/xbox-live-status)",
             ],
         ),
@@ -179,7 +179,7 @@ fn guidance_for_step(step: MinecraftAuthStep) -> Option<AuthErrorGuidance> {
             &[
                 "Sign in with the official Minecraft Launcher (https://www.minecraft.net/en-us/download)",
                 "Complete any prompts shown by Microsoft, Xbox, or Minecraft",
-                "Try signing in to OneClient again",
+                "Try signing in to RemixClient again",
                 "If the official launcher also fails, follow the error shown there or contact Xbox Support",
             ],
         ),
@@ -189,7 +189,7 @@ fn guidance_for_step(step: MinecraftAuthStep) -> Option<AuthErrorGuidance> {
                 "Sign in with the official Minecraft Launcher and launch Java Edition once (https://www.minecraft.net/en-us/download)",
                 "Wait up to an hour if the purchase or profile setup was recent",
                 "Make sure you are using the Microsoft account that owns Minecraft",
-                "Try signing in to OneClient again",
+                "Try signing in to RemixClient again",
             ],
         ),
         _ => return None,
@@ -308,7 +308,7 @@ fn xerr(code: u64) -> MinecraftAuthError {
 fn network_guidance(failure: NetworkFailure) -> AuthErrorGuidance {
     match failure {
         NetworkFailure::Certificate => AuthErrorGuidance::new(
-            "OneClient reached the Microsoft sign-in service, but could not verify its security certificate. Something on this machine or network is intercepting the encrypted connection - usually antivirus HTTPS scanning, a school or workplace filter, or a VPN.",
+            "RemixClient reached the Microsoft sign-in service, but could not verify its security certificate. Something on this machine or network is intercepting the encrypted connection - usually antivirus HTTPS scanning, a school or workplace filter, or a VPN.",
             &[
                 "Turn off HTTPS/SSL scanning in your antivirus (often called \"encrypted connection scanning\", \"web shield\", or \"SSL interception\")",
                 "Temporarily disable your VPN or proxy and try signing in again",
@@ -317,30 +317,30 @@ fn network_guidance(failure: NetworkFailure) -> AuthErrorGuidance {
             ],
         ),
         NetworkFailure::Handshake => AuthErrorGuidance::new(
-            "OneClient reached the Microsoft sign-in service, but the two could not agree on a secure connection. This normally means a proxy, filter, or antivirus in between is using outdated encryption settings.",
+            "RemixClient reached the Microsoft sign-in service, but the two could not agree on a secure connection. This normally means a proxy, filter, or antivirus in between is using outdated encryption settings.",
             &[
                 "Turn off HTTPS/SSL scanning in your antivirus and try signing in again",
                 "Temporarily disable your VPN or proxy software",
                 "If you are on a school or workplace network, try a home network or phone hotspot to confirm",
-                "Make sure OneClient is up to date",
+                "Make sure RemixClient is up to date",
             ],
         ),
         NetworkFailure::Dns => AuthErrorGuidance::new(
-            "OneClient could not look up the address of the Microsoft sign-in service. This is a DNS problem on this machine or network, not a problem with your account.",
+            "RemixClient could not look up the address of the Microsoft sign-in service. This is a DNS problem on this machine or network, not a problem with your account.",
             &[
                 "Check that your internet connection is working",
                 "Temporarily disable your VPN or proxy and try signing in again",
                 "Check your hosts file for entries blocking Microsoft or Minecraft domains",
                 "Try a different DNS server, such as Cloudflare (1.1.1.1) or Google (8.8.8.8)",
-                "Restart OneClient and try signing in again",
+                "Restart RemixClient and try signing in again",
             ],
         ),
         NetworkFailure::Generic => AuthErrorGuidance::new(
-            "OneClient could not connect to a Microsoft, Xbox, or Minecraft service needed for sign-in. This is usually a local network, DNS, proxy, firewall, hosts file, VPN, or antivirus issue.",
+            "RemixClient could not connect to a Microsoft, Xbox, or Minecraft service needed for sign-in. This is usually a local network, DNS, proxy, firewall, hosts file, VPN, or antivirus issue.",
             &[
-                "Restart OneClient and try signing in again",
+                "Restart RemixClient and try signing in again",
                 "Check that your internet connection is working",
-                "Allow OneClient through your firewall, antivirus, proxy, VPN, and hosts file rules",
+                "Allow RemixClient through your firewall, antivirus, proxy, VPN, and hosts file rules",
                 "Try a different network, or temporarily disable VPN/proxy software if you use one",
                 "If routing or DNS is the issue, a service like Cloudflare WARP can sometimes help",
             ],

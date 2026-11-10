@@ -5,12 +5,14 @@ use freya::router::RouterContext;
 use oneclient_core::WorldInfo;
 
 use crate::components::{
-    CardLayout, ContextMenu, IconType, kebab_button, meta_size, meta_text, on_secondary,
+    Button, CardLayout, ContextMenu, Icon, IconType, OverlayPopup, ScrollArea, kebab_button,
+    meta_size, meta_text, on_secondary,
 };
 use crate::hooks::{
-    delete_world, query_is_loading, spawn_world_task, try_cluster_worlds, try_world_size,
-    use_cluster, use_cluster_worlds, use_datapack_world, use_dispatch, use_saves_folder_watch,
-    use_view_state, use_world_size,
+    backup_world_now, delete_world, query_is_loading, restore_world_backup, spawn_world_task,
+    try_cluster_worlds, try_world_backups, try_world_size, use_cluster, use_cluster_worlds,
+    use_datapack_world, use_dispatch, use_saves_folder_watch, use_view_state, use_world_backups,
+    use_world_size,
 };
 use crate::i18n::{t, tf};
 use crate::layout::cluster_content;
@@ -65,6 +67,13 @@ impl Component for ClusterWorlds {
         let layout = use_view_state("cluster.worlds").layout;
         let mut menu = use_state(|| None::<(f32, f32, WorldInfo)>);
         let mut pending_delete = use_state(|| None::<String>);
+        let mut backups_world = use_state(|| None::<String>);
+        let backups_query = use_world_backups(
+            cluster_id,
+            backups_world.read().clone().unwrap_or_default(),
+        );
+        let backups = try_world_backups(&backups_query).unwrap_or_default();
+        let mut pending_restore = use_state(|| None::<String>);
 
         let Some(cluster) = cluster else {
             return cluster_not_found();
@@ -139,6 +148,12 @@ impl Component for ClusterWorlds {
                     move |()| open_datapacks(cluster_id, open_world.clone(), remembered),
                 );
             }
+            let backups_target = info.folder_name.clone();
+            context = context.action(
+                IconType::Database01,
+                t("oneclient.cluster.worlds.menu.backups"),
+                move |()| backups_world.set(Some(backups_target.clone())),
+            );
             context
                 .action(
                     IconType::Folder,
@@ -189,6 +204,42 @@ impl Component for ClusterWorlds {
             )
         });
 
+        let backups_overlay = backups_world.read().clone().map(|world| {
+            backups_dialog(
+                world,
+                backups,
+                in_use,
+                cluster_id,
+                dispatch.clone(),
+                backups_world,
+                pending_restore,
+            )
+        });
+
+        let restore_overlay = pending_restore.read().clone().map(|file_name| {
+            let world = backups_world.read().clone().unwrap_or_default();
+            let confirmed_world = world.clone();
+            let confirmed_file = file_name.clone();
+            let dispatch = dispatch.clone();
+            confirm_dialog(
+                t("oneclient.cluster.worlds.backups.confirm.title").to_string(),
+                t("oneclient.cluster.worlds.backups.confirm.body").to_string(),
+                move || pending_restore.set(None),
+                move || {
+                    pending_restore.set(None);
+                    spawn_world_task(
+                        dispatch.clone(),
+                        t("oneclient.cluster.worlds.backups.restore_failed"),
+                        restore_world_backup(
+                            cluster_id,
+                            confirmed_world.clone(),
+                            confirmed_file.clone(),
+                        ),
+                    );
+                },
+            )
+        });
+
         cluster_content()
             .child(toolbar_panel(None, controls))
             .child(content_box(
@@ -204,8 +255,160 @@ impl Component for ClusterWorlds {
             ))
             .maybe_child(menu_overlay)
             .maybe_child(confirm_overlay)
+            .maybe_child(backups_overlay)
+            .maybe_child(restore_overlay)
             .into_element()
     }
+}
+
+fn backups_dialog(
+    world: String,
+    backups: Vec<oneclient_core::WorldBackupInfo>,
+    in_use: bool,
+    cluster_id: i64,
+    dispatch: crate::Actions,
+    mut backups_world: State<Option<String>>,
+    mut pending_restore: State<Option<String>>,
+) -> Element {
+    let mut rows: Vec<Element> = Vec::with_capacity(backups.len());
+    if backups.is_empty() {
+        rows.push(
+            label()
+                .text(t("oneclient.cluster.worlds.backups.empty"))
+                .font_size(text_size(12.))
+                .color(colors::fg_secondary())
+                .into_element(),
+        );
+    } else {
+        for backup in backups {
+            let file_name = backup.file_name.clone();
+            let when = backup.created_at.format("%d.%m.%Y %H:%M").to_string();
+            let size = format_size(backup.size_bytes);
+            rows.push(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .cross_align(Alignment::Center)
+                    .spacing(10.)
+                    .padding(Gaps::new_all(10.))
+                    .corner_radius(rounded(8.))
+                    .background(colors::component_bg())
+                    .child(Icon::new(IconType::Database01).size(16.).color(colors::brand()))
+                    .child(
+                        rect()
+                            .vertical()
+                            .width(Size::flex(1.0))
+                            .spacing(2.)
+                            .child(
+                                label()
+                                    .text(when)
+                                    .font_size(text_size(13.))
+                                    .color(colors::fg_primary()),
+                            )
+                            .child(
+                                label()
+                                    .text(size)
+                                    .font_size(text_size(11.))
+                                    .color(colors::fg_secondary()),
+                            ),
+                    )
+                    .child(
+                        Button::new()
+                            .secondary()
+                            .small()
+                            .enabled(!in_use)
+                            .on_press(move |_| pending_restore.set(Some(file_name.clone())))
+                            .text(t("oneclient.cluster.worlds.backups.restore")),
+                    )
+                    .into_element(),
+            );
+        }
+    }
+
+    let world_for_backup = world.clone();
+    let dispatch_backup = dispatch;
+
+    OverlayPopup::new()
+        .on_close(move |()| backups_world.set(None))
+        .child(
+            rect()
+                .width(Size::fill())
+                .height(Size::fill())
+                .center()
+                .child(
+                    rect()
+                        .vertical()
+                        .width(Size::px(520.))
+                        .max_width(Size::window_percent(90.))
+                        .spacing(14.)
+                        .padding(Gaps::new_all(20.))
+                        .corner_radius(rounded(16.))
+                        .background(colors::page_elevated())
+                        .border(border_all_color(1., colors::component_border()))
+                        .child(
+                            rect()
+                                .vertical()
+                                .spacing(2.)
+                                .child(
+                                    label()
+                                        .text(t("oneclient.cluster.worlds.backups.title"))
+                                        .font_size(text_size(18.))
+                                        .font_weight(FontWeight::SEMI_BOLD)
+                                        .color(colors::fg_primary()),
+                                )
+                                .child(
+                                    label()
+                                        .text(world.clone())
+                                        .font_size(text_size(12.))
+                                        .color(colors::fg_secondary()),
+                                ),
+                        )
+                        .child(
+                            ScrollArea::new()
+                                .width(Size::fill())
+                                .max_height(Size::px(320.))
+                                .show_scrollbar(true)
+                                .spacing(6.)
+                                .children(rows),
+                        )
+                        .maybe_child(in_use.then(|| {
+                            label()
+                                .text(t("oneclient.cluster.worlds.backups.in_use"))
+                                .font_size(text_size(12.))
+                                .color(colors::danger())
+                        }))
+                        .child(
+                            rect()
+                                .horizontal()
+                                .width(Size::fill())
+                                .main_align(Alignment::End)
+                                .spacing(8.)
+                                .child(
+                                    Button::new()
+                                        .ghost()
+                                        .on_press(move |_| backups_world.set(None))
+                                        .text(t("oneclient.common.close")),
+                                )
+                                .child(
+                                    Button::new()
+                                        .primary()
+                                        .enabled(!in_use)
+                                        .on_press(move |_| {
+                                            spawn_world_task(
+                                                dispatch_backup.clone(),
+                                                t("oneclient.cluster.worlds.backups.failed"),
+                                                backup_world_now(
+                                                    cluster_id,
+                                                    world_for_backup.clone(),
+                                                ),
+                                            );
+                                        })
+                                        .text(t("oneclient.cluster.worlds.backups.backup_now")),
+                                ),
+                        ),
+                ),
+        )
+        .into_element()
 }
 
 #[derive(PartialEq)]

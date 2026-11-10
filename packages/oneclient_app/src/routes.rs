@@ -19,8 +19,8 @@ use crate::view::{
         },
         settings::{
             SettingsAccounts, SettingsApis, SettingsAppearance, SettingsChangelog,
-            SettingsDeveloper, SettingsJava, SettingsLanguage, SettingsLauncher, SettingsMinecraft,
-            SettingsStorage, SettingsThemeEditor,
+            SettingsDeveloper, SettingsHelp, SettingsJava, SettingsLanguage, SettingsLauncher,
+            SettingsMinecraft, SettingsStorage, SettingsThemeEditor,
         },
     },
     onboarding::{
@@ -128,6 +128,8 @@ pub enum Route {
                 SettingsDeveloper {},
                 #[route("/app/settings/changelog")]
                 SettingsChangelog {},
+                #[route("/app/settings/help")]
+                SettingsHelp {},
                 // #[route("/app/settings/feedback")]
                 // SettingsFeedback {},
             #[end_layout]
@@ -179,6 +181,7 @@ impl Route {
             Route::SettingsLanguage { .. } => t("oneclient.routes.settings_language"),
             Route::SettingsDeveloper { .. } => t("oneclient.routes.settings_developer"),
             Route::SettingsChangelog { .. } => t("oneclient.routes.settings_changelog"),
+            Route::SettingsHelp { .. } => t("oneclient.routes.settings_help"),
             // Route::SettingsFeedback { .. } => "Feedback".to_string(),
             Route::NotFound { .. } => t("oneclient.routes.not_found"),
         };

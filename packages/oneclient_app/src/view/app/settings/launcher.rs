@@ -32,6 +32,7 @@ impl Component for SettingsLauncher {
             let v = settings.discord_enabled;
             move || v
         });
+        let discord_available = !oneclient_common::constants::DISCORD_CLIENT_ID.is_empty();
 
         let crash_reporting = use_state({
             let v = settings.crash_reporting;
@@ -105,12 +106,14 @@ impl Component for SettingsLauncher {
             .child(section_header(t(
                 "oneclient.settings.launcher.section.general",
             )))
-            .child(settings_row(
-                IconType::Link03,
-                t("oneclient.settings.launcher.discord_rpc.title"),
-                t("oneclient.settings.launcher.discord_rpc.description"),
-                resettable(toggle(discord_rpc), discord_rpc, defaults.discord_enabled),
-            ))
+            .maybe_child(discord_available.then(|| {
+                settings_row(
+                    IconType::Link03,
+                    t("oneclient.settings.launcher.discord_rpc.title"),
+                    t("oneclient.settings.launcher.discord_rpc.description"),
+                    resettable(toggle(discord_rpc), discord_rpc, defaults.discord_enabled),
+                )
+            }))
             .child(settings_row(
                 IconType::AlertTriangle,
                 t("oneclient.settings.launcher.crash_reporting.title"),

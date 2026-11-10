@@ -95,7 +95,7 @@ pub(crate) fn build_socket_client() -> Result<reqwest::Client, reqwest::Error> {
         .http1_only()
         .tls_backend_rustls()
         .user_agent(format!(
-            "OneClient {} ({})",
+            "RemixClient {} ({})",
             env!("CARGO_PKG_VERSION"),
             env!("CARGO_PKG_HOMEPAGE")
         ));

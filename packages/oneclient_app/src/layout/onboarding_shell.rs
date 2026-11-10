@@ -11,6 +11,7 @@ use crate::hooks::{
 };
 use crate::i18n::t;
 use crate::theme::{colors, text_size};
+use crate::translations;
 use crate::view::onboarding::{default_selection, onboarding_step_index, onboarding_total};
 
 #[derive(PartialEq)]
@@ -21,7 +22,12 @@ impl Component for OnboardingShell {
         let mut selected = use_state(HashSet::new);
         let user_touched = use_state(|| false);
         let migrated_categories = use_state(|| None::<Vec<String>>);
-        let language = use_state(|| "English".to_string());
+        // Start from the language that is actually active, not a hardcoded
+        // English label, so the summary matches what the user picked even when
+        // they never touched the language step in this session.
+        let language_name =
+            translations::names(use_settings_snapshot().settings.language.as_deref()).0;
+        let language = use_state(|| language_name);
         let reduce_motion = use_state(|| false);
         let import_folder = use_state(|| None::<String>);
         let import_dedicated = use_state(|| false);

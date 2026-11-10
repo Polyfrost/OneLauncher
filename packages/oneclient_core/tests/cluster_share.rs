@@ -287,7 +287,7 @@ async fn a_cached_jar_that_changed_on_disk_stays_out_of_the_modrinth_index() {
         .unwrap()
         .iter()
         .find(|download| download["path"] == path)
-        .expect("OneClient still gets the link");
+        .expect("RemixClient still gets the link");
     assert_eq!(download["sha1"], serde_json::Value::String(claimed));
 }
 

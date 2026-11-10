@@ -68,8 +68,8 @@ fn wizard_rail(wizard: Wizard, picks: &Picks) -> Element {
     let subtitle = if description.is_empty() {
         match picks.choice {
             TypeChoice::OneClient => match &picks.versions.chosen {
-                Some(version) => format!("OneClient · {version}"),
-                None => "OneClient".to_string(),
+                Some(version) => format!("RemixClient · {version}"),
+                None => "RemixClient".to_string(),
             },
             TypeChoice::Scratch => match &picks.versions.chosen {
                 Some(version) => format!("{version} · {}", picks.loader_label()),

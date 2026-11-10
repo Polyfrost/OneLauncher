@@ -1,6 +1,6 @@
 [package]
 name = "oneclient_auth"
-description = "Microsoft/Xbox/Minecraft authentication and the credentials store"
+description = "Microsoft/Xbox/Minecraft and offline authentication plus the credentials store"
 version.workspace = true
 license.workspace = true
 edition.workspace = true

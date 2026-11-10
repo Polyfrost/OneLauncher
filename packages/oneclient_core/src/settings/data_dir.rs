@@ -6,7 +6,7 @@ use oneclient_common::paths;
 use super::launcher::LauncherSettings;
 use super::store::save_settings;
 
-pub const FOLDER_NAME: &str = "OneClient";
+pub const FOLDER_NAME: &str = "RemixClient";
 const LOW_SPACE_BYTES: u64 = 5 * 1000 * 1000 * 1000;
 
 const PROBE_NAME: &str = ".oneclient_write_test";

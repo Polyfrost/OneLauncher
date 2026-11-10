@@ -6,13 +6,23 @@ use crate::domain::{ContentType, ProviderId};
 use crate::error::{PathsError, PathsResult};
 
 const QUALIFIER: &str = "org";
-const ORGANIZATION: &str = "Polyfrost";
+const ORGANIZATION: &str = "Remix";
 
 #[cfg(not(debug_assertions))]
-const APPLICATION: &str = "OneClient";
+const APPLICATION: &str = "RemixClient";
 
 #[cfg(debug_assertions)]
-const APPLICATION: &str = "OneClient-dev";
+const APPLICATION: &str = "RemixClient-dev";
+
+/// Upstream folder this project was forked from. The first launch moves it to
+/// the RemixClient folder so existing accounts, settings and instances survive.
+const PREVIOUS_ORGANIZATION: &str = "Polyfrost";
+
+#[cfg(not(debug_assertions))]
+const PREVIOUS_APPLICATION: &str = "OneClient";
+
+#[cfg(debug_assertions)]
+const PREVIOUS_APPLICATION: &str = "OneClient-dev";
 
 pub const SETTINGS_FILE: &str = "settings.json";
 pub const DATABASE_FILE: &str = "user_data.db";
@@ -43,13 +53,50 @@ pub fn legacy_dir() -> Option<PathBuf> {
 }
 
 fn resolve_default_dir() -> PathsResult<PathBuf> {
+    let standard = standard_dir()?;
+
+    if let Some(previous) = previous_brand_dir() {
+        adopt_previous_brand(&previous, &standard);
+        // A cross-drive move can fail. Keep using the untouched folder rather
+        // than silently starting from an empty one.
+        if !standard.exists() && previous.is_dir() {
+            return Ok(previous);
+        }
+    }
+
     if let Some(legacy) = legacy_dir()
         && legacy.join(SETTINGS_FILE).is_file()
     {
         return Ok(legacy);
     }
 
-    standard_dir()
+    Ok(standard)
+}
+
+fn previous_brand_dir() -> Option<PathBuf> {
+    let roaming = BaseDirs::new()?
+        .data_dir()
+        .join(PREVIOUS_ORGANIZATION)
+        .join(PREVIOUS_APPLICATION);
+    if roaming.is_dir() {
+        return Some(roaming);
+    }
+
+    ProjectDirs::from(QUALIFIER, PREVIOUS_ORGANIZATION, PREVIOUS_APPLICATION)
+        .map(|dirs| dirs.data_local_dir().to_path_buf())
+        .filter(|dir| dir.is_dir())
+}
+
+/// Renaming is atomic on one drive, so an interrupted first launch either has
+/// the old folder or the new one, never half of each.
+fn adopt_previous_brand(previous: &Path, target: &Path) {
+    if target.exists() {
+        return;
+    }
+    if let Some(parent) = target.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::rename(previous, target);
 }
 
 pub fn standard_dir() -> PathsResult<PathBuf> {
@@ -118,6 +165,11 @@ pub fn logs_dir() -> PathsResult<PathBuf> {
 
 pub fn java_dir() -> PathsResult<PathBuf> {
     Ok(data_dir()?.join("metadata").join("java"))
+}
+
+/// Per-account skin and cape files for offline accounts.
+pub fn skins_dir() -> PathsResult<PathBuf> {
+    Ok(data_dir()?.join("skins"))
 }
 
 pub fn clusters_dir() -> PathsResult<PathBuf> {
@@ -314,7 +366,7 @@ mod tests {
         assert_eq!(
             tail,
             vec![OsStr::new(APPLICATION), OsStr::new(ORGANIZATION)],
-            "every Polyfrost product shares one folder and takes a single name inside it"
+            "every RemixClient build takes a single folder inside the organization directory"
         );
     }
 
@@ -336,9 +388,9 @@ mod tests {
         assert_eq!(
             APPLICATION,
             if cfg!(debug_assertions) {
-                "OneClient-dev"
+                "RemixClient-dev"
             } else {
-                "OneClient"
+                "RemixClient"
             }
         );
     }

@@ -1,6 +1,6 @@
 [package]
 name = "oneclient_app"
-description = "OneClient Freya App"
+description = "RemixClient desktop app"
 version = { workspace = true }
 license = { workspace = true }
 edition = { workspace = true }
@@ -96,14 +96,14 @@ windows = { version = "=0.62.2", features = [
 winresource = "=0.1.31"
 
 [package.metadata.packager]
-product-name = "OneClient"
-identifier = "org.polyfrost.OneClient"
+product-name = "RemixClient"
+identifier = "org.remixclient.RemixClient"
 category = "Game"
-publisher = "Polyfrost Inc."
-copyright = "© 2026 Polyfrost Inc."
-homepage = "https://polyfrost.org/projects/oneclient"
-long-description = "Next-generation open source Minecraft launcher"
-formats = ["nsis", "app", "dmg", "deb", "appimage"]
+publisher = "RemixClient Contributors"
+copyright = "© 2026 RemixClient Contributors · GPL-3.0"
+homepage = "https://github.com/RemixClient/RemixClient"
+long-description = "RemixClient — improved, offline-first Minecraft launcher (community fork of OneLauncher)"
+formats = ["wix", "nsis", "app", "dmg", "deb", "appimage"]
 binaries = [{ path = "oneclient_app", main = true }]
 icons = [
   "icons/32x32.png",

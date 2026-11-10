@@ -60,7 +60,7 @@ pub use queries::{
     StorageActionMutation, StorageReportQuery, TermsQuery, UploadLogKeys, UploadLogMutation,
     UseDiscardLeftovers, UseLogAction, UseRefreshAccount, UseRemoveAccount, UseScreenshotAction,
     UseSetDefaultAccount, UseStorageAction, UseUploadLog, VERSIONS_PAGE_SIZE,
-    accounts_have_microsoft, available_bundles, bundle_overrides_map, bundles_with_status_items,
+    available_bundles, bundle_overrides_map, bundles_with_status_items,
     imported_modpacks_list, modpack_sources_map, use_imported_modpacks, use_modpack_sources,
     category_list, changelog_entries, changelog_error, changelog_is_loading, cluster_art_url,
     cluster_content_items, content_type_for_slug, disable_warnings, game_versions,
@@ -97,9 +97,10 @@ pub use queries::{
 };
 pub use queries::{GraphicsBackendQuery, use_graphics_backend};
 pub use queries::{
-    add_world_datapacks, delete_world, delete_world_datapack, invalidate_world_contents,
-    spawn_world_task, try_cluster_worlds, try_world_datapacks, try_world_size, use_cluster_worlds,
-    use_saves_folder_watch, use_world_datapacks, use_world_size,
+    add_world_datapacks, backup_world_now, delete_world, delete_world_datapack,
+    invalidate_world_backups, invalidate_world_contents, restore_world_backup, spawn_world_task,
+    try_cluster_worlds, try_world_backups, try_world_datapacks, try_world_size, use_cluster_worlds,
+    use_saves_folder_watch, use_world_backups, use_world_datapacks, use_world_size,
 };
 pub use queries::{external_launchers, use_external_launchers};
 pub use queries::{import_screening, retry_import_screening, use_import_screening};

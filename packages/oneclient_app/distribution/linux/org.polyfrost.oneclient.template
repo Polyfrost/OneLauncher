@@ -1,5 +1,5 @@
 [Desktop Entry]
-Name=OneClient
+Name=RemixClient
 Comment=Next-generation open source Minecraft launcher
 Exec={{exec}}
 Icon={{icon}}

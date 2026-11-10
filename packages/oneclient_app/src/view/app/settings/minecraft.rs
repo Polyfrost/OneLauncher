@@ -70,6 +70,11 @@ impl Component for SettingsMinecraft {
             move || v
         });
 
+        let backup_worlds = use_state({
+            let v = settings.backup_worlds_before_launch;
+            move || v
+        });
+
         let gpu = use_state({
             let v = profile.gpu().map(str::to_owned);
             move || v
@@ -91,6 +96,7 @@ impl Component for SettingsMinecraft {
                 *update_mode.read(),
             );
             let selected_gpu = gpu.read().clone();
+            let backup = *backup_worlds.read();
             if *first.peek() {
                 first.set(false);
                 return;
@@ -99,6 +105,7 @@ impl Component for SettingsMinecraft {
             let update = with_gpu(update, selected_gpu);
 
             dispatch.update_global_profile(update);
+            dispatch.edit_settings(|next| next.backup_worlds_before_launch = backup);
         });
 
         let page = settings_page()
@@ -152,6 +159,12 @@ impl Component for SettingsMinecraft {
                     memory,
                     String::new(),
                 ),
+            ))
+            .child(settings_row(
+                IconType::Database01,
+                t("oneclient.settings.minecraft.world_backups.title"),
+                t("oneclient.settings.minecraft.world_backups.description"),
+                resettable(toggle(backup_worlds), backup_worlds, true),
             ))
             .child(settings_row(
                 IconType::Terminal,

@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 use freya::prelude::spawn_in_window;
 use freya::query::{QueriesStorage, Query, QueryCapability, UseQuery, use_query};
 use notify::{Event, EventKind};
-use oneclient_core::{ClusterError, DataPackInfo, LEVEL_DAT, LauncherError, WORLD_ICON, WorldInfo};
+use oneclient_core::{
+    ClusterError, DataPackInfo, LEVEL_DAT, LauncherError, WORLD_ICON, WorldBackupInfo, WorldInfo,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ClusterWorldsKeys {
@@ -53,6 +55,31 @@ impl QueryCapability for WorldSizeQuery {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct WorldBackupsKeys {
+    pub cluster_id: i64,
+    pub world: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct WorldBackupsQuery;
+
+impl QueryCapability for WorldBackupsQuery {
+    type Ok = Vec<WorldBackupInfo>;
+    type Err = LauncherError;
+    type Keys = WorldBackupsKeys;
+
+    async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        if keys.world.is_empty() {
+            return Ok(Vec::new());
+        }
+        let state = crate::launcher::state()?;
+        let cluster = state.clusters.get(keys.cluster_id).await?;
+        let world = keys.world.clone();
+        Ok(oneclient_core::list_world_backups(&cluster, &world).await?)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct WorldDataPacksKeys {
     pub cluster_id: i64,
     pub world: String,
@@ -95,6 +122,45 @@ pub fn use_world_size(cluster_id: i64, world: String) -> UseQuery<WorldSizeQuery
 
 pub fn try_world_size(query: &UseQuery<WorldSizeQuery>) -> Option<u64> {
     super::state::settled_or_loading(query)
+}
+
+pub fn use_world_backups(cluster_id: i64, world: String) -> UseQuery<WorldBackupsQuery> {
+    use_query(Query::new(
+        WorldBackupsKeys { cluster_id, world },
+        WorldBackupsQuery,
+    ))
+}
+
+pub fn try_world_backups(query: &UseQuery<WorldBackupsQuery>) -> Option<Vec<WorldBackupInfo>> {
+    super::state::settled_or_loading(query)
+}
+
+pub async fn invalidate_world_backups(cluster_id: i64, world: String) {
+    QueriesStorage::<WorldBackupsQuery>::invalidate_matching(WorldBackupsKeys { cluster_id, world })
+        .await;
+}
+
+pub async fn backup_world_now(cluster_id: i64, world: String) -> Result<(), LauncherError> {
+    let state = crate::launcher::state()?;
+    let cluster = state.clusters.get(cluster_id).await?;
+    let target = world.clone();
+    let _ = oneclient_core::backup_world(&cluster, &target, "manual", 10, false).await?;
+    invalidate_world_backups(cluster_id, world).await;
+    Ok(())
+}
+
+pub async fn restore_world_backup(
+    cluster_id: i64,
+    world: String,
+    file_name: String,
+) -> Result<(), LauncherError> {
+    let state = crate::launcher::state()?;
+    let cluster = state.clusters.get(cluster_id).await?;
+    let target = world.clone();
+    oneclient_core::restore_world_backup(&cluster, &target, &file_name).await?;
+    invalidate_world_backups(cluster_id, world.clone()).await;
+    invalidate_world_contents(cluster_id, world).await;
+    Ok(())
 }
 
 pub fn use_world_datapacks(cluster_id: i64, world: String) -> UseQuery<WorldDataPacksQuery> {

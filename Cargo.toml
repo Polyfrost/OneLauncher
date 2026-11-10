@@ -8,13 +8,14 @@ resolver = "3"
 authors = [
   "Polyfrost",
   "Polyfrost Contributors",
+  "RemixClient Contributors",
 ]
-documentation = "https://github.com/Polyfrost/OneLauncher"
+documentation = "https://github.com/RemixClient/RemixClient"
 edition = "2024"
-homepage = "https://polyfrost.org/projects/oneclient"
+homepage = "https://github.com/RemixClient/RemixClient"
 license = "GPL-3.0-only"
 readme = "README.md"
-repository = "https://github.com/Polyfrost/OneLauncher"
+repository = "https://github.com/RemixClient/RemixClient"
 rust-version = "1.97"
 version = "2.10.0"
 

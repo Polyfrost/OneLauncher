@@ -173,6 +173,8 @@ pub fn minecraft_arguments(
     args: Option<&[Argument]>,
     legacy_args: Option<&str>,
     access_token: &str,
+    user_type: &str,
+    user_properties: &str,
     username: &str,
     uuid: uuid::Uuid,
     version: &str,
@@ -192,6 +194,8 @@ pub fn minecraft_arguments(
             parsed.push(parse_minecraft_argument(
                 &arg.replace(' ', DUMMY_REPLACE_NEWLINE),
                 access_token,
+                user_type,
+                user_properties,
                 username,
                 uuid,
                 version,
@@ -212,6 +216,8 @@ pub fn minecraft_arguments(
                 parse_minecraft_argument(
                     arg,
                     access_token,
+                    user_type,
+                    user_properties,
                     username,
                     uuid,
                     version,
@@ -358,6 +364,8 @@ pub async fn main_class(path: impl AsRef<std::path::Path>) -> McResult<Option<St
 pub fn parse_minecraft_argument(
     argument: &str,
     access_token: &str,
+    user_type: &str,
+    user_properties: &str,
     username: &str,
     uuid: uuid::Uuid,
     version: &str,
@@ -379,8 +387,8 @@ pub fn parse_minecraft_argument(
             "${clientid}",
             oneclient_common::constants::MICROSOFT_CLIENT_ID,
         )
-        .replace("${user_properties}", "{}")
-        .replace("${user_type}", "msa")
+        .replace("${user_properties}", user_properties)
+        .replace("${user_type}", user_type)
         .replace("${version_name}", version)
         .replace("${assets_index_name}", asset_index)
         .replace(
@@ -426,7 +434,7 @@ fn parse_java_argument(
             &polyio::canonicalize(libraries_path)?.display().to_string(),
         )
         .replace("${classpath_separator}", constants::CLASSPATH_SEPARATOR)
-        .replace("${launcher_name}", "OneClient")
+        .replace("${launcher_name}", "RemixClient")
         .replace("${launcher_version}", env!("CARGO_PKG_VERSION"))
         .replace("${version_name}", version)
         .replace("${classpath}", classpaths))
@@ -1107,6 +1115,8 @@ mod tests {
             Some(&loader_game),
             Some("--username ${auth_player_name} --gameDir ${game_directory}"),
             "token",
+            "msa",
+            "{}",
             "player",
             uuid::Uuid::nil(),
             "1.8.9",
@@ -1139,6 +1149,8 @@ mod tests {
                 "--username ${auth_player_name} --gameDir ${game_directory}                  --tweakClass net.minecraftforge.fml.common.launcher.FMLTweaker",
             ),
             "token",
+            "msa",
+            "{}",
             "player",
             uuid::Uuid::nil(),
             "1.11",
@@ -1154,6 +1166,45 @@ mod tests {
         assert_eq!(args.iter().filter(|a| *a == "--gameDir").count(), 1);
         assert_eq!(args.iter().filter(|a| *a == "--username").count(), 1);
         assert_eq!(args.iter().filter(|a| *a == "--tweakClass").count(), 1);
+    }
+
+    #[test]
+    fn an_offline_launch_uses_the_legacy_user_type_and_an_empty_token() {
+        let game: Vec<interfrost::api::minecraft::Argument> = serde_json::from_str(
+            r#"["--userType", "${user_type}", "--accessToken", "${auth_access_token}"]"#,
+        )
+        .unwrap();
+        let dir = std::env::temp_dir();
+
+        let args = minecraft_arguments(
+            Some(&game),
+            None,
+            "",
+            "legacy",
+            "{}",
+            "player",
+            uuid::Uuid::nil(),
+            "1.21.4",
+            "1.21",
+            &dir,
+            &dir,
+            interfrost::api::minecraft::VersionType::Release,
+            Resolution::default(),
+            "arm64",
+        )
+        .unwrap();
+
+        let user_type = args
+            .iter()
+            .position(|arg| arg == "--userType")
+            .expect("--userType is passed");
+        assert_eq!(args[user_type + 1], "legacy");
+
+        let token = args
+            .iter()
+            .position(|arg| arg == "--accessToken")
+            .expect("--accessToken is passed");
+        assert_eq!(args[token + 1], "", "an offline launch carries no token");
     }
 
     #[test]

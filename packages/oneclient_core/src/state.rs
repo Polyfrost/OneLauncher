@@ -72,7 +72,12 @@ impl LauncherState {
             packages: PackageProviderRegistry::new(),
         };
 
-        let settings = store::load_settings(Some(&services.events)).await;
+        let mut settings = store::load_settings(Some(&services.events)).await;
+        // Without a Discord application of our own Rich Presence cannot connect,
+        // so never present it as enabled after a rebrand.
+        if oneclient_common::constants::DISCORD_CLIENT_ID.is_empty() {
+            settings.discord_enabled = false;
+        }
 
         oneclient_common::consent::init(settings.declined_tos);
         let net_config = crate::settings::net_config(&settings);

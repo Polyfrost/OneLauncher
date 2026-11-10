@@ -4,6 +4,7 @@ mod appearance;
 mod apis;
 mod changelog;
 mod developer;
+mod help;
 mod java;
 mod language;
 mod launcher;
@@ -13,12 +14,13 @@ mod theme_editor;
 
 use freya::prelude::*;
 
-pub use accounts::SettingsAccounts;
+pub use accounts::{OfflineSkinDialog, SettingsAccounts};
 pub use apis::SettingsApis;
 pub use appearance::SettingsAppearance;
 pub(crate) use appearance::theme_cards;
 pub use changelog::SettingsChangelog;
 pub use developer::SettingsDeveloper;
+pub use help::SettingsHelp;
 pub use java::SettingsJava;
 pub use language::SettingsLanguage;
 pub use launcher::SettingsLauncher;

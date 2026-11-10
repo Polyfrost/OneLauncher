@@ -142,6 +142,7 @@ impl App for OneClientApp {
 
 fn main() {
     let cli = cli::parse();
+    let portable = oneclient_app::portable::init(cli.portable);
 
     let mut builder = Builder::new_multi_thread();
     builder.enable_all().max_blocking_threads(64);
@@ -153,7 +154,11 @@ fn main() {
     let rt = builder.build().unwrap();
     let _tokio_guard = rt.enter();
 
-    let adopted = rt.block_on(oneclient_core::relocate::adopt_legacy_dir());
+    let adopted = if portable {
+        Ok(None)
+    } else {
+        rt.block_on(oneclient_core::relocate::adopt_legacy_dir())
+    };
 
     // no settings file is the sign of a fresh install, but not proof of one
     let never_set_up = oneclient_common::paths::settings_file()
@@ -183,7 +188,8 @@ fn main() {
         .clone()
         .filter(|dir| oneclient_core::relocate::incomplete(dir));
 
-    if let Some(dir) = settings.data_dir.clone()
+    if !portable
+        && let Some(dir) = settings.data_dir.clone()
         && abandoned_move.is_none()
     {
         oneclient_common::paths::set_data_dir(dir);
@@ -208,14 +214,16 @@ fn main() {
         tracing::warn!("no single-instance endpoint, a second launcher can start: {reason}");
     }
 
-    match oneclient_app::shortcut::launcher_exe()
-        .and_then(|exe| oneclient_app::protocol::register(&exe))
-    {
-        Ok(()) => {}
-        Err(err) => tracing::warn!(
-            "could not register the {}:// handler: {err:#}",
-            oneclient_app::protocol::SCHEME
-        ),
+    if !portable {
+        match oneclient_app::shortcut::launcher_exe()
+            .and_then(|exe| oneclient_app::protocol::register(&exe))
+        {
+            Ok(()) => {}
+            Err(err) => tracing::warn!(
+                "could not register the {}:// handler: {err:#}",
+                oneclient_app::protocol::SCHEME
+            ),
+        }
     }
 
     if let Some(dir) = abandoned_move {

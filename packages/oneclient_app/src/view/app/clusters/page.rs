@@ -80,7 +80,7 @@ impl Filter {
     pub(crate) fn label(self) -> &'static str {
         match self {
             Filter::All => t("oneclient.clusters.page.filter.all"),
-            Filter::OneClient => "OneClient",
+            Filter::OneClient => "RemixClient",
             Filter::Custom => t("oneclient.clusters.page.filter.custom"),
             Filter::Modpacks => t("oneclient.clusters.page.filter.modpacks"),
         }
@@ -435,7 +435,7 @@ impl Component for Clusters {
                                     .spacing(22.)
                                     .append_children((!shown_lines.is_empty()).then(|| {
                                         section(
-                                            "OneClient",
+                                            "RemixClient",
                                             t("oneclient.clusters.page.section.oneclient"),
                                             fixed_grid(line_cards, columns, item_height, gap),
                                         )
@@ -734,7 +734,7 @@ impl Sidebar {
             cluster_id: cluster.id,
             uses_bundles: cluster.uses_bundles(),
             art: DynamicArt::for_cluster(cluster).max_edge(ART_PREVIEW_EDGE),
-            type_label: "OneClient",
+            type_label: "RemixClient",
             title: cluster.name.clone(),
             subtitle: cluster_caption(cluster),
             description: None,

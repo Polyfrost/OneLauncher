@@ -1,6 +1,6 @@
 %global debug_package %{nil}
 %global __strip /bin/true
-%global _appname OneClient
+%global _appname RemixClient
 %global _rpmfile %{_appname}_%{version}_linux_x86_64.rpm
 
 Name:           oneclient-bin
@@ -19,7 +19,7 @@ Requires:       dbus-libs
 Provides:       oneclient = %{version}-%{release}
 
 %description
-OneClient is a next-generation open source Minecraft launcher.
+RemixClient is a next-generation open source Minecraft launcher.
 This package ships the prebuilt binaries from the upstream release.
 
 %prep

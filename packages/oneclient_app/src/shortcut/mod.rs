@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 
 const MAX_STEM: usize = 96;
-const FALLBACK_STEM: &str = "OneClient";
+const FALLBACK_STEM: &str = "RemixClient";
 const MAX_COLLISIONS: usize = 20;
 #[cfg(any(target_os = "macos", windows))]
 const ICON_EDGE: u32 = 256;

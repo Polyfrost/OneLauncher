@@ -44,7 +44,7 @@ impl Component for OnboardingLanguage {
             .width(Size::fill())
             .spacing(16.)
             .child(step_heading(
-                "OneClient",
+                "RemixClient",
                 t("oneclient.onboarding.welcome.subtitle"),
             ))
             .child(

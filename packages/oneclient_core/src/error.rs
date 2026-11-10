@@ -63,6 +63,9 @@ pub enum LauncherError {
     GameError(#[from] crate::game::GameError),
 
     #[error(transparent)]
+    WorldBackupError(#[from] crate::game::world_backup::WorldBackupError),
+
+    #[error(transparent)]
     LogsError(#[from] oneclient_cluster::logs::LogsError),
 
     #[error(transparent)]

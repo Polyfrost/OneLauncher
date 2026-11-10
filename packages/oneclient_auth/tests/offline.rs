@@ -28,13 +28,16 @@ fn offline_uuid_matches_vanilla_algorithm() {
 }
 
 #[tokio::test]
-async fn offline_account_blocked_without_microsoft() {
+async fn offline_account_works_without_any_microsoft_account() {
     isolate_launcher_dir();
 
     let mut store = CredentialsStore::default();
-    let err = store.add_offline_account("Steve".into()).unwrap_err();
+    let offline = store.add_offline_account("Steve".into()).unwrap();
 
-    assert!(err.to_string().contains("Microsoft"));
+    assert_eq!(offline.kind, AccountKind::Offline);
+    assert_eq!(offline.username, "Steve");
+    assert_eq!(offline.id, offline_uuid("Steve"));
+    assert_eq!(store.default_user, Some(offline.id));
 }
 
 #[tokio::test]
@@ -51,7 +54,7 @@ async fn offline_account_allowed_when_microsoft_exists() {
 }
 
 #[tokio::test]
-async fn default_offline_fails_when_last_microsoft_removed() {
+async fn default_offline_keeps_working_when_last_microsoft_removed() {
     isolate_launcher_dir();
 
     let mut store = CredentialsStore::default();
@@ -63,8 +66,12 @@ async fn default_offline_fails_when_last_microsoft_removed() {
     store.default_user = Some(offline.id);
     store.users.remove(&msa_id);
 
-    let err = store.default_account().await.unwrap_err();
-    assert!(err.to_string().contains("Microsoft"));
+    let account = store
+        .default_account()
+        .await
+        .expect("an offline account needs no Microsoft account")
+        .expect("the offline account is the default");
+    assert_eq!(account.id, offline.id);
 }
 
 #[test]

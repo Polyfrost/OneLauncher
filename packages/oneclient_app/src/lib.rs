@@ -23,6 +23,7 @@ pub mod microsoft_java;
 mod motion;
 mod notifications;
 pub mod platform;
+pub mod portable;
 pub mod protocol;
 pub mod recovery;
 mod routes;

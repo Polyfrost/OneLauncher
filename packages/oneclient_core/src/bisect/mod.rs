@@ -783,7 +783,7 @@ pub(crate) async fn record_bisect_exit(
 
     if exit == GameExit::Unknown {
         let db = &state.services.db;
-        let note = "OneClient couldn't tell how the game ended, so this launch doesn't count. Launch again to test this round.";
+        let note = "RemixClient couldn't tell how the game ended, so this launch doesn't count. Launch again to test this round.";
         let recorded = async {
             bisect_dao::clear_suggestions(db, cluster_id).await?;
             bisect_dao::set_pending_exit(db, cluster_id, BisectExit::None).await?;

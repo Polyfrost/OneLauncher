@@ -46,7 +46,7 @@ pub use auth::{
     AddOfflineAccountKeys, BeginMicrosoftLoginMutation, CancelMicrosoftLoginKeys,
     CancelMicrosoftLoginMutation, FinishMicrosoftLoginMutation, RefreshAccountKeys,
     RemoveAccountKeys, SetDefaultAccountKeys, UseRefreshAccount, UseRemoveAccount,
-    UseSetDefaultAccount, accounts_have_microsoft, invalidate_auth_queries,
+    UseSetDefaultAccount, invalidate_auth_queries,
     login_code_already_handled, mutation_error, mutation_is_pending, mutation_is_running,
     mutation_ok, reset_login_code_dedup, try_account, try_accounts, try_default_account,
     use_account, use_accounts, use_add_microsoft_account, use_add_offline_account,
@@ -126,8 +126,9 @@ pub use versions::{
     use_java_majors, use_loader_versions, use_version_loaders, use_versions, versions_metadata,
 };
 pub use worlds::{
-    add_world_datapacks, delete_world, delete_world_datapack, invalidate_cluster_worlds,
-    invalidate_world_contents, spawn_world_task, try_cluster_worlds, try_world_datapacks,
-    try_world_size, use_cluster_worlds, use_saves_folder_watch, use_world_datapacks,
-    use_world_size,
+    add_world_datapacks, backup_world_now, delete_world, delete_world_datapack,
+    invalidate_cluster_worlds, invalidate_world_backups, invalidate_world_contents,
+    restore_world_backup, spawn_world_task, try_cluster_worlds, try_world_backups,
+    try_world_datapacks, try_world_size, use_cluster_worlds, use_saves_folder_watch,
+    use_world_backups, use_world_datapacks, use_world_size,
 };

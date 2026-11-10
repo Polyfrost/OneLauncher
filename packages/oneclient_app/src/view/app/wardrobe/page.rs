@@ -33,9 +33,10 @@ use crate::hooks::{
     use_current_account,
 };
 use crate::i18n::{t, tf};
-use crate::theme::{colors, text_size};
-use crate::ui::centered_note;
+use crate::theme::{colors, rounded, text_size};
+use crate::ui::{border_all_color, centered_note};
 use crate::view::app::cluster::confirm_dialog;
+use crate::view::app::settings::OfflineSkinDialog;
 
 const MAX_WIDTH: f32 = 1480.;
 const RIGHT_COLUMN_WIDTH: f32 = 320.;
@@ -789,7 +790,10 @@ impl Component for Wardrobe {
                 account: account.id,
             }
             .into_element(),
-            Some(_) => centered_note(t("oneclient.wardrobe.account.not_microsoft")),
+            Some(account) => OfflineWardrobe {
+                account_id: account.id,
+            }
+            .into_element(),
             None if query_is_loading(&current) => {
                 centered_spinner(t("oneclient.wardrobe.account.loading"))
             }
@@ -797,6 +801,63 @@ impl Component for Wardrobe {
         };
 
         rect().width(Size::fill()).height(Size::fill()).child(body)
+    }
+}
+
+#[derive(PartialEq)]
+struct OfflineWardrobe {
+    account_id: Uuid,
+}
+
+impl Component for OfflineWardrobe {
+    fn render(&self) -> impl IntoElement {
+        let mut open = use_state(|| false);
+        let account_id = self.account_id;
+
+        rect()
+            .width(Size::fill())
+            .height(Size::fill())
+            .center()
+            .child(
+                rect()
+                    .vertical()
+                    .width(Size::px(420.))
+                    .max_width(Size::window_percent(90.))
+                    .spacing(14.)
+                    .padding(Gaps::new_all(24.))
+                    .corner_radius(rounded(16.))
+                    .background(colors::page_elevated())
+                    .border(border_all_color(1., colors::component_border()))
+                    .child(Icon::new(IconType::Brush01).size(28.).color(colors::brand()))
+                    .child(
+                        label()
+                            .text(t("oneclient.wardrobe.account.offline.title"))
+                            .font_size(text_size(18.))
+                            .font_weight(FontWeight::SEMI_BOLD)
+                            .color(colors::fg_primary()),
+                    )
+                    .child(
+                        label()
+                            .text(t("oneclient.wardrobe.account.offline.body"))
+                            .font_size(text_size(12.))
+                            .color(colors::fg_secondary()),
+                    )
+                    .child(
+                        Button::new()
+                            .primary()
+                            .on_press(move |_| open.set(true))
+                            .child(Icon::new(IconType::Brush01).size(16.))
+                            .text(t("oneclient.wardrobe.account.offline.action")),
+                    )
+                    .maybe_child(open.read().then(|| {
+                        OfflineSkinDialog {
+                            account_id,
+                            on_close: (move |_: ()| open.set(false)).into(),
+                        }
+                        .into_element()
+                    })),
+            )
+            .into_element()
     }
 }
 

@@ -3,7 +3,7 @@
 <plist version="1.0">
     <dict>
         <key>CFBundleIconName</key>
-        <string>OneClient</string>
+        <string>RemixClient</string>
         <!-- allows us to request camera permissions (for things like voice chat) -->
         <key>NSCameraUsageDescription</key>
         <string>A Minecraft mod is requesting access to your camera.</string>

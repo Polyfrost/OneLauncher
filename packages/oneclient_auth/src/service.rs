@@ -239,10 +239,6 @@ impl AuthService {
         self.store.lock().await.corrupt_refresh_token(id).await
     }
 
-    pub async fn has_microsoft_account(&self) -> bool {
-        self.store.lock().await.has_microsoft_account()
-    }
-
     fn refresh_guard(&self, id: Uuid) -> Arc<Mutex<()>> {
         Arc::clone(
             self.refresh_guards
@@ -386,10 +382,6 @@ impl AuthService {
             }
             Err(err) => return Err(err),
         };
-
-        if account.is_offline() && !self.has_microsoft_account().await {
-            return Err(AuthError::OfflineRequiresMicrosoft);
-        }
 
         Ok(account)
     }
@@ -538,6 +530,32 @@ mod tests {
         assert_eq!(account.id, id);
         assert!(account.needs_sign_in());
         assert!(account.access_token.is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_offline_account_launches_without_any_microsoft_account() {
+        // Even an entry whose token looks lapsed must not reach the network
+        let mut account = crate::offline::offline_account("Steve".to_string());
+        account.expires = chrono::DateTime::UNIX_EPOCH;
+        let id = account.id;
+
+        let mut store = CredentialsStore::default();
+        store.users.insert(id, account);
+        store.default_user = Some(id);
+
+        let (events, _rx) = EventBus::channel();
+        let net = RequestClient::new(NetConfig::default()).expect("net client");
+        let service = AuthService::with_store(store, net, events);
+
+        let launched = service
+            .default_account_for_launch()
+            .await
+            .expect("an offline account needs no Microsoft account")
+            .expect("the only account is the default");
+
+        assert_eq!(launched.id, id);
+        assert!(launched.is_offline());
+        assert!(launched.access_token.is_empty());
     }
 
     #[tokio::test]

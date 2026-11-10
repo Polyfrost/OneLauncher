@@ -81,7 +81,7 @@ impl Component for ActiveClusterPanel {
         let (title, subtitle) = if cluster.user_created && cluster.kind != ClusterKind::OneClient {
             (cluster.name.clone(), version)
         } else {
-            let mut parts = vec!["OneClient".to_string()];
+            let mut parts = vec!["RemixClient".to_string()];
             let title = if cluster.user_created {
                 parts.push(version);
                 cluster.name.clone()

@@ -180,9 +180,28 @@ mod imp {
     use tokio::sync::mpsc::UnboundedSender;
 
     #[cfg(not(debug_assertions))]
-    const ENDPOINT: &str = r"\\.\pipe\org.polyfrost.OneClient.ipc";
+    const ENDPOINT_BASE: &str = "org.remixclient.RemixClient";
     #[cfg(debug_assertions)]
-    const ENDPOINT: &str = r"\\.\pipe\org.polyfrost.OneClient-dev.ipc";
+    const ENDPOINT_BASE: &str = "org.remixclient.RemixClient-dev";
+
+    fn endpoint() -> String {
+        if crate::portable::active() {
+            let dir = oneclient_common::paths::config_dir()
+                .map(|dir| dir.display().to_string())
+                .unwrap_or_default();
+            let hash = short_hash(&dir);
+            format!(r"\\.\pipe\{ENDPOINT_BASE}-portable-{hash:016x}.ipc")
+        } else {
+            format!(r"\\.\pipe\{ENDPOINT_BASE}.ipc")
+        }
+    }
+
+    fn short_hash(value: &str) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        value.hash(&mut hasher);
+        hasher.finish()
+    }
 
     const ERROR_ACCESS_DENIED: i32 = 5;
     const ERROR_PIPE_BUSY: i32 = 231;
@@ -195,9 +214,10 @@ mod imp {
     }
 
     pub async fn bind() -> Result<Listener, BindError> {
+        let endpoint = endpoint();
         match ServerOptions::new()
             .first_pipe_instance(true)
-            .create(ENDPOINT)
+            .create(&endpoint)
         {
             Ok(server) => Ok(Listener { server }),
             Err(err) if err.raw_os_error() == Some(ERROR_ACCESS_DENIED) => Err(BindError::Taken),
@@ -206,8 +226,9 @@ mod imp {
     }
 
     pub async fn send(request: &str) -> bool {
+        let endpoint = endpoint();
         for _ in 0..BUSY_RETRIES {
-            match ClientOptions::new().open(ENDPOINT) {
+            match ClientOptions::new().open(&endpoint) {
                 Ok(client) => return exchange(client, request).await,
                 Err(err) if err.raw_os_error() == Some(ERROR_PIPE_BUSY) => {
                     tokio::time::sleep(BUSY_BACKOFF).await;
@@ -220,13 +241,14 @@ mod imp {
 
     pub async fn serve(listener: Listener, commands: UnboundedSender<IpcCommand>) {
         let mut server = listener.server;
+        let endpoint = endpoint();
 
         loop {
             if server.connect().await.is_err() {
                 return;
             }
 
-            let next = match ServerOptions::new().create(ENDPOINT) {
+            let next = match ServerOptions::new().create(&endpoint) {
                 Ok(next) => next,
                 Err(_) => return,
             };
@@ -359,6 +381,7 @@ mod tests {
             request_for(&Cli {
                 launch: Some("pack".into()),
                 share: None,
+                portable: false,
             }),
             IpcCommand::Launch("pack".into()),
         );
@@ -369,6 +392,7 @@ mod tests {
         let command = request_for(&Cli {
             launch: None,
             share: Some("ABCDEFGH".into()),
+            portable: false,
         });
         assert_eq!(command, IpcCommand::ImportShare("ABCDEFGH".into()));
         assert_eq!(IpcCommand::decode(&command.encode()), Some(command));

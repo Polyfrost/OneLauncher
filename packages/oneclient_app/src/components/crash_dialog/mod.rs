@@ -4,11 +4,15 @@ use freya::prelude::*;
 use freya::router::*;
 
 use oneclient_common::constants::DISCORD_URL;
+use oneclient_common::domain::ContentType;
 use oneclient_events::{CrashFix, CrashRemedy, GameCrash};
 
 use crate::Route;
 use crate::components::{Button, Icon, IconType, OVERLAY_BASE_LEVEL, OverlayPopup, ScrollArea};
-use crate::hooks::{use_dispatch, use_link_confirm};
+use crate::hooks::{
+    ClusterAction, cluster_content_items, use_cluster_content, use_cluster_mutation, use_dispatch,
+    use_link_confirm,
+};
 use crate::i18n::{t, tf};
 use crate::theme;
 use crate::theme::{colors, rounded, text_size};
@@ -51,7 +55,8 @@ const CAUSE_LINE_H: f32 = 18.;
 const CAUSE_CHARS_PER_LINE: f32 = 66.;
 const EXCERPT_LINE_H: f32 = 17.;
 const SUSPECT_HINT_H: f32 = 16.;
-const SUSPECT_MAX_LINES: f32 = 2.;
+const SUSPECT_ROW_H: f32 = 30.;
+const SUSPECT_ROW_SPACING: f32 = 4.;
 
 #[derive(PartialEq)]
 pub struct CrashDialog {
@@ -227,12 +232,13 @@ fn wrapped_lines(text: &str) -> f32 {
 }
 
 fn suspects_height(crash: &GameCrash) -> f32 {
-    let names = wrapped_lines(&crash.suspects.join(", ")).min(SUSPECT_MAX_LINES);
+    let rows = crash.suspects.len().max(1) as f32;
 
     CARD_PADDING * 2.
         + KIND_LABEL_H
         + CARD_SPACING
-        + names * CAUSE_LINE_H
+        + rows * SUSPECT_ROW_H
+        + SUSPECT_ROW_SPACING * (rows - 1.).max(0.)
         + CARD_SPACING
         + SUSPECT_HINT_H
 }
@@ -315,32 +321,135 @@ fn cause_card(cause: &str) -> Element {
 }
 
 fn suspects_card(crash: &GameCrash) -> Element {
-    card()
-        .spacing(CARD_SPACING)
-        .child(
-            label()
-                .text(t("oneclient.components.crash_dialog.suspects.title"))
-                .font_size(text_size(10.))
-                .font_weight(FontWeight::SEMI_BOLD)
-                .color(colors::danger()),
-        )
-        .child(
-            label()
-                .text(crash.suspects.join(", "))
-                .font_size(text_size(13.))
-                .width(Size::fill())
-                .max_lines(SUSPECT_MAX_LINES as usize)
-                .color(colors::fg_primary()),
-        )
-        .child(
-            label()
-                .text(t("oneclient.components.crash_dialog.suspects.hint"))
-                .font_size(text_size(11.))
-                .width(Size::fill())
-                .max_lines(1)
-                .color(colors::fg_secondary()),
-        )
-        .into_element()
+    CrashSuspects {
+        cluster_id: crash.cluster_id,
+        suspects: crash.suspects.clone(),
+    }
+    .into_element()
+}
+
+#[derive(PartialEq)]
+struct CrashSuspects {
+    cluster_id: i64,
+    suspects: Vec<String>,
+}
+
+impl Component for CrashSuspects {
+    fn render(&self) -> impl IntoElement {
+        let content = use_cluster_content(self.cluster_id, ContentType::Mod);
+        let installed = cluster_content_items(&content);
+
+        let rows: Vec<Element> = self
+            .suspects
+            .iter()
+            .map(|suspect| {
+                let matched = installed
+                    .iter()
+                    .find(|info| matches_suspect(suspect, info));
+                let name = matched
+                    .and_then(|info| info.display_name.clone())
+                    .unwrap_or_else(|| suspect.clone());
+                CrashSuspectRow {
+                    cluster_id: self.cluster_id,
+                    name,
+                    hash: matched.map(|info| info.hash.clone()),
+                    enabled: matched.is_some_and(|info| info.enabled),
+                }
+                .into_element()
+            })
+            .collect();
+
+        card()
+            .spacing(CARD_SPACING)
+            .child(
+                label()
+                    .text(t("oneclient.components.crash_dialog.suspects.title"))
+                    .font_size(text_size(10.))
+                    .font_weight(FontWeight::SEMI_BOLD)
+                    .color(colors::danger()),
+            )
+            .children(rows)
+            .child(
+                label()
+                    .text(t("oneclient.components.crash_dialog.suspects.hint"))
+                    .font_size(text_size(11.))
+                    .width(Size::fill())
+                    .max_lines(1)
+                    .color(colors::fg_secondary()),
+            )
+            .into_element()
+    }
+}
+
+fn matches_suspect(suspect: &str, info: &oneclient_core::LinkedArtifactInfo) -> bool {
+    let needle = suspect.to_lowercase();
+    let name = info.display_name.as_deref().unwrap_or_default().to_lowercase();
+    let id = info.project_id.as_deref().unwrap_or_default().to_lowercase();
+    (!name.is_empty() && needle.contains(&name)) || (!id.is_empty() && needle.contains(&id))
+}
+
+#[derive(PartialEq)]
+struct CrashSuspectRow {
+    cluster_id: i64,
+    name: String,
+    hash: Option<String>,
+    enabled: bool,
+}
+
+impl Component for CrashSuspectRow {
+    fn render(&self) -> impl IntoElement {
+        let cluster = use_cluster_mutation();
+        let cluster_id = self.cluster_id;
+        let disable = self
+            .hash
+            .clone()
+            .filter(|_| self.enabled)
+            .map(|hash| {
+                Button::new()
+                    .secondary()
+                    .small()
+                    .on_press(move |_| {
+                        cluster.mutate(ClusterAction::SetArtifactEnabled {
+                            cluster_id,
+                            hash: hash.clone(),
+                            enabled: false,
+                        });
+                    })
+                    .text(t("oneclient.components.crash_dialog.suspects.disable"))
+                    .into_element()
+            });
+
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .height(Size::px(SUSPECT_ROW_H))
+            .cross_align(Alignment::Center)
+            .spacing(8.)
+            .child(
+                Icon::new(IconType::AlertTriangle)
+                    .size(14.)
+                    .color(colors::danger()),
+            )
+            .child(
+                label()
+                    .text(self.name.clone())
+                    .font_size(text_size(13.))
+                    .width(Size::flex(1.0))
+                    .max_lines(1)
+                    .text_overflow(TextOverflow::Ellipsis)
+                    .color(colors::fg_primary()),
+            )
+            .maybe_child(disable)
+            .maybe_child(
+                (self.hash.is_some() && !self.enabled).then(|| {
+                    label()
+                        .text(t("oneclient.components.crash_dialog.suspects.disabled"))
+                        .font_size(text_size(11.))
+                        .color(colors::fg_secondary())
+                }),
+            )
+            .into_element()
+    }
 }
 
 fn fixes_section(crash: &GameCrash, confirm: State<Option<String>>) -> Element {
@@ -688,18 +797,18 @@ mod tests {
     }
 
     #[test]
-    fn a_long_suspect_list_stays_within_its_measured_lines() {
+    fn a_long_suspect_list_is_measured_row_by_row() {
         let mut many = crash();
         many.suspects = vec!["Some Very Long Mod Name (someverylongmodname)".to_string(); 6];
 
-        let names = many.suspects.join(", ");
-        assert!(wrapped_lines(&names) > SUSPECT_MAX_LINES);
+        let rows = 6.;
         assert_eq!(
             suspects_height(&many),
             CARD_PADDING * 2.
                 + KIND_LABEL_H
                 + CARD_SPACING
-                + SUSPECT_MAX_LINES * CAUSE_LINE_H
+                + rows * SUSPECT_ROW_H
+                + SUSPECT_ROW_SPACING * (rows - 1.)
                 + CARD_SPACING
                 + SUSPECT_HINT_H
         );

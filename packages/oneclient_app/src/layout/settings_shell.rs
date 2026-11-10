@@ -292,6 +292,25 @@ fn search_index() -> Vec<SearchItem> {
             keywords: &["changelog", "release notes", "updates"],
             route: Route::SettingsChangelog {},
         },
+        SearchItem {
+            id: "help.features",
+            icon: IconType::HelpCircle,
+            title: t("oneclient.layout.settings.tab.help"),
+            description: t("oneclient.settings.help.offline.body"),
+            keywords: &[
+                "help", "features", "usb", "portable", "backup", "skin", "mods", "java",
+                "crash", "guide",
+            ],
+            route: Route::SettingsHelp {},
+        },
+        SearchItem {
+            id: "help.report",
+            icon: IconType::Github,
+            title: t("oneclient.settings.help.report.title"),
+            description: t("oneclient.settings.help.report.body"),
+            keywords: &["help", "report", "bug", "issue", "github", "logs"],
+            route: Route::SettingsHelp {},
+        },
     ]
 }
 
@@ -307,6 +326,7 @@ pub enum SettingsTab {
     Language,
     DeveloperOptions,
     Changelog,
+    Help,
 }
 
 impl SettingsTab {
@@ -322,6 +342,7 @@ impl SettingsTab {
             Self::Language => t("oneclient.layout.settings.tab.language"),
             Self::DeveloperOptions => t("oneclient.layout.settings.tab.developer"),
             Self::Changelog => t("oneclient.layout.settings.tab.changelog"),
+            Self::Help => t("oneclient.layout.settings.tab.help"),
         }
     }
 
@@ -337,6 +358,7 @@ impl SettingsTab {
             Self::Language => IconType::Globe01,
             Self::DeveloperOptions => IconType::CodeSnippet02,
             Self::Changelog => IconType::RefreshCcw02,
+            Self::Help => IconType::HelpCircle,
         }
     }
 
@@ -352,6 +374,7 @@ impl SettingsTab {
             Self::Language => Some(Route::SettingsLanguage {}),
             Self::DeveloperOptions => Some(Route::SettingsDeveloper {}),
             Self::Changelog => Some(Route::SettingsChangelog {}),
+            Self::Help => Some(Route::SettingsHelp {}),
         }
     }
 }
@@ -380,7 +403,11 @@ fn groups() -> [SettingsGroup; 3] {
         },
         SettingsGroup {
             label: t("oneclient.layout.settings.group.about"),
-            tabs: &[SettingsTab::DeveloperOptions, SettingsTab::Changelog],
+            tabs: &[
+                SettingsTab::DeveloperOptions,
+                SettingsTab::Changelog,
+                SettingsTab::Help,
+            ],
         },
     ]
 }
@@ -399,6 +426,7 @@ fn route_tab(route: &Route) -> SettingsTab {
         Route::SettingsLanguage {} => SettingsTab::Language,
         Route::SettingsDeveloper {} => SettingsTab::DeveloperOptions,
         Route::SettingsChangelog {} => SettingsTab::Changelog,
+        Route::SettingsHelp {} => SettingsTab::Help,
         _ => SettingsTab::Appearance,
     }
 }
@@ -753,7 +781,7 @@ impl Component for SidebarInfo {
 
         let items: [Cow<'static, str>; 4] = [
             Cow::Borrowed(concat!(
-                "OneClient v",
+                "RemixClient v",
                 env!("CARGO_PKG_VERSION"),
                 cfg_select! {
                     debug_assertions => " (debug)",

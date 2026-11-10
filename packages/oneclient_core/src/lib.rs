@@ -41,9 +41,12 @@ pub use clusters::{
 pub use disable_warnings::{DisableWarnings, fetch_disable_warnings};
 pub use error::{LauncherError, LauncherResult, SentryExclusion};
 pub use game::{
-    GameError, GameVersionInfo, GameVersionKind, LaunchedGame, get_loader_versions,
-    get_loaders_for_version, get_version_ids, get_versions_for_loader, launch_cluster,
-    launch_cluster_with,
+    GameError, GameVersionInfo, GameVersionKind, LaunchedGame, OfflineSkin, SkinModel,
+    WorldBackupError, WorldBackupInfo, WorldBackupReport, WorldBackupResult, backup_before_launch,
+    backup_world, backup_worlds, get_loader_versions, get_loaders_for_version, get_version_ids,
+    get_versions_for_loader, launch_cluster, launch_cluster_with, list_world_backups,
+    load_offline_skin, remove_offline_cape, restore_world_backup, save_offline_skin,
+    user_properties,
 };
 pub use images::ImageCacheStore;
 pub use migration::launchers::{

@@ -13,6 +13,11 @@ use crate::i18n;
 
 const DISTRIBUTION_URL: &str = "https://translations.r2.polyfrost.org/oneclient/v1";
 const FILE_NAME: &str = "oneclient.json";
+
+/// Translations shipped inside the binary. They are always offered, so a
+/// language the community translated here works with no network and does not
+/// depend on the upstream CDN.
+const BUILTIN: &[(&str, &str)] = &[("ru_RU", include_str!("../lang/ru_RU.json"))];
 const MANIFEST_TTL: Duration = Duration::from_secs(6 * 60 * 60);
 const RETRY_DELAY: Duration = Duration::from_secs(10 * 60);
 
@@ -108,10 +113,10 @@ pub fn coverage(code: Option<&str>) -> Option<u32> {
 }
 
 pub fn init(language: Option<String>) {
-    if let Some(manifest) = cached_manifest() {
-        *AVAILABLE.write().unwrap_or_else(|e| e.into_inner()) =
-            manifest.0.files.into_keys().collect();
-    }
+    let cached = cached_manifest()
+        .map(|manifest| manifest.0.files.into_keys().collect())
+        .unwrap_or_default();
+    *AVAILABLE.write().unwrap_or_else(|e| e.into_inner()) = with_builtins(cached);
     select(language);
 }
 
@@ -167,7 +172,7 @@ async fn refresh(client: &RequestClient) -> anyhow::Result<()> {
         }
     };
 
-    let languages: Vec<String> = manifest.files.keys().cloned().collect();
+    let languages: Vec<String> = with_builtins(manifest.files.keys().cloned().collect());
     let listed_changed = {
         let mut available = AVAILABLE.write().unwrap_or_else(|e| e.into_inner());
         let differs = *available != languages;
@@ -222,12 +227,34 @@ fn notify_changed() {
 }
 
 fn install_cached(code: Option<&str>) {
-    let table = code
-        .and_then(newest_cached)
-        .and_then(|path| std::fs::read(path).ok())
-        .and_then(|bytes| parse_translations(&bytes));
+    let table = code.and_then(|code| {
+        newest_cached(code)
+            .and_then(|path| std::fs::read(path).ok())
+            .and_then(|bytes| parse_translations(&bytes))
+            .or_else(|| builtin(code))
+    });
     i18n::install(table);
     notify_changed();
+}
+
+fn builtin(code: &str) -> Option<HashMap<String, String>> {
+    BUILTIN
+        .iter()
+        .find(|(known, _)| known.eq_ignore_ascii_case(code))
+        .and_then(|(_, bytes)| parse_translations(bytes.as_bytes()))
+}
+
+/// The CDN only lists the languages the community has translated there. The
+/// bundled ones are merged in so they stay selectable even when the manifest
+/// is missing, stale or omits them.
+fn with_builtins(mut codes: Vec<String>) -> Vec<String> {
+    for (code, _) in BUILTIN {
+        if !codes.iter().any(|known| known.eq_ignore_ascii_case(code)) {
+            codes.push((*code).to_string());
+        }
+    }
+    codes.sort();
+    codes
 }
 
 fn valid_code(code: &str) -> bool {
@@ -368,5 +395,37 @@ mod tests {
         );
         assert!(!table.contains_key("oneclient.components.package_row.copies"));
         assert!(!table.contains_key("oneclient.not.a.key"));
+    }
+
+    #[test]
+    fn bundled_languages_are_offered_even_without_a_manifest() {
+        let languages = with_builtins(Vec::new());
+        assert!(languages.contains(&"ru_RU".to_string()));
+
+        let merged = with_builtins(vec!["pl_PL".to_string(), "ru_RU".to_string()]);
+        assert_eq!(merged, vec!["pl_PL".to_string(), "ru_RU".to_string()]);
+    }
+
+    #[test]
+    fn bundled_russian_has_only_known_keys_with_matching_placeholders() {
+        let source = i18n::source();
+        let parsed: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(BUILTIN[0].1).expect("bundled russian is valid JSON");
+
+        for (key, value) in &parsed {
+            let english = source
+                .get(key)
+                .unwrap_or_else(|| panic!("bundled key not in English: {key}"));
+            let value = value.as_str().expect("a translation is a string");
+            assert_eq!(
+                i18n::arity(english),
+                i18n::arity(value),
+                "placeholder mismatch for {key}"
+            );
+        }
+
+        let table = builtin("ru_RU").expect("bundled russian parses");
+        assert_eq!(table.len(), parsed.len(), "no bundled key was dropped");
+        assert_eq!(table.get("oneclient.common.yes").unwrap(), "Да");
     }
 }

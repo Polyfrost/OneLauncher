@@ -4,7 +4,7 @@ use freya::query::{
     Mutation, MutationCapability, MutationStateData, QueriesStorage, Query, QueryCapability,
     UseMutation, UseQuery, use_mutation, use_query,
 };
-use oneclient_auth::{AccountKind, MicrosoftLoginSession, MinecraftAccount};
+use oneclient_auth::{MicrosoftLoginSession, MinecraftAccount};
 use oneclient_core::LauncherError;
 use uuid::Uuid;
 
@@ -435,8 +435,4 @@ where
         } => Some(err.clone()),
         _ => None,
     }
-}
-
-pub fn accounts_have_microsoft(accounts: &[MinecraftAccount]) -> bool {
-    accounts.iter().any(|a| a.kind == AccountKind::Microsoft)
 }

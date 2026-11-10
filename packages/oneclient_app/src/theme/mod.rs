@@ -318,25 +318,15 @@ pub fn pixel_icon_size(size: f32, cells: f32) -> f32 {
     (size * scale / cells).round().max(1.) * cells / scale
 }
 
-pub fn wordmark(width: f32, height: f32, color: Color) -> Element {
-    if colors::active_theme().pixel_icons {
-        return label()
-            .text("ONECLIENT")
-            .font_family(font())
-            .font_weight(FontWeight::BOLD)
-            .font_size(text_size(height * 0.83))
-            .color(color)
-            .into_element();
-    }
-    SvgViewer::new((
-        "logo.svg",
-        AppAssets::get_bytes("logo.svg").unwrap_or_default(),
-    ))
-    .show_loader(false)
-    .width(Size::px(width))
-    .height(Size::px(height))
-    .color(color)
-    .into_element()
+pub fn wordmark(_width: f32, height: f32, color: Color) -> Element {
+    label()
+        .text("REMIXCLIENT")
+        .font_family(font())
+        .font_weight(FontWeight::BOLD)
+        .font_size(text_size(height * 0.62))
+        .max_lines(1)
+        .color(color)
+        .into_element()
 }
 
 pub fn rounded_px(radius: f32) -> f32 {

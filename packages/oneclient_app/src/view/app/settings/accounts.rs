@@ -1,20 +1,22 @@
+use std::path::PathBuf;
+
 use chrono::{DateTime, Utc};
 use freya::animation::{AnimNum, Function, OnFinish, use_animation};
 use freya::prelude::*;
 use freya::query::{MutationCapability, MutationStateData, UseMutation};
 use oneclient_auth::{AccountKind, MinecraftAccount};
+use oneclient_core::{SkinModel, remove_offline_cape, save_offline_skin};
 use uuid::Uuid;
 
 use super::{section_header, settings_page};
 use crate::components::{
-    Avatar, Button, Icon, IconType, MicrosoftLogin, OverlayPopup, PlayerModel, TextInput,
+    Avatar, Button, Dropdown, Icon, IconType, MicrosoftLogin, OverlayPopup, PlayerModel, TextInput,
     use_microsoft_login,
 };
 use crate::hooks::{
     AddOfflineAccountKeys, RefreshAccountKeys, RemoveAccountKeys, SetDefaultAccountKeys,
-    accounts_have_microsoft, try_accounts, try_default_account, use_accounts,
-    use_add_offline_account, use_current_account, use_refresh_account, use_remove_account,
-    use_set_default_account,
+    try_accounts, try_default_account, use_accounts, use_add_offline_account, use_current_account,
+    use_dispatch, use_refresh_account, use_remove_account, use_set_default_account,
 };
 use crate::i18n::t;
 use crate::theme::{colors, rounded, text_size};
@@ -64,7 +66,6 @@ impl Component for SettingsAccounts {
         let accounts = try_accounts(&accounts_query).unwrap_or_default();
         let default_account = try_default_account(&default_query);
         let default_id = default_account.as_ref().map(|a| a.id);
-        let has_microsoft = accounts_have_microsoft(&accounts);
 
         let offline_name = username.read().trim().to_string();
         let offline_uuid = (!offline_name.is_empty())
@@ -106,7 +107,6 @@ impl Component for SettingsAccounts {
         settings_page()
             .child(hero(
                 default_account,
-                has_microsoft,
                 msa.pending,
                 msa.error.clone(),
                 move |_| show_offline.set(true),
@@ -135,7 +135,6 @@ impl Component for SettingsAccounts {
 
 fn hero(
     account: Option<MinecraftAccount>,
-    has_microsoft: bool,
     microsoft_pending: bool,
     error: Option<String>,
     on_open_offline: impl FnMut(Event<PressEventData>) + 'static,
@@ -222,7 +221,6 @@ fn hero(
                                 .child(
                                     Button::new()
                                         .secondary()
-                                        .enabled(has_microsoft)
                                         .on_press(on_open_offline)
                                         .child(Icon::new(IconType::Plus).size(16.))
                                         .text(t("oneclient.settings.accounts.add_offline")),
@@ -230,13 +228,6 @@ fn hero(
                         )
                         .map(error, |el, msg| {
                             el.child(hint_line(IconType::AlertTriangle, msg, colors::danger()))
-                        })
-                        .maybe(!has_microsoft, |el| {
-                            el.child(hint_line(
-                                IconType::InfoCircle,
-                                t("oneclient.settings.accounts.microsoft_required").to_string(),
-                                colors::fg_secondary(),
-                            ))
                         }),
                 ),
         )
@@ -450,6 +441,7 @@ impl Component for AccountRow {
         let refresh = self.refresh;
 
         let is_microsoft = self.kind == AccountKind::Microsoft;
+        let mut skin_open = use_state(|| false);
         let signed_out = is_microsoft && self.signed_out;
         // A signed-out entry has no token left to call expired
         let expired = is_microsoft && !signed_out && self.expires <= Utc::now();
@@ -600,6 +592,23 @@ impl Component for AccountRow {
                     )
                     .into_element()
             }))
+            .maybe_child((!is_microsoft).then(|| {
+                let mut skin_open = skin_open;
+                Button::new()
+                    .ghost()
+                    .icon()
+                    .tooltip(t("oneclient.settings.accounts.skin.title"))
+                    .on_press(move |e: Event<PressEventData>| {
+                        e.stop_propagation();
+                        skin_open.set(true);
+                    })
+                    .child(
+                        Icon::new(IconType::Brush01)
+                            .size(18.)
+                            .color(colors::fg_secondary()),
+                    )
+                    .into_element()
+            }))
             .child(
                 Button::new()
                     .ghost()
@@ -627,8 +636,296 @@ impl Component for AccountRow {
                             .color(colors::fg_secondary()),
                     ),
             )
+            .maybe_child(skin_open.read().then(|| {
+                OfflineSkinDialog {
+                    account_id: id,
+                    on_close: (move |_: ()| skin_open.set(false)).into(),
+                }
+                .into_element()
+            }))
             .into_element()
     }
+}
+
+pub struct OfflineSkinDialog {
+    pub account_id: Uuid,
+    pub on_close: EventHandler<()>,
+}
+
+impl PartialEq for OfflineSkinDialog {
+    fn eq(&self, other: &Self) -> bool {
+        self.account_id == other.account_id
+    }
+}
+
+impl Component for OfflineSkinDialog {
+    fn render(&self) -> impl IntoElement {
+        let skin_path = use_state(|| None::<PathBuf>);
+        let cape_path = use_state(|| None::<PathBuf>);
+        let mut model = use_state(|| SkinModel::Classic);
+        let busy = use_state(|| false);
+        let error = use_state(|| None::<String>);
+        let dispatch = use_dispatch();
+        let account_id = self.account_id;
+        let close = self.on_close.clone();
+        let close_for_overlay = close.clone();
+
+        let skin_name = skin_path
+            .read()
+            .as_ref()
+            .and_then(|path| path.file_name())
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| t("oneclient.settings.accounts.skin.not_chosen").to_string());
+        let cape_name = cape_path
+            .read()
+            .as_ref()
+            .and_then(|path| path.file_name())
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| t("oneclient.settings.accounts.skin.not_chosen").to_string());
+
+        let choose_skin = {
+            let mut skin_path = skin_path;
+            move |_: Event<PressEventData>| {
+                spawn(async move {
+                    if let Some(file) = rfd::AsyncFileDialog::new()
+                        .add_filter("PNG", &["png"])
+                        .set_title(t("oneclient.settings.accounts.skin.skin_file"))
+                        .pick_file()
+                        .await
+                    {
+                        skin_path.set(Some(file.path().to_path_buf()));
+                    }
+                });
+            }
+        };
+        let choose_cape = {
+            let mut cape_path = cape_path;
+            move |_: Event<PressEventData>| {
+                spawn(async move {
+                    if let Some(file) = rfd::AsyncFileDialog::new()
+                        .add_filter("PNG", &["png"])
+                        .set_title(t("oneclient.settings.accounts.skin.cape_file"))
+                        .pick_file()
+                        .await
+                    {
+                        cape_path.set(Some(file.path().to_path_buf()));
+                    }
+                });
+            }
+        };
+        let remove_cape = {
+            let dispatch = dispatch.clone();
+            let mut cape_path = cape_path;
+            let mut error = error;
+            move |_: Event<PressEventData>| {
+                let dispatch = dispatch.clone();
+                spawn(async move {
+                    match remove_offline_cape(account_id).await {
+                        Ok(()) => {
+                            cape_path.set(None);
+                            dispatch
+                                .notify(t("oneclient.settings.accounts.skin.saved"))
+                                .send();
+                        }
+                        Err(err) => error.set(Some(err)),
+                    }
+                });
+            }
+        };
+        let apply = {
+            let dispatch = dispatch.clone();
+            let skin_path = skin_path;
+            let cape_path = cape_path;
+            let model = model;
+            let mut busy = busy;
+            let mut error = error;
+            let close_apply = close.clone();
+            move |_: Event<PressEventData>| {
+                if *busy.peek() {
+                    return;
+                }
+                let skin = skin_path.read().clone();
+                let cape = cape_path.read().clone();
+                let selected = *model.read();
+                busy.set(true);
+                error.set(None);
+                let dispatch = dispatch.clone();
+                let close_apply = close_apply.clone();
+                spawn(async move {
+                    match save_offline_skin(account_id, skin, cape, selected).await {
+                        Ok(_) => {
+                            busy.set(false);
+                            dispatch
+                                .notify(t("oneclient.settings.accounts.skin.saved"))
+                                .send();
+                            close_apply.call(());
+                        }
+                        Err(err) => {
+                            busy.set(false);
+                            error.set(Some(err));
+                        }
+                    }
+                });
+            }
+        };
+
+        OverlayPopup::new()
+            .on_close(move |()| close_for_overlay.call(()))
+            .child(
+                rect()
+                    .width(Size::window_percent(100.))
+                    .height(Size::window_percent(100.))
+                    .center()
+                    .child(
+                        rect()
+                            .vertical()
+                            .width(Size::px(460.))
+                            .max_width(Size::window_percent(90.))
+                            .spacing(14.)
+                            .padding(Gaps::new_all(20.))
+                            .corner_radius(rounded(16.))
+                            .background(colors::page_elevated())
+                            .border(border_all_color(1., colors::component_border()))
+                            .child(
+                                label()
+                                    .text(t("oneclient.settings.accounts.skin.title"))
+                                    .font_size(text_size(18.))
+                                    .font_weight(FontWeight::SEMI_BOLD)
+                                    .color(colors::fg_primary()),
+                            )
+                            .child(
+                                label()
+                                    .text(t("oneclient.settings.accounts.skin.body"))
+                                    .font_size(text_size(12.))
+                                    .color(colors::fg_secondary()),
+                            )
+                            .child(file_row(
+                                t("oneclient.settings.accounts.skin.skin_file"),
+                                skin_name,
+                                choose_skin,
+                            ))
+                            .child(file_row(
+                                t("oneclient.settings.accounts.skin.cape_file"),
+                                cape_name,
+                                choose_cape,
+                            ))
+                            .child(
+                                rect()
+                                    .horizontal()
+                                    .width(Size::fill())
+                                    .cross_align(Alignment::Center)
+                                    .spacing(10.)
+                                    .child(
+                                        label()
+                                            .text(t("oneclient.settings.accounts.skin.model"))
+                                            .font_size(text_size(12.))
+                                            .color(colors::fg_secondary()),
+                                    )
+                                    .child(
+                                        Dropdown::new(
+                                            match *model.read() {
+                                                SkinModel::Classic => {
+                                                    t("oneclient.settings.accounts.skin.classic")
+                                                        .to_string()
+                                                }
+                                                SkinModel::Slim => t(
+                                                    "oneclient.settings.accounts.skin.slim",
+                                                )
+                                                .to_string(),
+                                            },
+                                            vec![
+                                                t("oneclient.settings.accounts.skin.classic")
+                                                    .to_string(),
+                                                t("oneclient.settings.accounts.skin.slim")
+                                                    .to_string(),
+                                            ],
+                                        )
+                                        .width(Size::px(130.))
+                                        .height(Size::px(28.))
+                                        .on_select(move |index| {
+                                            model.set(if index == 0 {
+                                                SkinModel::Classic
+                                            } else {
+                                                SkinModel::Slim
+                                            });
+                                        }),
+                                    ),
+                            )
+                            .maybe_child(error.read().clone().map(|message| {
+                                hint_line(IconType::AlertTriangle, message, colors::danger())
+                            }))
+                            .child(
+                                rect()
+                                    .horizontal()
+                                    .width(Size::fill())
+                                    .main_align(Alignment::End)
+                                    .spacing(8.)
+                                    .child(
+                                        Button::new()
+                                            .ghost()
+                                            .on_press(remove_cape)
+                                            .text(t("oneclient.settings.accounts.skin.remove_cape")),
+                                    )
+                                    .child(
+                                        Button::new()
+                                            .ghost()
+                                            .on_press(move |_| close.call(()))
+                                            .text(t("oneclient.common.cancel")),
+                                    )
+                                    .child(
+                                        Button::new()
+                                            .primary()
+                                            .enabled(!*busy.read())
+                                            .on_press(apply)
+                                            .text(t("oneclient.common.save")),
+                                    ),
+                            ),
+                    ),
+            )
+            .into_element()
+    }
+}
+
+fn file_row(
+    label_text: &'static str,
+    file_name: String,
+    on_choose: impl FnMut(Event<PressEventData>) + 'static,
+) -> impl IntoElement {
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(6.)
+        .child(
+            label()
+                .text(label_text)
+                .font_size(text_size(11.))
+                .font_weight(FontWeight::MEDIUM)
+                .color(colors::fg_secondary()),
+        )
+        .child(
+            rect()
+                .horizontal()
+                .width(Size::fill())
+                .cross_align(Alignment::Center)
+                .spacing(8.)
+                .child(
+                    label()
+                        .text(file_name)
+                        .font_size(text_size(12.))
+                        .width(Size::flex(1.0))
+                        .max_lines(1)
+                        .text_overflow(TextOverflow::Ellipsis)
+                        .color(colors::fg_primary()),
+                )
+                .child(
+                    Button::new()
+                        .secondary()
+                        .small()
+                        .on_press(on_choose)
+                        .text(t("oneclient.settings.accounts.skin.choose")),
+                ),
+        )
+        .into_element()
 }
 
 fn kind_label(kind: AccountKind) -> &'static str {

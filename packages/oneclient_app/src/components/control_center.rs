@@ -116,7 +116,7 @@ impl Component for AccountHeader {
             None => t("oneclient.components.control_center.not_signed_in").to_string(),
         };
         let subtitle = match (account.as_ref(), unusable) {
-            (_, true) => t("oneclient.components.control_center.microsoft_required"),
+            (_, true) => t("oneclient.components.control_center.account_unavailable"),
             (Some(account), false) if account.is_microsoft() => {
                 t("oneclient.components.control_center.microsoft_account")
             }
@@ -266,6 +266,7 @@ impl Component for QuickSettings {
         let dispatch = use_dispatch();
 
         let discord_on = settings.discord_enabled;
+        let discord_available = !oneclient_common::constants::DISCORD_CLIENT_ID.is_empty();
         let toggle_discord = {
             let dispatch = dispatch.clone();
             move |_| {
@@ -299,14 +300,14 @@ impl Component for QuickSettings {
                     }
                 }),
             )
-            .child(
+            .maybe_child(discord_available.then(|| {
                 QuickTile::new(
                     IconType::Discord,
                     t("oneclient.components.control_center.discord_rpc"),
                     discord_on,
                 )
-                .on_press(toggle_discord),
-            )
+                .on_press(toggle_discord)
+            }))
     }
 }
 

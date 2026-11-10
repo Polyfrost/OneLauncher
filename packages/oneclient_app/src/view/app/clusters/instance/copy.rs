@@ -174,7 +174,7 @@ pub fn footer_note(picks: &Picks) -> String {
 pub fn step_value(wizard: Wizard, picks: &Picks, step: Step) -> String {
     match step {
         Step::Type => match picks.choice {
-            TypeChoice::OneClient => "OneClient".to_string(),
+            TypeChoice::OneClient => "RemixClient".to_string(),
             TypeChoice::Scratch => t("oneclient.clusters.instance.copy.value.scratch").to_string(),
             TypeChoice::Modpack => t("oneclient.clusters.instance.copy.value.modpack").to_string(),
             TypeChoice::Import => t("oneclient.clusters.instance.copy.value.import").to_string(),

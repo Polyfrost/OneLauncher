@@ -93,7 +93,7 @@ fn type_step(mut wizard: Wizard, picks: &Picks) -> Element {
         (
             TypeChoice::OneClient,
             IconType::IconLogo,
-            "OneClient",
+            "RemixClient",
             Some(t("oneclient.clusters.instance.steps.recommended")),
             t("oneclient.clusters.instance.steps.type.oneclient.blurb"),
             t("oneclient.clusters.instance.steps.type.oneclient.meta"),

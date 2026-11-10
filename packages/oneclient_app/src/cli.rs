@@ -2,6 +2,7 @@
 pub struct Cli {
     pub launch: Option<String>,
     pub share: Option<String>,
+    pub portable: bool,
 }
 
 impl Cli {
@@ -14,6 +15,8 @@ impl Cli {
                 cli.launch = non_empty(value.to_string());
             } else if arg == "--launch" {
                 cli.launch = args.next().and_then(non_empty);
+            } else if arg == "--portable" || arg == "-p" {
+                cli.portable = true;
             } else if let Some(value) = arg.strip_prefix("--share=") {
                 cli.share = share_code(value);
             } else if arg == "--share" {
@@ -54,6 +57,14 @@ mod tests {
     #[test]
     fn no_arguments_is_an_ordinary_start() {
         assert_eq!(parse(&[]).launch, None);
+        assert!(!parse(&[]).portable);
+    }
+
+    #[test]
+    fn the_portable_flag_is_recognised_in_both_short_forms() {
+        assert!(parse(&["--portable"]).portable);
+        assert!(parse(&["-p"]).portable);
+        assert!(parse(&["--portable", "--launch", "x"]).portable);
     }
 
     #[test]

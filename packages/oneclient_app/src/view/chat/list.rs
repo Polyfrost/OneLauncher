@@ -167,7 +167,17 @@ impl Component for PanelHeader {
         };
         let pop_out = dispatch.clone();
         let dock = dispatch.clone();
-        let close = dispatch;
+        let close = dispatch.clone();
+        let minimize = |_| {
+            Platform::get().with_window(Platform::window_id(), |win| {
+                win.set_minimized(true);
+            });
+        };
+        let maximize = |_| {
+            Platform::get().with_window(Platform::window_id(), |win| {
+                win.set_maximized(!win.is_maximized());
+            });
+        };
 
         rect()
             .horizontal()
@@ -223,6 +233,16 @@ impl Component for PanelHeader {
                         icon: IconType::LinkExternal01,
                         tooltip: t("oneclient.chat.list.pop_out"),
                         on_press: EventHandler::new(move |_| pop_out.pop_out_social()),
+                    }))
+                    .maybe_child((self.mode == PanelMode::Window).then(|| HeaderButton {
+                        icon: IconType::Minus,
+                        tooltip: t("oneclient.components.navbar.minimize"),
+                        on_press: EventHandler::new(move |_| minimize(())),
+                    }))
+                    .maybe_child((self.mode == PanelMode::Window).then(|| HeaderButton {
+                        icon: IconType::Maximize01,
+                        tooltip: t("oneclient.components.navbar.maximize"),
+                        on_press: EventHandler::new(move |_| maximize(())),
                     }))
                     .maybe_child((self.mode == PanelMode::Window).then(|| HeaderButton {
                         icon: IconType::LayoutRight,

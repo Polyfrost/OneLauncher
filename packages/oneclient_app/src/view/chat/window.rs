@@ -115,7 +115,7 @@ pub fn close_chat_window() {
 }
 
 fn window_config(position: Option<PhysicalPosition<i32>>) -> WindowConfig {
-    WindowConfig::new_app(ChatApp)
+    let mut window_config = WindowConfig::new_app(ChatApp)
         .with_title(t("oneclient.chat.window.title"))
         .with_app_id(crate::constants::WINDOW_APP_ID)
         .with_icon(LaunchConfig::window_icon(include_bytes!(
@@ -123,17 +123,44 @@ fn window_config(position: Option<PhysicalPosition<i32>>) -> WindowConfig {
         )))
         .with_size(WINDOW_WIDTH_PX, WINDOW_HEIGHT_PX)
         .with_min_size(360., 400.)
-        .with_decorations(true)
+        .with_transparency(false)
         .with_background(colors::page())
-        .with_window_attributes(move |attrs, _| match position {
-            Some(position) => attrs.with_position(position),
-            None => attrs,
-        })
         .with_window_handle(|window| CHAT_WINDOW.opened(window.id()))
         .with_on_close(|_, _| {
             CHAT_WINDOW.forget();
             CloseDecision::Close
-        })
+        });
+
+    #[cfg(target_os = "macos")]
+    {
+        window_config = window_config
+            .with_decorations(true)
+            .with_window_attributes(move |attrs, _| {
+                use freya::winit::platform::macos::WindowAttributesExtMacOS;
+                let attrs = attrs
+                    .with_title_hidden(true)
+                    .with_titlebar_transparent(true)
+                    .with_titlebar_buttons_hidden(true)
+                    .with_fullsize_content_view(true)
+                    .with_has_shadow(true);
+                match position {
+                    Some(position) => attrs.with_position(position),
+                    None => attrs,
+                }
+            });
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        window_config = window_config
+            .with_decorations(false)
+            .with_window_attributes(move |attrs, _| match position {
+                Some(position) => attrs.with_position(position),
+                None => attrs,
+            });
+    }
+
+    window_config
 }
 
 struct ChatApp;
@@ -164,6 +191,13 @@ impl App for ChatApp {
                 mode: PanelMode::Window,
                 expanded,
             })
+            .child(
+                rect()
+                    .window_drag()
+                    .width(Size::window_percent(100.))
+                    .height(Size::px(theme::NAVBAR_HEIGHT_PX.min(60.)))
+                    .position(Position::new_absolute().top(0.).left(0.).right(0.)),
+            )
     }
 }
 

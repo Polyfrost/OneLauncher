@@ -217,7 +217,11 @@ impl Component for MemberOption {
                     } else {
                         colors::component_bg()
                     })
-                    .maybe_child(selected.then(|| Icon::new(IconType::Check).size(12.))),
+                    .maybe_child(selected.then(|| {
+                        Icon::new(IconType::Check)
+                            .size(12.)
+                            .color(colors::on_brand())
+                    })),
             )
     }
 }

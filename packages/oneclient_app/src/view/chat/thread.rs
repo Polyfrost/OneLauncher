@@ -1124,7 +1124,11 @@ impl Component for Composer {
                                 emoji_open.set(false);
                                 submit_draft(&dispatch, draft, editing, group_id, &sent_by_press);
                             })
-                            .child(Icon::new(IconType::Send01).size(14.).color(Color::WHITE)),
+                            .child(
+                                Icon::new(IconType::Send01)
+                                    .size(14.)
+                                    .color(colors::on_brand()),
+                            ),
                     ),
             )
             .maybe_child(too_long.then(|| {

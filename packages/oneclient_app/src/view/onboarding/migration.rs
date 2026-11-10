@@ -12,7 +12,7 @@ use crate::routes::Route;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::view::onboarding::{
-    choice_row, onboarding_illustration, onboarding_slide, step_heading,
+    choice_row_sized, onboarding_illustration, onboarding_slide, step_heading,
 };
 
 fn migrated_categories(source: &[SourceInstance]) -> Vec<String> {
@@ -256,14 +256,18 @@ fn version_card(
                         .text(instance.folder_name.clone())
                         .font_size(text_size(14.))
                         .font_weight(FontWeight::MEDIUM)
-                        .color(colors::fg_primary()),
+                        .color(if selected {
+                            colors::on_brand()
+                        } else {
+                            colors::fg_primary()
+                        }),
                 )
                 .child(
                     label()
                         .text(subtitle)
                         .font_size(text_size(11.))
                         .color(if selected {
-                            colors::fg_primary()
+                            colors::on_brand()
                         } else {
                             colors::fg_secondary()
                         }),
@@ -273,7 +277,7 @@ fn version_card(
                         .text(categories)
                         .font_size(text_size(11.))
                         .color(if selected {
-                            colors::fg_primary()
+                            colors::on_brand()
                         } else {
                             colors::fg_secondary()
                         }),
@@ -282,7 +286,10 @@ fn version_card(
         // Selection affordance only when the instance actually has files
         .maybe_child(importable.then(|| {
             if selected {
-                Icon::new(IconType::Check).size(18.).into_element()
+                Icon::new(IconType::Check)
+                    .size(18.)
+                    .color(colors::on_brand())
+                    .into_element()
             } else {
                 label()
                     .text(t("oneclient.onboarding.migration.import_files"))
@@ -318,20 +325,24 @@ fn version_card(
                 label()
                     .text(t("oneclient.onboarding.migration.target.title"))
                     .font_size(text_size(12.))
-                    .color(colors::fg_primary()),
+                    .color(colors::on_brand()),
             )
-            .child(choice_row(
+            .child(choice_row_sized(
                 t("oneclient.onboarding.migration.target.shared.title"),
                 t("oneclient.onboarding.migration.target.shared.description"),
                 !dedicated,
+                Size::auto(),
+                colors::on_brand(),
                 move |_| import_dedicated.set(false),
             ));
 
         if dedicated_available {
-            targets = targets.child(choice_row(
+            targets = targets.child(choice_row_sized(
                 t("oneclient.onboarding.migration.target.dedicated.title"),
                 t("oneclient.onboarding.migration.target.dedicated.description"),
                 dedicated,
+                Size::auto(),
+                colors::on_brand(),
                 move |_| import_dedicated.set(true),
             ));
         }
@@ -380,14 +391,18 @@ fn import_choice_card(
                         .text(title.to_string())
                         .font_size(text_size(14.))
                         .font_weight(FontWeight::MEDIUM)
-                        .color(colors::fg_primary()),
+                        .color(if active {
+                            colors::on_brand()
+                        } else {
+                            colors::fg_primary()
+                        }),
                 )
                 .child(
                     label()
                         .text(subtitle.to_string())
                         .font_size(text_size(11.))
                         .color(if active {
-                            colors::fg_primary()
+                            colors::on_brand()
                         } else {
                             colors::fg_secondary()
                         }),
@@ -395,7 +410,11 @@ fn import_choice_card(
         )
         .maybe_child(
             active
-                .then(|| Icon::new(IconType::Check).size(16.))
+                .then(|| {
+                    Icon::new(IconType::Check)
+                        .size(16.)
+                        .color(colors::on_brand())
+                })
                 .or_else(|| trailing.map(|i| Icon::new(i).size(16.))),
         )
         .into_element()

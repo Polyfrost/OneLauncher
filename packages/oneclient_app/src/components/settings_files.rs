@@ -154,7 +154,7 @@ fn file_row(path: String, selected: bool, choice: FileChoice) -> Element {
         tick.background(colors::brand()).child(
             Icon::new(IconType::Check)
                 .size(12.)
-                .color(colors::fg_strong()),
+                .color(colors::on_brand()),
         )
     } else {
         tick.border(border_all_color(1., colors::control_border()))

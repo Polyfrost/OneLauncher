@@ -86,6 +86,16 @@ First launch migrates `%APPDATA%\Polyfrost\OneClient(-dev)` when the new folder 
 missing. World backups live in `<instance>/backups/worlds/<world>/*.zip`. Offline
 skins live in `<data>/skins/<account uuid>/`.
 
+## Subagent policy (hard rule)
+
+- **Never** launch a subagent on a paid model. Always use a free / flash-tier model.
+- Default free picks: `deepai/qwen-3.8-flash`, `deepai/deepseek-v4.1-flash`,
+  `deepai/glm-5.3-flash`, `deepai/mimo-2.6-flash`, `deepai/minimax-m3.1-flash`,
+  `deepai/solar-mini-4`.
+- Never delegate to Claude / Opus / GPT / "-max" / "-pro" / "prime" models.
+- Paid-tier subagents burned the daily limit on 2026-11-10 and produced no reports.
+  The main thread may use whatever model the user picked; only children are restricted.
+
 ## Decisions
 
 - Keep Polyfrost **content** services (bundles, metadata, translations, Poly+) for

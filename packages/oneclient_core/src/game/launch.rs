@@ -470,8 +470,15 @@ async fn start(
     oneclient_cluster::logs::censor_username(&account.username);
 
     // An offline account has no Microsoft session at all, so the game must be
-    // told to use the legacy (offline) identity path instead of MSA.
+    // told to use the legacy (offline) identity path instead of MSA. Vanilla
+    // defaults a missing token to `0`; an empty string is not a value any
+    // vanilla/loader code path expects, so send the same placeholder.
     let user_type = if account.is_offline() { "legacy" } else { "msa" };
+    let access_token = if account.is_offline() {
+        "0".to_string()
+    } else {
+        account.access_token.clone()
+    };
     // A local skin/cape travels as a normal profile texture property, which the
     // vanilla client accepts in offline mode.
     let user_properties = if account.is_offline() {
@@ -485,7 +492,7 @@ async fn start(
     let mut mc_args = arguments::minecraft_arguments(
         arg_map.get(&ArgumentType::Game).map(Vec::as_slice),
         version_info.minecraft_arguments.as_deref(),
-        &account.access_token,
+        &access_token,
         user_type,
         &user_properties,
         &account.username,

@@ -69,6 +69,9 @@ impl CredentialsStore {
         Ok(account)
     }
 
+    /// Adds an offline account **in memory only**. Production code must use
+    /// [`Self::add_offline_account_and_save`], otherwise the account is lost on
+    /// restart. Kept public for tests that only inspect the store.
     pub fn add_offline_account(&mut self, username: String) -> AuthResult<MinecraftAccount> {
         let account = self.insert_offline_account(username)?;
         Ok(account)

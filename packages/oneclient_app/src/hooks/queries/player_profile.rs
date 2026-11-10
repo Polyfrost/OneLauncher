@@ -25,6 +25,27 @@ impl QueryCapability for FetchPlayerProfileQuery {
         let access_token = keys.access_token.clone();
 
         let state = crate::launcher::state()?;
+
+        // An offline account is unknown to Mojang's session server, so a real
+        // request always fails (and is retried on every mount). Answer from the
+        // local skin files instead and never touch the network.
+        if let Ok(id) = uuid::Uuid::parse_str(&keys.uuid)
+            && let Some(account) = state.auth.get_account(id).await
+            && account.is_offline()
+        {
+            let mut view = minecraft::PlayerProfileView::placeholder();
+            view.uuid = keys.uuid.clone();
+            view.username = account.username.clone();
+            if let Some(preview) =
+                oneclient_core::game::offline_skin::local_skin_preview(id).await
+            {
+                view.is_slim = preview.is_slim;
+                view.skin_url = preview.skin_url;
+                view.cape_url = preview.cape_url;
+            }
+            return Ok(view);
+        }
+
         let client = &state.services.requester;
 
         Ok(

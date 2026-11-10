@@ -25,7 +25,7 @@ const CAPE_FILE: &str = "cape.png";
 const META_FILE: &str = "skin.json";
 const MAX_REQUEST_BYTES: usize = 4096;
 
-static TEXTURE_SERVER: OnceCell<Option<String>> = OnceCell::const_new();
+static TEXTURE_SERVER: OnceCell<String> = OnceCell::const_new();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -92,7 +92,7 @@ pub async fn save_offline_skin(
         .map_err(|err| err.to_string())?;
 
     if let Some(source) = skin {
-        validate_png(&source, &[(64, 64), (64, 32), (128, 128)])?;
+        validate_png(&source, &[(64, 64), (64, 32), (128, 64), (128, 128)])?;
         tokio::fs::copy(&source, dir.join(SKIN_FILE))
             .await
             .map_err(|err| err.to_string())?;
@@ -166,7 +166,32 @@ fn texture_property(
         "textures": textures,
     });
     let encoded = BASE64_STANDARD.encode(payload.to_string());
-    json!({ "textures": [encoded] }).to_string()
+    // `--userProperties` is parsed by authlib's `PropertyMap` deserializer, which
+    // expects array entries to be property objects with a `name` and a `value`.
+    // A bare base64 string is silently dropped there, so the skin never loads.
+    json!({ "textures": [{ "name": "textures", "value": encoded }] }).to_string()
+}
+
+/// Where the launcher UI can preview an offline account's local skin and cape.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OfflinePreview {
+    pub skin_url: Option<String>,
+    pub cape_url: Option<String>,
+    pub is_slim: bool,
+}
+
+/// `None` when the account has no local skin or the texture server is down.
+pub async fn local_skin_preview(account_id: Uuid) -> Option<OfflinePreview> {
+    let skin = load_offline_skin(account_id).await?;
+    let base = texture_server_url().await?;
+    let id = account_id.simple().to_string();
+    Some(OfflinePreview {
+        skin_url: Some(format!("{base}/skin/{id}.png")),
+        cape_url: skin
+            .has_cape
+            .then(|| format!("{base}/cape/{id}.png")),
+        is_slim: skin.model == SkinModel::Slim,
+    })
 }
 
 /// `--userProperties` value for an offline account with a local skin.
@@ -181,16 +206,17 @@ pub async fn user_properties(account: &MinecraftAccount) -> Option<String> {
 }
 
 async fn texture_server_url() -> Option<String> {
-    TEXTURE_SERVER
-        .get_or_init(|| async {
-            let listener = TcpListener::bind("127.0.0.1:0").await.ok()?;
-            let port = listener.local_addr().ok()?.port();
-            tokio::spawn(serve(listener));
-            tracing::info!(port, "offline skin texture server listening");
-            Some(format!("http://127.0.0.1:{port}"))
-        })
-        .await
-        .clone()
+    if let Some(url) = TEXTURE_SERVER.get() {
+        return Some(url.clone());
+    }
+    // Bind outside the cell so a transient failure is not cached forever: a
+    // failed bind used to disable offline skins until the launcher restarted.
+    let listener = TcpListener::bind("127.0.0.1:0").await.ok()?;
+    let port = listener.local_addr().ok()?.port();
+    tokio::spawn(serve(listener));
+    tracing::info!(port, "offline skin texture server listening");
+    let url = format!("http://127.0.0.1:{port}");
+    Some(TEXTURE_SERVER.get_or_init(|| async { url }).await.clone())
 }
 
 async fn serve(listener: TcpListener) {
@@ -287,7 +313,8 @@ mod tests {
         let id = account.id.simple().to_string();
         let outer = texture_property(&account, "http://127.0.0.1:1234", true, SkinModel::Slim);
         let parsed: serde_json::Value = serde_json::from_str(&outer).unwrap();
-        let encoded = parsed["textures"][0].as_str().unwrap();
+        assert_eq!(parsed["textures"][0]["name"], "textures");
+        let encoded = parsed["textures"][0]["value"].as_str().unwrap();
         let decoded = BASE64_STANDARD.decode(encoded).unwrap();
         let payload: serde_json::Value = serde_json::from_slice(&decoded).unwrap();
 
@@ -310,7 +337,7 @@ mod tests {
         let outer = texture_property(&account, "http://127.0.0.1:1", false, SkinModel::Classic);
         let parsed: serde_json::Value = serde_json::from_str(&outer).unwrap();
         let decoded = BASE64_STANDARD
-            .decode(parsed["textures"][0].as_str().unwrap())
+            .decode(parsed["textures"][0]["value"].as_str().unwrap())
             .unwrap();
         let payload: serde_json::Value = serde_json::from_slice(&decoded).unwrap();
         assert!(payload["textures"].get("CAPE").is_none());

@@ -484,7 +484,7 @@
   "oneclient.chat.invites.unknown": "Unknown",
   "oneclient.chat.invites.version": "Version",
   "oneclient.chat.invites.world_invite": "World invite",
-  "oneclient.chat.list.dock": "Dock back into the launcher",
+  "oneclient.chat.list.dock": "Dock back",
   "oneclient.chat.list.empty": "No chats yet. Message a friend to start one.",
   "oneclient.chat.list.kind_direct": "Direct message",
   "oneclient.chat.list.kind_group": "Group",

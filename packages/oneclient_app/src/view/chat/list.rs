@@ -8,7 +8,9 @@ use uuid::Uuid;
 use oneclient_polyplus::{BlockedPlayer, Friend, FriendRequest, PlayerStatus};
 
 use crate::chat::{ChatConversation, ChatInvite, ChatRoster, FriendRequestStatus};
-use crate::components::{Avatar, ContextMenu, Icon, IconType, LazySection, ScrollArea, TextInput};
+use crate::components::{
+    Avatar, ContextMenu, Icon, IconType, LazySection, ScrollArea, TextInput, window_controls_with,
+};
 use crate::hooks::{
     Actions, use_chat_friend_request, use_chat_invites, use_chat_self_status, use_dispatch,
     use_player_online,
@@ -168,11 +170,12 @@ impl Component for PanelHeader {
         let pop_out = dispatch.clone();
         let dock = dispatch.clone();
         let close = dispatch;
+        let windowed = self.mode == PanelMode::Window;
 
         rect()
             .horizontal()
             .width(Size::fill())
-            .padding(Gaps::new(16., 10., 12., 16.))
+            .padding(Gaps::new(16., if windowed { 16. } else { 10. }, 12., 16.))
             .spacing(10.)
             .content(Content::Flex)
             .cross_align(Alignment::Center)
@@ -180,7 +183,11 @@ impl Component for PanelHeader {
             .child(
                 rect()
                     .vertical()
-                    .width(Size::flex(1.0))
+                    .width(if windowed {
+                        Size::auto()
+                    } else {
+                        Size::flex(1.0)
+                    })
                     .spacing(3.)
                     .child(
                         label()
@@ -235,6 +242,15 @@ impl Component for PanelHeader {
                         on_press: EventHandler::new(move |_| close.close_social()),
                     })),
             )
+            .maybe_child(windowed.then(|| {
+                rect()
+                    .window_drag()
+                    .width(Size::flex(1.0))
+                    .height(Size::px(36.))
+            }))
+            .maybe_child(windowed.then(|| {
+                window_controls_with(None, super::window::close_chat_window).into_element()
+            }))
             .maybe_child(status_menu().then(|| {
                 StatusMenu {
                     trigger: status_area,

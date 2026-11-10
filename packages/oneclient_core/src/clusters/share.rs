@@ -10,8 +10,8 @@ use oneclient_common::domain::ContentType;
 use oneclient_common::patch::Patch;
 use oneclient_content::modpacks::{
     self, ClusterShare, ModpackInstallReport, ModpackManifest, ModpackSummary, SHARE_FORMAT,
-    SettingFile, SettingsScan, ShareExportReport, ShareExtras, ShareIcon, ShareScope, SharedJava,
-    SharedModpack,
+    SettingFile, SettingsScan, ShareExportReport, ShareExtras, ShareIcon, ShareScope,
+    SharedFileSource, SharedJava, SharedModpack,
 };
 use oneclient_content::packages::PackageStore;
 use oneclient_content::{ContentCtx, ContentError};
@@ -225,6 +225,8 @@ pub struct ExportOptions {
     pub mode: ExportMode,
     #[serde(default)]
     pub settings: SettingsChoice,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub left_out_files: BTreeSet<String>,
 }
 
 impl ExportOptions {
@@ -233,6 +235,7 @@ impl ExportOptions {
         Self {
             mode,
             settings: SettingsChoice::None,
+            left_out_files: BTreeSet::new(),
         }
     }
 
@@ -249,6 +252,12 @@ impl ExportOptions {
     #[must_use]
     pub fn with_setting_choice(mut self, settings: SettingsChoice) -> Self {
         self.settings = settings;
+        self
+    }
+
+    #[must_use]
+    pub fn with_left_out_files(mut self, paths: BTreeSet<String>) -> Self {
+        self.left_out_files = paths;
         self
     }
 }
@@ -284,6 +293,57 @@ pub async fn list_setting_files(
         .files)
 }
 
+pub async fn list_embedded_files(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+    mode: ExportMode,
+) -> LauncherResult<Vec<SettingFile>> {
+    let content = state.services.content();
+    let cluster = state.clusters.get(cluster_id).await?;
+    let (_, scope) = share_scope(&cluster, mode == ExportMode::Compatibility, &content).await;
+    let shared = modpacks::collect_share_content(cluster_id, scope, None, &content).await?;
+    Ok(shared
+        .files
+        .into_iter()
+        .filter_map(|file| match file.source {
+            SharedFileSource::Embed(source) => Some(SettingFile {
+                path: file.path,
+                source,
+                size: file.size,
+            }),
+            SharedFileSource::Download { .. } => None,
+        })
+        .collect())
+}
+
+async fn share_scope(
+    cluster: &Cluster,
+    compatible: bool,
+    content: &ContentCtx,
+) -> (Option<SharedModpack>, ShareScope) {
+    let modpack = match cluster.linked_modpack_hash {
+        Some(_) if compatible => None,
+        Some(_) => modpacks::cluster_modpack(cluster.id, content)
+            .await
+            .inspect_err(|err| {
+                tracing::debug!(cluster_id = cluster.id, error = %err, "could not identify the linked modpack; exporting every file");
+            })
+            .ok()
+            .flatten()
+            .map(|release| SharedModpack {
+                provider: release.provider,
+                project_id: release.project_id,
+                version_id: release.version_id,
+            }),
+        None => None,
+    };
+    let scope = ShareScope {
+        skip_bundles: cluster.uses_bundles() && !compatible,
+        skip_modpack: modpack.is_some(),
+    };
+    (modpack, scope)
+}
+
 pub async fn export_cluster(
     state: &Arc<LauncherState>,
     cluster_id: i64,
@@ -312,27 +372,7 @@ pub async fn export_cluster_with(
     });
 
     let compatible = mode == ExportMode::Compatibility;
-    let modpack = match cluster.linked_modpack_hash {
-        Some(_) if compatible => None,
-        Some(_) => modpacks::cluster_modpack(cluster_id, &content)
-            .await
-            .inspect_err(|err| {
-                tracing::debug!(cluster_id, error = %err, "could not identify the linked modpack; exporting every file");
-            })
-            .ok()
-            .flatten()
-            .map(|release| SharedModpack {
-                provider: release.provider,
-                project_id: release.project_id,
-                version_id: release.version_id,
-            }),
-        None => None,
-    };
-
-    let scope = ShareScope {
-        skip_bundles: cluster.uses_bundles() && !compatible,
-        skip_modpack: modpack.is_some(),
-    };
+    let (modpack, scope) = share_scope(&cluster, compatible, &content).await;
     let kind = if compatible && cluster.kind == ClusterKind::OneClient {
         kind_for(cluster.mc_loader)
     } else {
@@ -340,6 +380,9 @@ pub async fn export_cluster_with(
     };
     let mut shared =
         modpacks::collect_share_content(cluster_id, scope, child.as_ref(), &content).await?;
+    shared
+        .files
+        .retain(|file| !options.left_out_files.contains(&file.path));
     shared.settings = collect_chosen_settings(&cluster.game_dir()?, &options.settings).await?;
     let with_settings = !shared.settings.files.is_empty();
 

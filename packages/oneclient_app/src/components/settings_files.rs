@@ -188,10 +188,29 @@ pub fn settings_file_picker(choice: FileChoice, fill: bool) -> Vec<Element> {
         }
         Some(files) => files,
     };
+    let search = TextInput::new(choice.query)
+        .width(Size::fill())
+        .placeholder(t("oneclient.components.settings_files.search"))
+        .leading(
+            Icon::new(IconType::SearchMd)
+                .size(16.)
+                .color(colors::fg_secondary())
+                .into_element(),
+        )
+        .into_element();
+
+    vec![
+        search,
+        file_choice_header(choice),
+        file_list(choice, files, fill),
+    ]
+}
+
+pub fn file_choice_header(choice: FileChoice) -> Element {
     let (count, total) = choice.counts();
     let mut chosen = choice.chosen;
 
-    let header = rect()
+    rect()
         .horizontal()
         .width(Size::fill())
         .content(Content::Flex)
@@ -223,20 +242,7 @@ pub fn settings_file_picker(choice: FileChoice, fill: bool) -> Vec<Element> {
                 .on_press(move |_| chosen.set(None))
                 .text(t("oneclient.components.settings_files.select_all")),
         )
-        .into_element();
-
-    let search = TextInput::new(choice.query)
-        .width(Size::fill())
-        .placeholder(t("oneclient.components.settings_files.search"))
-        .leading(
-            Icon::new(IconType::SearchMd)
-                .size(16.)
-                .color(colors::fg_secondary())
-                .into_element(),
-        )
-        .into_element();
-
-    vec![search, header, file_list(choice, files, fill)]
+        .into_element()
 }
 
 fn file_list(choice: FileChoice, files: Vec<SettingFile>, fill: bool) -> Element {

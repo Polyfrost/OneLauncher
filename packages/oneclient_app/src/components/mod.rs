@@ -143,7 +143,7 @@ pub use screenshot_viewer::{ScreenshotViewer, screenshot_context_menu};
 pub(crate) use scrollview::corrected_scroll;
 pub use scrollview::{LazySection, ScrollArea, ScrollAreaCtx};
 pub use segmented_control::{Segment, SegmentedControl};
-pub use settings_files::{FileChoice, note, settings_file_picker};
+pub use settings_files::{FileChoice, file_choice_header, note, settings_file_picker};
 pub use spinner::{Spinner, centered_spinner};
 pub use splash_curtain::SplashCurtain;
 pub use status_bar::StatusBar;

@@ -16,8 +16,8 @@ pub(crate) use modpacks::{listed, modpack_job_in_shared_dir};
 mod release_migration;
 mod share;
 pub use share::{
-    add_collaborator, exporting, load_collaborators, load_is_shared, load_owner_check,
-    load_setting_files, measure_share, remove_collaborator,
+    add_collaborator, exporting, load_collaborators, load_embedded_files, load_is_shared,
+    load_owner_check, load_setting_files, measure_share, remove_collaborator,
 };
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};

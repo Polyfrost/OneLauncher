@@ -9,7 +9,8 @@ use oneclient_cluster::ClusterManager;
 use oneclient_content::modpacks::{SHARE_EXTENSION, SettingFile, ShareExportReport};
 use oneclient_core::LauncherState;
 use oneclient_core::clusters::{
-    ExportOptions, ModpackSource, SettingsChoice, export_cluster_with, list_setting_files,
+    ExportMode, ExportOptions, ModpackSource, SettingsChoice, export_cluster_with,
+    list_embedded_files, list_setting_files,
 };
 use oneclient_core::sharing::{
     self, Collaborator, LinkedPush, PublishedShare, RemoteShare, ShareCode, ShareRole, ShareUpdate,
@@ -781,6 +782,19 @@ pub async fn load_setting_files(cluster_id: ClusterId) -> Vec<SettingFile> {
             Vec::new()
         }
     }
+}
+
+pub async fn load_embedded_files(
+    cluster_id: ClusterId,
+    mode: ExportMode,
+) -> Option<Vec<SettingFile>> {
+    let state = launcher::state().ok()?;
+    off_ui(async move { list_embedded_files(&state, cluster_id, mode).await })
+        .await
+        .inspect_err(|err| {
+            tracing::warn!(cluster_id, error = %err, "could not list the files the share would carry");
+        })
+        .ok()
 }
 
 pub(super) fn share_preview(source: &ModpackSource) -> Option<SharedPreview> {

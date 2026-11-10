@@ -10,15 +10,16 @@ use oneclient_common::domain::{ContentType, GameLoader};
 use oneclient_core::clusters::{ExportMode, ExportOptions, SettingsChoice};
 use oneclient_core::sharing::{Collaborator, LinkedPush, MAX_SHARE_BYTES};
 
+use super::export_files::EmbeddedFiles;
 use super::instance::{WideCard, wide_card};
 use crate::components::{
     Button, FileChoice, Icon, IconType, OverlayPopup, Spinner, TextInput, note,
     settings_file_picker,
 };
 use crate::hooks::{
-    add_collaborator, cluster_content_items, load_collaborators, load_owner_check,
-    load_setting_files, measure_share, remove_collaborator, use_cluster, use_cluster_content,
-    use_debounced, use_dispatch, use_share_progress,
+    add_collaborator, cluster_content_items, load_collaborators, load_embedded_files,
+    load_owner_check, load_setting_files, measure_share, remove_collaborator, use_cluster,
+    use_cluster_content, use_debounced, use_dispatch, use_share_progress,
 };
 use crate::i18n::{t, tf};
 use crate::state::{OwnerCheck, OwnerShare, ShareProgress, ShareReady};
@@ -49,6 +50,11 @@ struct Picks {
     mode: State<ExportMode>,
     open: State<bool>,
     files: FileChoice,
+    embeds: FileChoice,
+    embeds_open: State<bool>,
+    embeds_load: State<Option<(ExportMode, TaskHandle)>>,
+    embeds_failed: State<bool>,
+    saved_left_out: State<BTreeSet<String>>,
     team: Team,
 }
 
@@ -207,13 +213,63 @@ impl Picks {
         }
     }
 
+    fn left_out_files(&self) -> BTreeSet<String> {
+        let mut left_out = self.saved_left_out.read().clone();
+        let Some(files) = self.embeds.files.read().clone() else {
+            return left_out;
+        };
+        for file in files {
+            left_out.remove(&file.path);
+        }
+        left_out.extend(self.embeds.left_out());
+        left_out
+    }
+
+    fn export_options(&self, mode: ExportMode) -> ExportOptions {
+        ExportOptions::new(mode)
+            .with_setting_choice(self.choice())
+            .with_left_out_files(self.left_out_files())
+    }
+
     fn options(&self) -> ExportOptions {
-        ExportOptions::new(*self.mode.read()).with_setting_choice(self.choice())
+        self.export_options(*self.mode.read())
+    }
+
+    fn load_embeds(self, cluster_id: i64, mode: ExportMode) {
+        let (mut files, mut saved) = (self.embeds.files, self.saved_left_out);
+        let (mut load, mut failed) = (self.embeds_load, self.embeds_failed);
+        if let Some((_, stale)) = load.peek().as_ref() {
+            stale.cancel();
+        }
+        failed.set(false);
+        load.set(Some((
+            mode,
+            spawn(async move {
+                let loaded = load_embedded_files(cluster_id, mode).await;
+                let keep = self.left_out_files();
+                saved.set(keep.clone());
+                match loaded {
+                    Some(loaded) => {
+                        files.set(Some(loaded));
+                        self.embeds.leave_out(&keep);
+                    }
+                    None => {
+                        files.set(None);
+                        load.set(None);
+                        failed.set(true);
+                    }
+                }
+            }),
+        )));
     }
 
     fn adopt(mut self, options: &ExportOptions) {
         let mut chosen = self.files.chosen;
         self.mode.set(options.mode);
+        self.saved_left_out.set(options.left_out_files.clone());
+        if self.embeds.files.peek().is_some() && self.embeds.chosen.peek().is_none() {
+            self.embeds.leave_out(&options.left_out_files);
+        }
         match &options.settings {
             SettingsChoice::None => {
                 self.open.set(false);
@@ -272,6 +328,11 @@ impl Component for ExportInstanceModal {
             mode: use_state(|| ExportMode::OneClient),
             open: use_state(|| false),
             files: FileChoice::use_new(),
+            embeds: FileChoice::use_new(),
+            embeds_open: use_state(|| false),
+            embeds_load: use_state(|| None::<(ExportMode, TaskHandle)>),
+            embeds_failed: use_state(|| false),
+            saved_left_out: use_state(BTreeSet::new),
             team,
         };
         let copied = use_state(|| None::<Copied>);
@@ -324,6 +385,18 @@ impl Component for ExportInstanceModal {
             spawn(async move { files.set(Some(load_setting_files(cluster_id).await)) });
             check_owner(cluster_id, picks, owner);
         });
+        let embeds_mode = if *saving.read() {
+            *file_mode.read()
+        } else {
+            *picks.mode.read()
+        };
+        let embeds_open = *picks.embeds_open.read();
+        use_side_effect_with_deps(&(embeds_open, embeds_mode), move |&(open, mode)| {
+            let loaded_for = picks.embeds_load.peek().as_ref().map(|(mode, _)| *mode);
+            if (open || loaded_for.is_some()) && loaded_for != Some(mode) {
+                picks.load_embeds(cluster_id, mode);
+            }
+        });
 
         let on_close = self.on_close.clone();
         let close: EventHandler<()> = {
@@ -335,10 +408,11 @@ impl Component for ExportInstanceModal {
             .into()
         };
 
-        let fitting = share.is_none() && !*team.open.read();
+        let fitting = share.is_none() && !*team.open.read() && !*picks.embeds_open.read();
         let fill = fitting && *picks.open.read();
         let (body, footer) = match share {
             None if *team.open.read() => team_view(team, &owner.read()),
+            None if *picks.embeds_open.read() => embeds_view(cluster_id, picks),
             None if *saving.read() => save_view(
                 &self.name,
                 cluster_id,
@@ -701,7 +775,14 @@ fn change_line(shared: &OwnerShare) -> Element {
     }
 }
 
-fn summary_row(icon: IconType, name: &str, value: String, danger: bool) -> Element {
+fn summary_row(
+    icon: IconType,
+    name: &str,
+    value: String,
+    danger: bool,
+    busy: bool,
+    trailing: Option<Element>,
+) -> Element {
     let (accent, tile_bg) = if danger {
         (colors::danger(), colors::with_alpha(colors::danger(), 32))
     } else {
@@ -725,16 +806,25 @@ fn summary_row(icon: IconType, name: &str, value: String, danger: bool) -> Eleme
                 }),
         )
         .child(
-            label()
-                .text(value)
+            rect()
+                .horizontal()
                 .width(Size::flex(1.))
-                .text_align(TextAlign::End)
-                .font_size(text_size(14.))
-                .font_weight(FontWeight::MEDIUM)
-                .max_lines(1)
-                .text_overflow(TextOverflow::Ellipsis)
-                .color(accent),
+                .main_align(Alignment::End)
+                .cross_align(Alignment::Center)
+                .spacing(6.)
+                .maybe_child(busy.then(|| Spinner::new(14.).into_element()))
+                .child(
+                    label()
+                        .text(value)
+                        .max_width(Size::fill())
+                        .font_size(text_size(14.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .max_lines(1)
+                        .text_overflow(TextOverflow::Ellipsis)
+                        .color(accent),
+                ),
         )
+        .maybe_child(trailing)
         .into_element()
 }
 
@@ -742,7 +832,7 @@ fn size_label(size: Measure) -> String {
     let limit = MAX_SHARE_BYTES as f64 / MB;
     match size {
         Measure::Done(bytes) => format!("{:.2} / {limit:.1} MB", bytes as f64 / MB),
-        Measure::Running => format!("… / {limit:.1} MB"),
+        Measure::Running => format!("/ {limit:.1} MB"),
         Measure::Failed => format!("— / {limit:.1} MB"),
     }
 }
@@ -772,12 +862,22 @@ fn fitted_settings(summary: &Summary, picks: Picks) -> Element {
         .vertical()
         .width(Size::fill())
         .spacing(16.)
-        .child(summary_card(summary))
+        .child(summary_card(summary, picks))
         .child(settings_card(picks, false))
         .into_element()
 }
 
-fn summary_card(summary: &Summary) -> Element {
+fn summary_card(summary: &Summary, picks: Picks) -> Element {
+    let mut open = picks.embeds_open;
+    let left_out = if picks.embeds.files.read().is_some() {
+        picks.embeds.left_out().len()
+    } else {
+        picks.saved_left_out.read().len()
+    };
+    let change = match left_out {
+        0 => t("oneclient.clusters.export.files.change").to_string(),
+        count => tf("oneclient.clusters.export.files.left_out", &[&count]),
+    };
     rect()
         .vertical()
         .width(Size::fill())
@@ -792,18 +892,31 @@ fn summary_card(summary: &Summary) -> Element {
                     t("oneclient.clusters.export.summary.version"),
                     summary.version.clone(),
                     false,
+                    false,
+                    None,
                 ))
                 .child(summary_row(
                     IconType::LayersThree01,
                     t("oneclient.clusters.export.summary.content"),
                     summary.content.clone(),
                     false,
+                    false,
+                    None,
                 ))
                 .child(summary_row(
                     IconType::Database01,
                     t("oneclient.clusters.export.summary.size"),
                     size_label(summary.size),
                     summary.too_large(),
+                    summary.size == Measure::Running,
+                    Some(
+                        Button::new()
+                            .ghost()
+                            .small()
+                            .on_press(move |_| open.set(true))
+                            .text(change)
+                            .into_element(),
+                    ),
                 )),
         )
         .into_element()
@@ -926,6 +1039,8 @@ fn options_view(
         owner,
         OwnerCheck::Shared(shared)
             if shared.settings_changed && !shared.content_changed && !shared.behind
+                && shared.options.mode == *picks.mode.read()
+                && shared.options.left_out_files == picks.left_out_files()
     );
 
     let mut body = vec![dialog_header(
@@ -1051,12 +1166,46 @@ fn save_view(
             Button::new()
                 .primary()
                 .on_press(move |_| {
-                    let options =
-                        ExportOptions::new(*file_mode.peek()).with_setting_choice(picks.choice());
+                    let options = picks.export_options(*file_mode.peek());
                     export.export_cluster(cluster_id, options);
                     close_export.call(());
                 })
                 .text(t("oneclient.clusters.export.confirm"))
+                .into_element(),
+        ],
+    );
+    (body, footer)
+}
+
+fn embeds_view(cluster_id: i64, picks: Picks) -> (Vec<Element>, Element) {
+    let mut open = picks.embeds_open;
+    let mut body = vec![
+        title(t("oneclient.clusters.export.files.title").to_string()),
+        note(t("oneclient.clusters.export.files.description"), 13.),
+    ];
+    match picks.embeds.files.read().as_ref().map(Vec::is_empty) {
+        None if *picks.embeds_failed.read() => {
+            body.push(note(t("oneclient.clusters.export.files.failed"), 12.5));
+        }
+        None => body.push(
+            rect()
+                .horizontal()
+                .spacing(8.)
+                .cross_align(Alignment::Center)
+                .child(Spinner::new(14.))
+                .child(note(t("oneclient.clusters.export.files.loading"), 12.5))
+                .into_element(),
+        ),
+        Some(true) => body.push(note(t("oneclient.clusters.export.files.empty"), 12.5)),
+        Some(false) => body.push(EmbeddedFiles::new(cluster_id, picks.embeds).into_element()),
+    }
+    let footer = footer(
+        None,
+        vec![
+            Button::new()
+                .primary()
+                .on_press(move |_| open.set(false))
+                .text(t("oneclient.common.done"))
                 .into_element(),
         ],
     );

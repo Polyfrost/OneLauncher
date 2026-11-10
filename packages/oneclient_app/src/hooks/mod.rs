@@ -43,8 +43,8 @@ pub use actions::{
 };
 pub use actions::{
     CloudSignal, add_collaborator, cloud_engine, cloud_sync_signal, forget_deleted_cluster,
-    load_collaborators, load_is_shared, load_owner_check, load_setting_files, load_sync_left_out,
-    measure_share, remove_collaborator,
+    load_collaborators, load_embedded_files, load_is_shared, load_owner_check, load_setting_files,
+    load_sync_left_out, measure_share, remove_collaborator,
 };
 pub use queries::ALL_VERSIONS;
 pub(crate) use queries::use_folder_watch;

@@ -356,11 +356,8 @@ pub async fn collect_share_content(
         else {
             continue;
         };
-        let file_name = row
-            .cluster_file_name
-            .trim_end_matches(".disabled")
-            .to_string();
-        let path = format!("{}/{}", content_type.folder_name(), file_name);
+        let path = share_path(content_type, &row.cluster_file_name);
+        let file_name = path[content_type.folder_name().len() + 1..].to_string();
         if !is_safe_relative_path(&path) || !seen.insert(path.clone()) {
             continue;
         }
@@ -507,6 +504,15 @@ async fn pack_carryover(cluster_id: i64, ctx: &ContentCtx) -> Option<PackCarryov
             tracing::warn!(cluster_id, error = %err, "could not read the modpack's own files to carry them over");
         })
         .ok()
+}
+
+#[must_use]
+pub fn share_path(content_type: ContentType, cluster_file_name: &str) -> String {
+    format!(
+        "{}/{}",
+        content_type.folder_name(),
+        cluster_file_name.trim_end_matches(".disabled")
+    )
 }
 
 fn shareable(content_type: ContentType) -> bool {

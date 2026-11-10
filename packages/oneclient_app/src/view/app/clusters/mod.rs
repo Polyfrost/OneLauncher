@@ -1,5 +1,6 @@
 mod cluster_picker;
 mod delete_instance;
+mod export_files;
 mod export_instance;
 mod instance;
 mod page;

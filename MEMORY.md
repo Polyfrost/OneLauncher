@@ -144,6 +144,29 @@ skins live in `<data>/skins/<account uuid>/`.
   mods is only a stopgap: inconsistent settings, no hit animation.
 - Still needed from the user: confirm 1.21.1 Fabric as the first target (or 1.8.9).
 
+## QA run (2026-11-11, portable mode)
+
+Harness: `%TEMP%\remix-qa` — `RemixClient.exe --portable`, window moved to
+`-5000,-5000`, screenshots via `PrintWindow`, clicks via `PostMessage`
+(`start.ps1`, `qa.ps1`). Synthetic typing does NOT reach the window (needs real
+foreground focus), so the account was seeded by writing `auth.json`.
+
+Verified end to end: portable folder + `portable.txt`, full onboarding,
+`ru_RU`, bundled Terms/Privacy render, offline account shown on the summary,
+Microsoft JDK 25 auto-download, Minecraft+Fabric 26.3 download (1.5 GB), game
+process spawned with the offline account.
+
+Findings:
+- **polyplus-1.4.7** inside the default bundle keeps calling Mojang `joinServer`
+  and retries the Poly+ websocket (401) on an offline account. The game still
+  starts and plays; the log is noisy and P2P/invites do not work. Not fixed yet:
+  the mods dir is manifest-managed, so simply moving the jar would be undone on
+  the next launch.
+- The updater logs `update endpoint did not respond with a successful status`
+  on every start — expected until the GitHub repo exists.
+- Launching the game makes real window + sound on the user's desktop; a real
+  sandbox (Hyper-V/Windows Sandbox) is the only way to hide that.
+
 ## Known issues / reminders
 
 - Discord RPC requires the Discord desktop app open; closing it removes the status.

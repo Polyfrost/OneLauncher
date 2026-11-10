@@ -1,4 +1,4 @@
-id: org.polyfrost.OneClient
+id: org.remixclient.RemixClient
 runtime: org.gnome.Platform
 runtime-version: '51'
 sdk: org.gnome.Sdk
@@ -34,7 +34,7 @@ modules:
         sha256: 8ac0ea645b78bcd2a9e13cb14e4ab22cc732ddf33b7bea88375cfcba4114d536
         dest-filename: oneclient.deb
       - type: file
-        path: org.polyfrost.OneClient.metainfo.xml
+        path: org.remixclient.RemixClient.metainfo.xml
     build-commands:
       - ar x oneclient.deb
       - tar xf data.tar.*

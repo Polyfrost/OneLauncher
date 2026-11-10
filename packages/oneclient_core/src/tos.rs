@@ -1,10 +1,16 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{LauncherError, LauncherResult};
+use crate::LauncherResult;
 use oneclient_common::constants;
-use oneclient_common::paths;
-use oneclient_net::RequestClient;
-use oneclient_net::{EtagPolicy, fetch_cached};
+
+/// Version of the bundled terms. Bump it when the text changes materially so
+/// existing installs are asked to accept the new wording.
+pub const TERMS_VERSION: u32 = 1;
+/// Version of the bundled privacy notice, bumped independently.
+pub const PRIVACY_VERSION: u32 = 1;
+
+const TERMS_BODY: &str = include_str!("../assets/legal/terms.md");
+const PRIVACY_BODY: &str = include_str!("../assets/legal/privacy.md");
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TermsDocument {
@@ -48,18 +54,27 @@ impl TermsDocument {
     }
 }
 
-#[tracing::instrument(level = "debug", skip(net))]
-pub async fn fetch_terms(net: &RequestClient) -> LauncherResult<TermsDocument> {
-    let url = format!("{}/oneclient/tos.json", net.config().meta_url_base);
-    let cache_path = paths::caches_dir()?.join("TERMS.json");
+#[tracing::instrument(level = "debug")]
+pub async fn fetch_terms() -> LauncherResult<TermsDocument> {
+    Ok(bundled_terms())
+}
 
-    let fetched = fetch_cached(net, &url, &cache_path, EtagPolicy::CommitNow)
-        .await?
-        .ok_or_else(|| LauncherError::InvalidSettingsProfile {
-            reason: "terms are unavailable and not cached".to_string(),
-        })?;
-
-    Ok(fetched.json()?)
+/// Terms and privacy notice shipped with the binary.
+///
+/// They used to be downloaded from Polyfrost's metadata service, which showed
+/// upstream's legal text as if it were ours. A fork must present its own notice,
+/// and it has to work with no network at all, so the text is compiled in.
+#[must_use]
+pub fn bundled_terms() -> TermsDocument {
+    TermsDocument {
+        version: TERMS_VERSION,
+        privacy_version: Some(PRIVACY_VERSION),
+        updated_at: None,
+        terms: TERMS_BODY.to_string(),
+        privacy: Some(PRIVACY_BODY.to_string()),
+        terms_url: Some(constants::TOS_URL.to_string()),
+        privacy_url: Some(constants::PRIVACY_URL.to_string()),
+    }
 }
 
 #[cfg(test)]
@@ -111,5 +126,16 @@ mod tests {
 
         assert_eq!(document.terms_url(), "https://example.com/tos");
         assert_eq!(document.privacy_url(), constants::PRIVACY_URL);
+    }
+
+    #[test]
+    fn bundled_terms_are_ours_and_complete() {
+        let document = bundled_terms();
+
+        assert_eq!(document.version, TERMS_VERSION);
+        assert_eq!(document.privacy_version(), PRIVACY_VERSION);
+        assert!(document.terms.contains("RemixClient"));
+        assert!(!document.terms.contains("polyfrost.org/legal"));
+        assert!(document.privacy_body().is_some_and(|body| body.len() > 200));
     }
 }

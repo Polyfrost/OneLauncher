@@ -15,8 +15,7 @@ impl QueryCapability for TermsQuery {
     type Keys = TermsKeys;
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        let state = crate::launcher::state()?;
-        fetch_terms(&state.services.requester).await
+        fetch_terms().await
     }
 }
 

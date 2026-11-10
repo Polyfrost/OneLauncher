@@ -43,14 +43,14 @@ jobs:
         run: |
           URL="https://github.com/${{ github.repository }}/releases/download/oneclient-${VERSION}/OneClient_${VERSION}_linux_x86_64.deb"
           SHA=$(curl -sfL "$URL" | sha256sum | cut -d' ' -f1)
-          MANIFEST="distribution/flatpak/org.polyfrost.OneClient.yml"
+          MANIFEST="distribution/flatpak/org.remixclient.RemixClient.yml"
           sed -i "s|^\(\s*url: \).*\.deb$|\1${URL}|" "$MANIFEST"
           sed -i "/\.deb$/{n;s|^\(\s*sha256: \).*|\1${SHA}|}" "$MANIFEST"
 
       - uses: flatpak/flatpak-github-actions/flatpak-builder@79327416609af08178ad73b352877e51450790b3 # v6.8
         with:
           bundle: ${{ env.BUNDLE }}
-          manifest-path: distribution/flatpak/org.polyfrost.OneClient.yml
+          manifest-path: distribution/flatpak/org.remixclient.RemixClient.yml
 
   upload:
     needs: [resolve, bundle]

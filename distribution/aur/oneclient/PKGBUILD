@@ -59,12 +59,12 @@ package() {
 
   install -dm755 "$pkgdir/usr/share/applications"
   sed -e 's|{{exec}}|oneclient_app|g' \
-      -e 's|{{icon}}|org.polyfrost.OneClient|g' \
-      "$appdir/distribution/linux/org.polyfrost.oneclient.template" \
-      > "$pkgdir/usr/share/applications/org.polyfrost.OneClient.desktop"
+      -e 's|{{icon}}|org.remixclient.RemixClient|g' \
+      "$appdir/distribution/linux/org.remixclient.remixclient.template" \
+      > "$pkgdir/usr/share/applications/org.remixclient.RemixClient.desktop"
 
-  install -Dm644 "$appdir/icons/32x32.png"    "$pkgdir/usr/share/icons/hicolor/32x32/apps/org.polyfrost.OneClient.png"
-  install -Dm644 "$appdir/icons/128x128.png"  "$pkgdir/usr/share/icons/hicolor/128x128/apps/org.polyfrost.OneClient.png"
-  install -Dm644 "$appdir/icons/128x128@2x.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/org.polyfrost.OneClient.png"
-  install -Dm644 "$appdir/icons/512x512.png"  "$pkgdir/usr/share/icons/hicolor/512x512/apps/org.polyfrost.OneClient.png"
+  install -Dm644 "$appdir/icons/32x32.png"    "$pkgdir/usr/share/icons/hicolor/32x32/apps/org.remixclient.RemixClient.png"
+  install -Dm644 "$appdir/icons/128x128.png"  "$pkgdir/usr/share/icons/hicolor/128x128/apps/org.remixclient.RemixClient.png"
+  install -Dm644 "$appdir/icons/128x128@2x.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/org.remixclient.RemixClient.png"
+  install -Dm644 "$appdir/icons/512x512.png"  "$pkgdir/usr/share/icons/hicolor/512x512/apps/org.remixclient.RemixClient.png"
 }

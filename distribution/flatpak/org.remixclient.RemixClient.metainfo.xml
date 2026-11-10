@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.remixclient.RemixClient</id>
+  <name>RemixClient</name>
+  <summary>Next-generation open source Minecraft launcher</summary>
+  <developer id="org.remixclient">
+    <name>RemixClient Contributors</name>
+  </developer>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <description>
+    <p>RemixClient is an offline-first community fork of OneLauncher, an open source Minecraft launcher from Polyfrost.</p>
+  </description>
+  <launchable type="desktop-id">org.remixclient.RemixClient.desktop</launchable>
+  <url type="homepage">https://github.com/RemixClient/RemixClient</url>
+  <url type="bugtracker">https://github.com/RemixClient/RemixClient/issues</url>
+  <url type="vcs-browser">https://github.com/RemixClient/RemixClient</url>
+  <content_rating type="oars-1.1"/>
+  <provides>
+    <binary>oneclient_app</binary>
+  </provides>
+</component>

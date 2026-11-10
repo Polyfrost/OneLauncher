@@ -30,12 +30,12 @@ next steps. Update it whenever a feature lands or a placeholder is replaced.
 | MSI / release | blocked | Release binary builds locally; MSI not built after the latest features; waiting for GitHub repo |
 | CI / GitHub Actions | todo | fmt, clippy, tests, MSI, release signing |
 | Code signing (Authenticode) | skipped | User chose to skip; SmartScreen will warn |
-| ToS / Privacy | todo | Onboarding still loads Polyfrost terms from `data-v2.polyfrost.org`; replace with own notice or keep as upstream-service disclosure |
+| ToS / Privacy | done | Bundled `assets/legal/{terms,privacy}.md` compiled into the binary (`TERMS_VERSION`/`PRIVACY_VERSION`), no network, no Polyfrost text. Repo copies in `docs/` |
 | Sentry | disabled | No DSN by default; `REMIXCLIENT_SENTRY_DSN` enables it |
 | CurseForge | works | Embedded upstream key; override with `REMIXCLIENT_CURSEFORGE_API_KEY` |
 | Updater | done (endpoint pending) | Endpoint `https://github.com/RemixClient/RemixClient/releases/latest/download/latest.json`; new minisign key pair generated |
-| Linux/mac packaging | partial | Display names updated; IDs/files still `org.polyfrost.*`; macOS `OneClient.icon` assets remain |
-| App icon | partial | Current generated R icon; user has an AI icon that still needs to be saved to a file and converted |
+| Linux/mac packaging | partial | IDs renamed to `org.remixclient.RemixClient`; macOS `OneClient.icon` assets remain; untested |
+| App icon | done | New R icon → PNG set, `icon.ico` (16–256), `icon.icns` (16–1024), tray, StoreLogo; source `C:\Users\user\Desktop\remix-icon.png` |
 | HUD (axe/sword/totem + presets) | research | In-game HUD needs a mod; subagent researching existing mods vs companion mod |
 | QA sandbox | research | Subagent researching Windows Sandbox / separate desktop / UI automation |
 
@@ -122,10 +122,10 @@ skins live in `<data>/skins/<account uuid>/`.
 2. Updater endpoint → real repository releases (`latest.json` + signed artifacts).
 3. Discord large image key → upload `remixclient_logo` in the Developer Portal and set
    `REMIXCLIENT_DISCORD_LARGE_IMAGE`.
-4. App icon → AI-generated PNG → regenerate PNG/ICO/ICNS.
-5. ToS/Privacy → own notice or explicit upstream-service disclosure.
+4. App icon — done (regenerate from `remix-icon.png` with the PowerShell script if it changes).
+5. ToS/Privacy — done, bundled; bump the version constants when the text changes.
 6. Microsoft/CurseForge keys → own values for public builds.
-7. `org.polyfrost.*` identifiers in Linux/mac packaging.
+7. `org.polyfrost.*` identifiers in Linux/mac packaging — done, untested.
 8. MSI + code signing decision.
 
 ## Known issues / reminders

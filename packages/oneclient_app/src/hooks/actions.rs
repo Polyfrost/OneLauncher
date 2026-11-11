@@ -42,7 +42,7 @@ use oneclient_events::{Answer, Level};
 use tokio::sync::mpsc;
 
 use crate::components::IconType;
-use crate::hooks::GraphicsBackendQuery;
+use crate::hooks::{GraphicsBackendQuery, PackageUpdatesQuery};
 use crate::i18n::{t, tf};
 use crate::launcher::off_ui;
 use crate::notifications::{
@@ -1173,16 +1173,16 @@ impl Actions {
         });
     }
 
-    pub fn check_cluster_updates(&self, cluster_id: ClusterId) {
+    fn claim_update_check(&self, cluster_id: ClusterId) -> Option<UpdateCheckClaim> {
         if let Some((title, body)) = cluster_busy(cluster_id) {
             self.notify(title).body(body).send();
-            return;
+            return None;
         }
         if exporting(cluster_id) {
             self.notify(t("oneclient.actions.update_check.exporting.title"))
                 .body(t("oneclient.actions.update_check.exporting.body"))
                 .send();
-            return;
+            return None;
         }
         if self.station.peek().installs.cluster_installing(cluster_id)
             || cluster_writing(cluster_id)
@@ -1190,19 +1190,21 @@ impl Actions {
             self.notify(t("oneclient.actions.update_check.installing.title"))
                 .body(t("oneclient.actions.update_check.installing.body"))
                 .send();
-            return;
+            return None;
         }
 
-        let claimed = self
-            .station
+        self.station
             .clone()
             .write_channel(AppChannel::Game)
             .game
-            .begin_update_check(cluster_id);
-        if !claimed {
+            .begin_update_check(cluster_id)
+            .then(|| UpdateCheckClaim::take(cluster_id))
+    }
+
+    pub fn check_cluster_updates(&self, cluster_id: ClusterId) {
+        let Some(claim) = self.claim_update_check(cluster_id) else {
             return;
-        }
-        let claim = UpdateCheckClaim::take(cluster_id);
+        };
 
         let station = self.station;
         let actions = self.clone();
@@ -1236,6 +1238,99 @@ impl Actions {
                 .finish_update_check(cluster_id);
             drop(claim);
         });
+    }
+
+    pub fn check_package_updates(&self, cluster_id: ClusterId, packages: Vec<(String, String)>) {
+        if packages.is_empty() {
+            return;
+        }
+        let Some(claim) = self.claim_update_check(cluster_id) else {
+            return;
+        };
+
+        let station = self.station;
+        let actions = self.clone();
+        spawn_in_window(async move {
+            match cluster_busy_elsewhere(cluster_id).await {
+                Some((title, body)) => actions.notify(title).body(body).send(),
+                None => actions.run_package_check(cluster_id, packages).await,
+            }
+
+            station
+                .clone()
+                .write_channel(AppChannel::Game)
+                .game
+                .finish_update_check(cluster_id);
+            drop(claim);
+        });
+    }
+
+    async fn run_package_check(&self, cluster_id: ClusterId, packages: Vec<(String, String)>) {
+        let Ok(state) = launcher::state() else { return };
+        let hashes: Vec<String> = packages.iter().map(|(hash, _)| hash.clone()).collect();
+        let content = state.services.content();
+        let check = off_ui(async move {
+            oneclient_core::refresh_browser_package_updates_for(cluster_id, &hashes, &content).await
+        })
+        .await;
+        QueriesStorage::<PackageUpdatesQuery>::invalidate_all().await;
+
+        let check = match check {
+            Ok(check) => check,
+            Err(err) => {
+                tracing::warn!(cluster_id, error = %err, "package update check failed");
+                self.notify(t("oneclient.actions.update_check.failed.title"))
+                    .body(t("oneclient.actions.update_check.failed.body"))
+                    .error()
+                    .send();
+                return;
+            }
+        };
+
+        let unchecked = check.unchecked.len();
+        if unchecked > 0 {
+            let body = match packages.as_slice() {
+                [(_, name)] => tf(
+                    "oneclient.actions.package_check.unchecked.body.one",
+                    &[name],
+                ),
+                _ => tf(
+                    "oneclient.actions.package_check.unchecked.body.other",
+                    &[&unchecked],
+                ),
+            };
+            self.notify(t("oneclient.actions.package_check.unchecked.title"))
+                .body(body)
+                .send();
+        }
+        if unchecked == packages.len() {
+            return;
+        }
+
+        let updates = check.updates;
+        if updates.is_empty() {
+            let body = match packages.as_slice() {
+                [(_, name)] => tf("oneclient.actions.package_check.none.one", &[name]),
+                _ => tf(
+                    "oneclient.actions.package_check.none.other",
+                    &[&(packages.len() - unchecked)],
+                ),
+            };
+            self.notify(t("oneclient.actions.update_check.none.title"))
+                .body(body)
+                .send();
+            return;
+        }
+
+        let Some(group) =
+            crate::install::package_update_group(cluster_id, &updates, &state.services).await
+        else {
+            return;
+        };
+        let chosen = self.prompt_package_updates(group).await;
+        if !chosen.is_empty() {
+            self.apply_updates_for_launch(&state, &chosen).await;
+        }
     }
 
     pub(super) fn refuse_during_update_check(&self, cluster_id: ClusterId) -> bool {

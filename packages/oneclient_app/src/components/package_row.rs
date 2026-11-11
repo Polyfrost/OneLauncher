@@ -104,6 +104,10 @@ impl PackageEntry {
         self.update_available && self.is_remote() && !self.in_bundle()
     }
 
+    pub fn update_checkable(&self) -> bool {
+        self.installed && self.hash.is_some() && self.is_remote() && !self.in_bundle()
+    }
+
     pub fn recency_badge(&self) -> Option<Element> {
         match self.seen_status {
             SeenStatus::New => Some(new_badge()),
@@ -498,6 +502,7 @@ pub fn package_context_menu(
     on_delete: EventHandler<(String, String)>,
     on_bundled: Option<EventHandler<()>>,
     on_select: EventHandler<()>,
+    on_check_update: Option<EventHandler<()>>,
 ) -> ContextMenu {
     let mut menu = ContextMenu::new(x, y).title(item.name.clone()).action(
         IconType::Check,
@@ -538,6 +543,14 @@ pub fn package_context_menu(
             IconType::Folder,
             t("oneclient.components.package_row.view_in_folder"),
             EventHandler::new_current(move |()| reveal_in_store(hash.clone())),
+        );
+    }
+
+    if let Some(on_check_update) = on_check_update {
+        menu = menu.action(
+            IconType::RefreshCw01,
+            t("oneclient.components.package_row.check_update"),
+            on_check_update,
         );
     }
 

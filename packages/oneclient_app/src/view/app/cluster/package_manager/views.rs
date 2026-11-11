@@ -174,8 +174,10 @@ pub(super) struct Bulk {
     pub(super) order: Vec<String>,
     pub(super) count: usize,
     pub(super) deletable: usize,
+    pub(super) checkable: usize,
     pub(super) set_enabled: EventHandler<bool>,
     pub(super) delete: EventHandler<()>,
+    pub(super) check_updates: EventHandler<()>,
 }
 
 impl Bulk {
@@ -272,6 +274,7 @@ impl Bulk {
         let enable = self.set_enabled.clone();
         let disable = self.set_enabled.clone();
         let delete = self.delete.clone();
+        let check_updates = self.check_updates.clone();
         let (toggle_icon, toggle_label) = self.toggle_all_label();
 
         let (icon, text) = if selection.is_selected(&key) {
@@ -304,8 +307,18 @@ impl Bulk {
                     IconType::Minus,
                     t("oneclient.cluster.package_manager.select.disable_selected"),
                     move |()| disable.call(false),
-                )
-                .separator();
+                );
+            if self.checkable > 0 {
+                menu = menu.action(
+                    IconType::RefreshCw01,
+                    tf(
+                        "oneclient.cluster.package_manager.select.check_updates_selected",
+                        &[&self.checkable],
+                    ),
+                    move |()| check_updates.call(()),
+                );
+            }
+            menu = menu.separator();
         }
         menu = menu.action(toggle_icon, toggle_label, move |()| {
             selection.toggle_all(&order)
@@ -1133,6 +1146,14 @@ impl Component for ContentBox {
                     on_delete,
                     on_bundled,
                     (move |()| selection.toggle(key.clone())).into(),
+                    item.hash.clone().filter(|_| item.update_checkable()).map(|hash| {
+                        let dispatch = dispatch.clone();
+                        let package = (hash, item.name.clone());
+                        (move |()| {
+                            dispatch.check_package_updates(cluster_id, vec![package.clone()])
+                        })
+                        .into()
+                    }),
                 )
             };
             menu_for

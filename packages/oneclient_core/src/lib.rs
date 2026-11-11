@@ -90,7 +90,7 @@ pub use oneclient_content::packages::dependents::{
 pub use oneclient_content::packages::updates::{
     BrowserPackageUpdate, BrowserUpdateCheck, apply_browser_package_update,
     cached_browser_package_updates, check_browser_package_updates, refresh_browser_package_updates,
-    skip_browser_package_update,
+    refresh_browser_package_updates_for, skip_browser_package_update,
 };
 pub use oneclient_db::models::SeenStatus;
 pub use oneclient_discord::{DiscordRpc, Presence};

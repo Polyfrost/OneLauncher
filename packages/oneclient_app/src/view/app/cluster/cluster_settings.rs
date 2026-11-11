@@ -195,9 +195,22 @@ impl Component for ClusterSettings {
                     )
                     .append_children(sync_row)
                     .child(section_header(t(
-                        "oneclient.cluster.settings.section.shortcut",
+                        "oneclient.cluster.settings.section.sharing",
                     )))
-                    .child(ShortcutRow { cluster_id }.into_element())
+                    .child(
+                        CloudSyncRow {
+                            cluster_id,
+                            name: cluster.name.clone(),
+                        }
+                        .into_element(),
+                    )
+                    .child(
+                        ExportRow {
+                            cluster_id,
+                            name: cluster.name.clone(),
+                        }
+                        .into_element(),
+                    )
                     .child(section_header(t(
                         "oneclient.cluster.settings.section.content",
                     )))
@@ -212,6 +225,10 @@ impl Component for ClusterSettings {
                         .into_element(),
                     ))
                     .append_children(migrate_row)
+                    .child(section_header(t(
+                        "oneclient.cluster.settings.section.shortcut",
+                    )))
+                    .child(ShortcutRow { cluster_id }.into_element())
                     .child(section_header(t("oneclient.cluster.settings.section.game")))
                     .child(profile_row(
                         generation,
@@ -247,23 +264,6 @@ impl Component for ClusterSettings {
                     ))
                     .append_children(graphics_backend_row)
                     .append_children(loader_section)
-                    .child(section_header(t(
-                        "oneclient.cluster.settings.section.sharing",
-                    )))
-                    .child(
-                        CloudSyncRow {
-                            cluster_id,
-                            name: cluster.name.clone(),
-                        }
-                        .into_element(),
-                    )
-                    .child(
-                        ExportRow {
-                            cluster_id,
-                            name: cluster.name.clone(),
-                        }
-                        .into_element(),
-                    )
                     .child(section_header(t("oneclient.cluster.settings.section.java")))
                     .child(profile_row(
                         generation,

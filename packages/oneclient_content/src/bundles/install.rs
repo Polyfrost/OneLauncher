@@ -1358,7 +1358,13 @@ async fn sharing_scope(
     if !global {
         return Ok(None);
     }
+    global_sharing_scope(cluster_id, ctx).await
+}
 
+async fn global_sharing_scope(
+    cluster_id: i64,
+    ctx: &ContentCtx,
+) -> ContentResult<Option<Vec<i64>>> {
     let Some(cluster) = oneclient_db::dao::cluster::get_by_id(&ctx.db, cluster_id).await? else {
         return Ok(None);
     };
@@ -1392,6 +1398,16 @@ pub async fn clusters_sharing_artifact(
     ctx: &ContentCtx,
 ) -> ContentResult<Option<usize>> {
     Ok(sharing_clusters(cluster_id, hash, ctx)
+        .await?
+        .map(|clusters| clusters.len()))
+}
+
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn clusters_sharing_global_folders(
+    cluster_id: i64,
+    ctx: &ContentCtx,
+) -> ContentResult<Option<usize>> {
+    Ok(global_sharing_scope(cluster_id, ctx)
         .await?
         .map(|clusters| clusters.len()))
 }

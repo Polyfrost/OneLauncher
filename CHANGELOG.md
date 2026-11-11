@@ -1,3 +1,14 @@
+## 2.10.1 (2026-11-11)
+
+### Fixes
+
+- Allowed special characters for naming clusters by [rozwader](https://github.com/rozwader)
+- Fixed contrast on some components by [rozwader](https://github.com/rozwader)
+- Fixed folders not being recognized as resourcepacks by [rozwader](https://github.com/rozwader)
+- Added upload to mclogs button in crash UI by [rozwader](https://github.com/rozwader)
+- Moved Sharing and Content to the 2nd and 3rd sections of cluster settings by [junapur](https://github.com/junapur)
+- Changed the topbar design in social window by [rozwader](https://github.com/rozwader)
+
 ## 2.10.0 (2026-11-08)
 
 ### Features

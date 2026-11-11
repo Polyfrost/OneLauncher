@@ -112,7 +112,7 @@ pub use microsoft_java_prompt::MicrosoftJavaPromptOverlay;
 pub(crate) use microsoft_login::login_dialog;
 pub use microsoft_login::{MicrosoftLogin, use_microsoft_login};
 pub use modpack_confirm_popup::ModpackConfirmPopup;
-pub(crate) use navbar::window_controls;
+pub(crate) use navbar::{window_controls, window_controls_with};
 pub use navbar::{AppNavbar, OnboardingNavbar};
 pub use notifications::{ChevronToggle, NotificationCenter};
 pub use optional_mods_popup::OptionalModsPopup;

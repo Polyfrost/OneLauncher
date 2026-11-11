@@ -344,7 +344,10 @@ impl Component for NavbarRight {
                     .on_press(open_control_center)
                     .child(avatar_with_gear(account_uuid)),
             )
-            .child(super::window_controls_with(foreground))
+            .child(super::window_controls_with(
+                foreground,
+                super::close_launcher,
+            ))
     }
 }
 

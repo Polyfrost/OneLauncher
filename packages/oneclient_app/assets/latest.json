@@ -1,0 +1,11 @@
+{
+  "version": "2.10.0",
+  "notes": "RemixClient 2.10.0 — offline-first release: offline accounts, portable mode, world backups, offline skins, bundled legal notices, new icon, Russian UI by default.",
+  "pub_date": "2026-11-11T00:00:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "",
+      "url": "https://github.com/linkure8888-lang/OneLauncher/releases/download/oneclient-2.10.0/OneClient_2.10.0_x64_en-US.msi.zip"
+    }
+  }
+}

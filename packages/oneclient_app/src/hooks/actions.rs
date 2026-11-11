@@ -11,13 +11,13 @@ mod external_import;
 pub use external_import::{AlternativePick, ExternalImportJob};
 mod modpacks;
 
-pub(crate) use modpacks::{listed, modpack_job_in_shared_dir};
 pub use modpacks::modpack_job_running;
+pub(crate) use modpacks::{listed, modpack_job_in_shared_dir};
 mod release_migration;
 mod share;
 pub use share::{
-    add_collaborator, exporting, load_collaborators, load_is_shared, load_owner_check,
-    load_setting_files, remove_collaborator,
+    add_collaborator, exporting, load_collaborators, load_embedded_files, load_is_shared,
+    load_owner_check, load_setting_files, measure_share, remove_collaborator,
 };
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -1553,7 +1553,9 @@ impl Actions {
                 }
             };
 
-            actions.settle_install(&state, cluster_id, install, world).await;
+            actions
+                .settle_install(&state, cluster_id, install, world)
+                .await;
 
             finish(&actions);
         });
@@ -2626,7 +2628,11 @@ struct ClusterWrite(ClusterId);
 
 impl ClusterWrite {
     fn take(cluster_id: ClusterId) -> Self {
-        *CLUSTER_WRITES.lock().unwrap().entry(cluster_id).or_default() += 1;
+        *CLUSTER_WRITES
+            .lock()
+            .unwrap()
+            .entry(cluster_id)
+            .or_default() += 1;
         Self(cluster_id)
     }
 }

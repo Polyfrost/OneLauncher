@@ -30,7 +30,7 @@ pub use share::{
     ShareExportReport, ShareExtras, ShareIcon, ShareScope, SharedBundleChoice, SharedDownload,
     SharedFile, SharedFileSource, SharedJava, SharedModpack, SharedOverride, collect_share_content,
     ShareFingerprints, icon_entry, install_shared_content, read_cluster_share, read_share_extras,
-    read_share_icon, replace_share_settings, share_fingerprints, trusted_download,
+    read_share_icon, replace_share_settings, share_fingerprints, share_path, trusted_download,
     write_share_archive,
 };
 

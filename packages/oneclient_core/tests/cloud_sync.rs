@@ -417,3 +417,54 @@ async fn left_out_settings() {
     assert_eq!(b.read(on_b, "options.txt").await, b"fov:b");
     assert_eq!(a.read(on_a, "options.txt").await, b"fov:a2");
 }
+
+#[test]
+fn left_out_embedded_files_are_not_exported() {
+    std::thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .spawn(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(left_out_embedded_files());
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+async fn left_out_embedded_files() {
+    use oneclient_core::clusters::{
+        ExportMode, ExportOptions, export_cluster_with, list_embedded_files,
+    };
+
+    let scratch = polyio::testing::ScratchDir::new("share-left-out");
+    let machine = Machine::new(scratch.path(), &scratch.path().join("cloud"), "machine").await;
+    let cluster_id = create_instance(&machine, "Left Out Files").await;
+    add_jar(&machine, scratch.path(), cluster_id, "keep.jar").await;
+    add_jar(&machine, scratch.path(), cluster_id, "private.jar").await;
+
+    let mut listed: Vec<String> =
+        list_embedded_files(&machine.state, cluster_id, ExportMode::OneClient)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|file| file.path)
+            .collect();
+    listed.sort();
+    assert_eq!(listed, ["mods/keep.jar", "mods/private.jar"]);
+
+    let options = ExportOptions::new(ExportMode::OneClient)
+        .with_left_out_files(["mods/private.jar".to_string()].into_iter().collect());
+    let report = export_cluster_with(
+        &machine.state,
+        cluster_id,
+        &scratch.path().join("out.share"),
+        options,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(report.embedded, ["mods/keep.jar"]);
+}

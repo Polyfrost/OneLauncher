@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to create, e.g. v2.10.0"
+        required: true
+        default: "v2.10.0"
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: "true"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release -p oneclient_app
+
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
+
+      - name: Package (NSIS installer + zip)
+        run: cargo packager -p oneclient_app --release -f nsis -f wix
+
+      - name: Collect artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          find target/release -maxdepth 1 -type f \( -name "*.exe" -o -name "*.msi" -o -name "*.zip" \) \
+            ! -name "oneclient_app.exe" -print -exec cp {} dist/ \; || true
+          ls -la dist
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: remixclient-windows
+          path: dist/*
+          if-no-files-found: warn
+
+      - name: Publish release
+        if: github.event_name == 'push' || inputs.tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          name: RemixClient ${{ inputs.tag || github.ref_name }}
+          draft: false
+          generate_release_notes: true
+          files: dist/*

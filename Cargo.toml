@@ -183,9 +183,12 @@ split-debuginfo = "unpacked"
 strip = false
 
 [profile.release]
-codegen-units = 1
+# `lto = "fat"` makes link.exe die with STATUS_STACK_BUFFER_OVERRUN
+# (0xc0000409) on this project's size on Windows, both locally and in CI.
+# Thin LTO keeps almost all of the benefit and links reliably.
+codegen-units = 16
 debug = "line-tables-only"
-lto = "fat"
+lto = "thin"
 opt-level = 3
 panic = "abort"
 split-debuginfo = "packed"

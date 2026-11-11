@@ -171,12 +171,6 @@ fn navbar_center(is_small: bool) -> impl IntoElement {
             nav_label: t("oneclient.components.navbar.browse"),
             over_art,
         })
-        .child(NavLink {
-            active: route == Route::Wardrobe {},
-            target: NavTarget::Route(Route::Wardrobe {}),
-            nav_label: t("oneclient.components.navbar.wardrobe"),
-            over_art,
-        })
 }
 
 /// Falls back active cluster then most recently played then Versions when none exist

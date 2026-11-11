@@ -3,7 +3,6 @@ mod clusters;
 mod debug;
 mod home;
 mod stats;
-mod wardrobe;
 
 pub mod browser;
 pub mod cluster;
@@ -76,4 +75,3 @@ pub use clusters::{Clusters, ExportInstanceModal};
 pub use debug::Debug;
 pub use home::Home;
 pub use stats::Stats;
-pub use wardrobe::Wardrobe;

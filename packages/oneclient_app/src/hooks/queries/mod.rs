@@ -36,7 +36,6 @@ mod storage;
 mod tos;
 mod version_metadata;
 mod versions;
-pub mod wardrobe;
 mod worlds;
 
 pub use analytics::{

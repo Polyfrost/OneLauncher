@@ -49,7 +49,6 @@ fn handle_shadow() -> Shadow {
 pub struct ColorPicker {
     value: Color,
     on_change: EventHandler<Color>,
-    on_close: Option<EventHandler<Color>>,
 }
 
 impl ColorPicker {
@@ -57,13 +56,7 @@ impl ColorPicker {
         Self {
             value,
             on_change: on_change.into(),
-            on_close: None,
         }
-    }
-
-    pub fn on_close(mut self, on_close: impl Into<EventHandler<Color>>) -> Self {
-        self.on_close = Some(on_close.into());
-        self
     }
 }
 
@@ -91,13 +84,9 @@ impl Component for ColorPicker {
         let on_current = colors::on_color(current);
 
         let close = {
-            let on_close = self.on_close.clone();
+            let mut open = open.clone();
             move || {
                 open.set(false);
-                if let Some(on_close) = &on_close {
-                    let (h, s, v) = *hsv.peek();
-                    on_close.call(Color::from_hsv(h, s, v));
-                }
             }
         };
 

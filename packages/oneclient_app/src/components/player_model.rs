@@ -5,10 +5,9 @@ use std::time::{Duration, Instant};
 use bytes::Bytes;
 use freya::engine::prelude::{SkData, SkImage, SkRect};
 use freya::prelude::*;
-use oneclient_polyplus::api;
 use plusrenderer::animation::Loop;
 use plusrenderer::build::Buffers;
-use plusrenderer::{Arms, BodySlot, Camera, Scene, bundle};
+use plusrenderer::{Arms, Camera, Scene, bundle};
 use skia_safe::vertices::VertexMode;
 use skia_safe::{
     BlendMode, Canvas, FilterMode, ImageInfo, Matrix, MipmapMode, Paint, Point, SamplingOptions,
@@ -16,16 +15,14 @@ use skia_safe::{
 };
 
 use crate::hooks::use_player_skin;
-use crate::hooks::wardrobe::CosmeticBundle;
 
 const PLAYER: usize = 0;
 const CAPE: usize = 1;
-const FIRST_COSMETIC: usize = 2;
 const CAM_DIST: f32 = 52.;
 const MODEL_CENTER_Y: f32 = 16.;
 const DRAG_SENSITIVITY: f32 = 0.01;
 const PITCH_LIMIT: f32 = 1.3;
-// Every animated frame repaints the whole window, so cosmetics animate slower than the display.
+// Every animated frame repaints the whole window, so emotes animate slower than the display.
 const ANIMATION_FRAME: Duration = Duration::from_millis(33);
 const EMOTE_PAUSE: f32 = 1.;
 
@@ -38,7 +35,6 @@ pub struct PlayerModel {
     pitch: f32,
     skin: Option<(Bytes, bool)>,
     cape: Option<Bytes>,
-    cosmetics: Vec<(api::BodySlot, CosmeticBundle)>,
     emote: Option<Bytes>,
     particle_color: Option<i32>,
     zoom: f32,
@@ -46,6 +42,8 @@ pub struct PlayerModel {
     draggable: bool,
 }
 
+// Some builder options are kept for upcoming community/offline skin previews.
+#[allow(dead_code)]
 impl PlayerModel {
     pub fn new(uuid: impl Into<String>) -> Self {
         Self {
@@ -56,7 +54,6 @@ impl PlayerModel {
             pitch: -0.1,
             skin: None,
             cape: None,
-            cosmetics: Vec::new(),
             emote: None,
             particle_color: None,
             zoom: 1.0,
@@ -87,11 +84,6 @@ impl PlayerModel {
 
     pub fn cape(mut self, cape: Option<Bytes>) -> Self {
         self.cape = cape;
-        self
-    }
-
-    pub fn cosmetics(mut self, cosmetics: Vec<(api::BodySlot, CosmeticBundle)>) -> Self {
-        self.cosmetics = cosmetics;
         self
     }
 
@@ -132,7 +124,6 @@ struct Look {
     skin: Bytes,
     slim: bool,
     cape: Option<Bytes>,
-    cosmetics: Vec<(api::BodySlot, CosmeticBundle)>,
     emote: Option<Bytes>,
 }
 
@@ -153,7 +144,6 @@ struct Player {
     look: Option<Look>,
     scene: Scene,
     textures: Vec<Option<SkImage>>,
-    aura: Option<usize>,
     start: Option<Instant>,
     /// When a one-shot emote plays again, and how often.
     replay: Option<(f32, f32)>,
@@ -197,7 +187,7 @@ impl Player {
             offscreen.save();
             offscreen.scale((frame.scale, frame.scale));
             offscreen.translate((0., (h - fit) / 2.));
-            let tint = self.aura.zip(frame.tint);
+            let tint = frame.tint.map(|color| (PLAYER, color));
             draw(offscreen, buffers, &self.textures, tint);
             offscreen.restore();
             self.frame = Some((frame, surface.image_snapshot()));
@@ -228,7 +218,6 @@ impl Player {
 
         scene.load_player(PLAYER, if look.slim { Arms::Slim } else { Arms::Wide });
         self.replay = None;
-        self.aura = None;
         if let Some(json) = look.emote.as_deref().and_then(utf8) {
             match scene.load_animation(PLAYER, json) {
                 Ok(()) => scene.play(PLAYER, 0.),
@@ -248,56 +237,6 @@ impl Player {
             let (frames, frame_seconds) = bundle::cape_sheet([w, w / 2], [w, h], "cape.sheet");
             scene.load_cape(CAPE, frames, frame_seconds);
             textures[CAPE] = Some(cape);
-        }
-
-        for (index, (slot, cosmetic)) in look.cosmetics.iter().enumerate() {
-            let index = FIRST_COSMETIC + index;
-            let Some(body) = body_slot(*slot) else {
-                continue;
-            };
-            let Some(geometry) = cosmetic.geometry.as_deref().and_then(utf8) else {
-                continue;
-            };
-            let pet = cosmetic
-                .pet
-                .as_deref()
-                .and_then(|json| serde_json::from_slice::<serde_json::Value>(json).ok());
-            // Flying and walking pets roam beside the player in game; only shoulder pets attach.
-            if pet.as_ref().is_some_and(|pet| {
-                !pet["archetype"]
-                    .as_str()
-                    .is_some_and(|kind| kind.eq_ignore_ascii_case("shoulder"))
-            }) {
-                continue;
-            }
-            let model = match plusrenderer::bedrock::parse_one(geometry) {
-                Ok(model) => model,
-                Err(err) => {
-                    tracing::warn!("cosmetic geometry failed to parse: {err}");
-                    continue;
-                }
-            };
-
-            let texture = cosmetic.texture.as_ref().and_then(decode);
-            let size = texture
-                .as_ref()
-                .map(|image| [image.width() as u32, image.height() as u32]);
-            let anchor = pet.as_ref().and_then(|pet| pet["anchor"].as_str());
-            scene.load_cosmetic(index, model, body, anchor, size);
-            if body == BodySlot::Aura {
-                self.aura = Some(index);
-            }
-            if let Some(scale) = pet.as_ref().and_then(|pet| pet["scale"].as_f64()) {
-                scene.set_scale(index, scale as f32);
-            }
-            if let Some(json) = cosmetic.animation.as_deref().and_then(utf8)
-                && scene.load_animation(index, json).is_ok()
-            {
-                scene.play(index, 0.);
-            }
-
-            textures.resize(index + 1, None);
-            textures[index] = texture;
         }
 
         self.scene = scene;
@@ -320,7 +259,6 @@ impl Component for PlayerModel {
             skin,
             slim,
             cape: self.cape.clone(),
-            cosmetics: self.cosmetics.clone(),
             emote: self.emote.clone(),
         };
         {
@@ -458,23 +396,6 @@ fn utf8(bytes: &[u8]) -> Option<&str> {
 fn decode(bytes: &Bytes) -> Option<SkImage> {
     let image = SkImage::from_encoded(unsafe { SkData::new_bytes(bytes) })?;
     Some(image.make_raster_image(None, None).unwrap_or(image))
-}
-
-fn body_slot(slot: api::BodySlot) -> Option<BodySlot> {
-    Some(match slot {
-        api::BodySlot::Cape => BodySlot::Cape,
-        api::BodySlot::Backpack => BodySlot::Backpack,
-        api::BodySlot::Glasses => BodySlot::Glasses,
-        api::BodySlot::Wings => BodySlot::Wings,
-        api::BodySlot::LeftHand => BodySlot::LeftHand,
-        api::BodySlot::RightHand => BodySlot::RightHand,
-        api::BodySlot::Hat => BodySlot::Hat,
-        api::BodySlot::Aura => BodySlot::Aura,
-        api::BodySlot::Boots => BodySlot::Boots,
-        api::BodySlot::Shoulder => BodySlot::Shoulder,
-        api::BodySlot::Pet => BodySlot::Pet,
-        api::BodySlot::Unknown => return None,
-    })
 }
 
 // plusrenderer-skia's `draw`, on the Skia build Freya links (the crate pins a newer one).

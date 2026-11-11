@@ -21,7 +21,7 @@ use crate::chat::short_player_id;
 use crate::components::IconType;
 use crate::hooks::{
     Actions, player_name, settled_or_loading, try_default_account, use_chat_allowed,
-    use_current_account, use_dispatch, use_player_profile, wardrobe::plus_message,
+    use_current_account, use_dispatch, use_player_profile,
 };
 use crate::i18n::{t, tf};
 
@@ -333,6 +333,41 @@ fn announce(notice: Notice, dispatch: &Actions) {
 
 pub fn party_message(err: PlusError) -> String {
     party::error_message(&err).unwrap_or_else(|| plus_message(err))
+}
+
+pub fn plus_message(err: PlusError) -> String {
+    match err {
+        PlusError::ConsentRequired => t("oneclient.wardrobe.plus.consent_required").into(),
+        PlusError::OfflineAccount => t("oneclient.wardrobe.plus.offline_account").into(),
+        PlusError::JoinRejected { status: 429, .. } => {
+            t("oneclient.wardrobe.plus.join_rate_limited").into()
+        }
+        PlusError::JoinRejected { status, .. } if status >= 500 => {
+            t("oneclient.wardrobe.mojang.server_error").into()
+        }
+        PlusError::JoinRejected { .. } => t("oneclient.wardrobe.mojang.sign_in_rejected").into(),
+        PlusError::LoginRejected { status, .. } if status >= 500 => {
+            t("oneclient.wardrobe.plus.server_error").into()
+        }
+        PlusError::LoginRejected { .. } => t("oneclient.wardrobe.plus.login_rejected").into(),
+        PlusError::Api { status: 404, .. } => t("oneclient.wardrobe.plus.not_found").into(),
+        PlusError::Api { status: 409, .. } => t("oneclient.wardrobe.plus.limit_reached").into(),
+        PlusError::Api { status: 429, .. } => t("oneclient.wardrobe.plus.rate_limited").into(),
+        PlusError::Api { status, .. } if status >= 500 => {
+            t("oneclient.wardrobe.plus.server_error").into()
+        }
+        PlusError::Api { body, .. } if !body.trim().is_empty() => body.trim().to_string(),
+        PlusError::Reqwest(err) if err.is_decode() => {
+            t("oneclient.wardrobe.plus.unexpected_response").into()
+        }
+        PlusError::Request(oneclient_net::RequestError::DeserializeError { .. }) => {
+            t("oneclient.wardrobe.plus.unexpected_response").into()
+        }
+        PlusError::Request(_) | PlusError::Reqwest(_) | PlusError::Websocket(_) => {
+            t("oneclient.wardrobe.plus.unreachable").into()
+        }
+        other => other.to_string(),
+    }
 }
 
 fn renewing_owner(stored: Option<MinecraftAccount>, allowed: bool) -> Option<Uuid> {

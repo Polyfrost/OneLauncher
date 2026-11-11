@@ -26,14 +26,14 @@ next steps. Update it whenever a feature lands or a placeholder is replaced.
 | Discord RPC | done | App ID `1569698419491217500`; Discord desktop must be running; large image optional |
 | Russian | done | `lang/ru_RU.json`, 100% of keys; machine-translated + curated, proofreading welcome |
 | Help tab | done | Settings → Help, feature guide + report/logs buttons |
-| Report button | placeholder | `ISSUES_URL` in `packages/oneclient_app/src/view/app/settings/help.rs` points to `https://github.com/RemixClient/RemixClient/issues/new/choose`; replace when the real repo exists |
+| Report button | placeholder | `ISSUES_URL` in `packages/oneclient_app/src/view/app/settings/help.rs` points to `https://github.com/linkure8888-lang/OneLauncher/issues/new/choose`; replace when the real repo exists |
 | MSI / release | blocked | Release binary builds locally; MSI not built after the latest features; waiting for GitHub repo |
 | CI / GitHub Actions | todo | fmt, clippy, tests, MSI, release signing |
 | Code signing (Authenticode) | skipped | User chose to skip; SmartScreen will warn |
 | ToS / Privacy | done | Bundled `assets/legal/{terms,privacy}.md` compiled into the binary (`TERMS_VERSION`/`PRIVACY_VERSION`), no network, no Polyfrost text. Repo copies in `docs/` |
 | Sentry | disabled | No DSN by default; `REMIXCLIENT_SENTRY_DSN` enables it |
 | CurseForge | works | Embedded upstream key; override with `REMIXCLIENT_CURSEFORGE_API_KEY` |
-| Updater | done (endpoint pending) | Endpoint `https://github.com/RemixClient/RemixClient/releases/latest/download/latest.json`; new minisign key pair generated |
+| Updater | done (endpoint pending) | Endpoint `https://github.com/linkure8888-lang/OneLauncher/releases/latest/download/latest.json`; new minisign key pair generated |
 | Linux/mac packaging | partial | IDs renamed to `org.remixclient.RemixClient`; macOS `OneClient.icon` assets remain; untested |
 | App icon | done | Real design from the user's image (`design/icon-source.jpg`): transparent master `C:\Users\user\Desktop\remix-icon.png` → PNG set, `icon.ico` (16–256), `icon.icns` (16–1024), tray, StoreLogo. Generator: `%TEMP%\remix-icon-tool` (Rust + `image`) |
 | HUD (axe/sword/totem + presets) | researched, blocked on decision | See "HUD research" below. No existing mod covers the combo; own companion mod recommended. Needs: target version + loader |
@@ -46,7 +46,7 @@ next steps. Update it whenever a feature lands or a placeholder is replaced.
   shows the application icon uploaded in the Developer Portal.
 - Updater private key: `C:\Users\user\remixclient-updater.key` (never commit, back it up).
   Public key is embedded in `packages/oneclient_app/src/constants.rs`.
-- Updater releases URL: `https://github.com/RemixClient/RemixClient/releases/latest`.
+- Updater releases URL: `https://github.com/linkure8888-lang/OneLauncher/releases/latest`.
 - Microsoft app id override: `REMIXCLIENT_MICROSOFT_CLIENT_ID`.
 - CurseForge key override: `REMIXCLIENT_CURSEFORGE_API_KEY`.
 - Sentry: `REMIXCLIENT_SENTRY_DSN` (empty by default).

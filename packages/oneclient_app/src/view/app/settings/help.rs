@@ -6,7 +6,7 @@ use crate::i18n::t;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
-const ISSUES_URL: &str = "https://github.com/RemixClient/RemixClient/issues/new/choose";
+const ISSUES_URL: &str = "https://github.com/linkure8888-lang/OneLauncher/issues/new/choose";
 
 #[derive(PartialEq)]
 pub struct SettingsHelp;

@@ -101,7 +101,7 @@ identifier = "org.remixclient.RemixClient"
 category = "Game"
 publisher = "RemixClient Contributors"
 copyright = "© 2026 RemixClient Contributors · GPL-3.0"
-homepage = "https://github.com/RemixClient/RemixClient"
+homepage = "https://github.com/linkure8888-lang/OneLauncher"
 long-description = "RemixClient — improved, offline-first Minecraft launcher (community fork of OneLauncher)"
 formats = ["wix", "nsis", "app", "dmg", "deb", "appimage"]
 binaries = [{ path = "oneclient_app", main = true }]

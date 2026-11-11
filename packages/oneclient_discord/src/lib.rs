@@ -180,7 +180,7 @@ impl Worker {
             .assets(assets)
             .buttons(vec![Button::new(
                 "GitHub",
-                "https://github.com/RemixClient/RemixClient",
+                "https://github.com/linkure8888-lang/OneLauncher",
             )]);
 
         if let Err(err) = self.client.set_activity(activity) {

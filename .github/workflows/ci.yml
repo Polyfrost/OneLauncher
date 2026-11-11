@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "remix/**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SQLX_OFFLINE: "true"
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (fork-relevant crates)
+        run: cargo clippy -p oneclient_auth -p oneclient_common -p oneclient_core --all-targets
+
+      - name: Tests (auth)
+        run: cargo test -p oneclient_auth
+
+      - name: Tests (common)
+        run: cargo test -p oneclient_common
+
+      - name: Tests (core, lib only)
+        # The integration test binaries need more memory than the runner pagefile
+        # gives us; the library tests cover the fork's own code.
+        run: cargo test -p oneclient_core --lib -j 1
+
+      - name: App check
+        run: cargo check -p oneclient_app

@@ -12,9 +12,9 @@
     <p>RemixClient is an offline-first community fork of OneLauncher, an open source Minecraft launcher from Polyfrost.</p>
   </description>
   <launchable type="desktop-id">org.remixclient.RemixClient.desktop</launchable>
-  <url type="homepage">https://github.com/RemixClient/RemixClient</url>
-  <url type="bugtracker">https://github.com/RemixClient/RemixClient/issues</url>
-  <url type="vcs-browser">https://github.com/RemixClient/RemixClient</url>
+  <url type="homepage">https://github.com/linkure8888-lang/OneLauncher</url>
+  <url type="bugtracker">https://github.com/linkure8888-lang/OneLauncher/issues</url>
+  <url type="vcs-browser">https://github.com/linkure8888-lang/OneLauncher</url>
   <content_rating type="oars-1.1"/>
   <provides>
     <binary>oneclient_app</binary>

@@ -10,12 +10,12 @@ authors = [
   "Polyfrost Contributors",
   "RemixClient Contributors",
 ]
-documentation = "https://github.com/RemixClient/RemixClient"
+documentation = "https://github.com/linkure8888-lang/OneLauncher"
 edition = "2024"
-homepage = "https://github.com/RemixClient/RemixClient"
+homepage = "https://github.com/linkure8888-lang/OneLauncher"
 license = "GPL-3.0-only"
 readme = "README.md"
-repository = "https://github.com/RemixClient/RemixClient"
+repository = "https://github.com/linkure8888-lang/OneLauncher"
 rust-version = "1.97"
 version = "2.10.0"
 

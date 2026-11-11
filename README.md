@@ -23,6 +23,10 @@ RemixClient is a community fork of [OneLauncher](https://github.com/Polyfrost/On
 
 - Offline accounts with locally generated UUIDs and no Microsoft login.
 - Optional Microsoft sign-in for users who want social features.
+- **Portable mode** — one folder, a USB stick, no installer and no AppData writes (`--portable`).
+- **World backups before every launch**, with one-click rollback and a safety copy on restore.
+- **Crash autopsy** — parse the log, point at the mod that broke the game, offer to disable it.
+- **Offline skins and capes** — local skin files served from a loopback server, no Mojang session server.
 - Instance manager with per-version settings (memory, JVM/game args, resolution, GPU, hooks, environment).
 - Mod, resource pack, shader and datapack management.
 - Modrinth and CurseForge browsing and updates.
@@ -30,25 +34,23 @@ RemixClient is a community fork of [OneLauncher](https://github.com/Polyfrost/On
 - World, log and screenshot views; crash reports and log sharing.
 - Import from OneClient exports, Prism Launcher, MultiMC, PolyMC and the Modrinth App.
 - Cloud sync and sharing through the upstream Polyfrost services (see [Updates & services](#updates--services)).
-- Bundled English and Russian UI.
+- Bundled English and Russian UI, plus an in-app help tab.
 
-### Roadmap (community priorities)
+### Roadmap
 
-1. **Portable mode** — one folder, USB stick, no installer and no AppData writes.
-2. **World backups before every launch**, with one-click rollback.
-3. **Crash autopsy** — parse the log, point at the mod that broke the game, offer to disable it.
-4. **Offline skins and capes** — local skin files for offline accounts, no Mojang session server.
-5. **LAN world hosting without Microsoft** — open a world to the local network from the launcher.
-6. **File-based profile sharing** — export/import a complete instance as one file, no proprietary cloud.
-7. **Mod health checks** — duplicates, wrong loader, missing dependencies, known conflicts.
-8. **Signed, reproducible releases** for Windows, Linux and macOS.
-9. **More bundled translations**, maintained by the community in this repository.
+1. **In-game HUD** — small axe/sword/totem indicators with durability, a one-shot hit animation and launcher-managed presets (needs a companion mod; no existing mod covers it).
+2. **LAN world hosting without Microsoft** — open a world to the local network from the launcher.
+3. **Optimised dedicated server** — a launcher-side server manager for offline-mode servers with sane defaults, Aikar flags and easy mod/plugin install.
+4. **File-based profile sharing** — export/import a complete instance as one file, no proprietary cloud.
+5. **Mod health checks** — duplicates, wrong loader, missing dependencies, known conflicts.
+6. **Signed, reproducible releases** for Windows, Linux and macOS.
+7. **More bundled translations**, maintained by the community in this repository.
 
 ## Install
 
 ### Windows (MSI)
 
-Download the latest `RemixClient_<version>_x64_en-US.msi` from [Releases](https://github.com/RemixClient/RemixClient/releases/latest) and run it.
+Download the latest `RemixClient_<version>_x64_en-US.msi` from [Releases](https://github.com/linkure8888-lang/OneLauncher/releases/latest) and run it.
 
 The installer registers `RemixClient` as a normal application, creates a Start Menu shortcut and can be removed from *Apps & Features*. The binary itself is still called `oneclient_app.exe` internally so that the fork stays compatible with the upstream build system; the product, shortcut and window title are `RemixClient`.
 
@@ -69,7 +71,7 @@ On first launch RemixClient tries to move the old upstream folder (`%APPDATA%\Po
 
 RemixClient separates two things:
 
-- **Launcher self-updates** come from this repository's GitHub Releases (`https://github.com/RemixClient/RemixClient/releases/latest/download/latest.json`) and are verified with the RemixClient minisign public key. Updating will never silently replace RemixClient with upstream OneClient.
+- **Launcher self-updates** come from this repository's GitHub Releases (`https://github.com/linkure8888-lang/OneLauncher/releases/latest/download/latest.json`) and are verified with the RemixClient minisign public key. Updating will never silently replace RemixClient with upstream OneClient.
 - **Content services** — bundles, version metadata, translations CDN, sharing and Poly+ — still use the upstream Polyfrost endpoints, because that is the ecosystem this fork was built on. These are public services owned by Polyfrost and may change or be restricted at any time. The fork is not affiliated with them.
 
 If you want a fully independent build, replace the endpoint constants in `packages/oneclient_common/src/constants.rs` and `packages/oneclient_app/src/constants.rs` with your own services.
@@ -85,7 +87,7 @@ If you want a fully independent build, replace the endpoint constants in `packag
 ### Commands (Windows PowerShell)
 
 ```powershell
-git clone https://github.com/RemixClient/RemixClient.git
+git clone https://github.com/linkure8888-lang/OneLauncher.git
 cd RemixClient
 
 $env:SQLX_OFFLINE = "true"   # the repo ships .sqlx query data
@@ -211,7 +213,7 @@ RemixClient — это community-форк [OneLauncher](https://github.com/Polyf
 
 ### Windows (MSI)
 
-Скачай последний `RemixClient_<версия>_x64_en-US.msi` из [Releases](https://github.com/RemixClient/RemixClient/releases/latest) и запусти.
+Скачай последний `RemixClient_<версия>_x64_en-US.msi` из [Releases](https://github.com/linkure8888-lang/OneLauncher/releases/latest) и запусти.
 
 Установщик регистрирует `RemixClient` как обычное приложение, создаёт ярлык в меню «Пуск» и удаляется через «Приложения и возможности». Сам бинарник внутри по-прежнему называется `oneclient_app.exe`, чтобы форк оставался совместим со сборочной системой upstream; продукт, ярлык и заголовок окна — `RemixClient`.
 
@@ -232,7 +234,7 @@ RemixClient — это community-форк [OneLauncher](https://github.com/Polyf
 
 Здесь разделены две вещи:
 
-- **Самообновление лаунчера** идёт из GitHub Releases этого репозитория (`https://github.com/RemixClient/RemixClient/releases/latest/download/latest.json`) и проверяется публичным minisign-ключом RemixClient. Обновление никогда не заменит RemixClient обратно на upstream OneClient.
+- **Самообновление лаунчера** идёт из GitHub Releases этого репозитория (`https://github.com/linkure8888-lang/OneLauncher/releases/latest/download/latest.json`) и проверяется публичным minisign-ключом RemixClient. Обновление никогда не заменит RemixClient обратно на upstream OneClient.
 - **Контент-сервисы** — сборки, метаданные версий, CDN переводов, шаринг и Poly+ — пока используют публичные эндпоинты Polyfrost, потому что на этой экосистеме построен форк. Это их публичные сервисы, они могут измениться или быть ограничены в любой момент. Форк с ними не связан.
 
 Для полностью независимой сборки замени константы эндпоинтов в `packages/oneclient_common/src/constants.rs` и `packages/oneclient_app/src/constants.rs` на свои.
@@ -248,7 +250,7 @@ RemixClient — это community-форк [OneLauncher](https://github.com/Polyf
 ### Команды (Windows PowerShell)
 
 ```powershell
-git clone https://github.com/RemixClient/RemixClient.git
+git clone https://github.com/linkure8888-lang/OneLauncher.git
 cd RemixClient
 
 $env:SQLX_OFFLINE = "true"   # в репозитории лежит .sqlx

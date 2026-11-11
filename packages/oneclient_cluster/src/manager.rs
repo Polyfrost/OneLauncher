@@ -1,5 +1,6 @@
 use oneclient_db::dao::{
-    applied_migration as migration_dao, cluster as cluster_dao, setting_profile as profile_dao,
+    applied_migration as migration_dao, artifact as artifact_dao, cluster as cluster_dao,
+    setting_profile as profile_dao,
 };
 use oneclient_db::models::{ClusterId, ClusterKind, ClusterPatch, NewCluster};
 
@@ -414,6 +415,10 @@ impl ClusterManager {
                 .await?;
         }
 
+        if !cluster.uses_dedicated_dir() {
+            self.hand_over_shared_packs(&cluster).await?;
+        }
+
         let trashed = if remove_files && cluster.is_isolated() {
             move_to_trash(&cluster).await
         } else {
@@ -451,6 +456,32 @@ impl ClusterManager {
         }
 
         tracing::info!(cluster_id, remove_files, "deleted cluster");
+        Ok(())
+    }
+
+    /// Pack rows cascade away with the cluster, so a pack only this cluster
+    /// listed would drop out of the shared folder for everyone still using it
+    async fn hand_over_shared_packs(&self, cluster: &Cluster) -> ClusterResult<()> {
+        let group = cluster.shared_group();
+        let sharing: Vec<ClusterId> = self
+            .list()
+            .await?
+            .into_iter()
+            .filter(|other| {
+                other.id != cluster.id
+                    && !other.uses_dedicated_dir()
+                    && other.shared_group() == group
+            })
+            .map(|other| other.id)
+            .collect();
+        if sharing.is_empty() {
+            return Ok(());
+        }
+
+        for content_type in [ContentType::ResourcePack, ContentType::Shader] {
+            artifact_dao::give_global_links(&self.db, cluster.id, content_type as i64, &sharing)
+                .await?;
+        }
         Ok(())
     }
 

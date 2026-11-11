@@ -6,10 +6,10 @@ use freya::query::UseQuery;
 use oneclient_common::search::SearchQuery;
 use oneclient_core::{LogFileInfo, LogKind, LogLevel, LogTrim};
 
-use crate::components::upload_mclogs::{UploadToMclogs, use_mclogs_feedback};
+use crate::components::upload_mclogs::UploadToMclogs;
 use crate::components::{
-    Button, Icon, IconType, LogViewer, OverlayPopup, ScrollArea, Segment, SegmentedControl,
-    TextInput, open_folder_button,
+    Button, Icon, IconType, LogViewer, OVERLAY_BASE_LEVEL, OverlayPopup, ScrollArea, Segment,
+    SegmentedControl, TextInput, open_folder_button,
 };
 use crate::hooks::{
     ClusterLogsQuery, LogAction, UploadLogKeys, UseLogAction, UseUploadLog,
@@ -132,7 +132,6 @@ impl Component for ClusterLogs {
         let search_id = use_a11y();
         let open_game_output = use_hook(try_consume_root_context::<OpenGameOutput>);
 
-        use_mclogs_feedback(upload);
 
         // Reads `category` too so switching the picker re-picks a file instead of keeping a stale selection
         use_side_effect(move || {
@@ -732,6 +731,7 @@ pub fn confirm_overlay(
     };
 
     OverlayPopup::new()
+        .overlay_level(OVERLAY_BASE_LEVEL + 3)
         .on_close(move |_| confirm.set(None))
         .child(
             rect()

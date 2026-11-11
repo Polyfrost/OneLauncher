@@ -7,7 +7,7 @@ use oneclient_core::{FlaggedImportMod, ScreenedInstance, UnpublishedFile};
 
 use super::cards::{SelectCard, marker};
 use super::data::Picks;
-use super::model::{DecisionKey, ModDecision, Wizard, decision_for};
+use super::model::{DecisionKey, ModDecision, TypeChoice, Wizard, decision_for};
 use crate::components::{
     Button, Icon, IconType, ScrollArea, caution_card, centered_spinner, explanation_panel,
     remote_icon, unpublished_rows, warning_card, warning_list,
@@ -27,7 +27,7 @@ pub fn review_step(wizard: Wizard, picks: &Picks) -> Element {
     if picks.import_screening.is_none()
         && let Some(error) = &picks.import_screening_error
     {
-        return not_checked(wizard, error.clone());
+        return not_checked(wizard, picks, error.clone());
     }
     let Some(screened) = &picks.import_screening else {
         return rect()
@@ -47,8 +47,9 @@ pub fn review_step(wizard: Wizard, picks: &Picks) -> Element {
                 || screened.unconfirmed > 0
         })
         .collect();
+    let pack = picks.choice == TypeChoice::Modpack;
     if flagged.is_empty() {
-        return all_clear();
+        return all_clear(pack);
     }
 
     ScrollArea::new()
@@ -56,14 +57,22 @@ pub fn review_step(wizard: Wizard, picks: &Picks) -> Element {
         .height(Size::fill())
         .child(rect().vertical().width(Size::fill()).spacing(20.).children(
             flagged.into_iter().map(|screened| {
-                instance_section(wizard.import_decisions, &picks.import_decisions, screened)
+                instance_section(
+                    wizard.import_decisions,
+                    &picks.import_decisions,
+                    screened,
+                    pack,
+                )
             }),
         ))
         .into_element()
 }
 
-fn not_checked(wizard: Wizard, error: String) -> Element {
+fn not_checked(wizard: Wizard, picks: &Picks, error: String) -> Element {
     let chosen = wizard.import_chosen;
+    let pack = (picks.choice == TypeChoice::Modpack)
+        .then(|| picks.modpack_file.clone())
+        .flatten();
     rect()
         .vertical()
         .width(Size::fill())
@@ -85,9 +94,11 @@ fn not_checked(wizard: Wizard, error: String) -> Element {
         )
         .child(
             label()
-                .text(t(
-                    "oneclient.clusters.instance.import_review.failed.description",
-                ))
+                .text(if pack.is_some() {
+                    t("oneclient.clusters.instance.import_review.failed.description_modpack")
+                } else {
+                    t("oneclient.clusters.instance.import_review.failed.description")
+                })
                 .width(Size::fill())
                 .font_size(text_size(12.))
                 .text_align(TextAlign::Center)
@@ -109,8 +120,11 @@ fn not_checked(wizard: Wizard, error: String) -> Element {
                     .secondary()
                     .small()
                     .on_press(move |_| {
-                        let instances = chosen.read().clone();
-                        spawn(async move { retry_import_screening(instances).await });
+                        let (instances, pack) = match pack.clone() {
+                            Some(pack) => (Vec::new(), Some(pack)),
+                            None => (chosen.read().clone(), None),
+                        };
+                        spawn(async move { retry_import_screening(instances, pack).await });
                     })
                     .child(Icon::new(IconType::RefreshCw01).size(14.))
                     .text(t("oneclient.common.try_again")),
@@ -119,7 +133,7 @@ fn not_checked(wizard: Wizard, error: String) -> Element {
         .into_element()
 }
 
-fn all_clear() -> Element {
+fn all_clear(pack: bool) -> Element {
     rect()
         .vertical()
         .width(Size::fill())
@@ -141,9 +155,11 @@ fn all_clear() -> Element {
         )
         .child(
             label()
-                .text(t(
-                    "oneclient.clusters.instance.import_review.none.description",
-                ))
+                .text(if pack {
+                    t("oneclient.clusters.instance.import_review.none.description_modpack")
+                } else {
+                    t("oneclient.clusters.instance.import_review.none.description")
+                })
                 .width(Size::fill())
                 .font_size(text_size(12.))
                 .text_align(TextAlign::Center)
@@ -156,6 +172,7 @@ fn instance_section(
     state: Decisions,
     decisions: &HashMap<DecisionKey, ModDecision>,
     screened: &ScreenedInstance,
+    pack: bool,
 ) -> Element {
     let count = match screened.flagged.len() {
         0 => String::new(),
@@ -219,6 +236,7 @@ fn instance_section(
                 &screened.mc_version,
                 flagged,
                 current,
+                pack,
             )
         }))
         .into_element()
@@ -246,6 +264,7 @@ fn flagged_card(
     mc_version: &str,
     flagged: &FlaggedImportMod,
     current: ModDecision,
+    pack: bool,
 ) -> Element {
     let key: DecisionKey = (game_dir.to_path_buf(), flagged.hash.clone());
     let file_line = if flagged.enabled {
@@ -337,7 +356,11 @@ fn flagged_card(
                     ModDecision::Keep,
                     current == ModDecision::Keep,
                     t("oneclient.clusters.instance.import_review.keep.title"),
-                    t("oneclient.clusters.instance.import_review.keep.description"),
+                    if pack {
+                        t("oneclient.clusters.instance.import_review.keep.description_modpack")
+                    } else {
+                        t("oneclient.clusters.instance.import_review.keep.description")
+                    },
                 ))
                 .child(choice_option(
                     state,
@@ -345,7 +368,11 @@ fn flagged_card(
                     ModDecision::Remove,
                     current == ModDecision::Remove,
                     t("oneclient.clusters.instance.import_review.remove.title"),
-                    t("oneclient.clusters.instance.import_review.remove.description"),
+                    if pack {
+                        t("oneclient.clusters.instance.import_review.remove.description_modpack")
+                    } else {
+                        t("oneclient.clusters.instance.import_review.remove.description")
+                    },
                 )),
         )
         .into_element()

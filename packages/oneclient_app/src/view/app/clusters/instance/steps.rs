@@ -246,6 +246,7 @@ fn import_source_step(wizard: Wizard, picks: &Picks) -> Element {
 }
 
 fn import_mode_step(wizard: Wizard, picks: &Picks) -> Element {
+    let pack = picks.choice == TypeChoice::Modpack;
     let cards = [
         (
             ImportMode::Improve,
@@ -253,14 +254,26 @@ fn import_mode_step(wizard: Wizard, picks: &Picks) -> Element {
             t("oneclient.clusters.instance.steps.import_mode.improve.title"),
             Some(t("oneclient.clusters.instance.steps.recommended")),
             t("oneclient.clusters.instance.steps.import_mode.improve.blurb"),
-            t("oneclient.clusters.instance.steps.import_mode.improve.meta"),
+            if pack {
+                t("oneclient.clusters.instance.steps.import_mode.improve.meta_modpack")
+            } else {
+                t("oneclient.clusters.instance.steps.import_mode.improve.meta")
+            },
         ),
         (
             ImportMode::AsIs,
             IconType::FolderDownload,
-            t("oneclient.clusters.instance.steps.import_mode.as_is.title"),
+            if pack {
+                t("oneclient.clusters.instance.steps.import_mode.as_is.title_modpack")
+            } else {
+                t("oneclient.clusters.instance.steps.import_mode.as_is.title")
+            },
             None,
-            t("oneclient.clusters.instance.steps.import_mode.as_is.blurb"),
+            if pack {
+                t("oneclient.clusters.instance.steps.import_mode.as_is.blurb_modpack")
+            } else {
+                t("oneclient.clusters.instance.steps.import_mode.as_is.blurb")
+            },
             t("oneclient.clusters.instance.steps.import_mode.as_is.meta"),
         ),
     ];

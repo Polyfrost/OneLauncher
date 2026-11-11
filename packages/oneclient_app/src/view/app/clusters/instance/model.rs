@@ -244,6 +244,13 @@ const ONECLIENT_STEPS: [Step; 5] = [
 ];
 const SCRATCH_STEPS: [Step; 4] = [Step::Type, Step::Version, Step::Loader, Step::Customize];
 const MODPACK_STEPS: [Step; 2] = [Step::Type, Step::Modpack];
+const MODPACK_FILE_STEPS: [Step; 3] = [Step::Type, Step::Modpack, Step::ImportMode];
+const MODPACK_IMPROVE_STEPS: [Step; 4] = [
+    Step::Type,
+    Step::Modpack,
+    Step::ImportMode,
+    Step::ImportReview,
+];
 const IMPORT_FILE_STEPS: [Step; 2] = [Step::Type, Step::ImportSource];
 const IMPORT_STEPS: [Step; 4] = [
     Step::Type,
@@ -259,11 +266,20 @@ const IMPROVE_STEPS: [Step; 5] = [
     Step::ImportReview,
 ];
 
-pub fn step_order(choice: TypeChoice, source: ImportSource, mode: ImportMode) -> &'static [Step] {
+pub fn step_order(
+    choice: TypeChoice,
+    source: ImportSource,
+    mode: ImportMode,
+    origin: ModpackOrigin,
+) -> &'static [Step] {
     match (choice, source, mode) {
         (TypeChoice::OneClient, _, _) => &ONECLIENT_STEPS,
         (TypeChoice::Scratch, _, _) => &SCRATCH_STEPS,
-        (TypeChoice::Modpack, _, _) => &MODPACK_STEPS,
+        (TypeChoice::Modpack, _, mode) => match (origin, mode) {
+            (ModpackOrigin::Browse, _) => &MODPACK_STEPS,
+            (ModpackOrigin::File, ImportMode::AsIs) => &MODPACK_FILE_STEPS,
+            (ModpackOrigin::File, ImportMode::Improve) => &MODPACK_IMPROVE_STEPS,
+        },
         (TypeChoice::Import, ImportSource::File | ImportSource::Code, _) => &IMPORT_FILE_STEPS,
         (TypeChoice::Import, ImportSource::Launcher, ImportMode::AsIs) => &IMPORT_STEPS,
         (TypeChoice::Import, ImportSource::Launcher, ImportMode::Improve) => &IMPROVE_STEPS,
@@ -335,6 +351,7 @@ pub struct Wizard {
     pub import_extra: State<Vec<ExternalDetection>>,
     pub import_mode: State<ImportMode>,
     pub import_decisions: State<HashMap<DecisionKey, ModDecision>>,
+    pub modpack_file: State<Option<PathBuf>>,
     pub folder: State<FolderChoice>,
     pub details: DetailsState,
 }
@@ -342,6 +359,16 @@ pub struct Wizard {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_modpack_file_offers_the_improve_review() {
+        let modpack =
+            |origin, mode| step_order(TypeChoice::Modpack, ImportSource::File, mode, origin);
+
+        assert!(modpack(ModpackOrigin::Browse, ImportMode::Improve) == MODPACK_STEPS);
+        assert!(modpack(ModpackOrigin::File, ImportMode::AsIs) == MODPACK_FILE_STEPS);
+        assert!(modpack(ModpackOrigin::File, ImportMode::Improve) == MODPACK_IMPROVE_STEPS);
+    }
 
     #[test]
     fn an_ornithe_invite_stays_ornithe_in_the_wizard() {

@@ -7,7 +7,7 @@ use oneclient_core::GameVersionKind;
 use oneclient_core::clusters::{ClusterKind, ModpackSource};
 
 use super::copy::{footer_note, heading, is_ready, step_value};
-use super::data::{Picks, resolve};
+use super::data::{Picks, pack_choices, resolve};
 use super::details::DetailsState;
 use super::model::*;
 use super::rail::{Rail, RowState, rail, steps_card, version_art};
@@ -198,8 +198,9 @@ impl Component for CreateInstanceModal {
             share_code: use_state(String::new),
             import_chosen: use_state(Vec::new),
             import_extra: use_state(Vec::new),
-            import_mode: use_state(|| ImportMode::AsIs),
+            import_mode: use_state(|| ImportMode::Improve),
             import_decisions: use_state(HashMap::new),
+            modpack_file: use_state(|| None),
             folder: use_state(|| FolderChoice::Shared),
             details: DetailsState::blank(),
         };
@@ -216,8 +217,20 @@ impl Component for CreateInstanceModal {
         let review_step = picks.step == Step::ImportReview;
         let import_step = picks.step == Step::Import;
         let improving = picks.import_mode == ImportMode::Improve;
+        let modpack_flow = picks.choice == TypeChoice::Modpack;
+        let pick_pack = modpack_flow && picks.step == Step::ImportMode;
+        let pack_review = modpack_flow && review_step;
+        let pack_file = picks.modpack_file.clone();
+        let pack_choices = if pack_review {
+            pack_choices(
+                picks.import_screening.as_deref().unwrap_or_default(),
+                &picks.import_decisions,
+            )
+        } else {
+            Default::default()
+        };
         let import_count = picks.import_count;
-        let import_jobs = if (import_step && !improving) || review_step {
+        let import_jobs = if (import_step && !improving) || (review_step && !pack_review) {
             picks.import_jobs(&wizard.import_chosen.read())
         } else {
             Vec::new()
@@ -269,6 +282,13 @@ impl Component for CreateInstanceModal {
             }
             .to_string(),
             primary_label: match (modpack_step, origin) {
+                _ if pack_review && picks.import_screening.is_none() => {
+                    t("oneclient.clusters.instance.create.install_unchecked").to_string()
+                }
+                _ if pack_review => {
+                    t("oneclient.clusters.instance.create.install_modpack").to_string()
+                }
+                _ if pick_pack => t("oneclient.clusters.instance.create.choose_file").to_string(),
                 _ if review_step && picks.import_screening.is_none() => {
                     t("oneclient.clusters.instance.create.import_unchecked").to_string()
                 }
@@ -286,9 +306,7 @@ impl Component for CreateInstanceModal {
                 (true, ModpackOrigin::Browse) => {
                     t("oneclient.clusters.instance.create.browse_modpacks").to_string()
                 }
-                (true, ModpackOrigin::File) => {
-                    t("oneclient.clusters.instance.create.choose_file").to_string()
-                }
+                (true, ModpackOrigin::File) => t("oneclient.common.next").to_string(),
                 (false, _) if last => t("oneclient.clusters.instance.create.create").to_string(),
                 (false, _) => t("oneclient.common.next").to_string(),
             },
@@ -308,10 +326,18 @@ impl Component for CreateInstanceModal {
                 } else if by_code {
                     dispatch.import_share(share_code.clone());
                     close_code.call(());
+                } else if pack_review {
+                    if let Some(path) = pack_file.clone() {
+                        dispatch
+                            .install_modpack_with(ModpackSource::File(path), pack_choices.clone());
+                        close_import.call(());
+                    }
                 } else if (import_step && !improving) || review_step {
                     dispatch.import_external_instances(import_jobs.clone());
                     close_import.call(());
-                } else if modpack_step {
+                } else if pick_pack && improving {
+                    pick_modpack_file(wizard.modpack_file, step, index + 1);
+                } else if pick_pack || (modpack_step && origin == ModpackOrigin::Browse) {
                     start_modpack(
                         origin,
                         browse_cluster,
@@ -364,6 +390,29 @@ fn browse_cluster() -> i64 {
         .unwrap_or_default()
 }
 
+fn modpack_dialog() -> rfd::AsyncFileDialog {
+    rfd::AsyncFileDialog::new()
+        .set_title(t("oneclient.clusters.instance.create.dialog.modpack.title"))
+        .add_filter(
+            t("oneclient.clusters.instance.create.dialog.modpack.filter"),
+            &MODPACK_EXTENSIONS,
+        )
+}
+
+fn pick_modpack_file(
+    mut modpack_file: State<Option<std::path::PathBuf>>,
+    mut step: State<usize>,
+    next: usize,
+) {
+    spawn(async move {
+        let Some(handle) = modpack_dialog().pick_file().await else {
+            return;
+        };
+        modpack_file.set(Some(handle.path().to_path_buf()));
+        step.set(next);
+    });
+}
+
 fn start_modpack(
     origin: ModpackOrigin,
     cluster_id: i64,
@@ -381,15 +430,7 @@ fn start_modpack(
         }
         ModpackOrigin::File => {
             spawn(async move {
-                let Some(handle) = rfd::AsyncFileDialog::new()
-                    .set_title(t("oneclient.clusters.instance.create.dialog.modpack.title"))
-                    .add_filter(
-                        t("oneclient.clusters.instance.create.dialog.modpack.filter"),
-                        &MODPACK_EXTENSIONS,
-                    )
-                    .pick_file()
-                    .await
-                else {
+                let Some(handle) = modpack_dialog().pick_file().await else {
                     return;
                 };
                 dispatch.install_modpack(ModpackSource::File(handle.path().to_path_buf()));

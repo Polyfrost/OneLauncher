@@ -54,6 +54,10 @@ pub fn heading(picks: &Picks) -> (&'static str, String) {
             t("oneclient.clusters.instance.copy.import_source.title"),
             t("oneclient.clusters.instance.copy.import_source.subtitle").to_string(),
         ),
+        Step::ImportMode if picks.choice == TypeChoice::Modpack => (
+            t("oneclient.clusters.instance.copy.import_mode.title_modpack"),
+            t("oneclient.clusters.instance.copy.import_mode.subtitle_modpack").to_string(),
+        ),
         Step::ImportMode => (
             t("oneclient.clusters.instance.copy.import_mode.title"),
             t("oneclient.clusters.instance.copy.import_mode.subtitle").to_string(),
@@ -64,7 +68,12 @@ pub fn heading(picks: &Picks) -> (&'static str, String) {
         ),
         Step::ImportReview => (
             t("oneclient.clusters.instance.copy.import_review.title"),
-            t("oneclient.clusters.instance.copy.import_review.subtitle").to_string(),
+            if picks.choice == TypeChoice::Modpack {
+                t("oneclient.clusters.instance.copy.import_review.subtitle_modpack")
+            } else {
+                t("oneclient.clusters.instance.copy.import_review.subtitle")
+            }
+            .to_string(),
         ),
     }
 }
@@ -143,6 +152,9 @@ pub fn footer_note(picks: &Picks) -> String {
             }
         },
         Step::ImportMode => match picks.import_mode {
+            ImportMode::AsIs if picks.choice == TypeChoice::Modpack => {
+                t("oneclient.clusters.instance.copy.note.import_mode.as_is_modpack").to_string()
+            }
             ImportMode::AsIs => {
                 t("oneclient.clusters.instance.copy.note.import_mode.as_is").to_string()
             }
@@ -155,6 +167,25 @@ pub fn footer_note(picks: &Picks) -> String {
             1 => t("oneclient.clusters.instance.copy.note.import.one").to_string(),
             n => tf("oneclient.clusters.instance.copy.note.import.other", &[&n]),
         },
+        Step::ImportReview if picks.choice == TypeChoice::Modpack => {
+            match &picks.import_screening {
+                None if picks.import_screening_error.is_some() => {
+                    t("oneclient.clusters.instance.copy.note.import_review.unchecked_modpack")
+                        .to_string()
+                }
+                None => {
+                    t("oneclient.clusters.instance.copy.note.import_review.checking").to_string()
+                }
+                Some(_) => match review_parts(picks).as_slice() {
+                    [] => t("oneclient.clusters.instance.copy.note.import_review.none_modpack")
+                        .to_string(),
+                    parts => tf(
+                        "oneclient.clusters.instance.copy.note.import_review.parts_modpack",
+                        &[&parts.join(", ")],
+                    ),
+                },
+            }
+        }
         Step::ImportReview => match &picks.import_screening {
             None if picks.import_screening_error.is_some() => {
                 t("oneclient.clusters.instance.copy.note.import_review.unchecked").to_string()
@@ -280,7 +311,8 @@ pub fn is_ready(picks: &Picks) -> bool {
         Step::ImportMode => true,
         Step::Import => picks.import_count > 0,
         Step::ImportReview => {
-            picks.import_count > 0
+            (picks.import_count > 0
+                || (picks.choice == TypeChoice::Modpack && picks.modpack_file.is_some()))
                 && (picks.import_screening.is_some() || picks.import_screening_error.is_some())
         }
     }

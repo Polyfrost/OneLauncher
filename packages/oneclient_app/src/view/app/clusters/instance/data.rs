@@ -1,11 +1,14 @@
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use oneclient_cluster::naming::{MAX_NAME_CHARS, validate_instance_name};
 use oneclient_common::domain::GameLoader;
 use oneclient_content::packages::ProviderId;
-use oneclient_core::clusters::ClusterKind;
-use oneclient_core::{BundleArchive, ExternalInstance, GameVersionKind, ScreenedInstance};
+use oneclient_core::clusters::{ClusterKind, PackChoices};
+use oneclient_core::{
+    BundleArchive, ExternalInstance, GameVersionKind, ImportAlternative, ScreenedInstance,
+};
 
 use super::model::*;
 use super::package_names;
@@ -70,6 +73,7 @@ pub struct Picks {
     pub import_screening: Option<Vec<ScreenedInstance>>,
     pub import_screening_error: Option<String>,
     pub import_decisions: HashMap<DecisionKey, ModDecision>,
+    pub modpack_file: Option<PathBuf>,
     pub folder: FolderChoice,
     pub kind: ClusterKind,
     pub name: String,
@@ -118,40 +122,24 @@ impl Picks {
                     .flatten()
                     .find(|screened| screened.game_dir == instance.game_dir);
                 job.reviewed = screened.map(|screened| screened.mods_stamp);
-                for flagged in screened.iter().flat_map(|screened| &screened.flagged) {
-                    match decision_for(&self.import_decisions, &instance.game_dir, flagged) {
-                        ModDecision::Keep => {}
-                        ModDecision::Remove => {
-                            job.choices.skip.insert(flagged.hash.clone());
-                        }
-                        ModDecision::Replace {
-                            provider,
-                            project_id,
-                        } => {
-                            job.choices.skip.insert(flagged.hash.clone());
-                            let chosen = flagged.alternatives.iter().find(|a| {
-                                a.resolved.provider == provider
-                                    && a.resolved.project_id == project_id
-                            });
-                            if chosen.is_some_and(|a| a.already_installed) {
-                                continue;
-                            }
-                            let name = chosen
-                                .map_or_else(|| project_id.clone(), |a| a.resolved.name.clone());
-                            if !job
-                                .alternatives
-                                .iter()
-                                .any(|a| a.provider == provider && a.project_id == project_id)
-                            {
-                                job.alternatives.push(AlternativePick {
-                                    provider,
-                                    project_id,
-                                    name,
-                                });
-                            }
-                        }
-                    }
+                let mut picks = Vec::new();
+                if let Some(screened) = screened {
+                    apply_decisions(
+                        screened,
+                        &self.import_decisions,
+                        &mut job.choices.skip,
+                        &mut picks,
+                    );
                 }
+                job.alternatives = picks
+                    .into_iter()
+                    .map(|(provider, project_id, chosen)| AlternativePick {
+                        name: chosen
+                            .map_or_else(|| project_id.clone(), |a| a.resolved.name.clone()),
+                        provider,
+                        project_id,
+                    })
+                    .collect();
                 job
             })
             .collect()
@@ -386,7 +374,8 @@ pub fn resolve(w: Wizard) -> Picks {
     let choice = *w.choice.read();
     let import_mode = *w.import_mode.read();
     let import_source = *w.import_source.read();
-    let steps = step_order(choice, import_source, import_mode);
+    let modpack_origin = *w.modpack_origin.read();
+    let steps = step_order(choice, import_source, import_mode, modpack_origin);
     let index = (*w.step.read()).min(steps.len().saturating_sub(1));
     let step = steps[index];
 
@@ -445,11 +434,16 @@ pub fn resolve(w: Wizard) -> Picks {
         _ => None,
     };
 
-    let screening_query = use_import_screening(if step == Step::ImportReview {
-        w.import_chosen.read().clone()
-    } else {
-        Vec::new()
-    });
+    let reviewing_pack = step == Step::ImportReview && choice == TypeChoice::Modpack;
+    let modpack_file = w.modpack_file.read().clone();
+    let screening_query = use_import_screening(
+        if step == Step::ImportReview && !reviewing_pack {
+            w.import_chosen.read().clone()
+        } else {
+            Vec::new()
+        },
+        modpack_file.clone().filter(|_| reviewing_pack),
+    );
     let (import_screening, import_screening_error) = if step == Step::ImportReview {
         (
             import_screening(&screening_query),
@@ -477,7 +471,7 @@ pub fn resolve(w: Wizard) -> Picks {
         index,
         step,
         choice,
-        modpack_origin: *w.modpack_origin.read(),
+        modpack_origin,
         import_source,
         share_code: w.share_code.read().clone(),
         import_count: w.import_chosen.read().len(),
@@ -485,6 +479,7 @@ pub fn resolve(w: Wizard) -> Picks {
         import_screening,
         import_screening_error,
         import_decisions: w.import_decisions.read().clone(),
+        modpack_file,
         folder: w.folder.read().clone(),
         kind,
         name: w.details.effective_name(&suggested),
@@ -508,5 +503,134 @@ pub fn resolve(w: Wizard) -> Picks {
             names: bundles.names,
             declined,
         },
+    }
+}
+
+pub fn pack_choices(
+    screening: &[ScreenedInstance],
+    decisions: &HashMap<DecisionKey, ModDecision>,
+) -> PackChoices {
+    let mut choices = PackChoices::default();
+    let mut picks = Vec::new();
+    for screened in screening {
+        apply_decisions(screened, decisions, &mut choices.skipped, &mut picks);
+    }
+    choices.alternatives = picks
+        .into_iter()
+        .filter_map(|(_, _, chosen)| chosen.map(|a| a.resolved.clone()))
+        .collect();
+    choices
+}
+
+type Pick<'a> = (ProviderId, String, Option<&'a ImportAlternative>);
+
+fn apply_decisions<'a>(
+    screened: &'a ScreenedInstance,
+    decisions: &HashMap<DecisionKey, ModDecision>,
+    skip: &mut HashSet<String>,
+    picks: &mut Vec<Pick<'a>>,
+) {
+    for flagged in &screened.flagged {
+        match decision_for(decisions, &screened.game_dir, flagged) {
+            ModDecision::Keep => {}
+            ModDecision::Remove => {
+                skip.insert(flagged.hash.clone());
+            }
+            ModDecision::Replace {
+                provider,
+                project_id,
+            } => {
+                skip.insert(flagged.hash.clone());
+                let chosen = flagged.alternatives.iter().find(|a| {
+                    a.resolved.provider == provider && a.resolved.project_id == project_id
+                });
+                let picked = picks
+                    .iter()
+                    .any(|(p, id, _)| *p == provider && *id == project_id);
+                if !picked && !chosen.is_some_and(|a| a.already_installed) {
+                    picks.push((provider, project_id, chosen));
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use oneclient_content::packages::ResolvedAlternative;
+    use oneclient_core::{FlaggedImportMod, ImportAlternative};
+
+    use super::*;
+
+    fn alternative(project_id: &str, already_installed: bool) -> ImportAlternative {
+        ImportAlternative {
+            resolved: ResolvedAlternative {
+                provider: ProviderId::Modrinth,
+                project_id: project_id.to_string(),
+                name: project_id.to_string(),
+                version_id: Some("v1".to_string()),
+                version_number: None,
+                icon_url: None,
+            },
+            already_installed,
+        }
+    }
+
+    fn flagged(hash: &str, alternatives: Vec<ImportAlternative>) -> FlaggedImportMod {
+        FlaggedImportMod {
+            hash: hash.to_string(),
+            file_name: hash.to_string(),
+            name: hash.to_string(),
+            enabled: true,
+            explanation: None,
+            alternatives,
+        }
+    }
+
+    fn replace(project_id: &str) -> ModDecision {
+        ModDecision::Replace {
+            provider: ProviderId::Modrinth,
+            project_id: project_id.to_string(),
+        }
+    }
+
+    #[test]
+    fn pack_choices_skip_replaced_mods_and_install_each_replacement_once() {
+        let pack = PathBuf::from("pack.mrpack");
+        let screened = ScreenedInstance {
+            game_dir: pack.clone(),
+            name: "Pack".to_string(),
+            mc_version: "1.21.1".to_string(),
+            flagged: vec![
+                flagged("kept", vec![alternative("better", false)]),
+                flagged("removed", vec![alternative("better", false)]),
+                flagged("first", vec![alternative("better", false)]),
+                flagged("second", vec![alternative("better", false)]),
+                flagged("shipped", vec![alternative("in-pack", true)]),
+            ],
+            unpublished: Vec::new(),
+            unconfirmed: 0,
+            mods_stamp: 0,
+        };
+        let decisions = HashMap::from([
+            ((pack.clone(), "kept".to_string()), ModDecision::Keep),
+            ((pack.clone(), "removed".to_string()), ModDecision::Remove),
+            ((pack.clone(), "first".to_string()), replace("better")),
+            ((pack.clone(), "second".to_string()), replace("better")),
+            ((pack, "shipped".to_string()), replace("in-pack")),
+        ]);
+
+        let choices = pack_choices(&[screened], &decisions);
+
+        assert_eq!(
+            choices.skipped,
+            HashSet::from(["removed", "first", "second", "shipped"].map(String::from))
+        );
+        let installed: Vec<&str> = choices
+            .alternatives
+            .iter()
+            .map(|a| a.project_id.as_str())
+            .collect();
+        assert_eq!(installed, ["better"]);
     }
 }

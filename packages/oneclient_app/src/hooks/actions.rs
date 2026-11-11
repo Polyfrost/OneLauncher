@@ -12,7 +12,7 @@ pub use external_import::{AlternativePick, ExternalImportJob};
 mod modpacks;
 
 pub(crate) use modpacks::{listed, modpack_job_in_shared_dir};
-pub use modpacks::modpack_job_running;
+pub use modpacks::{modpack_job_running, remember_reviewed_pack};
 mod release_migration;
 mod share;
 pub use share::{

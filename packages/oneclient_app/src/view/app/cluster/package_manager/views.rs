@@ -632,7 +632,7 @@ impl Component for CategoryChip {
                     .font_weight(FontWeight::MEDIUM)
                     .max_lines(1)
                     .color(if selected {
-                        Color::WHITE
+                        colors::on_brand()
                     } else {
                         colors::fg_primary()
                     }),

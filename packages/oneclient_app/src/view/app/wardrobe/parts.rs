@@ -118,7 +118,7 @@ fn badge_tab(badge: &Badge) -> Element {
     let (background, color) = match badge.style {
         BadgeStyle::New => (colors::success(), colors::fg_primary()),
         BadgeStyle::Sale => (colors::fg_primary(), colors::page()),
-        BadgeStyle::Accent => (colors::brand(), colors::fg_primary()),
+        BadgeStyle::Accent => (colors::brand(), colors::on_brand()),
     };
     rect()
         .horizontal()
@@ -391,7 +391,11 @@ impl Component for WardrobeCard {
             colors::component_border()
         };
 
-        let strip_color = colors::fg_primary();
+        let strip_color = if self.equipped {
+            colors::on_brand()
+        } else {
+            colors::fg_primary()
+        };
         let strip_line = if *strip_hovered.read() && self.action_enabled {
             colors::component_border_hover()
         } else {
@@ -748,7 +752,7 @@ impl Component for SectionChip {
     fn render(&self) -> impl IntoElement {
         let mut hovered = use_state(|| false);
         let color = if self.selected {
-            colors::fg_primary()
+            colors::on_brand()
         } else {
             colors::fg_secondary()
         };

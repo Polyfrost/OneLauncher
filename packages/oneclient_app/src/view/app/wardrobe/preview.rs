@@ -608,7 +608,7 @@ impl Component for VariantChip {
                     .font_size(text_size(12.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(if self.selected {
-                        colors::fg_primary()
+                        colors::on_brand()
                     } else {
                         colors::fg_secondary()
                     }),
@@ -1045,7 +1045,7 @@ impl Component for StoreDetailPanel {
                                     .text(text)
                                     .font_size(text_size(11.))
                                     .font_weight(FontWeight::MEDIUM)
-                                    .color(colors::fg_primary()),
+                                    .color(colors::on_color(color)),
                             )
                     })),
             )

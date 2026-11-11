@@ -486,7 +486,7 @@ impl Component for InvitesCard {
                                     .color(colors::fg_primary())
                                     .width(Size::flex(1.0)),
                             )
-                            .child(count_badge(count, colors::brand(), Color::WHITE))
+                            .child(count_badge(count, colors::brand(), colors::on_brand()))
                             .child(
                                 Icon::new(IconType::ChevronDown)
                                     .size(12.)
@@ -617,7 +617,7 @@ pub(super) fn accent_button(
                 .text(text)
                 .font_size(text_size(12.))
                 .font_weight(FontWeight::MEDIUM)
-                .color(Color::WHITE),
+                .color(colors::on_brand()),
         )
 }
 
@@ -651,7 +651,7 @@ fn tab_strip(
                     .font_size(text_size(12.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(if selected {
-                        Color::WHITE
+                        colors::on_brand()
                     } else {
                         colors::fg_secondary()
                     }),
@@ -662,10 +662,10 @@ fn tab_strip(
                         .text(count.to_string())
                         .font_size(text_size(10.))
                         .font_weight(FontWeight::SEMI_BOLD)
-                        .color(Color::WHITE.with_a(204))
+                        .color(colors::on_brand().with_a(204))
                         .into_element()
                 } else {
-                    count_badge(count, colors::brand(), Color::WHITE).into_element()
+                    count_badge(count, colors::brand(), colors::on_brand()).into_element()
                 }
             }))
     };
@@ -1247,7 +1247,7 @@ fn square_button(
         .a11y_alt(alt)
         .on_press(on_press)
         .child(Icon::new(icon).size(14.).color(if accent {
-            Color::WHITE
+            colors::on_brand()
         } else {
             colors::fg_primary()
         }))

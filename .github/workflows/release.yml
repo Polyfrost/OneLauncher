@@ -34,8 +34,8 @@ jobs:
       - name: Install cargo-packager
         run: cargo install cargo-packager --locked
 
-      - name: Package (NSIS installer + zip)
-        run: cargo packager -p oneclient_app --release -f nsis -f wix
+      - name: Package (NSIS installer)
+        run: cargo packager -p oneclient_app --release -f nsis
 
       - name: Collect artifacts
         shell: bash

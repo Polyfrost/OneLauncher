@@ -428,9 +428,13 @@ async fn adopt_into_global(own_root: &Path, global_root: &Path) {
         return;
     }
 
-    for content_type in GLOBAL_TYPES {
-        let own = own_root.join(content_type.folder_name());
-        let shared = global_root.join(content_type.folder_name());
+    let folders = GLOBAL_TYPES
+        .map(ContentType::folder_name)
+        .into_iter()
+        .chain([super::folder_packs::STASH_DIR]);
+    for folder in folders {
+        let own = own_root.join(folder);
+        let shared = global_root.join(folder);
 
         match polyio::symlink_metadata(&own).await {
             Ok(meta) if meta.is_dir() && !meta.file_type().is_symlink() => {}
@@ -3543,6 +3547,30 @@ mod tests {
         assert!(is_note(EMPTY_NOTE_NAME));
         assert!(is_note(LINKS_NOTE_NAME));
         assert!(!is_note("sodium.jar"));
+    }
+
+    #[tokio::test]
+    async fn joining_the_shared_folder_brings_switched_off_folder_packs() {
+        let root = polyio::testing::ScratchDir::new("adopt_stash");
+        let (own, global) = (root.path().join("own"), root.path().join("global"));
+        let stashed = own
+            .join(super::super::folder_packs::STASH_DIR)
+            .join("Faithful");
+        polyio::create_dir_all(&stashed).await.unwrap();
+        polyio::write(stashed.join("pack.mcmeta"), b"{}".as_slice())
+            .await
+            .unwrap();
+
+        adopt_into_global(&own, &global).await;
+
+        assert!(
+            global
+                .join(super::super::folder_packs::STASH_DIR)
+                .join("Faithful")
+                .join("pack.mcmeta")
+                .is_file()
+        );
+        assert!(!stashed.exists());
     }
 
     #[tokio::test]

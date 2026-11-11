@@ -128,7 +128,7 @@ pub(crate) use package_row::{
 };
 pub use package_row::{
     CardLayout, CopyStatus, PackageEntry, PackageRow, github_badge, package_context_menu,
-    provider_badge,
+    parse_folder_pack_id, provider_badge,
 };
 pub use package_update_popup::PackageUpdatePopup;
 pub use pagination::Pagination;

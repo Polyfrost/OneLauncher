@@ -282,6 +282,43 @@ pub fn bundle_packages(
     rows
 }
 
+pub fn folder_pack_rows(
+    packs: Vec<oneclient_core::game::FolderPack>,
+) -> impl Iterator<Item = PackageEntry> {
+    let enabled: std::collections::HashSet<String> = packs
+        .iter()
+        .filter(|pack| pack.enabled)
+        .map(|pack| pack.name.clone())
+        .collect();
+    packs.into_iter().map(move |pack| {
+        let id = if !pack.enabled && enabled.contains(&pack.name) {
+            format!("folder:{}/off", pack.name)
+        } else {
+            format!("folder:{}", pack.name)
+        };
+        let mut row = make_row(
+            id,
+            None,
+            ProviderId::Local,
+            0,
+            Vec::new(),
+            pack.enabled,
+            false,
+            false,
+            None,
+            None,
+            pack.name,
+            false,
+            false,
+            true,
+        );
+        row.installed = true;
+        row.version = Some(t("oneclient.cluster.package_manager.folder_pack").to_string());
+        row.description = pack.description.unwrap_or_default();
+        row
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 fn make_row(
     package_id: String,
@@ -781,6 +818,11 @@ impl Component for PackageManager {
             .filter(|p| p.installed && !p.in_bundle())
             .filter_map(|p| p.hash.clone())
             .collect();
+        let folder_deletable: Vec<(String, bool)> = chosen
+            .iter()
+            .filter_map(|p| p.folder_pack())
+            .map(|(name, enabled)| (name.to_string(), enabled))
+            .collect();
         let bundled_deletable: Vec<PackageEntry> = chosen
             .iter()
             .filter(|_| content_type == ContentType::Mod)
@@ -805,21 +847,30 @@ impl Component for PackageManager {
                 if actions.is_empty() {
                     return;
                 }
+                if enabled {
+                    mutation.mutate(ClusterAction::Batch(actions));
+                    return;
+                }
+                let (folders, targets): (Vec<&PackageEntry>, Vec<&PackageEntry>) = targets
+                    .into_iter()
+                    .filter(|p| toggle_action(p, cluster_id, false).is_some())
+                    .partition(|p| p.folder_pack().is_some());
+                if !folders.is_empty() {
+                    mutation.mutate(ClusterAction::Batch(
+                        folders
+                            .iter()
+                            .filter_map(|p| toggle_action(p, cluster_id, false))
+                            .collect(),
+                    ));
+                }
                 let name = match targets.as_slice() {
+                    [] => return,
                     [only] => only.name.clone(),
                     _ => tf(
                         "oneclient.cluster.package_manager.count",
                         &[&targets.len(), &noun_plural],
                     ),
                 };
-                if enabled {
-                    mutation.mutate(ClusterAction::Batch(actions));
-                    return;
-                }
-                let targets: Vec<&PackageEntry> = targets
-                    .into_iter()
-                    .filter(|p| toggle_action(p, cluster_id, false).is_some())
-                    .collect();
                 guard_disable(
                     disable_request(&targets, cluster_id, name),
                     &targets,
@@ -836,13 +887,13 @@ impl Component for PackageManager {
             selection,
             order,
             count: chosen.len(),
-            deletable: deletable.len() + bundled_deletable.len(),
+            deletable: deletable.len() + folder_deletable.len() + bundled_deletable.len(),
             set_enabled,
             delete: (move |()| confirm_delete.set(true)).into(),
         };
 
         let delete_dialog = confirm_delete.read().then(|| {
-            let count = deletable.len() + bundled_deletable.len();
+            let count = deletable.len() + folder_deletable.len() + bundled_deletable.len();
             let noun = if count == 1 {
                 noun_one(content_type)
             } else {
@@ -884,6 +935,13 @@ impl Component for PackageManager {
                                 cluster_id,
                                 hash: hash.clone(),
                             })
+                            .chain(folder_deletable.iter().map(|(name, enabled)| {
+                                ClusterAction::RemoveFolderPack {
+                                    cluster_id,
+                                    name: name.clone(),
+                                    enabled: *enabled,
+                                }
+                            }))
                             .chain(
                                 bundled_deletable
                                     .iter()

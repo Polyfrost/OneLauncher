@@ -722,6 +722,7 @@
   "oneclient.cluster.package_manager.filter.show.title": "Show",
   "oneclient.cluster.package_manager.filter.sort.title": "Sort by",
   "oneclient.cluster.package_manager.import.picker_title": "Select files to import",
+  "oneclient.cluster.package_manager.folder_pack": "Folder pack",
   "oneclient.cluster.package_manager.local_empty.hint": "Tip: drag files onto the window to install them.",
   "oneclient.cluster.package_manager.local_empty.title": "No local %s yet.",
   "oneclient.cluster.package_manager.notice.bisect": "A problem mod search is running, so %s can't be switched on or off here. Use the panel above to stop it.",

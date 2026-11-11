@@ -4,7 +4,9 @@ use uuid::Uuid;
 use oneclient_polyplus::{GroupKind, MAX_MESSAGE_LENGTH};
 
 use crate::chat::{ChatConversation, ChatMessage, MessageInvite, PendingMessage, ThreadStatus};
-use crate::components::{Avatar, Button, ContextMenu, Icon, IconType, ScrollArea, TextInput};
+use crate::components::{
+    Avatar, Button, ContextMenu, Icon, IconType, OVERLAY_MAX_LEVEL, ScrollArea, TextInput,
+};
 use crate::hooks::{
     Actions, chat_draft, save_chat_draft, use_chat_invite_game, use_chat_online_count,
     use_chat_roster, use_chat_thread, use_dispatch, use_player_online,
@@ -348,6 +350,7 @@ impl Component for ThreadHeader {
             let add = self.on_add_members.clone();
             let leave = self.on_leave.clone();
             let options = ContextMenu::new(x, y)
+                .overlay_level(OVERLAY_MAX_LEVEL)
                 .on_close(move |_| menu.set(None))
                 .action(
                     IconType::Plus,
@@ -526,6 +529,7 @@ impl Component for MessageRow {
             let message_id = self.message.id;
             let content = self.message.content.clone();
             ContextMenu::new(x, y)
+                .overlay_level(OVERLAY_MAX_LEVEL)
                 .on_close(move |_| menu.set(None))
                 .action(
                     IconType::Pencil01,

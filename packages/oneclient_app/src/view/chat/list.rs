@@ -9,7 +9,8 @@ use oneclient_polyplus::{BlockedPlayer, Friend, FriendRequest, PlayerStatus};
 
 use crate::chat::{ChatConversation, ChatInvite, ChatRoster, FriendRequestStatus};
 use crate::components::{
-    Avatar, ContextMenu, Icon, IconType, LazySection, ScrollArea, TextInput, window_controls_with,
+    Avatar, ContextMenu, Icon, IconType, LazySection, OVERLAY_MAX_LEVEL, ScrollArea, TextInput,
+    window_controls_with,
 };
 use crate::hooks::{
     Actions, use_chat_friend_request, use_chat_invites, use_chat_self_status, use_dispatch,
@@ -1350,6 +1351,7 @@ impl Component for FriendRow {
             let remove = dispatch.clone();
             let block = dispatch.clone();
             ContextMenu::new(x, y)
+                .overlay_level(OVERLAY_MAX_LEVEL)
                 .title(name.clone())
                 .on_close(move |_| menu.set(None))
                 .action(

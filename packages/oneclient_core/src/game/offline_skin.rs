@@ -187,9 +187,7 @@ pub async fn local_skin_preview(account_id: Uuid) -> Option<OfflinePreview> {
     let id = account_id.simple().to_string();
     Some(OfflinePreview {
         skin_url: Some(format!("{base}/skin/{id}.png")),
-        cape_url: skin
-            .has_cape
-            .then(|| format!("{base}/cape/{id}.png")),
+        cape_url: skin.has_cape.then(|| format!("{base}/cape/{id}.png")),
         is_slim: skin.model == SkinModel::Slim,
     })
 }

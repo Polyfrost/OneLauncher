@@ -133,25 +133,21 @@ async fn cached_version_detail(
         return None;
     }
 
-    let dependencies = artifact_dao::list_release_dependencies(
-        &ctx.db,
-        provider as i64,
-        project_id,
-        version_id,
-    )
-    .await
-    .unwrap_or_default()
-    .into_iter()
-    .filter_map(|row| {
-        Some(VersionDependency {
-            project_id: (!row.dependency_project_id.is_empty())
-                .then_some(row.dependency_project_id),
-            version_id: (!row.dependency_version_id.is_empty())
-                .then_some(row.dependency_version_id),
-            kind: DependencyKind::parse(&row.kind)?,
-        })
-    })
-    .collect();
+    let dependencies =
+        artifact_dao::list_release_dependencies(&ctx.db, provider as i64, project_id, version_id)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|row| {
+                Some(VersionDependency {
+                    project_id: (!row.dependency_project_id.is_empty())
+                        .then_some(row.dependency_project_id),
+                    version_id: (!row.dependency_version_id.is_empty())
+                        .then_some(row.dependency_version_id),
+                    kind: DependencyKind::parse(&row.kind)?,
+                })
+            })
+            .collect();
 
     let game_versions: Vec<String> = serde_json::from_str(&release.mc_versions).unwrap_or_default();
     let loaders: Vec<GameLoader> = serde_json::from_str(&release.mc_loaders).unwrap_or_default();

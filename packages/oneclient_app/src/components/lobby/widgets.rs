@@ -12,9 +12,11 @@ use crate::ui::border_all_color;
 const STACK_OVERLAP: f32 = 6.;
 
 pub fn avatar_stack(party: &Party, me: Option<Uuid>, limit: usize, size: f32, ring: Color) -> Rect {
-    sorted_members(party, me).iter().take(limit).enumerate().fold(
-        rect().horizontal(),
-        |stack, (index, member)| {
+    sorted_members(party, me)
+        .iter()
+        .take(limit)
+        .enumerate()
+        .fold(rect().horizontal(), |stack, (index, member)| {
             stack.child(
                 rect()
                     .corner_radius(rounded(size / 4. + 2.))
@@ -25,8 +27,7 @@ pub fn avatar_stack(party: &Party, me: Option<Uuid>, limit: usize, size: f32, ri
                     })
                     .child(Avatar::new(member.player.to_string()).size(size)),
             )
-        },
-    )
+        })
 }
 
 #[derive(PartialEq)]

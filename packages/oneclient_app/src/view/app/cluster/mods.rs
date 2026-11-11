@@ -92,7 +92,8 @@ impl Component for ClusterMods {
             }
         }
         let identity = |item: &PackageEntry| {
-            (!item.author.is_empty()).then(|| (item.name.to_lowercase(), item.author.to_lowercase()))
+            (!item.author.is_empty())
+                .then(|| (item.name.to_lowercase(), item.author.to_lowercase()))
         };
         let mut folded = HashSet::new();
         for i in 0..items.len() {

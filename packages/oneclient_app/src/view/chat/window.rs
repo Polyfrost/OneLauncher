@@ -145,8 +145,8 @@ impl App for ChatApp {
 
         track_focus(&dispatch, &CHAT_FOCUSED);
 
-        let expanded = Platform::get().current_window().root_size.read().width
-            >= EXPANDED_MIN_WIDTH_PX;
+        let expanded =
+            Platform::get().current_window().root_size.read().width >= EXPANDED_MIN_WIDTH_PX;
 
         use_drop({
             let dispatch = dispatch.clone();

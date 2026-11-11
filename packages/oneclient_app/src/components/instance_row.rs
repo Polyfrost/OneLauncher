@@ -122,7 +122,9 @@ impl Component for InstanceRow {
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
             .on_press(move |e| on_press.call(e))
-            .maybe(self.menu.is_some(), |el| el.on_secondary_down(open_menu_at(menu_at)))
+            .maybe(self.menu.is_some(), |el| {
+                el.on_secondary_down(open_menu_at(menu_at))
+            })
             .on_pointer_enter(move |_| hovering.set(true))
             .on_pointer_leave(move |_| hovering.set(false))
             .maybe_child(self.menu.clone().map(|target| {

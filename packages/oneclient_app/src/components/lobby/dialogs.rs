@@ -2,9 +2,7 @@ use freya::prelude::*;
 use oneclient_polyplus::party;
 use uuid::Uuid;
 
-use super::{
-    FriendView, LobbyState, act, is_full, use_friends, use_lobby, use_my_uuid,
-};
+use super::{FriendView, LobbyState, act, is_full, use_friends, use_lobby, use_my_uuid};
 use crate::components::{
     Avatar, Button, Icon, IconType, OVERLAY_MAX_LEVEL, OverlayPopup, TextInput,
 };
@@ -367,10 +365,12 @@ impl Component for InviteDialog {
                         ),
                 )
                 .child(list)
-                .maybe_child(full.then(|| hint_text(
-                    t("oneclient.components.lobby.full").to_string(),
-                    colors::code_warn(),
-                ))),
+                .maybe_child(full.then(|| {
+                    hint_text(
+                        t("oneclient.components.lobby.full").to_string(),
+                        colors::code_warn(),
+                    )
+                })),
         )
     }
 }

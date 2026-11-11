@@ -828,7 +828,11 @@ impl Component for OfflineWardrobe {
                     .corner_radius(rounded(16.))
                     .background(colors::page_elevated())
                     .border(border_all_color(1., colors::component_border()))
-                    .child(Icon::new(IconType::Brush01).size(28.).color(colors::brand()))
+                    .child(
+                        Icon::new(IconType::Brush01)
+                            .size(28.)
+                            .color(colors::brand()),
+                    )
                     .child(
                         label()
                             .text(t("oneclient.wardrobe.account.offline.title"))

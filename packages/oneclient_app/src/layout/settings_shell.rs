@@ -298,8 +298,8 @@ fn search_index() -> Vec<SearchItem> {
             title: t("oneclient.layout.settings.tab.help"),
             description: t("oneclient.settings.help.offline.body"),
             keywords: &[
-                "help", "features", "usb", "portable", "backup", "skin", "mods", "java",
-                "crash", "guide",
+                "help", "features", "usb", "portable", "backup", "skin", "mods", "java", "crash",
+                "guide",
             ],
             route: Route::SettingsHelp {},
         },

@@ -155,15 +155,11 @@ impl Component for PanelHeader {
         let mut status_area = use_state(Area::default);
 
         let (dot, status) = match (self.connected, picked) {
-            (false, _) => (
-                colors::fg_secondary(),
-                t("oneclient.chat.status.offline"),
-            ),
+            (false, _) => (colors::fg_secondary(), t("oneclient.chat.status.offline")),
             (true, PlayerStatus::Online) => (colors::success(), t("oneclient.chat.status.online")),
-            (true, PlayerStatus::Offline) => (
-                colors::fg_secondary(),
-                t("oneclient.chat.status.invisible"),
-            ),
+            (true, PlayerStatus::Offline) => {
+                (colors::fg_secondary(), t("oneclient.chat.status.invisible"))
+            }
         };
         let pop_out = dispatch.clone();
         let dock = dispatch.clone();
@@ -587,10 +583,9 @@ impl Component for InviteRow {
                     .spacing(4.)
                     .cross_align(Alignment::Center)
                     .on_press(|e: Event<PressEventData>| e.stop_propagation())
-                    .child(accent_button(
-                        t("oneclient.chat.invites.join"),
-                        move |_| join.join_invite(id),
-                    ))
+                    .child(accent_button(t("oneclient.chat.invites.join"), move |_| {
+                        join.join_invite(id)
+                    }))
                     .child(HeaderButton {
                         icon: IconType::XClose,
                         tooltip: t("oneclient.chat.common.decline"),
@@ -827,7 +822,10 @@ impl Component for ChatRow {
         let (background, border) = if self.selected {
             (colors::card(), inset_border(colors::brand()))
         } else if hovered() {
-            (colors::ghost_overlay(), inset_border(colors::component_border()))
+            (
+                colors::ghost_overlay(),
+                inset_border(colors::component_border()),
+            )
         } else {
             (Color::TRANSPARENT, inset_border(Color::TRANSPARENT))
         };
@@ -931,8 +929,14 @@ pub(super) fn conversation_title(
 
 #[derive(Clone)]
 enum FriendEntry {
-    Request { request: FriendRequest, incoming: bool },
-    Friend { player: Uuid, online: bool },
+    Request {
+        request: FriendRequest,
+        incoming: bool,
+    },
+    Friend {
+        player: Uuid,
+        online: bool,
+    },
 }
 
 #[derive(PartialEq)]
@@ -1008,7 +1012,10 @@ impl Component for FriendsTab {
 
         if !requests.is_empty() {
             section(
-                tf("oneclient.chat.friends.requests_heading", &[&requests.len()]),
+                tf(
+                    "oneclient.chat.friends.requests_heading",
+                    &[&requests.len()],
+                ),
                 requests,
             );
         }
@@ -1047,10 +1054,9 @@ impl Component for FriendsTab {
                         1,
                         SECTION_HEADING_HEIGHT_PX,
                         move |index| match entries[index].clone() {
-                            FriendEntry::Request { request, incoming } => keyed_row(
-                                request.player,
-                                RequestRow { request, incoming },
-                            ),
+                            FriendEntry::Request { request, incoming } => {
+                                keyed_row(request.player, RequestRow { request, incoming })
+                            }
                             FriendEntry::Friend { player, online } => keyed_row(
                                 player,
                                 FriendRow {
@@ -1237,7 +1243,11 @@ fn square_button(
         .height(Size::px(28.))
         .center()
         .corner_radius(rounded(ROW_RADIUS_PX))
-        .background(if accent { colors::brand() } else { colors::component_bg() })
+        .background(if accent {
+            colors::brand()
+        } else {
+            colors::component_bg()
+        })
         .border(inset_border(if accent {
             Color::TRANSPARENT
         } else {
@@ -1516,10 +1526,7 @@ impl Component for GroupRow {
         let group_id = self.conversation.id;
         let view = self.view;
         let members = self.conversation.members.len();
-        let sub = tf(
-            "oneclient.chat.groups.members_online",
-            &[&online, &members],
-        );
+        let sub = tf("oneclient.chat.groups.members_online", &[&online, &members]);
 
         rect()
             .horizontal()
@@ -1659,25 +1666,24 @@ impl Component for BlockedRow {
         let name = use_player_name(self.player);
         let player = self.player;
 
-        person_row(player, name, None, true)
-            .child(
-                rect()
-                    .height(Size::px(28.))
-                    .padding(Gaps::new_symmetric(0., 12.))
-                    .center()
-                    .corner_radius(rounded(ROW_RADIUS_PX))
-                    .background(colors::component_bg())
-                    .border(inset_border(colors::component_border()))
-                    .cursor(CursorIcon::Pointer)
-                    .on_press(move |_| dispatch.unblock_player(player))
-                    .child(
-                        label()
-                            .text(t("oneclient.chat.blocked.unblock"))
-                            .font_size(text_size(12.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .color(colors::fg_primary()),
-                    ),
-            )
+        person_row(player, name, None, true).child(
+            rect()
+                .height(Size::px(28.))
+                .padding(Gaps::new_symmetric(0., 12.))
+                .center()
+                .corner_radius(rounded(ROW_RADIUS_PX))
+                .background(colors::component_bg())
+                .border(inset_border(colors::component_border()))
+                .cursor(CursorIcon::Pointer)
+                .on_press(move |_| dispatch.unblock_player(player))
+                .child(
+                    label()
+                        .text(t("oneclient.chat.blocked.unblock"))
+                        .font_size(text_size(12.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .color(colors::fg_primary()),
+                ),
+        )
     }
 }
 

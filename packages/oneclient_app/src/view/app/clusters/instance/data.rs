@@ -425,11 +425,10 @@ pub fn resolve(w: Wizard) -> Picks {
     let available = settled_or_loading(&available_query);
     let loader = match choice {
         TypeChoice::OneClient => version.as_ref().and_then(|id| catalogue.loader_for(id)),
-        TypeChoice::Scratch | TypeChoice::Modpack | TypeChoice::Import => {
-            w.loader
-                .read()
-                .resolve_exact(available.as_deref().unwrap_or(&[]), w.exact_loader)
-        }
+        TypeChoice::Scratch | TypeChoice::Modpack | TypeChoice::Import => w
+            .loader
+            .read()
+            .resolve_exact(available.as_deref().unwrap_or(&[]), w.exact_loader),
     };
 
     let loader_versions = loader_versions(&use_loader_versions(

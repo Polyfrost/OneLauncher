@@ -270,22 +270,24 @@ impl QueryCapability for JavaMajorsQuery {
                 resolved
             };
 
-            let lookups = resolved.into_iter().map(|(id, version, loader, loader_version)| {
-                let mc = mc.clone();
-                async move {
-                    let info = oneclient_core::game::download_version_info(
-                        &mc,
-                        None,
-                        &version,
-                        loader,
-                        loader_version.as_ref(),
-                        false,
-                    )
-                    .await
-                    .ok()?;
-                    Some((id, info.java_version?.major_version))
-                }
-            });
+            let lookups = resolved
+                .into_iter()
+                .map(|(id, version, loader, loader_version)| {
+                    let mc = mc.clone();
+                    async move {
+                        let info = oneclient_core::game::download_version_info(
+                            &mc,
+                            None,
+                            &version,
+                            loader,
+                            loader_version.as_ref(),
+                            false,
+                        )
+                        .await
+                        .ok()?;
+                        Some((id, info.java_version?.major_version))
+                    }
+                });
 
             let majors = futures_util::future::join_all(lookups)
                 .await

@@ -149,7 +149,10 @@ mod tests {
     #[test]
     fn one_match_launches_and_several_ask() {
         assert_eq!(plan(&known(), vec![4], false, true), InviteJoin::Launch(4));
-        assert_eq!(plan(&known(), vec![4, 5], false, true), InviteJoin::Pick(vec![4, 5]));
+        assert_eq!(
+            plan(&known(), vec![4, 5], false, true),
+            InviteJoin::Pick(vec![4, 5])
+        );
     }
 
     #[test]
@@ -169,7 +172,10 @@ mod tests {
     fn an_unknown_game_never_launches_on_its_own() {
         let unknown = InviteGame::default();
 
-        assert_eq!(plan(&unknown, vec![4], false, true), InviteJoin::Pick(vec![4]));
+        assert_eq!(
+            plan(&unknown, vec![4], false, true),
+            InviteJoin::Pick(vec![4])
+        );
         assert_eq!(plan(&unknown, Vec::new(), false, true), InviteJoin::Unknown);
     }
 
@@ -239,7 +245,11 @@ mod tests {
 
         assert!(oneclient_supports(&catalogue, "1.21.1", GameLoader::Fabric));
         assert!(!oneclient_supports(&catalogue, "1.21.1", GameLoader::Forge));
-        assert!(!oneclient_supports(&catalogue, "1.21.2", GameLoader::Fabric));
+        assert!(!oneclient_supports(
+            &catalogue,
+            "1.21.2",
+            GameLoader::Fabric
+        ));
     }
 
     fn artifact(hash: &str, enabled: bool, project: &str) -> LinkedArtifactInfo {
@@ -263,7 +273,10 @@ mod tests {
 
     #[test]
     fn a_disabled_polyplus_is_enabled_instead_of_installed_again() {
-        let disabled = [artifact("other", false, "else"), artifact("plus", false, POLYPLUS.project_id)];
+        let disabled = [
+            artifact("other", false, "else"),
+            artifact("plus", false, POLYPLUS.project_id),
+        ];
         assert!(!has_polyplus(&disabled, &[]));
         assert_eq!(disabled_polyplus(&disabled, &[]), Some("plus"));
 
@@ -271,7 +284,10 @@ mod tests {
         assert!(has_polyplus(&enabled, &[]));
         assert_eq!(disabled_polyplus(&enabled, &[]), None);
 
-        assert_eq!(disabled_polyplus(&[artifact("other", false, "else")], &[]), None);
+        assert_eq!(
+            disabled_polyplus(&[artifact("other", false, "else")], &[]),
+            None
+        );
     }
 
     #[test]

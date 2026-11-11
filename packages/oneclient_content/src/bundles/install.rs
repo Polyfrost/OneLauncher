@@ -1306,7 +1306,11 @@ pub async fn remove_artifact_from_cluster(
     Ok(())
 }
 
-pub(crate) async fn detach_artifact(cluster_id: i64, hash: &str, ctx: &ContentCtx) -> ContentResult<()> {
+pub(crate) async fn detach_artifact(
+    cluster_id: i64,
+    hash: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
     // Looked up first but never allowed to block removal
     // a package whose artifact row has gone missing must still be removable
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;

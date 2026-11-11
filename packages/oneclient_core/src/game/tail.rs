@@ -313,6 +313,9 @@ mod tests {
         let tail = spawn_log_tail(7, path.clone(), h.events.clone(), None, CrashWatch::new());
         tail.stop().await;
 
-        assert_eq!(h.drain().last().map(String::as_str), Some("[12:00:01] after"));
+        assert_eq!(
+            h.drain().last().map(String::as_str),
+            Some("[12:00:01] after")
+        );
     }
 }

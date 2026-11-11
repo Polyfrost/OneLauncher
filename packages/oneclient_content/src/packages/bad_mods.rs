@@ -316,7 +316,10 @@ pub(super) async fn fetch_md_file(
     match fetch_cached(&ctx.net, &url, &cache_path, EtagPolicy::CommitNow).await {
         Ok(Some(fetched)) => Some(fetched.text()).filter(|text| !text.trim().is_empty()),
         Ok(None) => {
-            tracing::warn!(path, "flagged content explanation is unavailable and not cached");
+            tracing::warn!(
+                path,
+                "flagged content explanation is unavailable and not cached"
+            );
             None
         }
         Err(err) => {

@@ -18,9 +18,9 @@ use oneclient_polyplus::{
 
 use crate::chat::{ChatRoster, ChatToast, FriendRequestStatus, FriendRequests, InviteGame};
 use crate::components::IconType;
+use crate::essential::POLYPLUS;
 use crate::hooks::{Actions, ClusterAction, ClusterMutation, PumpSignal};
 use crate::i18n::{t, tf};
-use crate::essential::POLYPLUS;
 use crate::invite_join::{self, InviteJoin};
 use crate::launcher;
 use crate::state::{AppChannel, AppState, AsyncStatus, InviteJoinPrompt, SocialTab};
@@ -665,7 +665,11 @@ async fn load_names(station: Station) {
             .clone()
             .write_channel(AppChannel::Chat)
             .chat
-            .add_names(resolved.into_iter().map(|player| (player.id, player.username))),
+            .add_names(
+                resolved
+                    .into_iter()
+                    .map(|player| (player.id, player.username)),
+            ),
         Err(err) => tracing::warn!("could not resolve player names: {err:#}"),
     }
 }

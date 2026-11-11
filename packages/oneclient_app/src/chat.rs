@@ -522,7 +522,8 @@ impl ChatState {
         self.messages
             .retain(|group_id, _| kept.contains(group_id) || active == Some(*group_id));
         let messages = &self.messages;
-        self.synced.retain(|group_id, _| messages.contains_key(group_id));
+        self.synced
+            .retain(|group_id, _| messages.contains_key(group_id));
         self.sort();
         self.status = AsyncStatus::Ready;
         self.error = None;

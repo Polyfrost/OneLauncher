@@ -226,10 +226,9 @@ mod tests {
 
     #[test]
     fn unknown_group_kinds_do_not_fail_the_list() {
-        let summary: GroupSummary = serde_json::from_str(
-            r#"{"id":1,"kind":"broadcast","members":[],"unread":false}"#,
-        )
-        .expect("an unrecognised kind should still deserialize");
+        let summary: GroupSummary =
+            serde_json::from_str(r#"{"id":1,"kind":"broadcast","members":[],"unread":false}"#)
+                .expect("an unrecognised kind should still deserialize");
 
         assert_eq!(summary.kind, GroupKind::Unknown);
     }

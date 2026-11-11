@@ -131,7 +131,8 @@ impl Component for AnimatedAppOutlet {
 
         let on_global_key = move |e: Event<KeyboardEventData>| {
             if e.code == Code::KeyO
-                && e.modifiers.contains(Modifiers::ctrl_or_meta() | Modifiers::SHIFT)
+                && e.modifiers
+                    .contains(Modifiers::ctrl_or_meta() | Modifiers::SHIFT)
             {
                 if let Ok(dir) = oneclient_common::paths::logs_dir() {
                     crate::platform::open_path(&dir.to_string_lossy());

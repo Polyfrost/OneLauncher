@@ -1,6 +1,6 @@
 mod not_found;
-mod single_window;
 mod relocating;
+mod single_window;
 mod startup;
 
 pub mod app;

@@ -24,7 +24,10 @@ impl Component for InviteJoinPopup {
 
         match use_invite_join() {
             None => rect().into_element(),
-            Some(InviteJoinPrompt::Pick { invite_id, clusters }) => ClusterPickerModal {
+            Some(InviteJoinPrompt::Pick {
+                invite_id,
+                clusters,
+            }) => ClusterPickerModal {
                 selected: None,
                 only: Some(clusters),
                 on_close,

@@ -283,7 +283,11 @@ async fn backup_at(
 
     let signature = world_signature(world_dir).await?;
     let state_path = backups.join(STATE_FILE);
-    if skip_unchanged && read_state(&state_path).await.is_some_and(|s| s.signature == signature) {
+    if skip_unchanged
+        && read_state(&state_path)
+            .await
+            .is_some_and(|s| s.signature == signature)
+    {
         return Ok(None);
     }
 
@@ -372,7 +376,16 @@ pub async fn backup_worlds(
                 continue;
             }
         };
-        match backup_at(&entry.path(), &backups, &world, reason, retention, skip_unchanged).await {
+        match backup_at(
+            &entry.path(),
+            &backups,
+            &world,
+            reason,
+            retention,
+            skip_unchanged,
+        )
+        .await
+        {
             Ok(Some(info)) => report.created.push(info),
             Ok(None) => report.skipped += 1,
             Err(err) => report.failures.push(format!("{world}: {err}")),
@@ -465,10 +478,7 @@ async fn restore_at(
 
 /// Called by the launch path. A backup failure never blocks the launch; the
 /// caller reports it.
-pub async fn backup_before_launch(
-    cluster: &Cluster,
-    retention: usize,
-) -> WorldBackupReport {
+pub async fn backup_before_launch(cluster: &Cluster, retention: usize) -> WorldBackupReport {
     match tokio::time::timeout(
         BACKUP_TIMEOUT,
         backup_worlds(cluster, "before-launch", retention.max(1), true),
@@ -488,18 +498,20 @@ mod tests {
     use super::*;
 
     fn temp_root() -> PathBuf {
-        let root = std::env::temp_dir().join(format!(
-            "remixclient-world-backup-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("remixclient-world-backup-{}", uuid::Uuid::new_v4()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         root
     }
 
     async fn seed_world(world: &Path, seed: &[u8]) {
-        tokio::fs::create_dir_all(world.join("region")).await.unwrap();
-        tokio::fs::write(world.join(LEVEL_DAT), b"level").await.unwrap();
+        tokio::fs::create_dir_all(world.join("region"))
+            .await
+            .unwrap();
+        tokio::fs::write(world.join(LEVEL_DAT), b"level")
+            .await
+            .unwrap();
         tokio::fs::write(world.join("region/r.0.0.mca"), seed)
             .await
             .unwrap();
@@ -530,7 +542,9 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            tokio::fs::read(world.join("region/r.0.0.mca")).await.unwrap(),
+            tokio::fs::read(world.join("region/r.0.0.mca"))
+                .await
+                .unwrap(),
             b"original"
         );
 

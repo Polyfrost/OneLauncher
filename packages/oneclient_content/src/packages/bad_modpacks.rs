@@ -2,7 +2,9 @@ use std::sync::{Arc, PoisonError, RwLock};
 
 use serde::Deserialize;
 
-use super::bad_mods::{BadMod, BadModList, fetch_flag_list, fetch_md_file, lenient_list, md_file_name};
+use super::bad_mods::{
+    BadMod, BadModList, fetch_flag_list, fetch_md_file, lenient_list, md_file_name,
+};
 use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
 
@@ -71,7 +73,9 @@ mod tests {
     use crate::packages::ProviderId;
 
     fn parse(raw: &[u8]) -> BadModList {
-        serde_json::from_slice::<BadModpackFile>(raw).unwrap().into()
+        serde_json::from_slice::<BadModpackFile>(raw)
+            .unwrap()
+            .into()
     }
 
     const FULL: &[u8] = br#"{

@@ -136,8 +136,11 @@ pub fn try_world_backups(query: &UseQuery<WorldBackupsQuery>) -> Option<Vec<Worl
 }
 
 pub async fn invalidate_world_backups(cluster_id: i64, world: String) {
-    QueriesStorage::<WorldBackupsQuery>::invalidate_matching(WorldBackupsKeys { cluster_id, world })
-        .await;
+    QueriesStorage::<WorldBackupsQuery>::invalidate_matching(WorldBackupsKeys {
+        cluster_id,
+        world,
+    })
+    .await;
 }
 
 pub async fn backup_world_now(cluster_id: i64, world: String) -> Result<(), LauncherError> {

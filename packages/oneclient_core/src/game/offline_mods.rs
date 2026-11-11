@@ -47,7 +47,8 @@ pub async fn sync_for_account(
         {
             continue;
         }
-        match PackageStore::set_artifact_enabled_to(cluster_id, &info.hash, want_enabled, ctx).await {
+        match PackageStore::set_artifact_enabled_to(cluster_id, &info.hash, want_enabled, ctx).await
+        {
             Ok(_) => toggled += 1,
             Err(err) => tracing::warn!(
                 cluster_id,

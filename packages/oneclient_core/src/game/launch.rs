@@ -226,12 +226,8 @@ async fn start(
 
     // PolyPlus and friends need a real session; on an offline account they only
     // spam Mojang and the Poly+ websocket with failures. Toggle them per account.
-    if let Err(err) = crate::game::sync_offline_mods(
-        cluster_id,
-        account,
-        &state.services.content(),
-    )
-    .await
+    if let Err(err) =
+        crate::game::sync_offline_mods(cluster_id, account, &state.services.content()).await
     {
         tracing::warn!(cluster_id, error = %err, "could not adjust offline-only mods");
     }
@@ -253,7 +249,8 @@ async fn start(
         )
     };
     if backups_enabled {
-        let report = crate::game::world_backup::backup_before_launch(&cluster, backup_retention).await;
+        let report =
+            crate::game::world_backup::backup_before_launch(&cluster, backup_retention).await;
         if !report.created.is_empty() {
             tracing::info!(
                 cluster_id,
@@ -359,9 +356,8 @@ async fn start(
     // Stats every library and the asset tree, the same work `plan_downloads`
     // already keeps off the runtime threads. `block_in_place` because
     // `VersionInfo` is not `Clone` and the sweep only reads it
-    let missing = tokio::task::block_in_place(|| {
-        game_files_missing(&version_info, &java.os_arch, updated)
-    });
+    let missing =
+        tokio::task::block_in_place(|| game_files_missing(&version_info, &java.os_arch, updated));
     match missing {
         Ok(true) => {
             tracing::info!(cluster_id, "missing game files; repairing");
@@ -485,7 +481,11 @@ async fn start(
     // told to use the legacy (offline) identity path instead of MSA. Vanilla
     // defaults a missing token to `0`; an empty string is not a value any
     // vanilla/loader code path expects, so send the same placeholder.
-    let user_type = if account.is_offline() { "legacy" } else { "msa" };
+    let user_type = if account.is_offline() {
+        "legacy"
+    } else {
+        "msa"
+    };
     let access_token = if account.is_offline() {
         "0".to_string()
     } else {

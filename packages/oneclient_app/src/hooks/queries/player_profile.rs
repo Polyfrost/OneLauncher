@@ -36,8 +36,7 @@ impl QueryCapability for FetchPlayerProfileQuery {
             let mut view = minecraft::PlayerProfileView::placeholder();
             view.uuid = keys.uuid.clone();
             view.username = account.username.clone();
-            if let Some(preview) =
-                oneclient_core::game::offline_skin::local_skin_preview(id).await
+            if let Some(preview) = oneclient_core::game::offline_skin::local_skin_preview(id).await
             {
                 view.is_slim = preview.is_slim;
                 view.skin_url = preview.skin_url;

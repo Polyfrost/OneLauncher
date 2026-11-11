@@ -47,11 +47,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
 
             let choices = oneclient_core::ImportChoices::default();
-            let report = match oneclient_core::import_external_instance(
-                &state, instance, &choices, None,
-            )
-            .await
-            {
+            let report =
+                match oneclient_core::import_external_instance(&state, instance, &choices, None)
+                    .await
+                {
                     Ok(report) => report,
                     Err(err) => {
                         println!("    import failed: {err}");

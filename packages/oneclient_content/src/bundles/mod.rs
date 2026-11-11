@@ -25,12 +25,12 @@ pub use optional::{
     PendingOptionalMod, pending_optional_mods, resolve_optional_mods, skip_optional_mods,
 };
 pub use overrides::bundle_override_paths;
-pub(crate) use updates::compare_version_like;
 pub use types::{
     ApplyBundleUpdatesResult, BundleArchive, BundleFile, BundleFileKind, BundleFileType,
     BundleManifest, BundleOptionalPackage, BundlePackageAddition, BundlePackageRemoval,
     BundlePackageUpdate, BundleUpdateCheckResult, BundleWithUpdateStatus, FileUpdateStatus,
 };
+pub(crate) use updates::compare_version_like;
 pub use updates::{
     apply_bundle_updates, apply_bundle_updates_with, check_bundle_updates,
     cluster_has_bundle_content, get_bundles_with_update_status,

@@ -1,8 +1,8 @@
 use freya::prelude::*;
 use uuid::Uuid;
 
-use crate::components::{IconType, PartyTab};
 use crate::chat::ThreadStatus;
+use crate::components::{IconType, PartyTab};
 use crate::hooks::{
     settled_or_loading, use_chat_inbox, use_chat_roster, use_chat_thread, use_current_account,
     use_dispatch, use_social_tab,

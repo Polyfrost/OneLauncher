@@ -188,7 +188,8 @@ pub(crate) async fn hand_to_wanting_pack(
     };
     let Some((owner, wanted)) = wants.iter().find(|(owner, wanted)| {
         row.bundle_name.as_deref() != Some(owner.as_str())
-            && (wanted.sha1 == hash || row.package_id.as_deref() == Some(wanted.package_id.as_str()))
+            && (wanted.sha1 == hash
+                || row.package_id.as_deref() == Some(wanted.package_id.as_str()))
     }) else {
         return Ok(false);
     };

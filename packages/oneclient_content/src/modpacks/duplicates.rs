@@ -56,7 +56,11 @@ fn keeper(copies: &[Copy]) -> Option<usize> {
 }
 
 #[tracing::instrument(level = "debug", skip(ctx))]
-pub async fn recheck_duplicates(cluster_id: i64, bundle_name: &str, ctx: &ContentCtx) -> Vec<String> {
+pub async fn recheck_duplicates(
+    cluster_id: i64,
+    bundle_name: &str,
+    ctx: &ContentCtx,
+) -> Vec<String> {
     match disable_older_duplicates(cluster_id, bundle_name, ctx).await {
         Ok(disabled) => disabled
             .into_iter()

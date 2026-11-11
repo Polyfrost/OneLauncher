@@ -13,8 +13,7 @@ use crate::api::{json_authorized, send_authorized};
 
 pub const MAX_PARTY_SIZE: usize = 8;
 
-static EVENTS: LazyLock<broadcast::Sender<LiveEvent>> =
-    LazyLock::new(|| broadcast::channel(64).0);
+static EVENTS: LazyLock<broadcast::Sender<LiveEvent>> = LazyLock::new(|| broadcast::channel(64).0);
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Party {

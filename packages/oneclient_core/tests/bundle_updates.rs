@@ -2,12 +2,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
+use oneclient_content::ContentCtx;
 use oneclient_content::bundles::{
     BundleFile, BundleFileKind, BundleFileType, BundleManifest, check_bundle_updates,
     get_bundles_with_update_status, install_cluster_bundles, on_user_disable_artifact,
     on_user_remove_artifact, set_bundle_package_enabled,
 };
-use oneclient_content::ContentCtx;
 use oneclient_core::LauncherState;
 use oneclient_core::clusters::CreateClusterOptions;
 use oneclient_db::dao::{

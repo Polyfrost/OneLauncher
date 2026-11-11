@@ -359,8 +359,7 @@ mod tests {
             Some(GameLoader::Ornithe)
         );
         assert_eq!(
-            LoaderChoice::Forge
-                .resolve_exact(&[GameLoader::Forge], Some(GameLoader::Ornithe)),
+            LoaderChoice::Forge.resolve_exact(&[GameLoader::Forge], Some(GameLoader::Ornithe)),
             Some(GameLoader::Forge)
         );
     }

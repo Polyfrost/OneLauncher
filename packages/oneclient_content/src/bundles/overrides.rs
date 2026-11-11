@@ -523,7 +523,9 @@ fn compose_bytes(rel: &str, base: Option<Vec<u8>>, mut parts: Vec<Vec<u8>>) -> O
     for part in &parts {
         match parse_json(part) {
             Ok(value) => merge_missing(&mut merged, &value),
-            Err(err) => tracing::warn!(path = rel, error = %err, "skipping an unreadable merged override"),
+            Err(err) => {
+                tracing::warn!(path = rel, error = %err, "skipping an unreadable merged override")
+            }
         }
     }
     if rel.ends_with(FABRIC_DEPENDENCIES_FILE) {
@@ -533,7 +535,8 @@ fn compose_bytes(rel: &str, base: Option<Vec<u8>>, mut parts: Vec<Vec<u8>>) -> O
 }
 
 const FABRIC_DEPENDENCIES_FILE: &str = "fabric_loader_dependencies.json";
-const FABRIC_DEPENDENCY_KINDS: [&str; 5] = ["depends", "recommends", "suggests", "conflicts", "breaks"];
+const FABRIC_DEPENDENCY_KINDS: [&str; 5] =
+    ["depends", "recommends", "suggests", "conflicts", "breaks"];
 
 fn parse_json(bytes: &[u8]) -> serde_json::Result<serde_json::Value> {
     serde_json::from_slice(bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(bytes))
@@ -675,7 +678,9 @@ async fn has_other_copies(root: &Path, rel: &str, bundle_name: &str) -> bool {
 }
 
 fn claimed_elsewhere(lock: &OverrideLock, rel: &str) -> bool {
-    lock.bundles.values().any(|entries| entries.contains_key(rel))
+    lock.bundles
+        .values()
+        .any(|entries| entries.contains_key(rel))
 }
 
 async fn discard_own_part(root: &Path, rel: &str, bundle_name: &str) {
@@ -714,7 +719,9 @@ async fn convert_claims_to_parts(
         if let Some(bytes) = &disk
             && disk_sha1.as_deref() == Some(claimed.as_str())
         {
-            polyio::write_atomic(merge_part_path(root, rel, &key), bytes).await.ok();
+            polyio::write_atomic(merge_part_path(root, rel, &key), bytes)
+                .await
+                .ok();
         }
     }
 }
@@ -797,7 +804,8 @@ pub(crate) async fn prune_merge_parts(root: &Path, bundle_name: &str, keep: &Has
             continue;
         }
         let part = merge_part_path(root, &rel, bundle_name);
-        if polyio::try_exists(&part).await.unwrap_or(false) && polyio::remove_file(&part).await.is_ok()
+        if polyio::try_exists(&part).await.unwrap_or(false)
+            && polyio::remove_file(&part).await.is_ok()
         {
             apply_merged(root, &rel).await;
         }
@@ -956,7 +964,10 @@ mod tests {
     #[test]
     fn no_parts_returns_the_owner_copy_untouched() {
         let base = br#"{"overrides":{},"version":1}"#.to_vec();
-        assert_eq!(compose_bytes(FABRIC_DEPS, Some(base.clone()), Vec::new()), Some(base));
+        assert_eq!(
+            compose_bytes(FABRIC_DEPS, Some(base.clone()), Vec::new()),
+            Some(base)
+        );
         assert_eq!(compose_bytes(FABRIC_DEPS, None, Vec::new()), None);
     }
 
@@ -1020,11 +1031,13 @@ mod tests {
         lock.save(root.as_ref()).await.unwrap();
 
         let listed = HashSet::new();
-        let deleted = sync_file_lock(root.as_ref(), "modpack:file:a", HashMap::new(), &listed).await;
+        let deleted =
+            sync_file_lock(root.as_ref(), "modpack:file:a", HashMap::new(), &listed).await;
         assert!(deleted.is_empty());
         assert!(polyio::try_exists(&dest).await.unwrap());
 
-        let deleted = sync_file_lock(root.as_ref(), "modpack:file:b", HashMap::new(), &listed).await;
+        let deleted =
+            sync_file_lock(root.as_ref(), "modpack:file:b", HashMap::new(), &listed).await;
         assert_eq!(deleted, vec![rel.to_string()]);
         assert!(!polyio::try_exists(&dest).await.unwrap());
     }
@@ -1135,7 +1148,11 @@ mod tests {
         .await;
 
         let layers = OverrideLayers::open(&zip, &["overrides/"]).await.unwrap();
-        let rels: Vec<&str> = layers.entries().iter().map(|(rel, _)| rel.as_str()).collect();
+        let rels: Vec<&str> = layers
+            .entries()
+            .iter()
+            .map(|(rel, _)| rel.as_str())
+            .collect();
         assert_eq!(rels, vec!["mods/ok.jar"]);
     }
 
@@ -1327,13 +1344,20 @@ mod tests {
 
     const PACK_KEY: &str = "modpack:modrinth:abc";
     const PACK_DEPS: &[u8] = br#"{"version":1,"overrides":{"pack-mod":{"-depends":{"x":"*"}}}}"#;
-    const OWNER_DEPS: &[u8] =
-        br#"{"version":1,"overrides":{"owner-mod":{"+breaks":{"y":"*"}}}}"#;
+    const OWNER_DEPS: &[u8] = br#"{"version":1,"overrides":{"owner-mod":{"+breaks":{"y":"*"}}}}"#;
 
     async fn sync_pack(zip: &Path, root: &Path) -> OverrideSyncReport {
-        sync_layered_overrides(zip, PACK_KEY, root, &[OVERRIDES_PREFIX], &|_| true, false, None)
-            .await
-            .unwrap()
+        sync_layered_overrides(
+            zip,
+            PACK_KEY,
+            root,
+            &[OVERRIDES_PREFIX],
+            &|_| true,
+            false,
+            None,
+        )
+        .await
+        .unwrap()
     }
 
     async fn deps_bundle(root: &polyio::testing::ScratchDir, name: &str, bytes: &[u8]) -> PathBuf {
@@ -1411,7 +1435,8 @@ mod tests {
     const ONECLIENT_PACK_DEPS: &str = "{\n    \"version\": 1,\n    \"overrides\": {\n        \"flashback\": {\n            \"+breaks\": {\n                \"skyblock-item-list\": \"<0.0.23\"\n            }\n        },\n        \"idontwannascrollagain\": {\n            \"-depends\": {\n                \"minecraft\": \"IGNORED\"\n            }\n        },\n        \"nbtac\": {\n            \"+breaks\": {\n                \"nbt_ac\": \"*\"\n            }\n        }\n    }\n}";
     const QOL_BUNDLE_DEPS: &str = "{\n    \"version\": 1,\n    \"overrides\": {\n        \"flashback\": {\n            \"+breaks\": {\n                \"skyblock-item-list\": \"<0.0.23\"\n            }\n        },\n        \"idontwannascrollagain\": {\n            \"-depends\": {\n                \"minecraft\": \"IGNORED\"\n            }\n        },\n        \"nbtac\": {\n            \"+breaks\": {\n                \"nbt_ac\": \"*\"\n            }\n        }\n    }\n}\n";
     const SKYBLOCK_BUNDLE_DEPS: &str = "\n{\n    \"version\": 1,\n    \"overrides\": {\n        \"flashback\": {\n            \"+breaks\": {\n                \"skyblock-item-list\": \"<0.0.23\"\n            }\n        }\n    }\n}\n\n";
-    const DISTANT_HORIZONS_PACK_DEPS: &str = "{\r\n  \"version\": 1,\r\n  \"overrides\": {\r\n\r\n  }\r\n}\r\n";
+    const DISTANT_HORIZONS_PACK_DEPS: &str =
+        "{\r\n  \"version\": 1,\r\n  \"overrides\": {\r\n\r\n  }\r\n}\r\n";
     const OTHER_PACK_KEY: &str = "modpack:curseforge:123";
     const FABRIC_KINDS: [&str; 5] = ["depends", "recommends", "suggests", "conflicts", "breaks"];
 
@@ -1428,7 +1453,10 @@ mod tests {
         let root = value.as_object().expect("object root");
         assert_eq!(root["version"].as_f64(), Some(1.0), "{text}");
         for key in root.keys() {
-            assert!(key == "version" || key == "overrides", "root key {key}: {text}");
+            assert!(
+                key == "version" || key == "overrides",
+                "root key {key}: {text}"
+            );
         }
         let Some(overrides) = root.get("overrides") else {
             return;
@@ -1483,9 +1511,17 @@ mod tests {
             }
             None => write_bundle(&zip, &[("overrides/config/other.toml", b"other")]).await,
         }
-        sync_layered_overrides(&zip, key, root.path(), &[OVERRIDES_PREFIX], &|_| true, false, None)
-            .await
-            .unwrap();
+        sync_layered_overrides(
+            &zip,
+            key,
+            root.path(),
+            &[OVERRIDES_PREFIX],
+            &|_| true,
+            false,
+            None,
+        )
+        .await
+        .unwrap();
     }
 
     async fn pack_removed(root: &polyio::testing::ScratchDir, key: &str) {
@@ -1564,7 +1600,12 @@ mod tests {
     async fn scenario_two_packs_without_a_bundle() {
         let root = polyio::testing::ScratchDir::new("s-two-packs");
         pack_sync(&root, PACK_KEY, Some(ONECLIENT_PACK_DEPS.as_bytes())).await;
-        pack_sync(&root, OTHER_PACK_KEY, Some(DISTANT_HORIZONS_PACK_DEPS.as_bytes())).await;
+        pack_sync(
+            &root,
+            OTHER_PACK_KEY,
+            Some(DISTANT_HORIZONS_PACK_DEPS.as_bytes()),
+        )
+        .await;
         let out = deps_on_disk(&root).await.unwrap();
         assert_fabric_accepts(&out);
         assert!(override_mods(&out).contains("flashback"));
@@ -1581,7 +1622,12 @@ mod tests {
         let root = polyio::testing::ScratchDir::new("s-bundle-two-packs");
         owner_sync(&root, "qol", Some(QOL_BUNDLE_DEPS.as_bytes())).await;
         pack_sync(&root, PACK_KEY, Some(PACK_DEPS)).await;
-        pack_sync(&root, OTHER_PACK_KEY, Some(DISTANT_HORIZONS_PACK_DEPS.as_bytes())).await;
+        pack_sync(
+            &root,
+            OTHER_PACK_KEY,
+            Some(DISTANT_HORIZONS_PACK_DEPS.as_bytes()),
+        )
+        .await;
         assert_fabric_accepts(&deps_on_disk(&root).await.unwrap());
 
         pack_removed(&root, PACK_KEY).await;
@@ -1590,7 +1636,10 @@ mod tests {
         assert!(!override_mods(&out).contains("pack-mod"));
 
         pack_removed(&root, OTHER_PACK_KEY).await;
-        assert_eq!(deps_on_disk(&root).await.unwrap(), QOL_BUNDLE_DEPS.as_bytes());
+        assert_eq!(
+            deps_on_disk(&root).await.unwrap(),
+            QOL_BUNDLE_DEPS.as_bytes()
+        );
     }
 
     #[tokio::test]
@@ -1609,7 +1658,10 @@ mod tests {
         let root = polyio::testing::ScratchDir::new("s-pack-update");
         pack_sync(&root, PACK_KEY, Some(PACK_DEPS)).await;
         pack_sync(&root, PACK_KEY, Some(ONECLIENT_PACK_DEPS.as_bytes())).await;
-        assert_eq!(deps_on_disk(&root).await.unwrap(), ONECLIENT_PACK_DEPS.as_bytes());
+        assert_eq!(
+            deps_on_disk(&root).await.unwrap(),
+            ONECLIENT_PACK_DEPS.as_bytes()
+        );
         pack_sync(&root, PACK_KEY, None).await;
         assert!(deps_on_disk(&root).await.is_none());
     }
@@ -1618,7 +1670,12 @@ mod tests {
     async fn scenario_bom_on_both_sides_still_merges() {
         let root = polyio::testing::ScratchDir::new("s-bom-both");
         let bom = b"\xef\xbb\xbf".as_slice();
-        owner_sync(&root, "qol", Some(&[bom, QOL_BUNDLE_DEPS.as_bytes()].concat())).await;
+        owner_sync(
+            &root,
+            "qol",
+            Some(&[bom, QOL_BUNDLE_DEPS.as_bytes()].concat()),
+        )
+        .await;
         pack_sync(&root, PACK_KEY, Some(&[bom, PACK_DEPS].concat())).await;
         let out = deps_on_disk(&root).await.unwrap();
         assert_fabric_accepts(&out);
@@ -1646,9 +1703,12 @@ mod tests {
     async fn scenario_user_edit_then_bundle_sync() {
         let root = polyio::testing::ScratchDir::new("s-user-edit");
         pack_sync(&root, PACK_KEY, Some(PACK_DEPS)).await;
-        polyio::write(root.join(FABRIC_DEPS), br#"{"version":1,"overrides":{"mine":{"-depends":{"z":"*"}}}}"#)
-            .await
-            .unwrap();
+        polyio::write(
+            root.join(FABRIC_DEPS),
+            br#"{"version":1,"overrides":{"mine":{"-depends":{"z":"*"}}}}"#,
+        )
+        .await
+        .unwrap();
         owner_sync(&root, "qol", Some(QOL_BUNDLE_DEPS.as_bytes())).await;
         assert_fabric_accepts(&deps_on_disk(&root).await.unwrap());
         pack_sync(&root, PACK_KEY, Some(PACK_DEPS)).await;

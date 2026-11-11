@@ -4,10 +4,9 @@ use freya::router::*;
 use crate::components::{
     AccountSwitcher, BlockedDownloadsPopup, BundleChoicesPopup, ClusterUpdatePopup, ControlCenter,
     FlaggedInstallPopup, GenericPromptOverlay, InviteJoinPopup, JavaPromptOverlay,
-    MicrosoftJavaPromptOverlay,
-    ModpackConfirmPopup, NotificationCenter, OptionalModsPopup, PackageUpdatePopup,
-    ReleaseMigrationPopup, SplashCurtain, StatusBar, Toasts, TooltipHost, UnpublishedImportPopup,
-    UpdatePromptOverlay, use_provide_tooltips,
+    MicrosoftJavaPromptOverlay, ModpackConfirmPopup, NotificationCenter, OptionalModsPopup,
+    PackageUpdatePopup, ReleaseMigrationPopup, SplashCurtain, StatusBar, Toasts, TooltipHost,
+    UnpublishedImportPopup, UpdatePromptOverlay, use_provide_tooltips,
 };
 use crate::hooks::{SplashState, use_provide_overlay_claims, use_provide_splash};
 use crate::layout::{HomeArtPrefetch, PendingLaunchDriver, use_ipc_commands};

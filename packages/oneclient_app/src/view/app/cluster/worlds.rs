@@ -68,10 +68,8 @@ impl Component for ClusterWorlds {
         let mut menu = use_state(|| None::<(f32, f32, WorldInfo)>);
         let mut pending_delete = use_state(|| None::<String>);
         let mut backups_world = use_state(|| None::<String>);
-        let backups_query = use_world_backups(
-            cluster_id,
-            backups_world.read().clone().unwrap_or_default(),
-        );
+        let backups_query =
+            use_world_backups(cluster_id, backups_world.read().clone().unwrap_or_default());
         let backups = try_world_backups(&backups_query).unwrap_or_default();
         let mut pending_restore = use_state(|| None::<String>);
 
@@ -293,7 +291,11 @@ fn backups_dialog(
                     .padding(Gaps::new_all(10.))
                     .corner_radius(rounded(8.))
                     .background(colors::component_bg())
-                    .child(Icon::new(IconType::Database01).size(16.).color(colors::brand()))
+                    .child(
+                        Icon::new(IconType::Database01)
+                            .size(16.)
+                            .color(colors::brand()),
+                    )
                     .child(
                         rect()
                             .vertical()

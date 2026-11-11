@@ -9,11 +9,9 @@ use super::{
     LobbyState, act, can_invite, is_full, is_leader, online_count, refresh, sorted_members,
     successor, use_lobby, use_my_uuid, use_player_name,
 };
-use crate::components::cluster_menu::open_menu_at;
-use crate::components::{
-    Avatar, Button, ContextMenu, Icon, IconType, ScrollArea,
-};
 use crate::chat::ChatRoster;
+use crate::components::cluster_menu::open_menu_at;
+use crate::components::{Avatar, Button, ContextMenu, Icon, IconType, ScrollArea};
 use crate::hooks::{use_chat_roster, use_dispatch};
 use crate::i18n::{t, tf};
 use crate::theme::{colors, rounded, text_size};
@@ -33,7 +31,11 @@ impl Component for PartyTab {
         let state = use_lobby();
         let mut dialog = use_state(|| None::<Dialog>);
 
-        let party_key = state.read().party.as_ref().map(|party| (party.id, party.leader));
+        let party_key = state
+            .read()
+            .party
+            .as_ref()
+            .map(|party| (party.id, party.leader));
         let mut shown_party = use_state(|| party_key);
         if *shown_party.peek() != party_key {
             shown_party.set(party_key);
@@ -183,14 +185,9 @@ impl Component for NoLobby {
                     )
                     .child(
                         label()
-                            .text(
-                                snapshot
-                                    .error
-                                    .clone()
-                                    .unwrap_or_else(|| {
-                                        t("oneclient.components.lobby.empty.body").to_string()
-                                    }),
-                            )
+                            .text(snapshot.error.clone().unwrap_or_else(|| {
+                                t("oneclient.components.lobby.empty.body").to_string()
+                            }))
                             .width(Size::fill())
                             .max_lines(3)
                             .text_align(TextAlign::Center)

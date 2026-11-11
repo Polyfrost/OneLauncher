@@ -140,9 +140,10 @@ fn offline_form(
                 .width(Size::fill())
                 .spacing(6.)
                 .child(field_label(t("oneclient.onboarding.account.username")))
-                .child(TextInput::new(username).placeholder(t(
-                    "oneclient.onboarding.account.username_placeholder",
-                ))),
+                .child(
+                    TextInput::new(username)
+                        .placeholder(t("oneclient.onboarding.account.username_placeholder")),
+                ),
         )
         .child(
             rect()
@@ -177,9 +178,9 @@ fn offline_form(
                     t("oneclient.onboarding.account.play_offline")
                 }),
         )
-        .maybe_child(error.map(|message| {
-            hint_line(IconType::AlertTriangle, message, colors::danger())
-        }))
+        .maybe_child(
+            error.map(|message| hint_line(IconType::AlertTriangle, message, colors::danger())),
+        )
         .child(divider())
         .child(
             rect()
@@ -206,9 +207,9 @@ fn offline_form(
                         .color(colors::fg_secondary()),
                 ),
         )
-        .maybe_child(msa_error.map(|message| {
-            hint_line(IconType::AlertTriangle, message, colors::danger())
-        }))
+        .maybe_child(
+            msa_error.map(|message| hint_line(IconType::AlertTriangle, message, colors::danger())),
+        )
         .into_element()
 }
 
@@ -241,11 +242,6 @@ fn hint_line(icon: IconType, text: String, color: Color) -> impl IntoElement {
         .cross_align(Alignment::Center)
         .spacing(6.)
         .child(Icon::new(icon).size(13.).color(color))
-        .child(
-            label()
-                .text(text)
-                .font_size(text_size(12.))
-                .color(color),
-        )
+        .child(label().text(text).font_size(text_size(12.)).color(color))
         .into_element()
 }

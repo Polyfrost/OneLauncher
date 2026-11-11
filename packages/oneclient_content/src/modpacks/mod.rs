@@ -27,11 +27,11 @@ pub use update::{
 
 pub use share::{
     ClusterShare, PackCarryover, SHARE_ENTRY, SHARE_EXTENSION, SHARE_FORMAT, ShareContent,
-    ShareExportReport, ShareExtras, ShareIcon, ShareScope, SharedBundleChoice, SharedDownload,
-    SharedFile, SharedFileSource, SharedJava, SharedModpack, SharedOverride, collect_share_content,
-    ShareFingerprints, icon_entry, install_shared_content, read_cluster_share, read_share_extras,
-    read_share_icon, replace_share_settings, share_fingerprints, trusted_download,
-    write_share_archive,
+    ShareExportReport, ShareExtras, ShareFingerprints, ShareIcon, ShareScope, SharedBundleChoice,
+    SharedDownload, SharedFile, SharedFileSource, SharedJava, SharedModpack, SharedOverride,
+    collect_share_content, icon_entry, install_shared_content, read_cluster_share,
+    read_share_extras, read_share_icon, replace_share_settings, share_fingerprints,
+    trusted_download, write_share_archive,
 };
 
 pub use settings::{
@@ -39,15 +39,13 @@ pub use settings::{
     collect_settings, is_setting_path,
 };
 
+pub use duplicates::recheck_duplicates;
 pub use install::{
     ModpackInstallReport, find_blocked_downloads, import_blocked_files, install_modpack,
     store_modpack_archive,
 };
-pub use duplicates::recheck_duplicates;
 pub(crate) use remove::{hand_to_wanting_pack, imported_wants};
-pub use remove::{
-    remove_modpack_files, remove_tracked_packages, restore_disabled, retrack_file,
-};
+pub use remove::{remove_modpack_files, remove_tracked_packages, restore_disabled, retrack_file};
 pub use screen::{FlaggedPackFile, bundled_mods, screen_modpack};
 pub use unlisted::{UnlistedMod, UnlistedReport, find_unlisted_mods};
 
@@ -84,7 +82,8 @@ pub struct WantedFile {
 
 #[must_use]
 pub fn shares_game_dir(cluster: &oneclient_db::models::ClusterRow) -> bool {
-    !cluster.is_isolated() && !oneclient_common::paths::cluster_uses_dedicated_dir(&cluster.folder_name)
+    !cluster.is_isolated()
+        && !oneclient_common::paths::cluster_uses_dedicated_dir(&cluster.folder_name)
 }
 
 #[must_use]

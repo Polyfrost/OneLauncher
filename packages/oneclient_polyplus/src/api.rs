@@ -240,7 +240,10 @@ pub(crate) fn client() -> Result<&'static reqwest::Client, PlusError> {
         .map_err(|err| PlusError::Client(err.clone()))
 }
 
-pub(crate) async fn token_for(account: &MinecraftAccount, stale: Option<&str>) -> Result<String, PlusError> {
+pub(crate) async fn token_for(
+    account: &MinecraftAccount,
+    stale: Option<&str>,
+) -> Result<String, PlusError> {
     let key = (base_url(), account.id);
     let mut tokens = TOKENS.lock().await;
     if let Some((token, issued)) = tokens.get(&key)
@@ -256,7 +259,10 @@ pub(crate) async fn token_for(account: &MinecraftAccount, stale: Option<&str>) -
 }
 
 pub(crate) async fn forget_token(account: Uuid) {
-    TOKENS.lock().await.retain(|(_, owner), _| *owner != account);
+    TOKENS
+        .lock()
+        .await
+        .retain(|(_, owner), _| *owner != account);
 }
 
 pub(crate) async fn send_authorized(

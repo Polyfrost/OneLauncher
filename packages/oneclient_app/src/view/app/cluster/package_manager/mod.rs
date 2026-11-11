@@ -431,7 +431,10 @@ fn list_header(cluster: &Cluster) -> String {
         .mc_loader_version
         .as_deref()
         .map_or_else(String::new, |version| format!(" {version}"));
-    format!("Minecraft {} · {loader}{loader_version}", cluster.mc_version)
+    format!(
+        "Minecraft {} · {loader}{loader_version}",
+        cluster.mc_version
+    )
 }
 
 fn package_list_text(

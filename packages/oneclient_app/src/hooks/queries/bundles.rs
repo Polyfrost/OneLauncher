@@ -160,9 +160,9 @@ impl QueryCapability for ModpackSourcesQuery {
         let _ = keys;
         let state = crate::launcher::state()?;
         let cluster_id = self.cluster_id;
-        off_ui(async move {
-            oneclient_core::clusters::modpack_file_sources(&state, cluster_id).await
-        })
+        off_ui(
+            async move { oneclient_core::clusters::modpack_file_sources(&state, cluster_id).await },
+        )
         .await
     }
 }

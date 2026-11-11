@@ -468,14 +468,33 @@ mod tests {
 
     #[test]
     fn failures_back_off_up_to_the_cap_and_any_connection_resets_the_wait() {
-        assert_eq!(next_delay(&Outcome::Failed, RECONNECT_DELAY), RECONNECT_DELAY * 2);
-        assert_eq!(next_delay(&Outcome::Failed, MAX_RECONNECT_DELAY), MAX_RECONNECT_DELAY);
-        assert_eq!(next_delay(&Outcome::Connected, MAX_RECONNECT_DELAY), RECONNECT_DELAY);
-        assert_eq!(next_delay(&Outcome::NoAccount, MAX_RECONNECT_DELAY), RECONNECT_DELAY);
-        assert_eq!(next_delay(&Outcome::Restart, MAX_RECONNECT_DELAY), RECONNECT_DELAY);
+        assert_eq!(
+            next_delay(&Outcome::Failed, RECONNECT_DELAY),
+            RECONNECT_DELAY * 2
+        );
+        assert_eq!(
+            next_delay(&Outcome::Failed, MAX_RECONNECT_DELAY),
+            MAX_RECONNECT_DELAY
+        );
+        assert_eq!(
+            next_delay(&Outcome::Connected, MAX_RECONNECT_DELAY),
+            RECONNECT_DELAY
+        );
+        assert_eq!(
+            next_delay(&Outcome::NoAccount, MAX_RECONNECT_DELAY),
+            RECONNECT_DELAY
+        );
+        assert_eq!(
+            next_delay(&Outcome::Restart, MAX_RECONNECT_DELAY),
+            RECONNECT_DELAY
+        );
     }
 
-    fn account(kind: oneclient_auth::AccountKind, token: &str, signed_out: bool) -> MinecraftAccount {
+    fn account(
+        kind: oneclient_auth::AccountKind,
+        token: &str,
+        signed_out: bool,
+    ) -> MinecraftAccount {
         MinecraftAccount {
             id: Uuid::from_u128(1),
             username: "player".to_string(),
@@ -707,7 +726,10 @@ mod tests {
         .expect("the lobby should hear the packet");
 
         assert_eq!(received, party_id);
-        assert!(bus.try_recv().is_err(), "party traffic stays off the chat bus");
+        assert!(
+            bus.try_recv().is_err(),
+            "party traffic stays off the chat bus"
+        );
     }
 
     #[test]

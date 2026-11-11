@@ -17,8 +17,8 @@ use oneclient_polyplus::party::{
 use tokio::sync::broadcast::error::RecvError;
 use uuid::Uuid;
 
-use crate::components::IconType;
 use crate::chat::short_player_id;
+use crate::components::IconType;
 use crate::hooks::{
     Actions, player_name, settled_or_loading, try_default_account, use_chat_allowed,
     use_current_account, use_dispatch, use_player_profile, wardrobe::plus_message,
@@ -76,10 +76,7 @@ impl LobbyState {
     }
 
     fn lost_party(&self, member_as: Option<Uuid>) -> bool {
-        member_as.is_some()
-            && self.me == member_as
-            && self.party.is_none()
-            && self.error.is_none()
+        member_as.is_some() && self.me == member_as && self.party.is_none() && self.error.is_none()
     }
 
     fn absorb(&mut self, seen: u64, result: Result<Snapshot, (Option<Uuid>, String)>) -> bool {
@@ -139,9 +136,7 @@ impl LobbyState {
                 let party = self.party.take_if(|party| party.id == party_id)?;
                 match reason {
                     LeftReason::Kicked => Some(Notice::Kicked),
-                    LeftReason::Disbanded if !is_leader(&party, self.me) => {
-                        Some(Notice::Disbanded)
-                    }
+                    LeftReason::Disbanded if !is_leader(&party, self.me) => Some(Notice::Disbanded),
                     LeftReason::Expired => Some(Notice::PartyLost),
                     LeftReason::Disbanded | LeftReason::Left | LeftReason::Other => None,
                 }
@@ -314,7 +309,10 @@ fn announce(notice: Notice, dispatch: &Actions) {
             spawn(async move {
                 let name = player_name(sender).await;
                 dispatch
-                    .notify(tf("oneclient.components.lobby.toast.invite_received", &[&name]))
+                    .notify(tf(
+                        "oneclient.components.lobby.toast.invite_received",
+                        &[&name],
+                    ))
                     .body(t("oneclient.components.lobby.toast.invite_received_body"))
                     .info()
                     .icon(IconType::Users01)
@@ -645,7 +643,10 @@ mod tests {
         let mut state = LobbyState::default();
         let p = party(1, vec![member(1, 0, true)]);
         state.outgoing = vec![invite(7, p.id, 2), invite(8, id(999), 3)];
-        assert_eq!(state.apply(PartyPacket::PartyUpdated { party: p.clone() }), None);
+        assert_eq!(
+            state.apply(PartyPacket::PartyUpdated { party: p.clone() }),
+            None
+        );
         assert_eq!(state.party_outgoing().len(), 1);
         assert!(state.is_invited(id(2)));
         assert!(!state.is_invited(id(3)));

@@ -828,10 +828,10 @@ impl Component for OfflineSkinDialog {
                                                     t("oneclient.settings.accounts.skin.classic")
                                                         .to_string()
                                                 }
-                                                SkinModel::Slim => t(
-                                                    "oneclient.settings.accounts.skin.slim",
-                                                )
-                                                .to_string(),
+                                                SkinModel::Slim => {
+                                                    t("oneclient.settings.accounts.skin.slim")
+                                                        .to_string()
+                                                }
                                             },
                                             vec![
                                                 t("oneclient.settings.accounts.skin.classic")
@@ -842,13 +842,15 @@ impl Component for OfflineSkinDialog {
                                         )
                                         .width(Size::px(130.))
                                         .height(Size::px(28.))
-                                        .on_select(move |index| {
-                                            model.set(if index == 0 {
-                                                SkinModel::Classic
-                                            } else {
-                                                SkinModel::Slim
-                                            });
-                                        }),
+                                        .on_select(
+                                            move |index| {
+                                                model.set(if index == 0 {
+                                                    SkinModel::Classic
+                                                } else {
+                                                    SkinModel::Slim
+                                                });
+                                            },
+                                        ),
                                     ),
                             )
                             .maybe_child(error.read().clone().map(|message| {
@@ -861,10 +863,9 @@ impl Component for OfflineSkinDialog {
                                     .main_align(Alignment::End)
                                     .spacing(8.)
                                     .child(
-                                        Button::new()
-                                            .ghost()
-                                            .on_press(remove_cape)
-                                            .text(t("oneclient.settings.accounts.skin.remove_cape")),
+                                        Button::new().ghost().on_press(remove_cape).text(t(
+                                            "oneclient.settings.accounts.skin.remove_cape",
+                                        )),
                                     )
                                     .child(
                                         Button::new()

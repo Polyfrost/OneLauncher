@@ -100,7 +100,9 @@ impl PreparedImport {
 
     #[must_use]
     pub fn target_bundle_name(&self, existing: ExistingPack) -> &str {
-        if existing == ExistingPack::KeepBoth && self.previous.is_some() && self.existing().is_some()
+        if existing == ExistingPack::KeepBoth
+            && self.previous.is_some()
+            && self.existing().is_some()
         {
             &self.separate_bundle_name
         } else {
@@ -279,7 +281,10 @@ pub async fn import_modpack_into_cluster(
                 match remove_pack(state, &cluster, bundle_name, &content).await {
                     Ok(failed) if failed.is_empty() => {}
                     Ok(failed) => {
-                        tracing::warn!(failed = failed.len(), "could not undo every file of a failed import");
+                        tracing::warn!(
+                            failed = failed.len(),
+                            "could not undo every file of a failed import"
+                        );
                     }
                     Err(undo) => {
                         tracing::warn!(error = %undo, "could not undo a failed import");

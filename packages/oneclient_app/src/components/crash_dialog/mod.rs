@@ -343,9 +343,7 @@ impl Component for CrashSuspects {
             .suspects
             .iter()
             .map(|suspect| {
-                let matched = installed
-                    .iter()
-                    .find(|info| matches_suspect(suspect, info));
+                let matched = installed.iter().find(|info| matches_suspect(suspect, info));
                 let name = matched
                     .and_then(|info| info.display_name.clone())
                     .unwrap_or_else(|| suspect.clone());
@@ -383,8 +381,16 @@ impl Component for CrashSuspects {
 
 fn matches_suspect(suspect: &str, info: &oneclient_core::LinkedArtifactInfo) -> bool {
     let needle = suspect.to_lowercase();
-    let name = info.display_name.as_deref().unwrap_or_default().to_lowercase();
-    let id = info.project_id.as_deref().unwrap_or_default().to_lowercase();
+    let name = info
+        .display_name
+        .as_deref()
+        .unwrap_or_default()
+        .to_lowercase();
+    let id = info
+        .project_id
+        .as_deref()
+        .unwrap_or_default()
+        .to_lowercase();
     (!name.is_empty() && needle.contains(&name)) || (!id.is_empty() && needle.contains(&id))
 }
 
@@ -400,24 +406,20 @@ impl Component for CrashSuspectRow {
     fn render(&self) -> impl IntoElement {
         let cluster = use_cluster_mutation();
         let cluster_id = self.cluster_id;
-        let disable = self
-            .hash
-            .clone()
-            .filter(|_| self.enabled)
-            .map(|hash| {
-                Button::new()
-                    .secondary()
-                    .small()
-                    .on_press(move |_| {
-                        cluster.mutate(ClusterAction::SetArtifactEnabled {
-                            cluster_id,
-                            hash: hash.clone(),
-                            enabled: false,
-                        });
-                    })
-                    .text(t("oneclient.components.crash_dialog.suspects.disable"))
-                    .into_element()
-            });
+        let disable = self.hash.clone().filter(|_| self.enabled).map(|hash| {
+            Button::new()
+                .secondary()
+                .small()
+                .on_press(move |_| {
+                    cluster.mutate(ClusterAction::SetArtifactEnabled {
+                        cluster_id,
+                        hash: hash.clone(),
+                        enabled: false,
+                    });
+                })
+                .text(t("oneclient.components.crash_dialog.suspects.disable"))
+                .into_element()
+        });
 
         rect()
             .horizontal()
@@ -440,14 +442,12 @@ impl Component for CrashSuspectRow {
                     .color(colors::fg_primary()),
             )
             .maybe_child(disable)
-            .maybe_child(
-                (self.hash.is_some() && !self.enabled).then(|| {
-                    label()
-                        .text(t("oneclient.components.crash_dialog.suspects.disabled"))
-                        .font_size(text_size(11.))
-                        .color(colors::fg_secondary())
-                }),
-            )
+            .maybe_child((self.hash.is_some() && !self.enabled).then(|| {
+                label()
+                    .text(t("oneclient.components.crash_dialog.suspects.disabled"))
+                    .font_size(text_size(11.))
+                    .color(colors::fg_secondary())
+            }))
             .into_element()
     }
 }

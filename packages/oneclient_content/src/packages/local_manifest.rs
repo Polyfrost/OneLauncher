@@ -933,10 +933,8 @@ credits="Thanks to everyone"
         assert_eq!(fabric.mod_id.as_deref(), Some("sodium-extra"));
         assert_eq!(fabric.version.as_deref(), Some("0.9.4+mc26.2"));
 
-        let forge = parse_forge(
-            "[[mods]]\nmodId = \"jei\"\nversion = \"${file.jarVersion}\"\n",
-        )
-        .expect("forge");
+        let forge = parse_forge("[[mods]]\nmodId = \"jei\"\nversion = \"${file.jarVersion}\"\n")
+            .expect("forge");
         assert_eq!(forge.mod_id.as_deref(), Some("jei"));
         assert_eq!(forge.version, None);
     }

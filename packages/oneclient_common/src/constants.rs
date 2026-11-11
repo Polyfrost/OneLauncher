@@ -29,8 +29,7 @@ pub const MCLOGS_API_URL: &str = "https://api.mclo.gs/1";
 pub const SKYCLIENT_BASE_URL: &str =
     "https://raw.githubusercontent.com/SkyblockClient/SkyblockClient-REPO/refs/heads/main/v1";
 pub const META_URL_BASE: &str = "https://data-v2.polyfrost.org";
-pub const TOS_URL: &str =
-    "https://github.com/linkure8888-lang/OneLauncher/blob/main/docs/terms.md";
+pub const TOS_URL: &str = "https://github.com/linkure8888-lang/OneLauncher/blob/main/docs/terms.md";
 pub const PRIVACY_URL: &str =
     "https://github.com/linkure8888-lang/OneLauncher/blob/main/docs/privacy.md";
 pub const PLUS_BACKEND_URL: &str = "https://plus.polyfrost.org";

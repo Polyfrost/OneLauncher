@@ -6,6 +6,7 @@ pub mod gpu;
 mod heal;
 mod launch;
 mod log_replay;
+pub mod offline_mods;
 pub mod offline_skin;
 pub(crate) mod natives;
 mod process;
@@ -38,6 +39,7 @@ pub use offline_skin::{
     OfflineSkin, SkinModel, load_offline_skin, remove_offline_cape, save_offline_skin,
     user_properties,
 };
+pub use offline_mods::{is_microsoft_only, sync_for_account as sync_offline_mods};
 pub use launch::{
     LaunchedGame, crash_mod_issues, is_running, launch_cluster, launch_cluster_with, repair_cluster,
 };

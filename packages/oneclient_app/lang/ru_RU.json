@@ -2111,7 +2111,7 @@
   "oneclient.settings.accounts.signing_in": "Вход...",
   "oneclient.settings.accounts.skin.title": "Офлайн-скин",
   "oneclient.settings.accounts.skin.body": "Выберите PNG-скин и при желании плащ. Они работают без модов и применятся при следующем запуске.",
-  "oneclient.settings.accounts.skin.skin_file": "Скин PNG (64x64, 64x32 или 128x128)",
+  "oneclient.settings.accounts.skin.skin_file": "Скин PNG (64x64, 64x32, 128x64 или 128x128)",
   "oneclient.settings.accounts.skin.cape_file": "Плащ PNG (необязательно)",
   "oneclient.settings.accounts.skin.not_chosen": "Не выбран",
   "oneclient.settings.accounts.skin.choose": "Выбрать…",

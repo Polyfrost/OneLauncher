@@ -921,6 +921,9 @@ fn file_row(
                     Button::new()
                         .secondary()
                         .small()
+                        // Without a width the button shrinks to one letter per line
+                        // next to the flexed file name.
+                        .width(Size::px(112.))
                         .on_press(on_choose)
                         .text(t("oneclient.settings.accounts.skin.choose")),
                 ),

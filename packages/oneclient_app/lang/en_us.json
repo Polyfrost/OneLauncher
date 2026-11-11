@@ -2111,7 +2111,7 @@
   "oneclient.settings.accounts.signing_in": "Signing in...",
   "oneclient.settings.accounts.skin.title": "Offline skin",
   "oneclient.settings.accounts.skin.body": "Pick a PNG skin and an optional cape. They load without mods and apply on the next launch.",
-  "oneclient.settings.accounts.skin.skin_file": "Skin PNG (64x64, 64x32 or 128x128)",
+  "oneclient.settings.accounts.skin.skin_file": "Skin PNG (64x64, 64x32, 128x64 or 128x128)",
   "oneclient.settings.accounts.skin.cape_file": "Cape PNG (optional)",
   "oneclient.settings.accounts.skin.not_chosen": "Not chosen",
   "oneclient.settings.accounts.skin.choose": "Choose…",

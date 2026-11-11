@@ -223,6 +223,18 @@ async fn start(
     {
         tracing::warn!(cluster_id, error = %err, "failed to install bundle content");
     }
+
+    // PolyPlus and friends need a real session; on an offline account they only
+    // spam Mojang and the Poly+ websocket with failures. Toggle them per account.
+    if let Err(err) = crate::game::sync_offline_mods(
+        cluster_id,
+        account,
+        &state.services.content(),
+    )
+    .await
+    {
+        tracing::warn!(cluster_id, error = %err, "could not adjust offline-only mods");
+    }
     let cluster = match crate::clusters::auto_update_loader(state, &cluster).await {
         Ok(updated) => updated.unwrap_or(cluster),
         Err(err) => {

@@ -11,7 +11,7 @@ use super::{
 };
 use crate::components::cluster_menu::open_menu_at;
 use crate::components::{
-    Avatar, Button, ContextMenu, Icon, IconType, ScrollArea,
+    Avatar, Button, ContextMenu, Icon, IconType, OVERLAY_MAX_LEVEL, ScrollArea,
 };
 use crate::chat::ChatRoster;
 use crate::hooks::{use_chat_roster, use_dispatch};
@@ -385,6 +385,7 @@ impl Component for MemberRow {
             let promote_name = name.clone();
             let kick_name = name.clone();
             ContextMenu::new(x, y)
+                .overlay_level(OVERLAY_MAX_LEVEL)
                 .title(name.clone())
                 .on_close(move |()| menu.set(None))
                 .action(

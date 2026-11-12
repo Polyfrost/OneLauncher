@@ -18,7 +18,7 @@ use crate::ui::{border_all_color, clamp_to_window};
 pub(super) const CARD_CHROME: f32 = 81.;
 pub(super) const CAPE_ZOOM: f32 = 2.1;
 pub(super) const GRID_GAP: f32 = 12.;
-pub(super) const COLUMNS: usize = 4;
+pub(super) const CARD_WIDTH: f32 = 220.;
 pub(super) const BACK_YAW: f32 = std::f32::consts::PI - 0.45;
 pub(super) const FRONT_YAW: f32 = 0.45;
 

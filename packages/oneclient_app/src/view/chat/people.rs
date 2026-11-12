@@ -5,13 +5,15 @@ use uuid::Uuid;
 
 use oneclient_polyplus::Friend;
 
-use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea, TextInput};
+use crate::components::{
+    Button, Icon, IconType, OVERLAY_MAX_LEVEL, OverlayPopup, ScrollArea, TextInput,
+};
 use crate::hooks::{use_chat_roster, use_dispatch};
 use crate::i18n::t;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
-use super::common::{CHAT_POPUP_LEVEL, hint, section_heading, use_player_name};
+use super::common::{hint, section_heading, use_player_name};
 use super::list::{FRIEND_ROW_HEIGHT_PX, person_row};
 
 const DIALOG_WIDTH_PX: f32 = 520.;
@@ -317,7 +319,7 @@ fn dialog_title(text: &str, on_close: EventHandler<()>) -> impl IntoElement {
 
 fn dialog(on_close: EventHandler<()>, height: Size, body: Element) -> Element {
     OverlayPopup::new()
-        .overlay_level(CHAT_POPUP_LEVEL)
+        .overlay_level(OVERLAY_MAX_LEVEL)
         .on_close(on_close)
         .child(
             rect()

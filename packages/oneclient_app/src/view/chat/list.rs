@@ -9,8 +9,8 @@ use oneclient_polyplus::{BlockedPlayer, Friend, FriendRequest, PlayerStatus};
 
 use crate::chat::{ChatConversation, ChatInvite, ChatRoster, FriendRequestStatus};
 use crate::components::{
-    Avatar, ContextMenu, Icon, IconType, LazySection, ScrollArea, Segment, SegmentedControl,
-    TextInput, window_controls_with,
+    Avatar, ContextMenu, Icon, IconType, LazySection, OVERLAY_MAX_LEVEL, ScrollArea, Segment,
+    SegmentedControl, TextInput, window_controls_with,
 };
 use crate::hooks::{
     Actions, use_chat_friend_request, use_chat_invites, use_chat_self_status, use_dispatch,
@@ -21,7 +21,7 @@ use crate::theme::{colors, rounded, text_size};
 use crate::ui::relative_since;
 
 use super::common::{
-    CARD_RADIUS_PX, CHAT_POPUP_LEVEL, CHIP_RADIUS_PX, EscapeGuard, HeaderButton, ROW_RADIUS_PX, area_contains,
+    CARD_RADIUS_PX, CHIP_RADIUS_PX, EscapeGuard, HeaderButton, ROW_RADIUS_PX, area_contains,
     chip_button, count_badge, edge_border, group_heads, head_with_dot, hint, inset_border,
     popup_shadow, presence_color, row_time, section_heading, use_player_name,
 };
@@ -1368,7 +1368,7 @@ impl Component for FriendRow {
             let remove = dispatch.clone();
             let block = dispatch.clone();
             ContextMenu::new(x, y)
-                .overlay_level(CHAT_POPUP_LEVEL)
+                .overlay_level(OVERLAY_MAX_LEVEL)
                 .title(name.clone())
                 .on_close(move |_| menu.set(None))
                 .action(

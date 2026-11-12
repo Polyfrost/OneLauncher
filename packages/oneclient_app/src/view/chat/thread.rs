@@ -4,7 +4,9 @@ use uuid::Uuid;
 use oneclient_polyplus::{GroupKind, MAX_MESSAGE_LENGTH};
 
 use crate::chat::{ChatConversation, ChatMessage, MessageInvite, PendingMessage, ThreadStatus};
-use crate::components::{Avatar, Button, ContextMenu, Icon, IconType, ScrollArea, TextInput};
+use crate::components::{
+    Avatar, Button, ContextMenu, Icon, IconType, OVERLAY_MAX_LEVEL, ScrollArea, TextInput,
+};
 use crate::hooks::{
     Actions, chat_draft, save_chat_draft, use_chat_invite_game, use_chat_online_count,
     use_chat_roster, use_chat_thread, use_dispatch, use_player_online,
@@ -13,7 +15,7 @@ use crate::i18n::{t, tf};
 use crate::theme::{colors, rounded, text_size};
 
 use super::common::{
-    CARD_RADIUS_PX, CHAT_POPUP_LEVEL, CHIP_RADIUS_PX, EscapeGuard, HeaderButton, ROW_RADIUS_PX, area_contains, clock,
+    CARD_RADIUS_PX, CHIP_RADIUS_PX, EscapeGuard, HeaderButton, ROW_RADIUS_PX, area_contains, clock,
     day_label, day_of, edge_border, group_heads, head_with_dot, inset_border, popup_shadow,
     presence_color, use_player_name,
 };
@@ -362,7 +364,7 @@ impl Component for ThreadHeader {
             let rename = self.on_rename.clone();
             let leave = self.on_leave.clone();
             let options = ContextMenu::new(x, y)
-                .overlay_level(CHAT_POPUP_LEVEL)
+                .overlay_level(OVERLAY_MAX_LEVEL)
                 .on_close(move |_| menu.set(None))
                 .action(
                     IconType::Plus,
@@ -546,7 +548,7 @@ impl Component for MessageRow {
             let message_id = self.message.id;
             let content = self.message.content.clone();
             ContextMenu::new(x, y)
-                .overlay_level(CHAT_POPUP_LEVEL)
+                .overlay_level(OVERLAY_MAX_LEVEL)
                 .on_close(move |_| menu.set(None))
                 .action(
                     IconType::Pencil01,

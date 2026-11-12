@@ -3,8 +3,7 @@ use freya::prelude::*;
 use uuid::Uuid;
 
 use crate::components::{
-    Avatar, Icon, IconType, OVERLAY_BASE_LEVEL, TooltipPlacement, overlay_is_topmost,
-    use_open_level,
+    Avatar, Icon, IconType, TooltipPlacement, overlay_is_topmost, use_open_level,
     use_tooltip_anchor,
 };
 use crate::i18n::t;
@@ -16,8 +15,6 @@ pub(super) const LIST_WIDTH_PX: f32 = 320.;
 pub(super) const ROW_RADIUS_PX: f32 = 8.;
 pub(super) const CARD_RADIUS_PX: f32 = 16.;
 pub(super) const CHIP_RADIUS_PX: f32 = 6.;
-
-pub(super) const CHAT_POPUP_LEVEL: u8 = OVERLAY_BASE_LEVEL + 3;
 
 pub(super) fn popup_shadow() -> Shadow {
     Shadow::from((0., 8., 24., 0., Color::from_argb(89, 0, 0, 0)))

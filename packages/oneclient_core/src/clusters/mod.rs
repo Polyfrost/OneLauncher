@@ -17,8 +17,9 @@ pub use loader_update::{
 };
 pub use migrate::apply_remote_migrations;
 pub use modpack::{
-    FlaggedModpack, ModpackCluster, ModpackSource, PreparedModpack, create_modpack_instance,
-    install_modpack_instance, prepare_modpack, repair_modpack_cluster, update_modpack_cluster,
+    FlaggedModpack, ModpackCluster, ModpackSource, PackChoices, PreparedModpack,
+    create_modpack_instance, install_modpack_instance, prepare_modpack, repair_modpack_cluster,
+    update_modpack_cluster,
 };
 pub use modpack_import::{
     ExistingPack, FlaggedPackMod, ImportedModpack, LoaderPlan, PreparedImport,
@@ -26,6 +27,7 @@ pub use modpack_import::{
     modpack_file_sources, prepare_modpack_import, release_imported_modpacks,
     remove_imported_modpack,
 };
+pub(crate) use modpack_import::flag_pack_mods;
 pub use prepare::{
     estimate_cluster_download, prepare_cluster, prepare_cluster_locked, required_java_major,
 };

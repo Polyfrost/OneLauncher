@@ -174,6 +174,105 @@ fn bundle_selection_overrides(
     overrides
 }
 
+pub(crate) async fn take_bundles(
+    actions: &crate::hooks::Actions,
+    state: &std::sync::Arc<oneclient_core::LauncherState>,
+    cluster_id: ClusterId,
+    name: &str,
+    bundles: &[String],
+) {
+    if bundles.is_empty() {
+        return;
+    }
+    let state = state.clone();
+    let bundles = bundles.to_vec();
+    let failure = crate::launcher::off_ui(async move {
+        match state.clusters.set_takes_bundles(cluster_id).await {
+            Ok(cluster) => {
+                let failure = set_up_bundles(&state, &cluster, Some(&bundles)).await;
+                oneclient_content::modpacks::recheck_duplicates(
+                    cluster_id,
+                    oneclient_content::modpacks::MODPACK_BUNDLE_NAME,
+                    &state.services.content(),
+                )
+                .await;
+                failure
+            }
+            Err(err) => {
+                tracing::warn!(cluster_id, error = %err, "could not turn on bundles for the improved instance");
+                Some(err.to_string())
+            }
+        }
+    })
+    .await;
+    if let Some(reason) = failure {
+        actions
+            .notify(tf("oneclient.mutations.take_bundles_failed", &[&name]))
+            .body(reason)
+            .error()
+            .send();
+    }
+}
+
+async fn set_up_bundles(
+    state: &std::sync::Arc<oneclient_core::LauncherState>,
+    cluster: &oneclient_core::clusters::Cluster,
+    selected: Option<&[String]>,
+) -> Option<String> {
+    let content = &state.services.content();
+    if let Some(selected) = selected {
+        let archives = state
+            .bundles
+            .archives_for(content, &cluster.mc_version, cluster.mc_loader)
+            .await
+            .unwrap_or_default();
+        let overrides = bundle_selection_overrides(&archives, selected);
+        if let Err(err) =
+            oneclient_core::set_bundle_package_overrides(cluster.id, &overrides, content).await
+        {
+            tracing::warn!(cluster_id = cluster.id, error = %err, "failed to record the bundle choices for the new instance");
+        }
+        let choices: Vec<_> = archives
+            .iter()
+            .filter(|archive| !archive.manifest.enabled)
+            .map(|archive| {
+                let name = &archive.manifest.name;
+                (name.clone(), selected.contains(name))
+            })
+            .collect();
+        if let Err(err) =
+            oneclient_content::bundles::set_bundle_choices(cluster.id, &choices, content).await
+        {
+            tracing::warn!(cluster_id = cluster.id, error = %err, "failed to record the bundle choices for the new instance");
+        }
+    }
+
+    let session = oneclient_events::GroupedProgressSession::start(
+        &state.services.events,
+        tf("oneclient.mutations.setting_up", &[&cluster.name]),
+    );
+    let mut failure = None;
+    if let Err(err) = oneclient_content::bundles::install_cluster_bundles(
+        cluster.id,
+        state.bundles.as_ref(),
+        Some(&session),
+        content,
+    )
+    .await
+    {
+        tracing::warn!(cluster_id = cluster.id, error = %err, "failed to install bundle content for the new instance");
+        failure = Some(err.to_string());
+    }
+    if let Err(err) =
+        oneclient_core::apply_bundle_java_override(state, cluster.id, true, true, Some(&session))
+            .await
+    {
+        tracing::warn!(cluster_id = cluster.id, error = %err, "failed to apply the bundle java override for the new instance");
+    }
+    session.finish();
+    failure
+}
+
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct ClusterMutation;
 
@@ -576,67 +675,11 @@ impl MutationCapability for ClusterMutation {
                             tracing::warn!(cluster_id = cluster.id, error = %err, "failed to store the instance cover");
                         }
 
-                        let mut bundle_failure = None;
-                        if cluster.uses_bundles() {
-                            if let Some(selected) = bundles {
-                                let archives = state
-                                    .bundles
-                                    .archives_for(content, &cluster.mc_version, cluster.mc_loader)
-                                    .await
-                                    .unwrap_or_default();
-                                let overrides = bundle_selection_overrides(&archives, selected);
-                                if let Err(err) = oneclient_core::set_bundle_package_overrides(
-                                    cluster.id, &overrides, content,
-                                )
-                                .await
-                                {
-                                    tracing::warn!(cluster_id = cluster.id, error = %err, "failed to record the bundle choices for the new instance");
-                                }
-                                let choices: Vec<_> = archives
-                                    .iter()
-                                    .filter(|archive| !archive.manifest.enabled)
-                                    .map(|archive| {
-                                        let name = &archive.manifest.name;
-                                        (name.clone(), selected.contains(name))
-                                    })
-                                    .collect();
-                                if let Err(err) = oneclient_content::bundles::set_bundle_choices(
-                                    cluster.id, &choices, content,
-                                )
-                                .await
-                                {
-                                    tracing::warn!(cluster_id = cluster.id, error = %err, "failed to record the bundle choices for the new instance");
-                                }
-                            }
-
-                            let session = oneclient_events::GroupedProgressSession::start(
-                                &services.events,
-                                tf("oneclient.mutations.setting_up", &[&cluster.name]),
-                            );
-                            if let Err(err) = oneclient_content::bundles::install_cluster_bundles(
-                                cluster.id,
-                                state.bundles.as_ref(),
-                                Some(&session),
-                                content,
-                            )
-                            .await
-                            {
-                                tracing::warn!(cluster_id = cluster.id, error = %err, "failed to install bundle content for the new instance");
-                                bundle_failure = Some(err.to_string());
-                            }
-                            if let Err(err) = oneclient_core::apply_bundle_java_override(
-                                &state,
-                                cluster.id,
-                                true,
-                                true,
-                                Some(&session),
-                            )
-                            .await
-                            {
-                                tracing::warn!(cluster_id = cluster.id, error = %err, "failed to apply the bundle java override for the new instance");
-                            }
-                            session.finish();
-                        }
+                        let bundle_failure = if cluster.uses_bundles() {
+                            set_up_bundles(&state, &cluster, bundles.as_deref()).await
+                        } else {
+                            None
+                        };
                         match bundle_failure.filter(|_| *require_bundles) {
                             Some(reason) => {
                                 match state.clusters.delete(cluster.id, true).await {

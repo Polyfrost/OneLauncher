@@ -10,7 +10,7 @@ pub async fn get_by_id(pool: &SqlitePool, id: i64) -> Result<Option<ClusterRow>,
 		SELECT
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
 			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
-			kind, user_created, description, tags, cover_path
+			kind, user_created, description, tags, cover_path, takes_bundles
 		FROM clusters
 		WHERE id = ?
 		"#,
@@ -30,7 +30,7 @@ pub async fn get_by_folder_name(
 		SELECT
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
 			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
-			kind, user_created, description, tags, cover_path
+			kind, user_created, description, tags, cover_path, takes_bundles
 		FROM clusters
 		WHERE folder_name = ?
 		"#,
@@ -47,7 +47,7 @@ pub async fn list_all(pool: &SqlitePool) -> Result<Vec<ClusterRow>, sqlx::Error>
 		SELECT
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
 			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
-			kind, user_created, description, tags, cover_path
+			kind, user_created, description, tags, cover_path, takes_bundles
 		FROM clusters
 		ORDER BY last_played IS NULL, last_played DESC, name ASC
 		"#
@@ -67,7 +67,7 @@ pub async fn find_by_version_loader(
 		SELECT
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
 			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
-			kind, user_created, description, tags, cover_path
+			kind, user_created, description, tags, cover_path, takes_bundles
 		FROM clusters
 		WHERE mc_version = ? AND mc_loader = ? AND user_created = 0
 		LIMIT 1
@@ -122,7 +122,7 @@ pub async fn insert(pool: &SqlitePool, new: &NewCluster<'_>) -> Result<ClusterRo
 		RETURNING
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
 			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
-			kind, user_created, description, tags, cover_path
+			kind, user_created, description, tags, cover_path, takes_bundles
 		"#,
         new.name,
         new.folder_name,
@@ -181,7 +181,7 @@ pub async fn update(
 		RETURNING
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
 			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
-			kind, user_created, description, tags, cover_path
+			kind, user_created, description, tags, cover_path, takes_bundles
 		"#,
         name,
         setting_profile_name,
@@ -223,7 +223,7 @@ pub async fn migrate_version_if_unchanged(
 		RETURNING
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
 			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
-			kind, user_created, description, tags, cover_path
+			kind, user_created, description, tags, cover_path, takes_bundles
 		"#,
     )
     .bind(migration.mc_version)
@@ -250,13 +250,21 @@ pub async fn set_stage(pool: &SqlitePool, id: i64, stage: i64) -> Result<Cluster
 		RETURNING
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
 			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
-			kind, user_created, description, tags, cover_path
+			kind, user_created, description, tags, cover_path, takes_bundles
 		"#,
         stage,
         id
     )
     .fetch_one(pool)
     .await
+}
+
+pub async fn set_takes_bundles(pool: &SqlitePool, id: i64) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE clusters SET takes_bundles = 1 WHERE id = ?")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
 }
 
 pub async fn touch_last_played(pool: &SqlitePool, id: i64) -> Result<(), sqlx::Error> {
@@ -285,7 +293,7 @@ pub async fn add_playtime(
 		RETURNING
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
 			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
-			kind, user_created, description, tags, cover_path
+			kind, user_created, description, tags, cover_path, takes_bundles
 		"#,
         seconds,
         now,
@@ -393,6 +401,26 @@ mod tests {
         )
         .await
         .expect("insert cluster")
+    }
+
+    #[tokio::test]
+    async fn a_modded_cluster_takes_bundles_only_once_turned_on() {
+        let pool = pool().await;
+        let seeded = seed(&pool, "1.21.1", "Improved").await;
+        sqlx::query("UPDATE clusters SET kind = 2 WHERE id = ?")
+            .bind(seeded.id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let modded = get_by_id(&pool, seeded.id).await.unwrap().unwrap();
+        assert!(modded.is_isolated());
+        assert!(!modded.uses_bundles());
+
+        set_takes_bundles(&pool, seeded.id).await.unwrap();
+
+        let improved = get_by_id(&pool, seeded.id).await.unwrap().unwrap();
+        assert!(improved.is_isolated());
+        assert!(improved.uses_bundles());
     }
 
     #[tokio::test]

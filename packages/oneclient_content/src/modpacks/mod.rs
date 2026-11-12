@@ -267,6 +267,18 @@ pub async fn read_modpack(path: &Path, ctx: &ContentCtx) -> ContentResult<Modpac
     curseforge::resolve(&bytes, ctx).await
 }
 
+pub async fn read_modpack_header(path: &Path) -> ContentResult<(String, GameLoader)> {
+    if let Some(bytes) = zip_entry(path, mrpack::INDEX_ENTRY).await? {
+        let manifest = mrpack::parse(&bytes)?;
+        return Ok((manifest.mc_version, manifest.loader));
+    }
+
+    let bytes = zip_entry(path, curseforge::MANIFEST_ENTRY)
+        .await?
+        .ok_or(PackageError::UnsupportedModpackFormat)?;
+    curseforge::header(&bytes)
+}
+
 async fn zip_entry(path: &Path, entry: &str) -> ContentResult<Option<Vec<u8>>> {
     let file = tokio::fs::File::open(path).await?;
     match polyio::try_read_zip_entry_bytes(tokio::io::BufReader::new(file), entry).await {

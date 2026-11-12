@@ -330,7 +330,7 @@ pub async fn export_cluster_with(
     };
 
     let scope = ShareScope {
-        skip_bundles: cluster.uses_bundles() && !compatible,
+        skip_bundles: cluster.kind == ClusterKind::OneClient && !compatible,
         skip_modpack: modpack.is_some(),
     };
     let kind = if compatible && cluster.kind == ClusterKind::OneClient {

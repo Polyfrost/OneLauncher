@@ -4,18 +4,19 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use oneclient_cluster::{Cluster, ClusterUpdate};
+use oneclient_cluster::{Cluster, ClusterKind, ClusterUpdate};
 use oneclient_common::domain::ProviderId;
 use oneclient_common::patch::Patch;
 use oneclient_content::modpacks::{self, ModpackInstallReport, ModpackRelease, WantedFile};
 use oneclient_content::packages::store::artifact_absolute_path;
 use oneclient_content::packages::{
-    PackageStore, ResolvedAlternative, fetch_explanation, load_bad_mods, resolve_alternatives,
+    BadModList, PackageStore, ResolvedAlternative, fetch_explanation, load_bad_mods,
+    resolve_alternatives,
 };
 use oneclient_content::{ContentCtx, ContentError};
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
-use oneclient_db::models::OverrideType;
+use oneclient_db::models::{ClusterRow, OverrideType};
 use oneclient_events::GroupedProgressSession;
 
 use super::modpack::{
@@ -651,7 +652,7 @@ fn loader_plan(cluster: &Cluster, needed: Option<&str>) -> LoaderPlan {
     match cluster.mc_loader_version.as_deref() {
         None => LoaderPlan::Keep,
         Some(current) if modpacks::is_newer_version(needed, current) => {
-            if cluster.uses_bundles() {
+            if cluster.kind == ClusterKind::OneClient {
                 LoaderPlan::Behind {
                     current: current.to_string(),
                     needed: needed.to_string(),
@@ -740,19 +741,6 @@ async fn screen(
     if list.bad_mods.is_empty() {
         return Vec::new();
     }
-
-    let bundled = match modpacks::bundled_mods(&prepared.archive_path, &prepared.manifest).await {
-        Ok(bundled) => bundled,
-        Err(err) => {
-            tracing::warn!(error = %err, "could not read the jars bundled in the modpack");
-            Vec::new()
-        }
-    };
-    let flagged = modpacks::screen_modpack(&list, &prepared.manifest, &bundled, content).await;
-    if flagged.is_empty() {
-        return Vec::new();
-    }
-
     let cluster = match PackageStore::get_cluster(cluster_id, content).await {
         Ok(cluster) => Some(cluster),
         Err(err) => {
@@ -760,11 +748,27 @@ async fn screen(
             None
         }
     };
-    let cluster = cluster.as_ref();
+    flag_pack_mods(&list, prepared, cluster.as_ref(), content).await
+}
+
+pub(crate) async fn flag_pack_mods(
+    list: &BadModList,
+    prepared: &PreparedModpack,
+    target: Option<&ClusterRow>,
+    content: &ContentCtx,
+) -> Vec<FlaggedPackMod> {
+    let bundled = match modpacks::bundled_mods(&prepared.archive_path, &prepared.manifest).await {
+        Ok(bundled) => bundled,
+        Err(err) => {
+            tracing::warn!(error = %err, "could not read the jars bundled in the modpack");
+            Vec::new()
+        }
+    };
+    let flagged = modpacks::screen_modpack(list, &prepared.manifest, &bundled, content).await;
 
     futures_util::future::join_all(flagged.into_iter().map(|file| async move {
         let alternatives = async {
-            match cluster {
+            match target {
                 Some(cluster) => resolve_alternatives(file.entry, cluster, content).await,
                 None => Vec::new(),
             }
@@ -912,6 +916,7 @@ mod tests {
             tags: Vec::new(),
             cover_path: None,
             dir_target: Default::default(),
+            takes_bundles: false,
         }
     }
 
@@ -955,6 +960,7 @@ mod tests {
                 mods_unchecked: false,
                 mods_unconfirmed: 0,
                 share: None,
+                choices: Default::default(),
             },
             cluster_id: 1,
             cluster_name: "Cluster".to_string(),

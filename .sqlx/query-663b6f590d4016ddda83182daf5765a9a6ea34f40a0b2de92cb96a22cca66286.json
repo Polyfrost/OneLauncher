@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n\t\tUPDATE clusters\n\t\tSET name = ?,\n\t\t    setting_profile_name = ?,\n\t\t    mc_loader_version = ?,\n\t\t    linked_modpack_hash = ?,\n\t\t    description = ?,\n\t\t    tags = ?,\n\t\t    cover_path = ?\n\t\tWHERE id = ?\n\t\tRETURNING\n\t\t\tid, name, folder_name, setting_profile_name, mc_version, mc_loader,\n\t\t\tstage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,\n\t\t\tkind, user_created, description, tags, cover_path\n\t\t",
+  "query": "\n\t\tINSERT INTO clusters (\n\t\t\tname, folder_name, mc_version, mc_loader, mc_loader_version,\n\t\t\tsetting_profile_name, stage, created_at,\n\t\t\tkind, user_created, description, tags, cover_path\n\t\t)\n\t\tVALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n\t\tRETURNING\n\t\t\tid, name, folder_name, setting_profile_name, mc_version, mc_loader,\n\t\t\tstage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,\n\t\t\tkind, user_created, description, tags, cover_path, takes_bundles\n\t\t",
   "describe": {
     "columns": [
       {
@@ -189,10 +189,21 @@
             "name": "cover_path"
           }
         }
+      },
+      {
+        "name": "takes_bundles",
+        "ordinal": 17,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "clusters",
+            "name": "takes_bundles"
+          }
+        }
       }
     ],
     "parameters": {
-      "Right": 8
+      "Right": 13
     },
     "nullable": [
       false,
@@ -211,8 +222,9 @@
       false,
       true,
       false,
-      true
+      true,
+      false
     ]
   },
-  "hash": "9e4cbbc2c299861132749196c4e248e4309c2449e181b3b9ae16e7f7b4d9e627"
+  "hash": "663b6f590d4016ddda83182daf5765a9a6ea34f40a0b2de92cb96a22cca66286"
 }

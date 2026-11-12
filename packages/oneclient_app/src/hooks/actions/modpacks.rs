@@ -9,10 +9,10 @@ use oneclient_content::modpacks::{
 };
 use oneclient_content::packages::ResolvedAlternative;
 use oneclient_core::clusters::{
-    ExistingPack, LoaderPlan, ModpackCluster, ModpackSource, PreparedImport, PreparedModpack,
-    create_modpack_instance, import_modpack_into_cluster, install_modpack_instance,
-    prepare_modpack, prepare_modpack_import, remove_imported_modpack, repair_modpack_cluster,
-    update_modpack_cluster,
+    ExistingPack, LoaderPlan, ModpackCluster, ModpackSource, PackChoices, PreparedImport,
+    PreparedModpack, create_modpack_instance, import_modpack_into_cluster,
+    install_modpack_instance, prepare_modpack, prepare_modpack_import, remove_imported_modpack,
+    repair_modpack_cluster, update_modpack_cluster,
 };
 use oneclient_db::models::ClusterId;
 use oneclient_events::GroupedProgressSession;
@@ -38,10 +38,23 @@ enum JobSlot {
 
 static JOB: Mutex<JobSlot> = Mutex::new(JobSlot::Idle);
 
-static WAITING: Mutex<VecDeque<ModpackSource>> = Mutex::new(VecDeque::new());
+static WAITING: Mutex<VecDeque<(ModpackSource, PackChoices)>> = Mutex::new(VecDeque::new());
 
-fn waiting() -> MutexGuard<'static, VecDeque<ModpackSource>> {
+fn waiting() -> MutexGuard<'static, VecDeque<(ModpackSource, PackChoices)>> {
     WAITING.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+static REVIEWED: Mutex<Option<PreparedModpack>> = Mutex::new(None);
+
+pub fn remember_reviewed_pack(prepared: PreparedModpack) {
+    *REVIEWED.lock().unwrap_or_else(PoisonError::into_inner) = Some(prepared);
+}
+
+fn take_reviewed_pack(source: &ModpackSource) -> Option<PreparedModpack> {
+    REVIEWED
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .take_if(|prepared| prepared.source == *source)
 }
 
 fn with_slot<R>(change: impl FnOnce(&mut JobSlot) -> R) -> R {
@@ -382,25 +395,30 @@ impl Actions {
             return;
         }
         let next = waiting().pop_front();
-        if let Some(next) = next {
-            self.start_modpack(next, true);
+        if let Some((source, choices)) = next {
+            self.start_modpack(source, choices, true);
         }
     }
 
     pub fn install_modpack(&self, source: ModpackSource) {
+        REVIEWED.lock().unwrap_or_else(PoisonError::into_inner).take();
+        self.install_modpack_with(source, PackChoices::default());
+    }
+
+    pub fn install_modpack_with(&self, source: ModpackSource, choices: PackChoices) {
         if matches!(source, ModpackSource::File(_))
             && (super::external_import::import_running() || !modpack_job_idle())
         {
-            waiting().push_back(source);
+            waiting().push_back((source, choices));
             self.notify(t("oneclient.actions.modpacks.queued.title"))
                 .body(t("oneclient.actions.modpacks.queued.body"))
                 .send();
             return;
         }
-        self.start_modpack(source, false);
+        self.start_modpack(source, choices, false);
     }
 
-    fn start_modpack(&self, source: ModpackSource, queued: bool) {
+    fn start_modpack(&self, source: ModpackSource, choices: PackChoices, queued: bool) {
         if !self.claim_modpack_job(None) {
             return;
         }
@@ -420,6 +438,7 @@ impl Actions {
             ModpackSource::File(_) => false,
         };
 
+        let reviewed = take_reviewed_pack(&source);
         let actions = self.clone();
         spawn_in_window(async move {
             let Ok(state) = launcher::state() else {
@@ -430,6 +449,9 @@ impl Actions {
             let prepared = off_ui({
                 let state = state.clone();
                 async move {
+                    if let Some(reviewed) = reviewed {
+                        return Ok(reviewed);
+                    }
                     let session = GroupedProgressSession::start(
                         &state.services.events,
                         t("oneclient.actions.modpacks.reading"),
@@ -441,6 +463,10 @@ impl Actions {
             })
             .await;
 
+            let prepared = prepared.map(|mut prepared| {
+                prepared.choices = choices;
+                prepared
+            });
             match prepared {
                 Ok(prepared) if from_browser && prepared.flagged.is_none() => {
                     actions.run_modpack_job(ModpackJob::Install(Box::new(prepared)));
@@ -780,6 +806,16 @@ impl Actions {
                 Ok(ModpackCluster { cluster, report }) => {
                     if let ModpackJob::Install(prepared) = &job {
                         actions.link_installed(&prepared.source, cluster.id).await;
+                        if let Some(bundles) = &prepared.choices.bundles {
+                            crate::hooks::take_bundles(
+                                &actions,
+                                &state,
+                                cluster.id,
+                                &cluster.name,
+                                bundles,
+                            )
+                            .await;
+                        }
                     }
                     events.signal(oneclient_events::Signal::ClustersChanged);
                     crate::hooks::invalidate_cluster_queries().await;
@@ -876,20 +912,23 @@ impl Actions {
                 }
             }
 
-            if let ModpackJob::Import { alternatives, .. } = job {
-                for alternative in alternatives {
-                    let Some(version_id) = alternative.version_id else {
-                        continue;
-                    };
-                    actions.start_install(
-                        cluster_id,
-                        alternative.provider,
-                        alternative.project_id,
-                        version_id,
-                        None,
-                        false,
-                    );
-                }
+            let alternatives = match job {
+                ModpackJob::Import { alternatives, .. } => alternatives,
+                ModpackJob::Install(prepared) => prepared.choices.alternatives,
+                _ => Vec::new(),
+            };
+            for alternative in alternatives {
+                let Some(version_id) = alternative.version_id else {
+                    continue;
+                };
+                actions.start_install(
+                    cluster_id,
+                    alternative.provider,
+                    alternative.project_id,
+                    version_id,
+                    None,
+                    false,
+                );
             }
             actions.release_modpack_job();
         });
@@ -1118,6 +1157,7 @@ mod tests {
                 mods_unchecked: false,
                 mods_unconfirmed: 0,
                 share: None,
+                choices: Default::default(),
             },
             cluster_id: 1,
             cluster_name: "Cluster".to_string(),

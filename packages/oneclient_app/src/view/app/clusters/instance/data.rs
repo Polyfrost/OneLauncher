@@ -16,8 +16,8 @@ use crate::hooks::{
     AlternativePick, ExternalImportJob, GameVersion, available_bundles, game_versions,
     import_screening, java_majors, loader_versions, package_meta_batch, query_error,
     settled_or_loading, use_available_bundles, use_game_versions, use_import_screening,
-    use_java_majors, use_loader_versions, use_package_meta_batch, use_version_loaders,
-    use_versions, versions_metadata,
+    use_java_majors, use_loader_versions, use_modpack_header, use_package_meta_batch,
+    use_version_loaders, use_versions, versions_metadata,
 };
 use crate::utils::version_sort_key;
 
@@ -60,6 +60,14 @@ impl BundlePicks {
     }
 }
 
+#[derive(Clone)]
+pub struct BundleTarget {
+    pub key: PathBuf,
+    pub name: String,
+    pub mc_version: String,
+    pub loader: GameLoader,
+}
+
 pub struct Picks {
     pub steps: &'static [Step],
     pub index: usize,
@@ -72,7 +80,10 @@ pub struct Picks {
     pub import_mode: ImportMode,
     pub import_screening: Option<Vec<ScreenedInstance>>,
     pub import_screening_error: Option<String>,
-    pub import_decisions: HashMap<DecisionKey, ModDecision>,
+    pub improving: bool,
+    pub improve_targets: Option<Vec<BundleTarget>>,
+    pub bundle_page: usize,
+    pub finishing: bool,
     pub modpack_file: Option<PathBuf>,
     pub folder: FolderChoice,
     pub kind: ClusterKind,
@@ -108,41 +119,17 @@ impl Picks {
             .sum()
     }
 
-    pub fn import_jobs(&self, chosen: &[ExternalInstance]) -> Vec<ExternalImportJob> {
-        chosen
-            .iter()
-            .map(|instance| {
-                let mut job = ExternalImportJob::as_is(instance.clone());
-                if self.import_mode != ImportMode::Improve {
-                    return job;
-                }
-                let screened = self
-                    .import_screening
-                    .iter()
-                    .flatten()
-                    .find(|screened| screened.game_dir == instance.game_dir);
-                job.reviewed = screened.map(|screened| screened.mods_stamp);
-                let mut picks = Vec::new();
-                if let Some(screened) = screened {
-                    apply_decisions(
-                        screened,
-                        &self.import_decisions,
-                        &mut job.choices.skip,
-                        &mut picks,
-                    );
-                }
-                job.alternatives = picks
-                    .into_iter()
-                    .map(|(provider, project_id, chosen)| AlternativePick {
-                        name: chosen
-                            .map_or_else(|| project_id.clone(), |a| a.resolved.name.clone()),
-                        provider,
-                        project_id,
-                    })
-                    .collect();
-                job
-            })
-            .collect()
+    pub fn bundle_target(&self) -> Option<&BundleTarget> {
+        if !self.improving || self.step != Step::Bundles {
+            return None;
+        }
+        self.improve_targets.as_ref()?.get(self.bundle_page)
+    }
+
+    pub fn last_bundle_page(&self) -> bool {
+        self.improve_targets
+            .as_ref()
+            .is_some_and(|targets| self.bundle_page + 1 >= targets.len())
     }
 
     pub fn loader_label(&self) -> String {
@@ -181,6 +168,12 @@ impl Catalogue {
 
     fn lists(&self, version: &str) -> bool {
         self.oneclient.iter().any(|entry| entry.id == version)
+    }
+
+    fn offers(&self, version: &str, loader: GameLoader) -> bool {
+        self.oneclient
+            .iter()
+            .any(|entry| entry.id == version && entry.loader == loader)
     }
 }
 
@@ -223,7 +216,7 @@ fn use_catalogue(choice: TypeChoice) -> Catalogue {
 
     Catalogue {
         oneclient,
-        oneclient_settled: metadata.is_some(),
+        oneclient_settled: metadata.is_some() || query_error(&oneclient_query).is_some(),
         vanilla: game_versions(&vanilla_query),
         java: java_majors(&java_query),
         error,
@@ -434,17 +427,60 @@ pub fn resolve(w: Wizard) -> Picks {
         _ => None,
     };
 
-    let reviewing_pack = step == Step::ImportReview && choice == TypeChoice::Modpack;
+    let improving = improves(steps, import_mode);
+    let pack = choice == TypeChoice::Modpack;
     let modpack_file = w.modpack_file.read().clone();
+    let chosen = w.import_chosen.read().clone();
+    let header = use_modpack_header(modpack_file.clone().filter(|_| improving && pack));
+    let improve_targets: Option<Vec<BundleTarget>> = if !improving || !catalogue.oneclient_settled {
+        None
+    } else if pack {
+        header.map(|header| {
+            header
+                .filter(|(version, loader)| catalogue.offers(version, *loader))
+                .zip(modpack_file.clone())
+                .map(|((mc_version, loader), key)| BundleTarget {
+                    name: key
+                        .file_stem()
+                        .map(|stem| stem.to_string_lossy().into_owned())
+                        .unwrap_or_default(),
+                    key,
+                    mc_version,
+                    loader,
+                })
+                .into_iter()
+                .collect()
+        })
+    } else {
+        Some(
+            chosen
+                .iter()
+                .filter(|instance| catalogue.offers(&instance.mc_version, instance.loader))
+                .map(|instance| BundleTarget {
+                    key: instance.game_dir.clone(),
+                    name: instance.name.clone(),
+                    mc_version: instance.mc_version.clone(),
+                    loader: instance.loader,
+                })
+                .collect(),
+        )
+    };
+    let bundle_page = *w.bundle_page.read();
+    let target = improve_targets
+        .as_ref()
+        .filter(|_| step == Step::Bundles)
+        .and_then(|targets| targets.get(bundle_page));
+
+    let screening = improving && (step == Step::Bundles || *w.finishing.read());
     let screening_query = use_import_screening(
-        if step == Step::ImportReview && !reviewing_pack {
-            w.import_chosen.read().clone()
+        if screening && !pack {
+            chosen
         } else {
             Vec::new()
         },
-        modpack_file.clone().filter(|_| reviewing_pack),
+        modpack_file.clone().filter(|_| screening && pack),
     );
-    let (import_screening, import_screening_error) = if step == Step::ImportReview {
+    let (import_screening, import_screening_error) = if screening {
         (
             import_screening(&screening_query),
             query_error(&screening_query),
@@ -453,11 +489,20 @@ pub fn resolve(w: Wizard) -> Picks {
         (None, None)
     };
 
-    let bundles = use_bundle_context(version.as_ref(), loader, oneclient, step == Step::Bundles);
+    let bundles = match target {
+        Some(target) => {
+            use_bundle_context(Some(&target.mc_version), Some(target.loader), true, true)
+        }
+        None => use_bundle_context(version.as_ref(), loader, oneclient, step == Step::Bundles),
+    };
 
     let kind = kind_for(choice, loader);
     let suggested = suggested_name(version.as_ref(), kind, loader);
-    let declined = w.declined.read().clone().unwrap_or_else(|| {
+    let chosen_declined = match target {
+        Some(target) => w.import_declined.read().get(&target.key).cloned(),
+        None => w.declined.read().clone(),
+    };
+    let declined = chosen_declined.unwrap_or_else(|| {
         bundles
             .archives
             .iter()
@@ -478,7 +523,10 @@ pub fn resolve(w: Wizard) -> Picks {
         import_mode,
         import_screening,
         import_screening_error,
-        import_decisions: w.import_decisions.read().clone(),
+        improving,
+        improve_targets,
+        bundle_page,
+        finishing: *w.finishing.read(),
         modpack_file,
         folder: w.folder.read().clone(),
         kind,
@@ -506,51 +554,72 @@ pub fn resolve(w: Wizard) -> Picks {
     }
 }
 
-pub fn pack_choices(
+pub fn import_jobs(
     screening: &[ScreenedInstance],
-    decisions: &HashMap<DecisionKey, ModDecision>,
-) -> PackChoices {
+    chosen: &[ExternalInstance],
+    bundles: &HashMap<PathBuf, Vec<String>>,
+) -> Vec<ExternalImportJob> {
+    chosen
+        .iter()
+        .map(|instance| {
+            let mut job = ExternalImportJob::as_is(instance.clone());
+            let screened = screening
+                .iter()
+                .find(|screened| screened.game_dir == instance.game_dir);
+            job.bundles = bundles.get(&instance.game_dir).cloned();
+            job.reviewed = screened
+                .filter(|screened| screened.unconfirmed == 0)
+                .map(|screened| (screened.mods_stamp, screened.unpublished.clone()));
+            let mut picks = Vec::new();
+            if let Some(screened) = screened {
+                apply_replacements(screened, &mut job.choices.skip, &mut picks);
+            }
+            job.alternatives = picks
+                .into_iter()
+                .map(|(provider, project_id, chosen)| AlternativePick {
+                    name: chosen.map_or_else(|| project_id.clone(), |a| a.resolved.name.clone()),
+                    provider,
+                    project_id,
+                })
+                .collect();
+            job
+        })
+        .collect()
+}
+
+pub fn pack_choices(screening: &[ScreenedInstance], bundles: Option<Vec<String>>) -> PackChoices {
     let mut choices = PackChoices::default();
     let mut picks = Vec::new();
     for screened in screening {
-        apply_decisions(screened, decisions, &mut choices.skipped, &mut picks);
+        apply_replacements(screened, &mut choices.skipped, &mut picks);
     }
     choices.alternatives = picks
         .into_iter()
         .filter_map(|(_, _, chosen)| chosen.map(|a| a.resolved.clone()))
         .collect();
+    choices.bundles = bundles;
     choices
 }
 
 type Pick<'a> = (ProviderId, String, Option<&'a ImportAlternative>);
 
-fn apply_decisions<'a>(
+fn apply_replacements<'a>(
     screened: &'a ScreenedInstance,
-    decisions: &HashMap<DecisionKey, ModDecision>,
     skip: &mut HashSet<String>,
     picks: &mut Vec<Pick<'a>>,
 ) {
     for flagged in &screened.flagged {
-        match decision_for(decisions, &screened.game_dir, flagged) {
-            ModDecision::Keep => {}
-            ModDecision::Remove => {
-                skip.insert(flagged.hash.clone());
-            }
-            ModDecision::Replace {
-                provider,
-                project_id,
-            } => {
-                skip.insert(flagged.hash.clone());
-                let chosen = flagged.alternatives.iter().find(|a| {
-                    a.resolved.provider == provider && a.resolved.project_id == project_id
-                });
-                let picked = picks
-                    .iter()
-                    .any(|(p, id, _)| *p == provider && *id == project_id);
-                if !picked && !chosen.is_some_and(|a| a.already_installed) {
-                    picks.push((provider, project_id, chosen));
-                }
-            }
+        let Some(chosen) = default_replacement(flagged) else {
+            continue;
+        };
+        skip.insert(flagged.hash.clone());
+        let provider = chosen.resolved.provider;
+        let project_id = &chosen.resolved.project_id;
+        let picked = picks
+            .iter()
+            .any(|(p, id, _)| *p == provider && id == project_id);
+        if !picked && !chosen.already_installed {
+            picks.push((provider, project_id.clone(), Some(chosen)));
         }
     }
 }
@@ -562,14 +631,14 @@ mod tests {
 
     use super::*;
 
-    fn alternative(project_id: &str, already_installed: bool) -> ImportAlternative {
+    fn alternative(project_id: &str, has_build: bool, already_installed: bool) -> ImportAlternative {
         ImportAlternative {
             resolved: ResolvedAlternative {
                 provider: ProviderId::Modrinth,
                 project_id: project_id.to_string(),
                 name: project_id.to_string(),
-                version_id: Some("v1".to_string()),
-                version_number: None,
+                version_id: has_build.then(|| "v1".to_string()),
+                version_number: has_build.then(|| "1.0".to_string()),
                 icon_url: None,
             },
             already_installed,
@@ -587,44 +656,28 @@ mod tests {
         }
     }
 
-    fn replace(project_id: &str) -> ModDecision {
-        ModDecision::Replace {
-            provider: ProviderId::Modrinth,
-            project_id: project_id.to_string(),
-        }
-    }
-
     #[test]
-    fn pack_choices_skip_replaced_mods_and_install_each_replacement_once() {
-        let pack = PathBuf::from("pack.mrpack");
+    fn flagged_mods_are_replaced_automatically_and_kept_without_a_build() {
         let screened = ScreenedInstance {
-            game_dir: pack.clone(),
+            game_dir: PathBuf::from("pack.mrpack"),
             name: "Pack".to_string(),
             mc_version: "1.21.1".to_string(),
             flagged: vec![
-                flagged("kept", vec![alternative("better", false)]),
-                flagged("removed", vec![alternative("better", false)]),
-                flagged("first", vec![alternative("better", false)]),
-                flagged("second", vec![alternative("better", false)]),
-                flagged("shipped", vec![alternative("in-pack", true)]),
+                flagged("no-build", vec![alternative("missing", false, false)]),
+                flagged("first", vec![alternative("better", true, false)]),
+                flagged("second", vec![alternative("better", true, false)]),
+                flagged("shipped", vec![alternative("in-pack", false, true)]),
             ],
             unpublished: Vec::new(),
             unconfirmed: 0,
             mods_stamp: 0,
         };
-        let decisions = HashMap::from([
-            ((pack.clone(), "kept".to_string()), ModDecision::Keep),
-            ((pack.clone(), "removed".to_string()), ModDecision::Remove),
-            ((pack.clone(), "first".to_string()), replace("better")),
-            ((pack.clone(), "second".to_string()), replace("better")),
-            ((pack, "shipped".to_string()), replace("in-pack")),
-        ]);
 
-        let choices = pack_choices(&[screened], &decisions);
+        let choices = pack_choices(&[screened], Some(vec!["Core".to_string()]));
 
         assert_eq!(
             choices.skipped,
-            HashSet::from(["removed", "first", "second", "shipped"].map(String::from))
+            HashSet::from(["first", "second", "shipped"].map(String::from))
         );
         let installed: Vec<&str> = choices
             .alternatives
@@ -632,5 +685,53 @@ mod tests {
             .map(|a| a.project_id.as_str())
             .collect();
         assert_eq!(installed, ["better"]);
+        assert_eq!(choices.bundles, Some(vec!["Core".to_string()]));
+    }
+
+    fn instance(dir: &str) -> ExternalInstance {
+        ExternalInstance {
+            launcher: oneclient_core::ExternalLauncher::Prism,
+            id: dir.to_string(),
+            name: dir.to_string(),
+            game_dir: PathBuf::from(dir),
+            mc_version: "1.21.1".to_string(),
+            loader: GameLoader::Fabric,
+            loader_version: None,
+            icon: None,
+            notes: None,
+            groups: Vec::new(),
+            played_secs: 0,
+            settings: Default::default(),
+            linked_pack: None,
+            unsupported_loader: None,
+            skipped_parts: Vec::new(),
+        }
+    }
+
+    fn screened(dir: &str, unconfirmed: usize) -> ScreenedInstance {
+        ScreenedInstance {
+            game_dir: PathBuf::from(dir),
+            name: dir.to_string(),
+            mc_version: "1.21.1".to_string(),
+            flagged: vec![flagged(dir, vec![alternative("better", true, false)])],
+            unpublished: Vec::new(),
+            unconfirmed,
+            mods_stamp: 7,
+        }
+    }
+
+    #[test]
+    fn each_import_gets_its_own_bundles_and_only_a_confirmed_check_is_reused() {
+        let screening = [screened("a", 0), screened("b", 2)];
+        let bundles = HashMap::from([(PathBuf::from("a"), vec!["Core".to_string()])]);
+
+        let jobs = import_jobs(&screening, &[instance("a"), instance("b")], &bundles);
+
+        assert_eq!(jobs[0].bundles, Some(vec!["Core".to_string()]));
+        assert_eq!(jobs[1].bundles, None);
+        assert_eq!(jobs[0].reviewed, Some((7, Vec::new())));
+        assert_eq!(jobs[1].reviewed, None);
+        assert!(jobs[0].choices.skip.contains("a"));
+        assert!(jobs[1].choices.skip.contains("b"));
     }
 }

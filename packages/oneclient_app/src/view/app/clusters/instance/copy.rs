@@ -38,10 +38,23 @@ pub fn heading(picks: &Picks) -> (&'static str, String) {
                 }
             },
         ),
-        Step::Bundles => (
-            t("oneclient.clusters.instance.copy.bundles.title"),
-            t("oneclient.clusters.instance.copy.bundles.subtitle").to_string(),
-        ),
+        Step::Bundles => match (picks.bundle_target(), &picks.improve_targets) {
+            (Some(target), Some(targets)) => (
+                t("oneclient.clusters.instance.copy.bundles.title"),
+                tf(
+                    "oneclient.clusters.instance.copy.bundles.subtitle_improve",
+                    &[&target.name, &(picks.bundle_page + 1), &targets.len()],
+                ),
+            ),
+            (None, Some(_)) => (
+                t("oneclient.clusters.instance.copy.bundles.title"),
+                t("oneclient.clusters.instance.copy.note.import_mode.improve").to_string(),
+            ),
+            _ => (
+                t("oneclient.clusters.instance.copy.bundles.title"),
+                t("oneclient.clusters.instance.copy.bundles.subtitle").to_string(),
+            ),
+        },
         Step::Customize => (
             t("oneclient.clusters.instance.copy.customize.title"),
             t("oneclient.clusters.instance.copy.customize.subtitle").to_string(),
@@ -65,15 +78,6 @@ pub fn heading(picks: &Picks) -> (&'static str, String) {
         Step::Import => (
             t("oneclient.clusters.instance.copy.import.title"),
             t("oneclient.clusters.instance.copy.import.subtitle").to_string(),
-        ),
-        Step::ImportReview => (
-            t("oneclient.clusters.instance.copy.import_review.title"),
-            if picks.choice == TypeChoice::Modpack {
-                t("oneclient.clusters.instance.copy.import_review.subtitle_modpack")
-            } else {
-                t("oneclient.clusters.instance.copy.import_review.subtitle")
-            }
-            .to_string(),
         ),
     }
 }
@@ -119,6 +123,7 @@ pub fn footer_note(picks: &Picks) -> String {
             ),
             None => t("oneclient.clusters.instance.copy.note.version.none").to_string(),
         },
+        Step::Bundles if picks.improving => screening_note(picks),
         Step::Bundles => {
             let taken = picks.bundles.taken_count();
             let total = picks.bundles.archives.len();
@@ -162,42 +167,38 @@ pub fn footer_note(picks: &Picks) -> String {
                 t("oneclient.clusters.instance.copy.note.import_mode.improve").to_string()
             }
         },
+        Step::Import if picks.finishing => screening_note(picks),
         Step::Import => match picks.import_count {
             0 => t("oneclient.clusters.instance.copy.note.import.none").to_string(),
             1 => t("oneclient.clusters.instance.copy.note.import.one").to_string(),
             n => tf("oneclient.clusters.instance.copy.note.import.other", &[&n]),
         },
-        Step::ImportReview if picks.choice == TypeChoice::Modpack => {
-            match &picks.import_screening {
-                None if picks.import_screening_error.is_some() => {
-                    t("oneclient.clusters.instance.copy.note.import_review.unchecked_modpack")
-                        .to_string()
-                }
-                None => {
-                    t("oneclient.clusters.instance.copy.note.import_review.checking").to_string()
-                }
-                Some(_) => match review_parts(picks).as_slice() {
-                    [] => t("oneclient.clusters.instance.copy.note.import_review.none_modpack")
-                        .to_string(),
-                    parts => tf(
-                        "oneclient.clusters.instance.copy.note.import_review.parts_modpack",
-                        &[&parts.join(", ")],
-                    ),
-                },
-            }
+    }
+}
+
+fn screening_note(picks: &Picks) -> String {
+    let pack = picks.choice == TypeChoice::Modpack;
+    match &picks.import_screening {
+        None if picks.import_screening_error.is_some() => if pack {
+            t("oneclient.clusters.instance.copy.note.import_review.unchecked_modpack")
+        } else {
+            t("oneclient.clusters.instance.copy.note.import_review.unchecked")
         }
-        Step::ImportReview => match &picks.import_screening {
-            None if picks.import_screening_error.is_some() => {
-                t("oneclient.clusters.instance.copy.note.import_review.unchecked").to_string()
+        .to_string(),
+        None => t("oneclient.clusters.instance.copy.note.import_review.checking").to_string(),
+        Some(_) => match (review_parts(picks).as_slice(), pack) {
+            ([], true) => {
+                t("oneclient.clusters.instance.copy.note.import_review.none_modpack").to_string()
             }
-            None => t("oneclient.clusters.instance.copy.note.import_review.checking").to_string(),
-            Some(_) => match review_parts(picks).as_slice() {
-                [] => t("oneclient.clusters.instance.copy.note.import_review.none").to_string(),
-                parts => tf(
-                    "oneclient.clusters.instance.copy.note.import_review.parts",
-                    &[&parts.join(", ")],
-                ),
-            },
+            ([], false) => t("oneclient.clusters.instance.copy.note.import_review.none").to_string(),
+            (parts, true) => tf(
+                "oneclient.clusters.instance.copy.note.import_review.parts_modpack",
+                &[&parts.join(", ")],
+            ),
+            (parts, false) => tf(
+                "oneclient.clusters.instance.copy.note.import_review.parts",
+                &[&parts.join(", ")],
+            ),
         },
     }
 }
@@ -250,16 +251,6 @@ pub fn step_value(wizard: Wizard, picks: &Picks, step: Step) -> String {
             0 => t("oneclient.clusters.instance.copy.value.none_selected").to_string(),
             n => tf("oneclient.clusters.instance.copy.value.selected", &[&n]),
         },
-        Step::ImportReview => match &picks.import_screening {
-            None if picks.import_screening_error.is_some() => {
-                t("oneclient.clusters.instance.copy.value.not_checked").to_string()
-            }
-            None => t("oneclient.clusters.instance.copy.value.checking").to_string(),
-            Some(_) => match review_parts(picks).as_slice() {
-                [] => t("oneclient.clusters.instance.copy.value.nothing_flagged").to_string(),
-                parts => parts.join(", "),
-            },
-        },
         Step::Customize => match wizard.details.tags.read().len() {
             0 => t("oneclient.clusters.instance.copy.value.optional").to_string(),
             1 => t("oneclient.clusters.instance.copy.value.tags.one").to_string(),
@@ -297,6 +288,12 @@ fn review_parts(picks: &Picks) -> Vec<String> {
 
 pub fn is_ready(picks: &Picks) -> bool {
     match picks.step {
+        Step::Bundles if picks.improving => {
+            picks
+                .improve_targets
+                .as_ref()
+                .is_some_and(|targets| targets.is_empty() || picks.bundles.loaded)
+        }
         Step::Type | Step::Folder | Step::Bundles | Step::Modpack => true,
         Step::Loader => picks.loader.chosen.is_some(),
         Step::Version => {
@@ -309,11 +306,8 @@ pub fn is_ready(picks: &Picks) -> bool {
                 || oneclient_core::sharing::ShareCode::parse(&picks.share_code).is_some()
         }
         Step::ImportMode => true,
-        Step::Import => picks.import_count > 0,
-        Step::ImportReview => {
-            (picks.import_count > 0
-                || (picks.choice == TypeChoice::Modpack && picks.modpack_file.is_some()))
-                && (picks.import_screening.is_some() || picks.import_screening_error.is_some())
+        Step::Import => {
+            picks.import_count > 0 && (!picks.improving || picks.improve_targets.is_some())
         }
     }
 }

@@ -4,10 +4,10 @@ use freya::prelude::*;
 use oneclient_common::GameLoader;
 use freya::router::RouterContext;
 use oneclient_core::GameVersionKind;
-use oneclient_core::clusters::{ClusterKind, ModpackSource};
+use oneclient_core::clusters::{ClusterKind, ModpackSource, PackChoices};
 
 use super::copy::{footer_note, heading, is_ready, step_value};
-use super::data::{Picks, pack_choices, resolve};
+use super::data::{Picks, import_jobs, pack_choices, resolve};
 use super::details::DetailsState;
 use super::model::*;
 use super::rail::{Rail, RowState, rail, steps_card, version_art};
@@ -15,7 +15,7 @@ use super::shell::{Shell, shell};
 use super::steps;
 use crate::Route;
 use crate::hooks::{
-    ClusterAction, settled_or_loading, use_active_cluster_id, use_cluster_mutation, use_clusters,
+    ClusterAction, ExternalImportJob, settled_or_loading, use_active_cluster_id, use_cluster_mutation, use_clusters,
     use_dispatch,
 };
 use crate::i18n::{t, tf};
@@ -199,7 +199,10 @@ impl Component for CreateInstanceModal {
             import_chosen: use_state(Vec::new),
             import_extra: use_state(Vec::new),
             import_mode: use_state(|| ImportMode::Improve),
-            import_decisions: use_state(HashMap::new),
+            bundle_page: use_state(|| 0usize),
+            import_declined: use_state(HashMap::new),
+            import_bundles: use_state(HashMap::new),
+            finishing: use_state(|| false),
             modpack_file: use_state(|| None),
             folder: use_state(|| FolderChoice::Shared),
             details: DetailsState::blank(),
@@ -214,24 +217,51 @@ impl Component for CreateInstanceModal {
         let first = picks.index == 0;
         let last = picks.step == Step::Customize;
         let modpack_step = picks.step == Step::Modpack;
-        let review_step = picks.step == Step::ImportReview;
         let import_step = picks.step == Step::Import;
-        let improving = picks.import_mode == ImportMode::Improve;
+        let improving = picks.improving;
         let modpack_flow = picks.choice == TypeChoice::Modpack;
         let pick_pack = modpack_flow && picks.step == Step::ImportMode;
-        let pack_review = modpack_flow && review_step;
-        let pack_file = picks.modpack_file.clone();
-        let pack_choices = if pack_review {
-            pack_choices(
-                picks.import_screening.as_deref().unwrap_or_default(),
-                &picks.import_decisions,
-            )
-        } else {
-            Default::default()
-        };
+        let bundle_step = improving && picks.step == Step::Bundles;
+        let no_targets = picks.improve_targets.as_ref().is_some_and(Vec::is_empty);
+        let finishes = (bundle_step && picks.last_bundle_page())
+            || (import_step && improving && no_targets);
+        let checked = picks.import_screening.is_some();
+        let check_failed = picks.import_screening_error.is_some();
+        let finishing = picks.finishing;
+        let current_bundles = picks
+            .bundle_target()
+            .map(|target| (target.key.clone(), picks.bundles.taken()));
+        let finish = (finishes || finishing).then(|| {
+            let mut kept = wizard.import_bundles.read().clone();
+            kept.extend(current_bundles.clone());
+            if modpack_flow {
+                let path = picks.modpack_file.clone()?;
+                let choices = pack_choices(
+                    picks.import_screening.as_deref().unwrap_or_default(),
+                    kept.get(&path).cloned(),
+                );
+                Some(Finish::Pack(path, choices))
+            } else {
+                Some(Finish::Import(import_jobs(
+                    picks.import_screening.as_deref().unwrap_or_default(),
+                    &wizard.import_chosen.read(),
+                    &kept,
+                )))
+            }
+        });
+        let finish = finish.flatten();
+        let mut finishing_state = wizard.finishing;
+        if finishing && checked {
+            finishing_state.set(false);
+            if let Some(finish) = finish.clone() {
+                let dispatch = dispatch.clone();
+                let on_close = self.on_close.clone();
+                spawn(async move { finish.run(&dispatch, &on_close) });
+            }
+        }
         let import_count = picks.import_count;
-        let import_jobs = if (import_step && !improving) || (review_step && !pack_review) {
-            picks.import_jobs(&wizard.import_chosen.read())
+        let import_as_is = if import_step && !improving {
+            import_jobs(&[], &wizard.import_chosen.read(), &HashMap::new())
         } else {
             Vec::new()
         };
@@ -240,8 +270,11 @@ impl Component for CreateInstanceModal {
         let share_code = picks.share_code.clone();
         let origin = picks.modpack_origin;
         let index = picks.index;
+        let page = picks.bundle_page;
         let mut step = wizard.step;
         let mut query = wizard.query;
+        let mut bundle_page = wizard.bundle_page;
+        let mut import_bundles = wizard.import_bundles;
 
         let invite = crate::invite_join::wizard_invite(
             self.invite,
@@ -268,7 +301,7 @@ impl Component for CreateInstanceModal {
             body: steps::body(wizard, &picks),
             scrolls_itself: matches!(
                 picks.step,
-                Step::Folder | Step::Version | Step::Import | Step::ImportReview
+                Step::Folder | Step::Version | Step::Import
             ),
             note: if off_invite {
                 t("oneclient.clusters.instance.create.invite_mismatch").to_string()
@@ -282,17 +315,18 @@ impl Component for CreateInstanceModal {
             }
             .to_string(),
             primary_label: match (modpack_step, origin) {
-                _ if pack_review && picks.import_screening.is_none() => {
+                _ if finishing && !check_failed => t("oneclient.clusters.instance.create.checking_mods").to_string(),
+                _ if finishes && check_failed && modpack_flow => {
                     t("oneclient.clusters.instance.create.install_unchecked").to_string()
                 }
-                _ if pack_review => {
+                _ if finishes && modpack_flow => {
                     t("oneclient.clusters.instance.create.install_modpack").to_string()
                 }
                 _ if pick_pack => t("oneclient.clusters.instance.create.choose_file").to_string(),
-                _ if review_step && picks.import_screening.is_none() => {
+                _ if finishes && check_failed => {
                     t("oneclient.clusters.instance.create.import_unchecked").to_string()
                 }
-                _ if (import_step && !improving) || review_step => match import_count {
+                _ if (import_step && !improving) || finishes => match import_count {
                     0 => t("oneclient.clusters.instance.create.import.none").to_string(),
                     1 => t("oneclient.clusters.instance.create.import.one").to_string(),
                     n => tf("oneclient.clusters.instance.create.import.other", &[&n]),
@@ -311,10 +345,14 @@ impl Component for CreateInstanceModal {
                 (false, _) => t("oneclient.common.next").to_string(),
             },
             primary_enabled: is_ready(&picks) && !(last && off_invite),
+            primary_busy: finishing && !check_failed,
             on_close: (move |()| close_x.call(())).into(),
             on_secondary: (move |()| {
+                finishing_state.set(false);
                 if first {
                     close_cancel.call(());
+                } else if bundle_step && page > 0 {
+                    bundle_page.set(page - 1);
                 } else {
                     step.set(index.saturating_sub(1));
                 }
@@ -326,16 +364,27 @@ impl Component for CreateInstanceModal {
                 } else if by_code {
                     dispatch.import_share(share_code.clone());
                     close_code.call(());
-                } else if pack_review {
-                    if let Some(path) = pack_file.clone() {
-                        dispatch
-                            .install_modpack_with(ModpackSource::File(path), pack_choices.clone());
-                        close_import.call(());
+                } else if finishes {
+                    if checked || check_failed {
+                        if let Some(finish) = finish.clone() {
+                            finish.run(&dispatch, &close_import);
+                        }
+                    } else {
+                        finishing_state.set(true);
                     }
-                } else if (import_step && !improving) || review_step {
-                    dispatch.import_external_instances(import_jobs.clone());
+                } else if bundle_step {
+                    if let Some((key, taken)) = current_bundles.clone() {
+                        import_bundles.write().insert(key, taken);
+                    }
+                    bundle_page.set(page + 1);
+                } else if import_step && !improving {
+                    dispatch.import_external_instances(import_as_is.clone());
                     close_import.call(());
+                } else if import_step {
+                    bundle_page.set(0);
+                    step.set(index + 1);
                 } else if pick_pack && improving {
+                    bundle_page.set(0);
                     pick_modpack_file(wizard.modpack_file, step, index + 1);
                 } else if pick_pack || (modpack_step && origin == ModpackOrigin::Browse) {
                     start_modpack(
@@ -360,6 +409,24 @@ impl Component for CreateInstanceModal {
             })
             .into(),
         })
+    }
+}
+
+#[derive(Clone)]
+enum Finish {
+    Pack(std::path::PathBuf, PackChoices),
+    Import(Vec<ExternalImportJob>),
+}
+
+impl Finish {
+    fn run(self, dispatch: &crate::Actions, on_close: &EventHandler<()>) {
+        match self {
+            Self::Pack(path, choices) => {
+                dispatch.install_modpack_with(ModpackSource::File(path), choices);
+            }
+            Self::Import(jobs) => dispatch.import_external_instances(jobs),
+        }
+        on_close.call(());
     }
 }
 

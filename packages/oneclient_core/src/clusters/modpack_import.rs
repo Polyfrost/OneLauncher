@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use oneclient_cluster::{Cluster, ClusterUpdate};
+use oneclient_cluster::{Cluster, ClusterKind, ClusterUpdate};
 use oneclient_common::domain::ProviderId;
 use oneclient_common::patch::Patch;
 use oneclient_content::modpacks::{self, ModpackInstallReport, ModpackRelease, WantedFile};
@@ -652,7 +652,7 @@ fn loader_plan(cluster: &Cluster, needed: Option<&str>) -> LoaderPlan {
     match cluster.mc_loader_version.as_deref() {
         None => LoaderPlan::Keep,
         Some(current) if modpacks::is_newer_version(needed, current) => {
-            if cluster.uses_bundles() {
+            if cluster.kind == ClusterKind::OneClient {
                 LoaderPlan::Behind {
                     current: current.to_string(),
                     needed: needed.to_string(),
@@ -916,6 +916,7 @@ mod tests {
             tags: Vec::new(),
             cover_path: None,
             dir_target: Default::default(),
+            takes_bundles: false,
         }
     }
 

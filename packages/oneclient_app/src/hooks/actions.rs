@@ -3022,6 +3022,7 @@ mod tests {
             tags: Vec::new(),
             cover_path: None,
             dir_target: Default::default(),
+            takes_bundles: false,
         }
     }
 

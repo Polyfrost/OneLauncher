@@ -1,10 +1,12 @@
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use freya::prelude::*;
-use oneclient_common::domain::{GameLoader, ProviderId};
-use oneclient_core::{ExternalDetection, ExternalInstance, FlaggedImportMod, GameVersionKind};
+use oneclient_common::domain::GameLoader;
+use oneclient_core::{
+    ExternalDetection, ExternalInstance, FlaggedImportMod, GameVersionKind, ImportAlternative,
+};
 
 use super::details::DetailsState;
 use crate::hooks::GameVersion;
@@ -60,30 +62,7 @@ pub enum ImportMode {
     Improve,
 }
 
-#[derive(Clone, PartialEq, Eq)]
-pub enum ModDecision {
-    Keep,
-    Remove,
-    Replace {
-        provider: ProviderId,
-        project_id: String,
-    },
-}
-
-pub type DecisionKey = (PathBuf, String);
-
-pub fn decision_for(
-    decisions: &HashMap<DecisionKey, ModDecision>,
-    game_dir: &Path,
-    flagged: &FlaggedImportMod,
-) -> ModDecision {
-    decisions
-        .get(&(game_dir.to_path_buf(), flagged.hash.clone()))
-        .cloned()
-        .unwrap_or_else(|| default_decision(flagged))
-}
-
-fn default_decision(flagged: &FlaggedImportMod) -> ModDecision {
+pub fn default_replacement(flagged: &FlaggedImportMod) -> Option<&ImportAlternative> {
     flagged
         .alternatives
         .iter()
@@ -93,10 +72,6 @@ fn default_decision(flagged: &FlaggedImportMod) -> ModDecision {
                 .alternatives
                 .iter()
                 .find(|alternative| alternative.resolved.version_number.is_some())
-        })
-        .map_or(ModDecision::Keep, |alternative| ModDecision::Replace {
-            provider: alternative.resolved.provider,
-            project_id: alternative.resolved.project_id.clone(),
         })
 }
 
@@ -214,7 +189,6 @@ pub enum Step {
     ImportSource,
     ImportMode,
     Import,
-    ImportReview,
 }
 
 impl Step {
@@ -230,7 +204,6 @@ impl Step {
             Self::ImportSource => t("oneclient.clusters.instance.model.step.source"),
             Self::ImportMode => t("oneclient.clusters.instance.model.step.import_mode"),
             Self::Import => t("oneclient.clusters.instance.model.step.import"),
-            Self::ImportReview => t("oneclient.clusters.instance.model.step.import_review"),
         }
     }
 }
@@ -249,7 +222,7 @@ const MODPACK_IMPROVE_STEPS: [Step; 4] = [
     Step::Type,
     Step::Modpack,
     Step::ImportMode,
-    Step::ImportReview,
+    Step::Bundles,
 ];
 const IMPORT_FILE_STEPS: [Step; 2] = [Step::Type, Step::ImportSource];
 const IMPORT_STEPS: [Step; 4] = [
@@ -263,8 +236,12 @@ const IMPROVE_STEPS: [Step; 5] = [
     Step::ImportSource,
     Step::ImportMode,
     Step::Import,
-    Step::ImportReview,
+    Step::Bundles,
 ];
+
+pub fn improves(steps: &[Step], mode: ImportMode) -> bool {
+    mode == ImportMode::Improve && steps.contains(&Step::ImportMode)
+}
 
 pub fn step_order(
     choice: TypeChoice,
@@ -350,7 +327,10 @@ pub struct Wizard {
     /// Installs the user pointed at by hand (portable launchers)
     pub import_extra: State<Vec<ExternalDetection>>,
     pub import_mode: State<ImportMode>,
-    pub import_decisions: State<HashMap<DecisionKey, ModDecision>>,
+    pub bundle_page: State<usize>,
+    pub import_declined: State<HashMap<PathBuf, HashSet<String>>>,
+    pub import_bundles: State<HashMap<PathBuf, Vec<String>>>,
+    pub finishing: State<bool>,
     pub modpack_file: State<Option<PathBuf>>,
     pub folder: State<FolderChoice>,
     pub details: DetailsState,
@@ -361,13 +341,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_a_modpack_file_offers_the_improve_review() {
+    fn only_a_modpack_file_offers_the_improve_bundles() {
         let modpack =
             |origin, mode| step_order(TypeChoice::Modpack, ImportSource::File, mode, origin);
 
         assert!(modpack(ModpackOrigin::Browse, ImportMode::Improve) == MODPACK_STEPS);
         assert!(modpack(ModpackOrigin::File, ImportMode::AsIs) == MODPACK_FILE_STEPS);
         assert!(modpack(ModpackOrigin::File, ImportMode::Improve) == MODPACK_IMPROVE_STEPS);
+    }
+
+    #[test]
+    fn only_the_improve_flows_pick_bundles_per_import() {
+        assert!(improves(&MODPACK_IMPROVE_STEPS, ImportMode::Improve));
+        assert!(improves(&IMPROVE_STEPS, ImportMode::Improve));
+        assert!(!improves(&ONECLIENT_STEPS, ImportMode::Improve));
+        assert!(!improves(&IMPORT_STEPS, ImportMode::AsIs));
+        assert!(!improves(&MODPACK_FILE_STEPS, ImportMode::AsIs));
     }
 
     #[test]

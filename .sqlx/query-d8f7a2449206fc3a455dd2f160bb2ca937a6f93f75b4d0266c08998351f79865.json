@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n\t\tUPDATE clusters\n\t\tSET overall_played = COALESCE(overall_played, 0) + ?,\n\t\t    last_played = ?\n\t\tWHERE id = ?\n\t\tRETURNING\n\t\t\tid, name, folder_name, setting_profile_name, mc_version, mc_loader,\n\t\t\tstage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,\n\t\t\tkind, user_created, description, tags, cover_path\n\t\t",
+  "query": "\n\t\tSELECT\n\t\t\tid, name, folder_name, setting_profile_name, mc_version, mc_loader,\n\t\t\tstage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,\n\t\t\tkind, user_created, description, tags, cover_path, takes_bundles\n\t\tFROM clusters\n\t\tORDER BY last_played IS NULL, last_played DESC, name ASC\n\t\t",
   "describe": {
     "columns": [
       {
@@ -189,10 +189,21 @@
             "name": "cover_path"
           }
         }
+      },
+      {
+        "name": "takes_bundles",
+        "ordinal": 17,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "clusters",
+            "name": "takes_bundles"
+          }
+        }
       }
     ],
     "parameters": {
-      "Right": 3
+      "Right": 0
     },
     "nullable": [
       false,
@@ -211,8 +222,9 @@
       false,
       true,
       false,
-      true
+      true,
+      false
     ]
   },
-  "hash": "4c6d40e97401e1321abccd7f413b49dda16a5bdf29eb90459ac140d8208db479"
+  "hash": "d8f7a2449206fc3a455dd2f160bb2ca937a6f93f75b4d0266c08998351f79865"
 }

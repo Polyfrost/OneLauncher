@@ -47,6 +47,7 @@ pub use actions::{
 };
 pub(crate) use actions::listed;
 pub use queries::ALL_VERSIONS;
+pub(crate) use queries::take_bundles;
 pub(crate) use queries::use_folder_watch;
 pub use queries::{BisectAction, BisectMutation, use_bisect, use_bisect_mutation};
 pub use queries::wardrobe;
@@ -102,7 +103,9 @@ pub use queries::{
     use_saves_folder_watch, use_world_datapacks, use_world_size,
 };
 pub use queries::{external_launchers, use_external_launchers};
-pub use queries::{import_screening, retry_import_screening, use_import_screening};
+pub use queries::{
+    import_screening, use_import_screening, use_modpack_header,
+};
 
 use crate::chat::{ChatInbox, ChatRoster, ChatThread};
 use crate::notifications::NotificationSnapshot;

@@ -63,6 +63,7 @@ pub struct PreparedModpack {
 pub struct PackChoices {
     pub skipped: HashSet<String>,
     pub alternatives: Vec<ResolvedAlternative>,
+    pub bundles: Option<Vec<String>>,
 }
 
 impl PreparedModpack {

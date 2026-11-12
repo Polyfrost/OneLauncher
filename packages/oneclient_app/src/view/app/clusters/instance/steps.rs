@@ -13,7 +13,6 @@ use super::cards::{
 use super::data::Picks;
 use super::details::details_body;
 use super::import::ImportStep;
-use super::import_review::review_step;
 use super::model::{
     FolderChoice, ImportMode, ImportSource, LoaderChoice, ModpackOrigin, Step, TypeChoice, Wizard,
 };
@@ -49,7 +48,6 @@ pub fn body(wizard: Wizard, picks: &Picks) -> Element {
         Step::Modpack => ("step-modpack", modpack_step(wizard, picks)),
         Step::ImportSource => ("step-import-source", import_source_step(wizard, picks)),
         Step::ImportMode => ("step-import-mode", import_mode_step(wizard, picks)),
-        Step::ImportReview => ("step-import-review", review_step(wizard, picks)),
         Step::Import => (
             "step-import",
             ImportStep {
@@ -77,7 +75,7 @@ pub fn body(wizard: Wizard, picks: &Picks) -> Element {
         .height(
             if matches!(
                 picks.step,
-                Step::Folder | Step::Version | Step::Import | Step::ImportReview
+                Step::Folder | Step::Version | Step::Import
             ) {
                 Size::fill()
             } else {
@@ -773,6 +771,13 @@ fn bundle_blurb(archive: &BundleArchive, names: &HashMap<String, String>) -> Str
 }
 
 fn bundles_step(mut wizard: Wizard, picks: &Picks) -> Element {
+    let target = picks.bundle_target().map(|target| target.key.clone());
+    if picks.improving && target.is_none() {
+        return match &picks.improve_targets {
+            None => centered_spinner(t("oneclient.clusters.instance.steps.bundles.loading")),
+            Some(_) => centered_note(t("oneclient.clusters.instance.steps.bundles.none_improve")),
+        };
+    }
     if picks.bundles.archives.is_empty() {
         return centered_note(if picks.bundles.loaded {
             t("oneclient.clusters.instance.steps.bundles.none")
@@ -809,17 +814,19 @@ fn bundles_step(mut wizard: Wizard, picks: &Picks) -> Element {
                 selected: !picks.bundles.declined.contains(&name),
                 checkbox: true,
                 on_press: {
-                    let defaults = picks.bundles.declined.clone();
+                    let current = picks.bundles.declined.clone();
+                    let target = target.clone();
                     (move |()| {
-                        let mut next = wizard
-                            .declined
-                            .read()
-                            .clone()
-                            .unwrap_or_else(|| defaults.clone());
+                        let mut next = current.clone();
                         if !next.remove(&name) {
                             next.insert(name.clone());
                         }
-                        wizard.declined.set(Some(next));
+                        match &target {
+                            Some(key) => {
+                                wizard.import_declined.write().insert(key.clone(), next);
+                            }
+                            None => wizard.declined.set(Some(next)),
+                        }
                     })
                     .into()
                 },

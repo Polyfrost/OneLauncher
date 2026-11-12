@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
-use freya::query::{QueriesStorage, Query, QueryCapability, UseQuery, use_query};
+use freya::query::{Query, QueryCapability, UseQuery, use_query};
+use oneclient_common::domain::GameLoader;
 use oneclient_core::{
     ExternalInstance, LauncherError, ScreenedInstance, screen_external_instances,
     screen_modpack_file,
@@ -64,10 +65,27 @@ pub fn import_screening(query: &UseQuery<ImportScreeningQuery>) -> Option<Vec<Sc
     super::state::settled_or_loading(query)
 }
 
-pub async fn retry_import_screening(instances: Vec<ExternalInstance>, modpack: Option<PathBuf>) {
-    QueriesStorage::<ImportScreeningQuery>::invalidate_matching(keys_for(
-        &instances,
-        modpack.as_ref(),
-    ))
-    .await;
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ModpackHeaderQuery;
+
+impl QueryCapability for ModpackHeaderQuery {
+    type Ok = Option<(String, GameLoader)>;
+    type Err = LauncherError;
+    type Keys = Option<PathBuf>;
+
+    async fn run(&self, path: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        let Some(path) = path.clone() else {
+            return Ok(None);
+        };
+        crate::launcher::off_ui(async move {
+            Ok(Some(oneclient_content::modpacks::read_modpack_header(&path).await?))
+        })
+        .await
+    }
+}
+
+pub fn use_modpack_header(path: Option<PathBuf>) -> Option<Option<(String, GameLoader)>> {
+    let query = use_query(Query::new(path, ModpackHeaderQuery));
+    super::state::settled_or_loading(&query)
+        .or_else(|| super::state::query_error(&query).map(|_| None))
 }

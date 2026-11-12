@@ -338,6 +338,7 @@ mod tests {
             description: None,
             tags: "[]".into(),
             cover_path: None,
+            takes_bundles: 0,
         }
     }
 

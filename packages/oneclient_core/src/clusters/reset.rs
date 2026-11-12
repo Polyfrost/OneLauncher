@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use oneclient_cluster::{Cluster, ClusterError, ClusterUpdate};
+use oneclient_cluster::{Cluster, ClusterError, ClusterKind, ClusterUpdate};
 use oneclient_common::domain::ContentType;
 use oneclient_common::patch::Patch;
 use oneclient_common::paths;
@@ -128,7 +128,7 @@ pub async fn reset_cluster(
             .create_and_assign_profile(&global, cluster_id, &cluster.folder_name)
             .await?;
 
-        let loader_version = match (&modpack, cluster.uses_bundles() && !cluster.user_created) {
+        let loader_version = match (&modpack, cluster.kind == ClusterKind::OneClient && !cluster.user_created) {
             (Some(manifest), _) => Some(manifest.loader_version.clone()),
             (None, true) => Some(None),
             (None, false) => None,

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use oneclient_cluster::ClusterKind;
 use oneclient_common::domain::{GameLoader, PackageUpdateMode};
 use oneclient_content::modpacks::is_newer_version;
 use oneclient_db::dao::cluster_flag::{self as flag_dao, ClusterFlag};
@@ -14,7 +15,7 @@ pub async fn loader_update_policy(
     state: &Arc<LauncherState>,
     cluster: &Cluster,
 ) -> LauncherResult<PackageUpdateMode> {
-    if cluster.uses_bundles() {
+    if cluster.kind == ClusterKind::OneClient {
         return Ok(PackageUpdateMode::Automatic);
     }
 
@@ -64,7 +65,7 @@ pub async fn available_loader_update(
 
     Ok(newest.filter(|newest| match &cluster.mc_loader_version {
         Some(pinned) => is_newer_version(newest, pinned),
-        None => cluster.uses_bundles(),
+        None => cluster.kind == ClusterKind::OneClient,
     }))
 }
 

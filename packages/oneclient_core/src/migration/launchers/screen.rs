@@ -39,6 +39,7 @@ pub struct ImportAlternative {
 pub struct UnpublishedFile {
     pub name: String,
     pub enabled: bool,
+    pub hash: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -164,6 +165,7 @@ pub async fn screen_modpack_file(
             .map(|unlisted| UnpublishedFile {
                 name: unlisted.name.clone(),
                 enabled: true,
+                hash: unlisted.sha1.clone(),
             })
             .collect(),
         unconfirmed: prepared.mods_unconfirmed,
@@ -309,6 +311,7 @@ fn unpublished(jars: &[ModJar], found: &ProviderVersionLookup) -> Vec<Unpublishe
         .map(|jar| UnpublishedFile {
             name: jar.name.clone(),
             enabled: jar.enabled,
+            hash: jar.hash.clone(),
         })
         .collect()
 }
@@ -425,6 +428,7 @@ fn screening_target(
         description: None,
         tags: String::new(),
         cover_path: None,
+        takes_bundles: 0,
     }
 }
 
@@ -454,11 +458,13 @@ mod tests {
             [
                 UnpublishedFile {
                     name: "a.jar".to_string(),
-                    enabled: true
+                    enabled: true,
+                    hash: "sha-a.jar".to_string(),
                 },
                 UnpublishedFile {
                     name: "b.jar".to_string(),
-                    enabled: false
+                    enabled: false,
+                    hash: "sha-b.jar".to_string(),
                 },
             ]
         );

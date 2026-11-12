@@ -23,6 +23,8 @@ pub struct InstanceIdentity {
     pub tags: Vec<String>,
     #[serde(default)]
     pub cover_path: Option<String>,
+    #[serde(default)]
+    pub takes_bundles: bool,
 }
 
 pub async fn read(cluster_dir: &Path) -> Option<InstanceIdentity> {

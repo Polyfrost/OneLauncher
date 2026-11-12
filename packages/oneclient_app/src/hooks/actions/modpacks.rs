@@ -806,6 +806,16 @@ impl Actions {
                 Ok(ModpackCluster { cluster, report }) => {
                     if let ModpackJob::Install(prepared) = &job {
                         actions.link_installed(&prepared.source, cluster.id).await;
+                        if let Some(bundles) = &prepared.choices.bundles {
+                            crate::hooks::take_bundles(
+                                &actions,
+                                &state,
+                                cluster.id,
+                                &cluster.name,
+                                bundles,
+                            )
+                            .await;
+                        }
                     }
                     events.signal(oneclient_events::Signal::ClustersChanged);
                     crate::hooks::invalidate_cluster_queries().await;

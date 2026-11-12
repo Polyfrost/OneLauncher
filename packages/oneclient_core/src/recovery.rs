@@ -240,7 +240,7 @@ async fn adopt_cluster(
         .as_ref()
         .map_or_else(|| "[]".to_string(), |identity| encode_tags(&identity.tags));
 
-    let row = cluster_dao::insert(
+    let mut row = cluster_dao::insert(
         &state.services.db,
         &NewCluster {
             name: &name,
@@ -270,6 +270,10 @@ async fn adopt_cluster(
         },
     )
     .await?;
+    if recorded.as_ref().is_some_and(|identity| identity.takes_bundles) {
+        cluster_dao::set_takes_bundles(&state.services.db, row.id).await?;
+        row.takes_bundles = 1;
+    }
 
     report.adopted_clusters += 1;
     tracing::info!(

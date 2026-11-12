@@ -74,7 +74,9 @@ pub use clusters::{
 };
 pub use disable_warnings::{DisableWarningsQuery, disable_warnings, use_disable_warnings};
 pub use external_launchers::{external_launchers, use_external_launchers};
-pub use import_screening::{import_screening, retry_import_screening, use_import_screening};
+pub use import_screening::{
+    import_screening, use_import_screening, use_modpack_header,
+};
 pub(crate) use folder_watch::use_folder_watch;
 pub use image::{CachedImageQuery, loaded_image, use_cached_image};
 pub use java::{
@@ -87,6 +89,7 @@ pub use logs::{
     use_log_action, use_log_content, use_upload_log,
 };
 pub use migration::{MigrationQuery, has_migration_data, migration_detection, use_migration};
+pub(crate) use mutations::take_bundles;
 pub use mutations::{
     ClusterAction, ClusterMutation, invalidate_cluster_content_queries, invalidate_cluster_queries,
     invalidate_profile_queries, use_cluster_mutation,

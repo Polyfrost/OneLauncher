@@ -1,0 +1,1 @@
+ALTER TABLE clusters ADD COLUMN takes_bundles INTEGER NOT NULL DEFAULT 0;

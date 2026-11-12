@@ -74,6 +74,16 @@ impl ClusterManager {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn set_takes_bundles(&self, cluster_id: ClusterId) -> ClusterResult<Cluster> {
+        cluster_dao::set_takes_bundles(&self.db, cluster_id).await?;
+        let cluster = self.get(cluster_id).await?;
+        if let Ok(dir) = cluster.dir() {
+            crate::identity::write(&dir, &identity_of(&cluster)).await;
+        }
+        Ok(cluster)
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn find_by_folder_name(&self, folder_name: &str) -> ClusterResult<Option<Cluster>> {
         cluster_dao::get_by_folder_name(&self.db, folder_name)
             .await?
@@ -727,6 +737,7 @@ async fn create_inner(
                 description: options.description.clone(),
                 tags: options.tags.clone(),
                 cover_path: None,
+                takes_bundles: false,
             },
         )
         .await;
@@ -820,6 +831,7 @@ fn identity_of(cluster: &Cluster) -> crate::identity::InstanceIdentity {
         description: cluster.description.clone(),
         tags: cluster.tags.clone(),
         cover_path: cluster.cover_path.clone(),
+        takes_bundles: cluster.takes_bundles,
     }
 }
 

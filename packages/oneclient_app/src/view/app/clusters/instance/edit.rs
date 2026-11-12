@@ -137,6 +137,7 @@ impl Component for EditInstanceModal {
             secondary_label: t("oneclient.common.cancel").to_string(),
             primary_label: t("oneclient.clusters.instance.edit.save").to_string(),
             primary_enabled: ready,
+            primary_busy: false,
             on_close: (move |()| close_x.call(())).into(),
             on_secondary: (move |()| close_cancel.call(())).into(),
             on_primary: (move |()| {

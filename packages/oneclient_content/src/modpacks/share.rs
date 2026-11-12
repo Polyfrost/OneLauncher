@@ -172,10 +172,11 @@ pub struct SharedFile {
     pub source: SharedFileSource,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ShareScope {
     pub skip_bundles: bool,
     pub skip_modpack: bool,
+    pub skip_types: Vec<ContentType>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -351,8 +352,10 @@ pub async fn collect_share_content(
         {
             continue;
         }
-        let Some(content_type) = ContentType::from_repr(row.content_type as u8)
-            .filter(|content_type| shareable(*content_type))
+        let Some(content_type) =
+            ContentType::from_repr(row.content_type as u8).filter(|content_type| {
+                shareable(*content_type) && !scope.skip_types.contains(content_type)
+            })
         else {
             continue;
         };

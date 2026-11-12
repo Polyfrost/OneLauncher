@@ -225,6 +225,8 @@ pub struct ExportOptions {
     pub mode: ExportMode,
     #[serde(default)]
     pub settings: SettingsChoice,
+    #[serde(default)]
+    pub skip_types: Vec<ContentType>,
 }
 
 impl ExportOptions {
@@ -233,7 +235,14 @@ impl ExportOptions {
         Self {
             mode,
             settings: SettingsChoice::None,
+            skip_types: Vec::new(),
         }
+    }
+
+    #[must_use]
+    pub fn without_types(mut self, skip_types: Vec<ContentType>) -> Self {
+        self.skip_types = skip_types;
+        self
     }
 
     #[must_use]
@@ -311,7 +320,8 @@ pub async fn export_cluster_with(
         child
     });
 
-    let compatible = mode == ExportMode::Compatibility;
+    let compatible =
+        mode == ExportMode::Compatibility || options.skip_types.contains(&ContentType::Mod);
     let modpack = match cluster.linked_modpack_hash {
         Some(_) if compatible => None,
         Some(_) => modpacks::cluster_modpack(cluster_id, &content)
@@ -332,6 +342,7 @@ pub async fn export_cluster_with(
     let scope = ShareScope {
         skip_bundles: cluster.uses_bundles() && !compatible,
         skip_modpack: modpack.is_some(),
+        skip_types: options.skip_types.clone(),
     };
     let kind = if compatible && cluster.kind == ClusterKind::OneClient {
         kind_for(cluster.mc_loader)

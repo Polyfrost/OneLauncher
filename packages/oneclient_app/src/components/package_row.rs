@@ -90,7 +90,26 @@ pub struct PackageEntry {
     pub published_at: Option<String>,
 }
 
+pub fn folder_pack_id(name: &str, enabled: bool) -> String {
+    let state = if enabled { "on" } else { "off" };
+    format!("folder:{state}:{name}")
+}
+
+pub fn parse_folder_pack_id(id: &str) -> Option<(&str, bool)> {
+    let (state, name) = id.strip_prefix("folder:")?.split_once(':')?;
+    match state {
+        "on" => Some((name, true)),
+        "off" => Some((name, false)),
+        _ => None,
+    }
+}
+
 impl PackageEntry {
+    pub fn folder_pack(&self) -> Option<(&str, bool)> {
+        (self.package_id.starts_with("folder:") && self.hash.is_none() && !self.is_remote())
+            .then_some((self.file_name.as_str(), self.enabled))
+    }
+
     pub fn is_remote(&self) -> bool {
         self.provider != ProviderId::Local
     }
@@ -242,7 +261,7 @@ impl Component for PackageRow {
                 // Switching one off can take other packages with it, so it goes
                 // through the impact check rather than straight to the flag.
                 // Switching one on never does.
-                if item.enabled {
+                if item.enabled && item.folder_pack().is_none() {
                     guard_disable(
                         disable_request(&[&item], cluster_id, item.name.clone()),
                         &[&item],
@@ -322,6 +341,13 @@ pub(crate) fn toggle_action(
     cluster_id: i64,
     enabled: bool,
 ) -> Option<ClusterAction> {
+    if let Some((name, _)) = item.folder_pack() {
+        return Some(ClusterAction::SetFolderPackEnabled {
+            cluster_id,
+            name: name.to_string(),
+            enabled,
+        });
+    }
     set_enabled_action(
         cluster_id,
         item.hash.as_deref(),
@@ -557,17 +583,19 @@ pub fn package_context_menu(
         };
     }
 
-    if item.installed && !item.in_bundle() {
-        let hash = item.hash.clone();
+    let delete_key = item.hash.clone().or_else(|| {
+        item.folder_pack()
+            .map(|(name, enabled)| folder_pack_id(name, enabled))
+    });
+    if item.installed
+        && !item.in_bundle()
+        && let Some(hash) = delete_key
+    {
         let name = item.name.clone();
         menu = menu.separator().danger_action(
             IconType::Trash01,
             t("oneclient.common.delete"),
-            move |()| {
-                if let Some(hash) = &hash {
-                    on_delete.call((name.clone(), hash.clone()));
-                }
-            },
+            move |()| on_delete.call((name.clone(), hash.clone())),
         );
     }
 

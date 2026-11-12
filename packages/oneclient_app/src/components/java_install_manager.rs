@@ -249,7 +249,7 @@ impl Component for VersionRow {
                             .text(t("oneclient.components.java_install_manager.suggested"))
                             .font_size(text_size(10.))
                             .font_weight(FontWeight::SEMI_BOLD)
-                            .color(colors::fg_primary()),
+                            .color(colors::on_brand()),
                     ),
             );
         }

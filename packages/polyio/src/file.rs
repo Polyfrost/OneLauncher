@@ -491,6 +491,24 @@ pub fn ensure_under<R: AsRef<Path>>(
 
 #[tracing::instrument(level = "debug", skip(exclude_top))]
 pub async fn copy_dir(src: &Path, dst: &Path, exclude_top: &[&str]) -> PolyIOResult<()> {
+    copy_dir_inner(src, dst, exclude_top, false).await
+}
+
+#[tracing::instrument(level = "debug", skip(exclude_top))]
+pub async fn copy_dir_replacing(
+    src: &Path,
+    dst: &Path,
+    exclude_top: &[&str],
+) -> PolyIOResult<()> {
+    copy_dir_inner(src, dst, exclude_top, true).await
+}
+
+async fn copy_dir_inner(
+    src: &Path,
+    dst: &Path,
+    exclude_top: &[&str],
+    replace_read_only: bool,
+) -> PolyIOResult<()> {
     let mut stack: Vec<(PathBuf, PathBuf, bool)> =
         vec![(src.to_path_buf(), dst.to_path_buf(), true)];
 
@@ -519,12 +537,69 @@ pub async fn copy_dir(src: &Path, dst: &Path, exclude_top: &[&str]) -> PolyIORes
                     create_dir_all(parent).await?;
                 }
 
-                copy(&child_src, &child_dst).await?;
+                if replace_read_only {
+                    copy_replacing(&child_src, &child_dst).await?;
+                } else {
+                    copy(&child_src, &child_dst).await?;
+                }
             }
         }
     }
 
     Ok(())
+}
+
+#[tracing::instrument(
+    level = "debug",
+    skip(from, to),
+    fields(
+        from = %from.as_ref().display(),
+        to = %to.as_ref().display()
+    )
+)]
+pub async fn copy_replacing(
+    from: impl AsRef<std::path::Path>,
+    to: impl AsRef<std::path::Path>,
+) -> PolyIOResult<u64> {
+    let from = from.as_ref();
+    let to = to.as_ref();
+
+    match copy(from, to).await {
+        Err(IOError::PathIOError { source, .. })
+            if source.kind() == std::io::ErrorKind::PermissionDenied && to.is_file() => {}
+        other => return other,
+    }
+
+    let mut tmp_name = to.file_name().unwrap_or_default().to_os_string();
+    tmp_name.push(".oc-replace");
+    let tmp = to.with_file_name(tmp_name);
+    remove_file(&tmp).await.ok();
+
+    let written = match copy(from, &tmp).await {
+        Ok(written) => written,
+        Err(err) => {
+            remove_file(&tmp).await.ok();
+            return Err(err);
+        }
+    };
+
+    #[cfg(windows)]
+    if let Ok(meta) = tokio::fs::metadata(to).await {
+        let mut perms = meta.permissions();
+        #[allow(clippy::permissions_set_readonly_false)]
+        perms.set_readonly(false);
+        tokio::fs::set_permissions(to, perms).await.ok();
+    }
+
+    if let Err(source) = tokio::fs::rename(&tmp, to).await {
+        remove_file(&tmp).await.ok();
+        return Err(IOError::PathIOError {
+            source,
+            path: to.to_string_lossy().to_string(),
+        });
+    }
+
+    Ok(written)
 }
 
 pub async fn dir_has_content(dir: &Path) -> bool {

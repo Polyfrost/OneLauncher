@@ -43,6 +43,7 @@ pub(super) struct ThreadView {
     pub conversation: ChatConversation,
     pub own_id: Uuid,
     pub expanded: bool,
+    pub windowed: bool,
     pub on_back: EventHandler<()>,
 }
 
@@ -127,6 +128,7 @@ impl Component for ThreadView {
                         show_head,
                         first: previous.is_none(),
                         editing,
+                        windowed: self.windowed,
                     })
                     .into_element(),
             );
@@ -503,6 +505,7 @@ struct MessageRow {
     show_head: bool,
     first: bool,
     editing: State<Option<(i64, String)>>,
+    windowed: bool,
 }
 
 impl Component for MessageRow {
@@ -558,6 +561,7 @@ impl Component for MessageRow {
                         invite: invite.clone(),
                         sender: self.message.sender,
                         own: self.own,
+                        windowed: self.windowed,
                     }
                     .into_element(),
                     None if being_edited => rect()
@@ -614,6 +618,7 @@ struct InviteCard {
     invite: MessageInvite,
     sender: Uuid,
     own: bool,
+    windowed: bool,
 }
 
 impl Component for InviteCard {
@@ -622,21 +627,27 @@ impl Component for InviteCard {
         let invite_id = self.invite.id;
         let game = use_chat_invite_game(invite_id);
         let blocked = use_chat_roster().is_blocked(self.sender);
+        let mut card_height = use_state(|| 0f32);
+        let mut footer_height = use_state(|| 0f32);
         let facts = (self.invite.is_open() || game.is_some()).then(|| {
             let game = game.unwrap_or_default();
             let unknown = || t("oneclient.chat.invites.unknown").to_string();
-            rect()
-                .vertical()
-                .width(Size::fill())
-                .spacing(4.)
+            let facts = if self.windowed {
+                rect().horizontal().spacing(20.)
+            } else {
+                rect().vertical().width(Size::fill()).spacing(4.)
+            };
+            facts
                 .child(invite_fact(
                     t("oneclient.chat.invites.version"),
                     game.version.unwrap_or_else(unknown),
+                    self.windowed,
                 ))
                 .child(invite_fact(
                     t("oneclient.chat.invites.loader"),
                     game.loader
                         .map_or_else(unknown, |loader| loader.real_name()),
+                    self.windowed,
                 ))
                 .into_element()
         });
@@ -644,14 +655,14 @@ impl Component for InviteCard {
         let footer = if self.invite.is_open() && blocked {
             rect().into_element()
         } else if self.invite.is_open() && !self.own {
-            rect()
-                .width(Size::fill())
-                .center()
-                .child(accent_button(
-                    t("oneclient.chat.invites.join"),
-                    move |_| dispatch.join_invite(invite_id),
-                ))
-                .into_element()
+            let join = accent_button(t("oneclient.chat.invites.join"), move |_| {
+                dispatch.join_invite(invite_id)
+            });
+            if self.windowed {
+                join.into_element()
+            } else {
+                join.width(Size::fill()).into_element()
+            }
         } else if self.invite.is_open() {
             status_line(
                 None,
@@ -683,69 +694,110 @@ impl Component for InviteCard {
             }
         };
 
-        rect()
-            .vertical()
-            .width(Size::px(240.))
+        let card = rect()
             .margin(Gaps::new(2., 0., 0., 0.))
             .padding(Gaps::new_all(12.))
-            .spacing(10.)
             .corner_radius(rounded(CARD_RADIUS_PX))
             .background(colors::card())
-            .border(inset_border(colors::component_border()))
-            .child(
-                rect()
-                    .vertical()
-                    .spacing(5.)
-                    .child(
-                        label()
-                            .text(t("oneclient.chat.invites.card_label"))
-                            .font_size(text_size(10.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .letter_spacing(0.6)
-                            .color(colors::fg_secondary()),
-                    )
-                    .child(
-                        label()
-                            .text(t("oneclient.chat.invites.shared_session"))
-                            .font_size(text_size(14.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .color(colors::fg_primary()),
-                    ),
-            )
-            .maybe_child(facts)
-            .child(footer)
+            .border(inset_border(colors::component_border()));
+        let card = if self.windowed {
+            let right = ((*card_height.read() - *footer_height.read()) / 2.).max(12.);
+            card.horizontal()
+                .width(Size::fill())
+                .content(Content::Flex)
+                .cross_align(Alignment::Center)
+                .spacing(24.)
+                .padding(Gaps::new(12., right, 12., 12.))
+                .on_sized(move |e: Event<SizedEventData>| {
+                    card_height.set_if_modified(e.area.height());
+                })
+        } else {
+            card.vertical().width(Size::px(240.)).spacing(10.)
+        };
+
+        let footer = if self.windowed {
+            rect()
+                .horizontal()
+                .width(Size::flex(1.))
+                .main_align(Alignment::End)
+                .child(
+                    rect()
+                        .on_sized(move |e: Event<SizedEventData>| {
+                            footer_height.set_if_modified(e.area.height());
+                        })
+                        .child(footer),
+                )
+                .into_element()
+        } else {
+            rect()
+                .horizontal()
+                .width(Size::fill())
+                .main_align(Alignment::Center)
+                .child(footer)
+                .into_element()
+        };
+
+        card.child(
+            rect()
+                .vertical()
+                .spacing(5.)
+                .child(
+                    label()
+                        .text(t("oneclient.chat.invites.card_label"))
+                        .font_size(text_size(10.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .letter_spacing(0.6)
+                        .color(colors::fg_secondary()),
+                )
+                .child(
+                    label()
+                        .text(t("oneclient.chat.invites.shared_session"))
+                        .font_size(text_size(14.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .color(colors::fg_primary()),
+                ),
+        )
+        .maybe_child(facts)
+        .child(footer)
     }
 }
 
-fn invite_fact(name: &'static str, value: String) -> Element {
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .content(Content::Flex)
-        .spacing(8.)
-        .child(
-            label()
-                .text(name)
-                .font_size(text_size(12.))
-                .width(Size::flex(1.0))
-                .color(colors::fg_secondary()),
-        )
-        .child(
-            label()
-                .text(value)
-                .font_size(text_size(12.))
-                .font_weight(FontWeight::MEDIUM)
-                .max_lines(1)
-                .text_overflow(TextOverflow::Ellipsis)
-                .color(colors::fg_primary()),
-        )
-        .into_element()
+fn invite_fact(name: &'static str, value: String, stacked: bool) -> Element {
+    let fact = if stacked {
+        rect().vertical().spacing(2.)
+    } else {
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .content(Content::Flex)
+            .spacing(8.)
+    };
+    fact.child(
+        label()
+            .text(name)
+            .font_size(text_size(12.))
+            .width(if stacked {
+                Size::auto()
+            } else {
+                Size::flex(1.0)
+            })
+            .color(colors::fg_secondary()),
+    )
+    .child(
+        label()
+            .text(value)
+            .font_size(text_size(12.))
+            .font_weight(FontWeight::MEDIUM)
+            .max_lines(1)
+            .text_overflow(TextOverflow::Ellipsis)
+            .color(colors::fg_primary()),
+    )
+    .into_element()
 }
 
 fn status_line(icon: Option<IconType>, text: &'static str, color: Color) -> Element {
     rect()
         .horizontal()
-        .width(Size::fill())
         .height(Size::px(30.))
         .center()
         .spacing(6.)
@@ -1072,7 +1124,11 @@ impl Component for Composer {
                                 emoji_open.set(false);
                                 submit_draft(&dispatch, draft, editing, group_id, &sent_by_press);
                             })
-                            .child(Icon::new(IconType::Send01).size(14.).color(Color::WHITE)),
+                            .child(
+                                Icon::new(IconType::Send01)
+                                    .size(14.)
+                                    .color(colors::on_brand()),
+                            ),
                     ),
             )
             .maybe_child(too_long.then(|| {

@@ -28,7 +28,7 @@ as well as our [GitHub releases](https://github.com/Polyfrost/OneLauncher/releas
 
 <summary><h3>COPR Installation</h3></summary>
 
-On supported distributions (RHEL, Fedora, Bazzite etc.), you can make use of the Fedora COPR instead of using the AppImage or manually installing the RPM file.
+On supported distributions (RHEL, Fedora, etc.), you can make use of the Fedora COPR instead of using the AppImage or manually installing the RPM file.
 1. First you have to enable the repository:
 ```
 sudo dnf copr enable polyfrost/OneClient

@@ -269,13 +269,17 @@ fn gpu_field(
 ) -> impl IntoElement {
     let system_default = t("oneclient.settings.minecraft.gpu.system_default");
 
+    let default = oneclient_core::game::gpu::DEFAULT;
+
     let current = selected
         .read()
         .as_deref()
+        .or(default)
         .and_then(|id| gpus.iter().find(|gpu| gpu.id == id))
         .map_or(system_default.to_string(), |gpu| gpu.name.clone());
 
-    let options = std::iter::once(system_default.to_string())
+    let offset = usize::from(default.is_none());
+    let options = std::iter::repeat_n(system_default.to_string(), offset)
         .chain(gpus.iter().map(|gpu| gpu.name.clone()))
         .collect();
     let ids: Vec<String> = gpus.iter().map(|gpu| gpu.id.clone()).collect();
@@ -284,7 +288,7 @@ fn gpu_field(
         .width(Size::px(220.))
         .height(Size::px(34.))
         .on_select(move |idx: usize| {
-            selected.set(idx.checked_sub(1).and_then(|i| ids.get(i).cloned()));
+            selected.set(idx.checked_sub(offset).and_then(|i| ids.get(i).cloned()));
         })
 }
 

@@ -1,3 +1,4 @@
+use chrono::DateTime;
 use futures_util::StreamExt;
 use oneclient_db::dao::applied_migration as migration_dao;
 use oneclient_db::dao::artifact as artifact_dao;
@@ -16,7 +17,7 @@ use crate::error::ContentResult;
 use crate::packages::store::{
     LiveSync, PackageStore, drop_unmanaged_mod, evict_if_unused, try_unlink_materialized,
 };
-use crate::packages::types::{ExternalFile, VersionDetail};
+use crate::packages::types::{ExternalFile, LinkedArtifactInfo, VersionDetail};
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use oneclient_events::{GroupedProgressChild, GroupedProgressSession, TaskCategory, TaskPhase};
 
@@ -600,6 +601,93 @@ async fn adopt_external_ids(
     Ok(())
 }
 
+async fn supersede_outdated_user_copies(
+    cluster_id: i64,
+    archives: &[BundleArchive],
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    if bisect_dao::is_active(&ctx.db, cluster_id).await? {
+        return Ok(());
+    }
+
+    let rows = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
+    let tracked_projects: std::collections::HashSet<String> = rows
+        .iter()
+        .filter_map(|row| row.package_id.clone())
+        .collect();
+    let tracked: std::collections::HashSet<String> = rows.into_iter().map(|row| row.hash).collect();
+    let mine: Vec<LinkedArtifactInfo> = PackageStore::list_linked_artifacts(cluster_id, ctx)
+        .await?
+        .into_iter()
+        .filter(|info| info.enabled && !tracked.contains(&info.hash))
+        .collect();
+
+    let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    let accepted = accepted_bundles(cluster_id, ctx).await?;
+    let wanted = wanted_bundle_files(
+        archives.iter().map(|archive| &archive.manifest),
+        &accepted,
+        |bundle_name, package_id| find_override(&overrides, bundle_name, package_id),
+    );
+
+    for file in wanted {
+        let BundleFileKind::Managed {
+            provider,
+            project_id,
+            version_id,
+            sha1,
+        } = &file.kind
+        else {
+            continue;
+        };
+        if tracked_projects.contains(project_id) {
+            continue;
+        }
+        let Some(copy) = mine.iter().find(|info| {
+            info.provider == Some(*provider) && info.project_id.as_deref() == Some(project_id)
+        }) else {
+            continue;
+        };
+        if copy.version_id.as_deref() == Some(version_id.as_str()) {
+            continue;
+        }
+
+        let shipped = match resolve_bundle_version(*provider, project_id, version_id, sha1, ctx)
+            .await
+        {
+            Ok(shipped) => shipped,
+            Err(err) => {
+                tracing::warn!(cluster_id, project_id, error = %format!("{err:#}"), "could not read the shipped version, leaving the user's copy on");
+                continue;
+            }
+        };
+        if !ships_newer(&shipped, copy) {
+            continue;
+        }
+
+        tracing::info!(
+            cluster_id,
+            project_id,
+            hash = %copy.hash,
+            "switching off the user's older copy so the bundle's package loads instead"
+        );
+        if let Err(err) =
+            PackageStore::set_artifact_enabled_to(cluster_id, &copy.hash, false, ctx).await
+        {
+            tracing::warn!(hash = %copy.hash, error = %format!("{err:#}"), "failed to switch off the user's older copy");
+        }
+    }
+
+    Ok(())
+}
+
+fn ships_newer(shipped: &VersionDetail, copy: &LinkedArtifactInfo) -> bool {
+    copy.published_at
+        .as_deref()
+        .and_then(|at| DateTime::parse_from_rfc3339(at).ok())
+        .is_some_and(|at| shipped.published > at)
+}
+
 #[tracing::instrument(level = "debug", skip(archives, ctx))]
 pub async fn heal_bundle_activity(
     cluster_id: i64,
@@ -609,6 +697,8 @@ pub async fn heal_bundle_activity(
     clear_reconciler_disables(cluster_id, archives, ctx).await?;
     adopt_external_ids(cluster_id, archives, ctx).await?;
     clear_stale_disables(cluster_id, ctx).await?;
+
+    supersede_outdated_user_copies(cluster_id, archives, ctx).await?;
 
     let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
     if tracked.iter().all(|row| row.enabled != 0)
@@ -813,19 +903,21 @@ pub(crate) struct PresentContent {
 impl PresentContent {
     pub(crate) async fn load(cluster_id: i64, ctx: &ContentCtx) -> ContentResult<Self> {
         let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
-        let tracked_ids = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id)
-            .await?
-            .into_iter()
-            .filter_map(|row| row.package_id)
-            .collect();
+        let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
+        let tracked_hashes: std::collections::HashSet<&str> =
+            tracked.iter().map(|row| row.hash.as_str()).collect();
 
         Ok(Self {
             projects: linked
                 .iter()
+                .filter(|info| info.enabled || tracked_hashes.contains(info.hash.as_str()))
                 .filter_map(|info| info.project_id.clone())
                 .collect(),
+            tracked_ids: tracked
+                .iter()
+                .filter_map(|row| row.package_id.clone())
+                .collect(),
             hashes: linked.into_iter().map(|info| info.hash).collect(),
-            tracked_ids,
         })
     }
 
@@ -1266,7 +1358,13 @@ async fn sharing_scope(
     if !global {
         return Ok(None);
     }
+    global_sharing_scope(cluster_id, ctx).await
+}
 
+async fn global_sharing_scope(
+    cluster_id: i64,
+    ctx: &ContentCtx,
+) -> ContentResult<Option<Vec<i64>>> {
     let Some(cluster) = oneclient_db::dao::cluster::get_by_id(&ctx.db, cluster_id).await? else {
         return Ok(None);
     };
@@ -1300,6 +1398,16 @@ pub async fn clusters_sharing_artifact(
     ctx: &ContentCtx,
 ) -> ContentResult<Option<usize>> {
     Ok(sharing_clusters(cluster_id, hash, ctx)
+        .await?
+        .map(|clusters| clusters.len()))
+}
+
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn clusters_sharing_global_folders(
+    cluster_id: i64,
+    ctx: &ContentCtx,
+) -> ContentResult<Option<usize>> {
+    Ok(global_sharing_scope(cluster_id, ctx)
         .await?
         .map(|clusters| clusters.len()))
 }

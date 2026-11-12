@@ -11,8 +11,9 @@ pub use gc::{
     remove_unreferenced_files,
 };
 pub use link::{
-    LiveSync, drop_unmanaged_mod, link_or_copy, remove_entry, sharing_cluster_ids, sharing_with,
-    sweep_staging_files, try_link_materialized, try_unlink_materialized,
+    LiveSync, drop_unmanaged_mod, link_or_copy, materialize_file, remove_entry,
+    sharing_cluster_ids, sharing_with, sweep_staging_files, try_link_materialized,
+    try_unlink_materialized,
 };
 pub use paths::{artifact_absolute_path, cache_file_path, relative_cache_path};
 

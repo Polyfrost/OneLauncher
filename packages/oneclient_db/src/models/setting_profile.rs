@@ -16,4 +16,5 @@ pub struct SettingProfileRow {
     pub os_extra: Option<String>,
     /// `PackageUpdateMode::as_str` NULL inherits the global setting
     pub browser_update_mode: Option<String>,
+    pub copy_mod_files: Option<i64>,
 }

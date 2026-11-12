@@ -794,6 +794,8 @@
   "oneclient.cluster.settings.cloud_sync.synced": "Synced with your other computers. Turning this off removes it from the cloud; copies elsewhere stay but stop syncing.",
   "oneclient.cluster.settings.cloud_sync.syncing": "Syncing...",
   "oneclient.cluster.settings.cloud_sync.title": "Sync to Cloud",
+  "oneclient.cluster.settings.copy_mod_files.description": "Give this instance its own copy of each mod instead of a link to the shared cache. Some mods need their jar to be a real file in the mods folder. Uses more disk space.",
+  "oneclient.cluster.settings.copy_mod_files.title": "Copy Mod Files",
   "oneclient.cluster.settings.dedicated_dir.description": "Run this cluster in its own folder, the default shared .minecraft, or a custom folder shared with the clusters you pick.",
   "oneclient.cluster.settings.dedicated_dir.folder_name": "Folder name",
   "oneclient.cluster.settings.dedicated_dir.locked": "Vanilla and modded instances always run in their own folder, so their worlds, settings and packs stay separate.",

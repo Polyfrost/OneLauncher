@@ -20,6 +20,8 @@ pub struct GameSettingsProfile {
     pub os_extra: Option<SettingsOsExtra>,
     /// Never applies to bundle content
     pub browser_update_mode: Option<PackageUpdateMode>,
+    /// Copy mods into the instance instead of linking them from the cache
+    pub copy_mod_files: Option<bool>,
 }
 
 // `Resolution` lives in oneclient_common the launch-argument builder needs it
@@ -65,6 +67,7 @@ impl GameSettingsProfile {
             hook_post: None,
             os_extra: Some(SettingsOsExtra::default()),
             browser_update_mode: Some(PackageUpdateMode::default()),
+            copy_mod_files: Some(false),
         }
     }
 
@@ -113,6 +116,9 @@ impl GameSettingsProfile {
         if self.browser_update_mode.is_none() {
             self.browser_update_mode = global.browser_update_mode;
         }
+        if self.copy_mod_files.is_none() {
+            self.copy_mod_files = global.copy_mod_files;
+        }
     }
 
     pub fn from_row(row: SettingProfileRow) -> crate::ClusterResult<Self> {
@@ -141,6 +147,7 @@ impl GameSettingsProfile {
                 .browser_update_mode
                 .as_deref()
                 .and_then(PackageUpdateMode::parse),
+            copy_mod_files: row.copy_mod_files.map(|v| v != 0),
         })
     }
 
@@ -168,6 +175,7 @@ impl GameSettingsProfile {
             browser_update_mode: self
                 .browser_update_mode
                 .map(|mode| mode.as_str().to_string()),
+            copy_mod_files: self.copy_mod_files.map(i64::from),
         })
     }
 }
@@ -175,6 +183,23 @@ impl GameSettingsProfile {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copy_mod_files_survives_storage_and_inherits() {
+        let mut global = GameSettingsProfile::default_global_profile();
+        global.copy_mod_files = Some(true);
+        let mut profile = GameSettingsProfile::default_global_profile();
+
+        for value in [None, Some(false), Some(true)] {
+            profile.copy_mod_files = value;
+            let restored = GameSettingsProfile::from_row(profile.into_row().unwrap()).unwrap();
+            assert_eq!(restored.copy_mod_files, value);
+        }
+
+        profile.copy_mod_files = None;
+        profile.merge_global(&global);
+        assert_eq!(profile.copy_mod_files, Some(true));
+    }
 
     #[test]
     fn os_extra_keeps_the_keys_this_build_has_no_field_for() {

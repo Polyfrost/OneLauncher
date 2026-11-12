@@ -118,13 +118,13 @@ async fn each_shared_folder_holds_only_its_own_clusters_packs() {
         "picking a folder stores its name as it is on disk"
     );
 
-    materialize_content(&state.services, &alpha, &friends, false)
+    materialize_content(&state.services, &alpha, &friends, false, false)
         .await
         .unwrap();
-    materialize_content(&state.services, &gamma, &family, false)
+    materialize_content(&state.services, &gamma, &family, false, false)
         .await
         .unwrap();
-    materialize_content(&state.services, &beta, &friends, false)
+    materialize_content(&state.services, &beta, &friends, false, false)
         .await
         .unwrap();
 
@@ -157,10 +157,10 @@ async fn each_shared_folder_holds_only_its_own_clusters_packs() {
     join_shared_folder(&state.services, &beta).await;
     assert_eq!(beta.game_dir().unwrap(), family);
 
-    materialize_content(&state.services, &beta, &family, false)
+    materialize_content(&state.services, &beta, &family, false, false)
         .await
         .unwrap();
-    materialize_content(&state.services, &alpha, &friends, false)
+    materialize_content(&state.services, &alpha, &friends, false, false)
         .await
         .unwrap();
 

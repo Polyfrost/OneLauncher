@@ -514,6 +514,67 @@ async fn ensure_global_links(game_dir: &Path, global_root: &Path) {
     }
 }
 
+/// Switches a cluster between its own game folder and the shared one, taking
+/// its resource packs and shaders along. A failed split puts it back in the
+/// shared folder
+pub async fn switch_game_folder(
+    state: &LauncherState,
+    cluster_id: i64,
+    target: oneclient_cluster::DirTarget,
+    create: bool,
+) -> LauncherResult<()> {
+    use oneclient_cluster::{ClusterError, DirTarget};
+
+    let previous = state
+        .clusters
+        .get(cluster_id)
+        .await
+        .ok()
+        .map(|cluster| cluster.dir_target);
+    let mut target = target;
+    if create && state.games.is_active(cluster_id) {
+        return Err(ClusterError::AlreadyRunning(cluster_id).into());
+    }
+    if let DirTarget::Shared(Some(name)) = &target {
+        let resolved = if create {
+            state.clusters.create_shared_group(name).await.map(Some)?
+        } else {
+            state.clusters.find_shared_group(name).await?
+        };
+        match resolved {
+            Some(group) => target = DirTarget::Shared(Some(group)),
+            None => return Err(ClusterError::SharedGroupMissing(name.clone()).into()),
+        }
+    }
+    let switching = previous.as_ref().is_some_and(|from| *from != target);
+    state
+        .clusters
+        .set_dir_target(cluster_id, &target, state.games.is_active(cluster_id))
+        .await?;
+    if !switching {
+        return Ok(());
+    }
+
+    let cluster = state.clusters.get(cluster_id).await?;
+    if let Some(DirTarget::Shared(from)) = &previous
+        && let Ok(dir) = cluster.dir()
+        && let Err(err) =
+            leave_shared_folder(&state.services, &cluster, &dir, from.as_deref()).await
+    {
+        if let Some(previous) = &previous {
+            state
+                .clusters
+                .set_dir_target(cluster_id, previous, false)
+                .await
+                .ok();
+        }
+        return Err(err);
+    } else if matches!(target, DirTarget::Shared(_)) {
+        join_shared_folder(&state.services, &cluster).await;
+    }
+    Ok(())
+}
+
 pub async fn leave_shared_folder(
     services: &LauncherServices,
     cluster: &Cluster,

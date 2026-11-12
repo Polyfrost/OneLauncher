@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use freya::prelude::spawn_in_window;
 use oneclient_cluster::ClusterManager;
 use oneclient_content::modpacks::{SHARE_EXTENSION, ShareExportReport};
+use oneclient_core::busy::{Busy, ExportSlot};
 use oneclient_core::LauncherState;
 use oneclient_core::clusters::{
     ExportOptions, ModpackSource, SettingsChoice, export_cluster_with, list_setting_files,
@@ -47,71 +47,38 @@ enum UpdateAnswer {
 
 const MAX_LISTED: usize = 3;
 
-const NOT_EXPORTING: i64 = -1;
-
-static EXPORTING: AtomicI64 = AtomicI64::new(NOT_EXPORTING);
-
-struct ExportSlot;
-
-impl ExportSlot {
-    fn claim(cluster_id: ClusterId) -> Option<Self> {
-        EXPORTING
-            .compare_exchange(
-                NOT_EXPORTING,
-                cluster_id,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            )
-            .is_ok()
-            .then_some(Self)
-    }
-}
-
-impl Drop for ExportSlot {
-    fn drop(&mut self) {
-        EXPORTING.store(NOT_EXPORTING, Ordering::Release);
-    }
-}
-
-#[must_use]
-pub fn exporting(cluster_id: ClusterId) -> bool {
-    EXPORTING.load(Ordering::Acquire) == cluster_id
-}
-
 impl Actions {
     fn claim_export(&self, cluster_id: ClusterId) -> Option<ExportSlot> {
-        if super::modpacks::modpack_job_running(cluster_id) {
-            self.notify(t("oneclient.actions.share.blocked.installing.title"))
-                .body(t("oneclient.actions.share.blocked.installing.body"))
-                .error()
-                .send();
+        if !oneclient_core::busy::modpack_job_running(cluster_id)
+            && !oneclient_core::clusters::is_resetting(cluster_id)
+            && self.refuse_during_update_check(cluster_id)
+        {
             return None;
         }
-        if oneclient_core::clusters::is_resetting(cluster_id) {
-            self.notify(t("oneclient.actions.share.blocked.resetting.title"))
-                .body(t("oneclient.actions.share.blocked.resetting.body"))
-                .error()
-                .send();
-            return None;
-        }
-        if self.refuse_during_update_check(cluster_id) {
-            return None;
-        }
-        if super::external_import::import_running() {
-            self.notify(t("oneclient.actions.share.blocked.importing.title"))
-                .body(t("oneclient.actions.share.blocked.importing.body"))
-                .error()
-                .send();
-            return None;
-        }
-        let slot = ExportSlot::claim(cluster_id);
-        if slot.is_none() {
-            self.notify(t("oneclient.actions.share.blocked.exporting.title"))
-                .body(t("oneclient.actions.share.blocked.exporting.body"))
-                .error()
-                .send();
-        }
-        slot
+        let busy = match oneclient_core::busy::claim_export(cluster_id) {
+            Ok(slot) => return Some(slot),
+            Err(busy) => busy,
+        };
+        let (title, body) = match busy {
+            Busy::ModpackJob => (
+                t("oneclient.actions.share.blocked.installing.title"),
+                t("oneclient.actions.share.blocked.installing.body"),
+            ),
+            Busy::Resetting => (
+                t("oneclient.actions.share.blocked.resetting.title"),
+                t("oneclient.actions.share.blocked.resetting.body"),
+            ),
+            Busy::Importing => (
+                t("oneclient.actions.share.blocked.importing.title"),
+                t("oneclient.actions.share.blocked.importing.body"),
+            ),
+            _ => (
+                t("oneclient.actions.share.blocked.exporting.title"),
+                t("oneclient.actions.share.blocked.exporting.body"),
+            ),
+        };
+        self.notify(title).body(body).error().send();
+        None
     }
 
     pub fn export_cluster(&self, cluster_id: ClusterId, options: ExportOptions) {
@@ -923,17 +890,6 @@ fn listed(names: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn only_one_export_runs_at_a_time() {
-        let first = ExportSlot::claim(7).expect("nothing is exporting yet");
-        assert!(exporting(7));
-        assert!(!exporting(8));
-        assert!(ExportSlot::claim(8).is_none());
-        drop(first);
-        assert!(!exporting(7));
-        assert!(ExportSlot::claim(8).is_some());
-    }
 
     #[test]
     fn counts_read_naturally() {

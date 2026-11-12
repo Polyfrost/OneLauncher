@@ -16,8 +16,7 @@ pub fn resolve_java_executable(selection: impl AsRef<Path>) -> JavaResult<PathBu
     let candidates = [
         selection.join(&relative),
         selection.join(JAVA_BIN),
-        #[cfg(target_os = "macos")]
-        selection.join("Contents").join("Home").join(&relative),
+        selection.join("bin").join(JAVA_BIN),
     ];
 
     for candidate in candidates {

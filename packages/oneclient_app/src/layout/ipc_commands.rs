@@ -2,9 +2,9 @@ use freya::prelude::*;
 use freya::router::*;
 
 use crate::hooks::use_dispatch;
-use crate::ipc::{self, IpcCommand};
 use crate::platform;
 use crate::routes::Route;
+use oneclient_cli::ipc::{self, Incoming, IpcCommand};
 
 pub fn use_ipc_commands() {
     let dispatch = use_dispatch();
@@ -16,7 +16,29 @@ pub fn use_ipc_commands() {
         let router = RouterContext::get();
 
         spawn_in_window(async move {
-            while let Some(command) = inbox.recv().await {
+            while let Some(incoming) = inbox.recv().await {
+                let command = match incoming {
+                    Incoming::Window(command) => command,
+                    Incoming::Run(command, out) => {
+                        tokio::spawn(async move {
+                            match crate::launcher::state() {
+                                Ok(state) => {
+                                    oneclient_cli::run(
+                                        oneclient_cli::Host::Gui,
+                                        state,
+                                        command,
+                                        out,
+                                    )
+                                    .await;
+                                }
+                                Err(_) => {
+                                    out.fail("OneClient is still starting, try again in a moment")
+                                }
+                            }
+                        });
+                        continue;
+                    }
+                };
                 match command {
                     IpcCommand::Focus => platform::focus_window(),
                     IpcCommand::Launch(folder) => {
@@ -39,6 +61,20 @@ pub fn use_ipc_commands() {
                             dispatch.station().peek().game.running_clusters().collect();
                         for cluster_id in running {
                             dispatch.kill_cluster(cluster_id);
+                        }
+                    }
+                    IpcCommand::Refresh => {
+                        dispatch.reload_settings();
+                        spawn_in_window(crate::hooks::invalidate_after_cli());
+                        let cloud = dispatch.clone();
+                        spawn_in_window(async move { cloud.refresh_cloud_sync().await });
+                    }
+                    IpcCommand::CheckUpdate => {
+                        if let Ok(state) = crate::launcher::state() {
+                            crate::updater::spawn_update_check(
+                                false,
+                                state.services.events.clone(),
+                            );
                         }
                     }
                     IpcCommand::Close => platform::close(),

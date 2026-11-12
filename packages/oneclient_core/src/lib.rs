@@ -4,12 +4,14 @@
 pub mod dev;
 
 pub mod bisect;
+pub mod busy;
 pub mod changelog;
 pub mod clusters;
 pub mod disable_warnings;
 mod error;
 pub mod game;
 pub mod images;
+pub mod install;
 mod java_store;
 pub mod logger;
 pub mod migration;
@@ -43,7 +45,7 @@ pub use error::{LauncherError, LauncherResult, SentryExclusion};
 pub use game::{
     GameError, GameVersionInfo, GameVersionKind, LaunchedGame, get_loader_versions,
     get_loaders_for_version, get_version_ids, get_versions_for_loader, launch_cluster,
-    launch_cluster_with,
+    launch_cluster_or_repair, launch_cluster_with,
 };
 pub use images::ImageCacheStore;
 pub use migration::launchers::{
@@ -86,7 +88,8 @@ pub use oneclient_content::bundles::{
 };
 pub use oneclient_content::packages::LinkedArtifactInfo;
 pub use oneclient_content::packages::dependents::{
-    DependentPackage, DisableImpact, DisableRoot, disable_impact, ensure_cluster_dependencies,
+    DependentPackage, DisableImpact, DisablePlan, DisableRoot, apply_disable, disable_impact,
+    ensure_cluster_dependencies, plan_disable,
 };
 pub use oneclient_content::packages::updates::{
     BrowserPackageUpdate, BrowserUpdateCheck, apply_browser_package_update,

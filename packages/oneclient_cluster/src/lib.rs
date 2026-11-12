@@ -16,7 +16,10 @@ pub mod profiles;
 pub mod screenshots;
 pub mod worlds;
 
-pub use cluster::{Cluster, ClusterLinkTarget, DirTarget, encode_tags, remove_mods_link};
+pub use cluster::{
+    Cluster, ClusterLinkTarget, DirTarget, compare_recent_activity, encode_tags,
+    remove_mods_link, version_sort_key,
+};
 pub use error::{ClusterError, ClusterResult};
 pub use identity::InstanceIdentity;
 pub use manager::{ClusterManager, SyncReport, unlinked_mods_repair_id};

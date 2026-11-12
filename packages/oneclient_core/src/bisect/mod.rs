@@ -186,6 +186,93 @@ impl BisectStatus {
     pub fn role_of(&self, hash: &str) -> Option<BisectRole> {
         self.mods.iter().find(|m| m.hash == hash).map(|m| m.role)
     }
+
+    /// The headline and next step a frontend shows for the search
+    #[must_use]
+    pub fn summary(&self, game_active: bool) -> (String, String) {
+        if self.finishing {
+            return (
+                "Restoring your mods".to_string(),
+                "Some mods couldn't be switched back yet. Close anything using the mod files, then try again.".to_string(),
+            );
+        }
+
+        let names: Vec<&str> = self.suspects().map(|m| m.name.as_str()).collect();
+        let culprits: Vec<&str> = self.culprits().iter().map(|m| m.name.as_str()).collect();
+        let together = culprits.join(" + ");
+
+        if self.finished {
+            let playing =
+                "Play until you're sure whether the problem happens, then close the game.";
+            return match culprits.as_slice() {
+                [] => (
+                    "Nothing left to test".to_string(),
+                    "Every mod in the search was removed. Restore your mods to finish.".to_string(),
+                ),
+                _ if self.confirmed => (
+                    format!("Found it: {together}"),
+                    if culprits.len() == 1 {
+                        "The problem happens with only this mod and the mods it needs on."
+                            .to_string()
+                    } else {
+                        "The problem happens with only these mods and the mods they need on."
+                            .to_string()
+                    },
+                ),
+                _ if game_active => (format!("Checking {together}"), playing.to_string()),
+                [only] => (
+                    format!("Probably {only}"),
+                    "Launch once more to make sure. Only this mod and the mods it needs are on."
+                        .to_string(),
+                ),
+                many => (
+                    format!("Narrowed it down to {} mods", many.len()),
+                    format!(
+                        "{} are on together. Launch once more to make sure the problem happens with only them.",
+                        many.join(", ")
+                    ),
+                ),
+            };
+        }
+
+        let title = format!("Running mod diagnostics · launch {}", self.round + 1);
+        let left = self.launches_left();
+        let plural = if left == 1 { "launch" } else { "launches" };
+        let body = if game_active {
+            "Play until the problem shows up, or until you're sure it won't. Close the game when you're done.".to_string()
+        } else {
+            let partner = if culprits.is_empty() {
+                String::new()
+            } else {
+                format!("Looking for a mod that causes it together with {together}. ")
+            };
+            format!(
+                "{partner}{} of {} suspects are on. Launch the game and check if the problem happens, about {left} {plural} to go.",
+                self.testing_count(),
+                names.len(),
+            )
+        };
+        (title, body)
+    }
+
+    /// Why the result may be off once the cluster's mods changed mid search
+    #[must_use]
+    pub fn changed_note(&self) -> String {
+        let mut parts = Vec::new();
+        if !self.removed.is_empty() {
+            parts.push(format!("{} left the cluster", self.removed.join(", ")));
+        }
+        if !self.added.is_empty() {
+            parts.push(format!(
+                "{} joined and stays on for every launch",
+                self.added.join(", ")
+            ));
+        }
+        format!(
+            "Mods changed since the search started: {}. Restart the search so the result stays right.",
+            parts.join("; ")
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

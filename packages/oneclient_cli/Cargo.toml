@@ -1,0 +1,45 @@
+[package]
+name = "oneclient_cli"
+description = "OneClient command line interface, shared with the app"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+documentation.workspace = true
+readme.workspace = true
+homepage.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "oneclient_cli"
+path = "src/bin/oneclient_cli/main.rs"
+
+[dependencies]
+oneclient_auth.workspace = true
+oneclient_cluster.workspace = true
+oneclient_common.workspace = true
+oneclient_content.workspace = true
+oneclient_core.workspace = true
+oneclient_db.workspace = true
+oneclient_events.workspace = true
+oneclient_java.workspace = true
+oneclient_protocol.workspace = true
+
+anyhow.workspace = true
+cargo-packager-updater = "=0.2.3"
+chrono.workspace = true
+clap.workspace = true
+console.workspace = true
+directories.workspace = true
+dunce.workspace = true
+htmd.workspace = true
+indicatif.workspace = true
+pulldown-cmark.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sysinfo.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true

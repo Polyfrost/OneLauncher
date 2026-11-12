@@ -21,6 +21,7 @@ version = "2.10.1"
 [workspace.dependencies]
 # core
 oneclient_auth = {path = "./packages/oneclient_auth"}
+oneclient_cli = {path = "./packages/oneclient_cli"}
 oneclient_cluster = {path = "./packages/oneclient_cluster"}
 oneclient_common = {path = "./packages/oneclient_common"}
 oneclient_content = {path = "./packages/oneclient_content"}
@@ -33,6 +34,7 @@ oneclient_macro = {path = "./packages/oneclient_macro"}
 oneclient_mc = {path = "./packages/oneclient_mc"}
 oneclient_net = {path = "./packages/oneclient_net"}
 oneclient_polyplus = {path = "./packages/oneclient_polyplus"}
+oneclient_protocol = {path = "./packages/oneclient_protocol"}
 polyio = {path = "./packages/polyio"}
 
 # core (extra)
@@ -110,6 +112,7 @@ arc-swap = {version = "=1.9.2"}
 base64 = {version = "=0.23.1"}
 bytes = {version = "=1.12.1"}
 chrono = {version = "=0.4.45", features = ["serde", "unstable-locales"]}
+console = {version = "=0.16.6"}
 directories = {version = "=6.0.0"}
 dunce = {version = "=1.0.5"}
 htmd = {version = "=0.5.5"}
@@ -139,6 +142,7 @@ windows-sys = {version = "=0.61.2", features = ["Win32_Foundation", "Win32_Stora
 
 # util (codegen/macro)
 anyhow = {version = "=1.0.104"}
+clap = {version = "=4.6.7", features = ["derive", "env", "wrap_help"]}
 proc-macro2 = {version = "=1.0.107"}
 quote = {version = "=1.0.47"}
 strum = {version = "=0.28.0", features = ["derive"]}

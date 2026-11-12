@@ -5,8 +5,8 @@ use super::actions::Actions;
 use crate::components::IconType;
 use crate::i18n::{t, tf};
 use crate::launcher;
-use crate::shortcut::{self, ShortcutRequest};
 use crate::state::{AppChannel, LaunchBlock};
+use oneclient_protocol::shortcut::{self, ShortcutRequest};
 
 impl Actions {
     pub fn request_launch_by_folder(&self, folder: String) {

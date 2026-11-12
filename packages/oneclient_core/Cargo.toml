@@ -24,6 +24,7 @@ polyio = {workspace = true, features = ["testing"]}
 # core (extra)
 discord-rich-presence.workspace = true
 interfrost.workspace = true
+anyhow.workspace = true
 oneclient_auth.workspace = true
 oneclient_cluster.workspace = true
 oneclient_common.workspace = true

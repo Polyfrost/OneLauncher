@@ -17,6 +17,7 @@
 //! down with the target.
 
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::time::Duration;
 
 use futures_util::StreamExt;
 
@@ -203,6 +204,68 @@ pub async fn ensure_cluster_dependencies(cluster_id: i64, ctx: &ContentCtx) -> C
 		.collect::<Vec<()>>()
 		.await;
 
+	Ok(())
+}
+
+/// How long the dependency backfill may hold up a disable.
+///
+/// Only packages installed before the launcher recorded dependency lists need
+/// it, and only once each, but that first toggle should not sit on an
+/// unreachable provider. Past the budget the impact is worked out from what is
+/// stored, which is the same answer an offline launcher gives.
+const BACKFILL_BUDGET: Duration = Duration::from_secs(5);
+
+/// A disable that has been worked out but not written yet.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DisablePlan {
+	pub impact: DisableImpact,
+	/// Every artifact the disable switches off, the roots first.
+	pub hashes: Vec<String>,
+}
+
+/// Works out what switching `roots` off takes with it, backfilling dependency
+/// lists first within [`BACKFILL_BUDGET`].
+pub async fn plan_disable(
+	cluster_id: i64,
+	roots: &[DisableRoot],
+	ctx: &ContentCtx,
+) -> ContentResult<DisablePlan> {
+	// A cluster whose packages predate the dependency table has nothing to walk
+	// until this has run. It is a no-op from the second call on.
+	if let Err(_elapsed) =
+		tokio::time::timeout(BACKFILL_BUDGET, ensure_cluster_dependencies(cluster_id, ctx)).await
+	{
+		tracing::debug!(cluster_id, "dependency backfill ran out of time; using what is stored");
+	}
+
+	let impact = disable_impact(cluster_id, roots, ctx).await?;
+
+	// A `Package` root has nothing installed, so there is no flag to write —
+	// only the bundle override the caller carries.
+	let mut hashes: Vec<String> = roots
+		.iter()
+		.filter_map(|root| match root {
+			DisableRoot::Artifact(hash) => Some(hash.clone()),
+			DisableRoot::Package(..) => None,
+		})
+		.collect();
+	hashes.extend(impact.required_hashes());
+
+	Ok(DisablePlan { impact, hashes })
+}
+
+/// Writes a planned disable, recording each as the user's choice so bundle
+/// updates leave it off.
+pub async fn apply_disable(
+	cluster_id: i64,
+	hashes: &[String],
+	bundle_overrides: &[(String, String)],
+	ctx: &ContentCtx,
+) -> ContentResult<()> {
+	PackageStore::disable_artifacts(cluster_id, hashes, bundle_overrides, ctx).await?;
+	for hash in hashes {
+		crate::bundles::on_user_disable_artifact(cluster_id, hash, ctx).await?;
+	}
 	Ok(())
 }
 

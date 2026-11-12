@@ -5,7 +5,9 @@ use uuid::Uuid;
 
 use oneclient_polyplus::Friend;
 
-use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea, TextInput};
+use crate::components::{
+    Button, Icon, IconType, OVERLAY_MAX_LEVEL, OverlayPopup, ScrollArea, TextInput,
+};
 use crate::hooks::{use_chat_roster, use_dispatch};
 use crate::i18n::t;
 use crate::theme::{colors, rounded, text_size};
@@ -251,6 +253,7 @@ fn dialog_title(text: &str, on_close: EventHandler<()>) -> impl IntoElement {
 
 fn dialog(on_close: EventHandler<()>, body: Element) -> Element {
     OverlayPopup::new()
+        .overlay_level(OVERLAY_MAX_LEVEL)
         .on_close(on_close)
         .child(
             rect()

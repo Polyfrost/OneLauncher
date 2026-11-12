@@ -214,9 +214,20 @@ pub struct InstallState {
     missing_lookups: HashSet<(i64, String)>,
     missing_found: HashMap<(i64, String), String>,
     pub flagged: Option<FlaggedInstallPrompt>,
+    pub incompatible: Option<IncompatibleInstallPrompt>,
     pub modpack_busy: bool,
     pub modpack_project: Option<(ProviderId, String)>,
     pub modpack_cluster: Option<i64>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct IncompatibleInstallPrompt {
+    pub cluster_id: i64,
+    pub provider: ProviderId,
+    pub project_id: String,
+    pub version_id: String,
+    pub name: String,
+    pub allow_flagged: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -229,6 +240,7 @@ pub struct FlaggedInstallPrompt {
     pub mc_version: String,
     pub explanation: Option<String>,
     pub alternatives: Vec<oneclient_content::packages::ResolvedAlternative>,
+    pub incompatible: crate::install::IncompatibleMode,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

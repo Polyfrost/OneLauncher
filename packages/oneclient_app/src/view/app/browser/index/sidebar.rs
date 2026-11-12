@@ -64,11 +64,11 @@ impl Component for CategorySidebar {
 }
 
 #[derive(PartialEq)]
-struct CategoryRow {
-    name: String,
-    selected: bool,
-    on_toggle: EventHandler<()>,
-    key: DiffKey,
+pub(super) struct CategoryRow {
+    pub(super) name: String,
+    pub(super) selected: bool,
+    pub(super) on_toggle: EventHandler<()>,
+    pub(super) key: DiffKey,
 }
 
 impl KeyExt for CategoryRow {

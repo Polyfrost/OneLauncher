@@ -4,6 +4,7 @@ use oneclient_content::packages::ProviderId;
 use crate::components::{Button, Icon, IconType, OverlayPopup};
 use crate::hooks::use_dispatch;
 use crate::i18n::{t, tf};
+use crate::install::IncompatibleMode;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
@@ -16,6 +17,7 @@ pub struct PendingBundledInstall {
     pub project_name: String,
     pub version_label: String,
     pub bundled_version: Option<String>,
+    pub incompatible: IncompatibleMode,
 }
 
 pub fn bundled_install_body(pending: &PendingBundledInstall) -> String {
@@ -117,6 +119,7 @@ impl Component for BundledInstallWarning {
                                                     install.project_id.clone(),
                                                     install.version_id.clone(),
                                                     None,
+                                                    install.incompatible,
                                                 );
                                                 pending.set(None);
                                             })
@@ -145,6 +148,7 @@ mod tests {
             project_name: "Sodium".to_string(),
             version_label: "0.6.0".to_string(),
             bundled_version: bundled_version.map(Into::into),
+            incompatible: IncompatibleMode::Refuse,
         }
     }
 

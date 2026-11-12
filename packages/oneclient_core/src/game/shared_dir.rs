@@ -2306,7 +2306,14 @@ async fn adopt_file(
     content_type: ContentType,
     discard_stale: bool,
 ) -> Option<oneclient_content::ContentResult<oneclient_db::models::ArtifactRow>> {
-    if discard_stale && !cluster.is_isolated() && is_stale_launcher_content(services, path).await {
+    // Packs are never discarded: a hand-dropped pack can share a hash with a cached
+    // artifact (another instance's copy, or one removed in the launcher) and
+    // deleting it here loses the user's file without relinking it
+    if discard_stale
+        && content_type == ContentType::Mod
+        && !cluster.is_isolated()
+        && is_stale_launcher_content(services, path).await
+    {
         tracing::debug!(
             file = %path.display(),
             "discarding stale launcher content; the cache still holds it"

@@ -309,6 +309,7 @@ impl EventPump {
                         group_id,
                         message_id,
                     } => guard.chat.remove(group_id, message_id),
+                    ChatEvent::GroupRenamed { group_id, name } => guard.chat.rename(group_id, name),
                     ChatEvent::PresenceChanged { .. } => {}
                     ChatEvent::RosterChanged => folded.chat_roster = true,
                     ChatEvent::FriendRequestReceived { account, sender } => {

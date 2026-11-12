@@ -7,15 +7,15 @@ use oneclient_net::RequestError;
 
 use crate::api::send_to;
 use crate::models::{
-    BlockedPlayer, CreateGroupRequest, EditMessageRequest, Friend, FriendRequest, GroupMessage,
-    GroupSummary, IncomingSessionInvite, MAX_PAGE_SIZE, MAX_RESOLVE_BATCH, PlayerStatus, ResolveRequest, ResolveResponse,
-    ResolvedPlayer, SendMessageRequest, StatusBody,
+    BlockedPlayer, CreateGroupRequest, CursorPage, EditMessageRequest, Friend, FriendRequest, GroupMessage,
+    GroupSummary, IncomingSessionInvite, MAX_CURSOR_PAGE_SIZE, MAX_PAGE_SIZE, MAX_RESOLVE_BATCH, PlayerStatus, RenameGroupRequest, ResolveRequest, ResolveResponse,
+    ResolvedPlayer, SendMessageRequest, SpecialChatStatus, StatusBody,
 };
 use crate::{PlusClient, PlusError, base_url, session};
 
 impl PlusClient {
     pub async fn groups(&self) -> Result<Vec<GroupSummary>, PlusError> {
-        self.json(Method::GET, self.url("/groups")?, None).await
+        self.paged("/v1/groups").await
     }
 
     pub async fn open_direct_message(&self, player: Uuid) -> Result<GroupSummary, PlusError> {
@@ -31,6 +31,16 @@ impl PlusClient {
         let body = serialize(&CreateGroupRequest { name, members })?;
         self.json(Method::POST, self.url("/groups")?, Some(body))
             .await
+    }
+
+    pub async fn rename_group(&self, group_id: i32, name: &str) -> Result<(), PlusError> {
+        let body = serialize(&RenameGroupRequest { name })?;
+        self.unit(
+            Method::PATCH,
+            self.url(&format!("/v1/groups/{group_id}"))?,
+            Some(body),
+        )
+        .await
     }
 
     pub async fn add_member(&self, group_id: i32, player: Uuid) -> Result<(), PlusError> {
@@ -125,8 +135,7 @@ impl PlusClient {
     }
 
     pub async fn friends(&self) -> Result<Vec<Friend>, PlusError> {
-        self.json(Method::GET, self.url("/social/friends")?, None)
-            .await
+        self.paged("/v1/social/friends").await
     }
 
     pub async fn remove_friend(&self, player: Uuid) -> Result<(), PlusError> {
@@ -139,13 +148,11 @@ impl PlusClient {
     }
 
     pub async fn incoming_requests(&self) -> Result<Vec<FriendRequest>, PlusError> {
-        self.json(Method::GET, self.url("/social/requests/incoming")?, None)
-            .await
+        self.paged("/v1/social/requests/incoming").await
     }
 
     pub async fn outgoing_requests(&self) -> Result<Vec<FriendRequest>, PlusError> {
-        self.json(Method::GET, self.url("/social/requests/outgoing")?, None)
-            .await
+        self.paged("/v1/social/requests/outgoing").await
     }
 
     pub async fn send_friend_request(
@@ -202,8 +209,7 @@ impl PlusClient {
     }
 
     pub async fn blocked(&self) -> Result<Vec<BlockedPlayer>, PlusError> {
-        self.json(Method::GET, self.url("/social/blocked")?, None)
-            .await
+        self.paged("/v1/social/blocked").await
     }
 
     pub async fn block(&self, player: Uuid) -> Result<(), PlusError> {
@@ -222,6 +228,13 @@ impl PlusClient {
             None,
         )
         .await
+    }
+
+    pub async fn is_special_chat_target(&self) -> Result<bool, PlusError> {
+        let body: SpecialChatStatus = self
+            .json(Method::GET, self.url("/special-chat")?, None)
+            .await?;
+        Ok(body.is_special_chat_target)
     }
 
     pub async fn status(&self) -> Result<PlayerStatus, PlusError> {
@@ -266,6 +279,30 @@ impl PlusClient {
 
     fn url(&self, path: &str) -> Result<Url, PlusError> {
         Ok(Url::parse(&format!("{}{path}", base_url()))?)
+    }
+
+    async fn paged<T: DeserializeOwned>(&self, path: &str) -> Result<Vec<T>, PlusError> {
+        let mut items = Vec::new();
+        let mut cursor: Option<String> = None;
+
+        loop {
+            let mut url = self.url(path)?;
+            {
+                let mut query = url.query_pairs_mut();
+                query.append_pair("limit", &MAX_CURSOR_PAGE_SIZE.to_string());
+                if let Some(cursor) = &cursor {
+                    query.append_pair("cursor", cursor);
+                }
+            }
+
+            let page: CursorPage<T> = self.json(Method::GET, url, None).await?;
+            items.extend(page.items);
+
+            match page.cursor {
+                Some(next) => cursor = Some(next),
+                None => return Ok(items),
+            }
+        }
     }
 
     async fn account(&self) -> Result<MinecraftAccount, PlusError> {

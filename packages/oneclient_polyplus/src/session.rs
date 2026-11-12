@@ -337,6 +337,9 @@ fn dispatch(events: &EventBus, account: Uuid, payload: &str) {
             group_id,
             message_id,
         }),
+        ClientboundPacket::GroupRenamed { group_id, name } => {
+            events.chat(ChatEvent::GroupRenamed { group_id, name });
+        }
         ClientboundPacket::PlayerPresence { player, online } => {
             events.chat(ChatEvent::PresenceChanged { player, online });
         }

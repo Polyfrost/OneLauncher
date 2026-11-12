@@ -36,6 +36,7 @@ pub(super) enum PanelTab {
     Chats,
     Friends,
     Groups,
+    Special,
 }
 
 #[derive(PartialEq)]
@@ -133,6 +134,7 @@ impl Component for SocialPanel {
             own_id,
             conversations: chat.conversations.clone(),
             names: chat.names.clone(),
+            special_target: chat.special_target,
             loading: chat.loading,
             error: chat
                 .error

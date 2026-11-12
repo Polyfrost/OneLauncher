@@ -78,6 +78,7 @@ pub struct ChatConversation {
     pub preview_sender: Option<Uuid>,
     pub last_activity: Option<DateTime<FixedOffset>>,
     pub special: bool,
+    pub awaiting_reply: bool,
 }
 
 impl From<GroupSummary> for ChatConversation {
@@ -97,6 +98,7 @@ impl From<GroupSummary> for ChatConversation {
             preview_sender,
             last_activity,
             special: value.special,
+            awaiting_reply: value.awaiting_reply,
         }
     }
 }
@@ -264,6 +266,7 @@ pub struct ChatInbox {
     pub connected: bool,
     pub error: Option<String>,
     pub names: Arc<HashMap<Uuid, String>>,
+    pub special_target: bool,
 }
 
 impl ChatInbox {
@@ -301,6 +304,7 @@ pub struct ChatState {
     pub owner: Option<Uuid>,
     pub self_status: PlayerStatus,
     pub friend_request: FriendRequestStatus,
+    pub special_target: bool,
     conversations: Vec<ChatConversation>,
     messages: HashMap<i32, Arc<Vec<ChatMessage>>>,
     pending: HashMap<i32, Vec<PendingMessage>>,
@@ -368,6 +372,7 @@ impl ChatState {
             connected: self.connected,
             error: self.error.clone(),
             names: Arc::clone(&self.names),
+            special_target: self.special_target,
         }
     }
 
@@ -747,6 +752,16 @@ impl ChatState {
         self.presence.insert(player, online);
     }
 
+    pub fn rename(&mut self, group_id: i32, name: String) {
+        if let Some(conversation) = self
+            .conversations
+            .iter_mut()
+            .find(|conversation| conversation.id == group_id)
+        {
+            conversation.name = Some(name);
+        }
+    }
+
     pub fn forget_conversation(&mut self, group_id: i32) {
         self.conversations
             .retain(|conversation| conversation.id != group_id);
@@ -984,6 +999,7 @@ mod tests {
             last_message: None,
             unread,
             special: false,
+            awaiting_reply: false,
         }
     }
 

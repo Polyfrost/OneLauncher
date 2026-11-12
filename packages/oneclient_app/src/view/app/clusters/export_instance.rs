@@ -1,4 +1,5 @@
 use freya::prelude::*;
+use oneclient_common::domain::ContentType;
 use oneclient_core::clusters::{ExportMode, ExportOptions, SettingsChoice};
 use oneclient_core::sharing::{Collaborator, LinkedPush};
 
@@ -26,6 +27,33 @@ const TEAM_LIST_MIN_HEIGHT: f32 = 260.;
 enum Copied {
     Code,
     Link,
+}
+
+const EXPORTED_TYPES: [(ContentType, IconType, &str, &str); 3] = [
+    (
+        ContentType::Mod,
+        IconType::CodeSnippet02,
+        "oneclient.clusters.export.content.mods",
+        "oneclient.clusters.export.content.mods.blurb",
+    ),
+    (
+        ContentType::ResourcePack,
+        IconType::Colors,
+        "oneclient.clusters.export.content.resource_packs",
+        "oneclient.clusters.export.content.resource_packs.blurb",
+    ),
+    (
+        ContentType::Shader,
+        IconType::PaintPour,
+        "oneclient.clusters.export.content.shaders",
+        "oneclient.clusters.export.content.shaders.blurb",
+    ),
+];
+
+#[derive(Clone, Copy)]
+enum SaveStep {
+    Content,
+    Format,
 }
 
 #[derive(Clone, Copy)]
@@ -168,8 +196,9 @@ impl Component for ExportInstanceModal {
             team,
         };
         let copied = use_state(|| None::<Copied>);
-        let saving = use_state(|| false);
+        let saving = use_state(|| None::<SaveStep>);
         let file_mode = use_state(|| ExportMode::OneClient);
+        let types = [use_state(|| true), use_state(|| true), use_state(|| true)];
         let mut owner = use_state(|| OwnerCheck::Checking);
         use_side_effect(move || {
             if !*team.open.read() || team.people.peek().is_some() {
@@ -210,10 +239,14 @@ impl Component for ExportInstanceModal {
         let content = match share {
             None if *picks.picking.read() => picker_view(picks),
             None if *team.open.read() => team_view(team, &owner.read()),
-            None if *saving.read() => save_view(
+            None if matches!(*saving.read(), Some(SaveStep::Content)) => {
+                content_view(&self.name, types, saving, close.clone())
+            }
+            None if saving.read().is_some() => save_view(
                 &self.name,
                 cluster_id,
                 picks,
+                types,
                 file_mode,
                 saving,
                 &dispatch,
@@ -597,7 +630,7 @@ fn options_view(
     picks: Picks,
     owner: &OwnerCheck,
     copied: State<Option<Copied>>,
-    mut saving: State<bool>,
+    mut saving: State<Option<SaveStep>>,
     dispatch: &crate::hooks::Actions,
     close: EventHandler<()>,
 ) -> Vec<Element> {
@@ -629,7 +662,7 @@ fn options_view(
     let right = vec![
         Button::new()
             .ghost()
-            .on_press(move |_| saving.set(true))
+            .on_press(move |_| saving.set(Some(SaveStep::Content)))
             .text(t("oneclient.clusters.export.save_file_ellipsis"))
             .into_element(),
         Button::new()
@@ -662,16 +695,70 @@ fn options_view(
     elements
 }
 
+fn content_view(
+    name: &str,
+    types: [State<bool>; 3],
+    mut saving: State<Option<SaveStep>>,
+    close: EventHandler<()>,
+) -> Vec<Element> {
+    let any = types.iter().any(|picked| *picked.read());
+    vec![
+        header(tf("oneclient.clusters.export.title", &[&name]), close),
+        note(t("oneclient.clusters.export.content.description"), 13.),
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(10.)
+            .children(EXPORTED_TYPES.iter().zip(types).map(
+                |(&(_, icon, title, blurb), mut picked)| {
+                    wide_card(WideCard {
+                        icon,
+                        title: t(title).to_string(),
+                        badge: None,
+                        blurb: t(blurb).to_string(),
+                        meta: String::new(),
+                        selected: *picked.read(),
+                        on_press: (move |()| picked.toggle()).into(),
+                        trailing: None,
+                    })
+                },
+            ))
+            .into_element(),
+        footer(
+            Some(
+                Button::new()
+                    .ghost()
+                    .on_press(move |_| saving.set(None))
+                    .text(t("oneclient.common.back"))
+                    .into_element(),
+            ),
+            vec![
+                Button::new()
+                    .enabled(any)
+                    .on_press(move |_| saving.set(Some(SaveStep::Format)))
+                    .text(t("oneclient.common.next"))
+                    .into_element(),
+            ],
+        ),
+    ]
+}
+
+#[allow(clippy::too_many_arguments)]
 fn save_view(
     name: &str,
     cluster_id: i64,
     picks: Picks,
+    types: [State<bool>; 3],
     mut file_mode: State<ExportMode>,
-    mut saving: State<bool>,
+    mut saving: State<Option<SaveStep>>,
     dispatch: &crate::hooks::Actions,
     close: EventHandler<()>,
 ) -> Vec<Element> {
     let chosen = *file_mode.read();
+    let mods_off = EXPORTED_TYPES
+        .iter()
+        .zip(types)
+        .any(|((kind, ..), picked)| *kind == ContentType::Mod && !*picked.read());
     let cards = [
         (
             ExportMode::OneClient,
@@ -700,6 +787,7 @@ fn save_view(
             .children(
                 cards
                     .into_iter()
+                    .filter(|_| !mods_off)
                     .map(|(option, icon, title, badge, blurb)| {
                         wide_card(WideCard {
                             icon,
@@ -719,15 +807,22 @@ fn save_view(
             Some(
                 Button::new()
                     .ghost()
-                    .on_press(move |_| saving.set(false))
+                    .on_press(move |_| saving.set(Some(SaveStep::Content)))
                     .text(t("oneclient.common.back"))
                     .into_element(),
             ),
             vec![
                 Button::new()
                     .on_press(move |_| {
+                        let skipped = EXPORTED_TYPES
+                            .iter()
+                            .zip(types)
+                            .filter(|(_, picked)| !*picked.peek())
+                            .map(|((content_type, ..), _)| *content_type)
+                            .collect();
                         let options = ExportOptions::new(*file_mode.peek())
-                            .with_setting_choice(picks.choice());
+                            .with_setting_choice(picks.choice())
+                            .without_types(skipped);
                         export.export_cluster(cluster_id, options);
                         close_export.call(());
                     })

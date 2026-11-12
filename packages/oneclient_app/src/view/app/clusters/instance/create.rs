@@ -140,6 +140,7 @@ pub struct CreateInstanceModal {
     on_close: EventHandler<()>,
     prefill: Option<(String, GameLoader)>,
     invite: Option<i32>,
+    migrate_from: Option<(i64, GameLoader)>,
 }
 
 impl CreateInstanceModal {
@@ -148,6 +149,7 @@ impl CreateInstanceModal {
             on_close: on_close.into(),
             prefill: None,
             invite: None,
+            migrate_from: None,
         }
     }
 
@@ -160,6 +162,11 @@ impl CreateInstanceModal {
         self.invite = Some(invite_id);
         self
     }
+
+    pub fn migrate_from(mut self, source_cluster_id: i64, source_loader: GameLoader) -> Self {
+        self.migrate_from = Some((source_cluster_id, source_loader));
+        self
+    }
 }
 
 impl Component for CreateInstanceModal {
@@ -170,9 +177,14 @@ impl Component for CreateInstanceModal {
         let prefill_loader = self
             .prefill
             .as_ref()
-            .map_or(LoaderChoice::Fabric, |(_, loader)| LoaderChoice::of(*loader));
+            .map(|(_, loader)| *loader)
+            .or(self.migrate_from.map(|(_, loader)| loader))
+            .map_or(LoaderChoice::Fabric, LoaderChoice::of);
         let wizard = Wizard {
             exact_loader: self.prefill.as_ref().map(|(_, loader)| *loader),
+            migrate_loader: self.migrate_from.map(|(_, loader)| loader),
+            migrate_source: self.migrate_from.map(|(source, _)| source),
+            checks: use_state(Default::default),
             step: use_state(|| 0usize),
             choice: use_state(|| {
                 if prefilled {
@@ -246,6 +258,7 @@ impl Component for CreateInstanceModal {
         let close_modpack = self.on_close.clone();
         let close_import = self.on_close.clone();
         let close_code = self.on_close.clone();
+        let migrate_from = self.migrate_from.map(|(source, _)| source);
 
         shell(Shell {
             rail: wizard_rail(wizard, &picks),
@@ -322,6 +335,8 @@ impl Component for CreateInstanceModal {
                     if let Some(action) = action.clone() {
                         if let Some(invite_id) = invite {
                             dispatch.create_cluster_and_join(mutation, action, invite_id);
+                        } else if let Some(source) = migrate_from {
+                            dispatch.create_cluster_and_migrate(mutation, action, source);
                         } else {
                             mutation.mutate(action);
                         }

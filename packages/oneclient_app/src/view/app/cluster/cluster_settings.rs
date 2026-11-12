@@ -10,24 +10,24 @@ use oneclient_core::sync::SyncStatus;
 use oneclient_java::JavaRuntime;
 
 use crate::components::{
-    Button, Dropdown, FileChoice, Icon, IconType, OverlayPopup, ScrollArea, TextInput,
-    memory_field, settings_file_picker, toggle, toggle_controlled, validate_number,
+    Button, ContextMenu, Dropdown, FileChoice, Icon, IconType, OverlayPopup, ScrollArea, TextInput,
+    kebab_button, memory_field, settings_file_picker, toggle, toggle_controlled, validate_number,
 };
 use crate::hooks::{
     ClusterAction, java_runtimes, load_is_shared, load_setting_files, load_sync_left_out,
     loader_versions, mutation_is_running, query_error, settled_or_loading, try_game_profile,
     use_cloud_sync, use_cluster_mutation, use_clusters, use_dispatch, use_game_profile,
-    use_game_snapshot, use_graphics_backend, use_java_runtimes, use_launcher, use_loader_versions,
-    use_migratable_routes, use_release_migration_checking, use_settings_snapshot,
-    use_shared_groups,
+    use_game_snapshot, use_graphics_backend, use_is_migration_source, use_java_runtimes,
+    use_launcher, use_loader_versions, use_migratable_routes, use_release_migration_checking,
+    use_settings_snapshot, use_shared_groups,
 };
 use crate::i18n::{t, tf};
 use crate::layout::cluster_content;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, centered_note};
 use crate::view::app::clusters::{
-    ClusterPickerButton, DeleteInstanceModal, EditInstanceModal, ExportInstanceModal,
-    InstanceFacts, ResetInstanceModal,
+    ClusterPickerButton, CreateInstanceModal, DeleteInstanceModal, EditInstanceModal,
+    ExportInstanceModal, InstanceFacts, ResetInstanceModal,
 };
 use crate::view::app::launch_syncing;
 use crate::view::app::settings::{
@@ -1431,6 +1431,13 @@ impl Component for MigrateFromRow {
         let game = use_game_snapshot();
         let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
         let mut picked = use_state(|| None::<i64>);
+        let mut menu_at = use_state(|| None::<(f32, f32)>);
+        let mut creating = use_state(|| false);
+        let is_source = use_is_migration_source(cluster_id);
+        let source_loader = clusters
+            .iter()
+            .find(|cluster| cluster.id == cluster_id)
+            .map(|cluster| cluster.mc_loader);
 
         let mut sources: Vec<Cluster> = clusters
             .iter()
@@ -1506,17 +1513,41 @@ impl Component for MigrateFromRow {
             .into_element()
         };
 
-        settings_row(
-            IconType::Copy01,
-            t("oneclient.cluster.settings.migrate.title"),
-            t("oneclient.cluster.settings.migrate.description"),
-            rect()
-                .horizontal()
-                .cross_align(Alignment::Center)
-                .spacing(8.)
-                .child(picker)
-                .child(button),
-        )
+        let menu = (*menu_at.read()).map(|(x, y)| {
+            ContextMenu::new(x, y)
+                .action(
+                    IconType::Plus,
+                    t("oneclient.cluster.settings.migrate.new_instance"),
+                    move |()| creating.set(true),
+                )
+                .on_close(move |()| menu_at.set(None))
+                .into_element()
+        });
+
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .child(settings_row(
+                IconType::Copy01,
+                t("oneclient.cluster.settings.migrate.title"),
+                t("oneclient.cluster.settings.migrate.description"),
+                rect()
+                    .horizontal()
+                    .cross_align(Alignment::Center)
+                    .spacing(8.)
+                    .child(picker)
+                    .child(button)
+                    .maybe_child(
+                        (is_source && source_loader.is_some())
+                            .then(|| kebab_button((move |point| menu_at.set(Some(point))).into())),
+                    ),
+            ))
+            .maybe_child(menu)
+            .maybe_child(source_loader.filter(|_| *creating.read()).map(|loader| {
+                CreateInstanceModal::new(move |()| creating.set(false))
+                    .migrate_from(cluster_id, loader)
+                    .into_element()
+            }))
     }
 }
 

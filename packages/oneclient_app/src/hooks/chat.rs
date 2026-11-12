@@ -514,9 +514,17 @@ async fn add_polyplus(actions: &Actions, invite_id: i32) -> bool {
             newest.id,
             None,
             false,
+            crate::install::IncompatibleMode::Refuse,
         )
         .await
-        .map_err(|flagged| anyhow::anyhow!("{} is flagged", flagged.name))?;
+        .map_err(|blocked| match blocked {
+            crate::install::InstallBlocked::Flagged(flagged) => {
+                anyhow::anyhow!("{} is flagged", flagged.name)
+            }
+            crate::install::InstallBlocked::Incompatible { name } => {
+                anyhow::anyhow!("{name} doesn't fit this cluster")
+            }
+        })?;
 
         anyhow::Ok(Some((newest.id, install)))
     })

@@ -5,16 +5,17 @@
 #![recursion_limit = "256"]
 
 use freya::prelude::*;
-use oneclient_app::ipc::{self, Claim};
 use oneclient_app::state::{AppState, LauncherInit};
 use oneclient_app::{
     Actions, ConfirmLinkOverlay, DisableConfirmState, DisableDependentsOverlay,
     EssentialConfirmOverlay, EssentialGuardState, EventPump, LinkConfirmState, StartMaximizedState,
-    cli, constants, events, microsoft_java, platform, router, theme, translations,
+    constants, events, microsoft_java, platform, router, theme, translations,
     use_provide_actions, use_provide_disable_confirm, use_provide_essential_guard,
     use_provide_link_confirm, use_provide_start_maximized, use_provide_station,
     use_settings_snapshot,
 };
+use oneclient_cli::Reply;
+use oneclient_cli::ipc::{self, Claim, Request};
 use std::cell::Cell;
 use tokio::runtime::Builder;
 
@@ -141,7 +142,7 @@ impl App for OneClientApp {
 }
 
 fn main() {
-    let cli = cli::parse();
+    let cli = oneclient_cli::parse();
 
     let mut builder = Builder::new_multi_thread();
     builder.enable_all().max_blocking_threads(64);
@@ -168,9 +169,24 @@ fn main() {
     let needs_location = never_set_up && !has_database && !was_damaged;
 
     let mut unprotected = None;
-    match rt.block_on(ipc::claim(&cli)) {
-        Claim::Forwarded => return,
-        Claim::Primary(listener) => ipc::listen(listener),
+    let mut refusal = Vec::new();
+    let request = Request::Start(cli.window_request());
+    let claim = rt.block_on(ipc::claim(&request, |reply| {
+        if let Reply::Err(message) = reply {
+            refusal.push(message);
+        }
+    }));
+    match claim {
+        Claim::Forwarded(0) => return,
+        Claim::Forwarded(_) => {
+            rfd::MessageDialog::new()
+                .set_title(constants::WINDOW_TITLE)
+                .set_description(refusal.join("\n"))
+                .set_level(rfd::MessageLevel::Warning)
+                .show();
+            return;
+        }
+        Claim::Primary(listener) => ipc::listen(listener, true),
         Claim::Solo(reason) => unprotected = Some(reason),
     }
 
@@ -208,13 +224,13 @@ fn main() {
         tracing::warn!("no single-instance endpoint, a second launcher can start: {reason}");
     }
 
-    match oneclient_app::shortcut::launcher_exe()
-        .and_then(|exe| oneclient_app::protocol::register(&exe))
+    match oneclient_protocol::shortcut::launcher_exe()
+        .and_then(|exe| oneclient_protocol::register(&exe))
     {
         Ok(()) => {}
         Err(err) => tracing::warn!(
             "could not register the {}:// handler: {err:#}",
-            oneclient_app::protocol::SCHEME
+            oneclient_protocol::SCHEME
         ),
     }
 
@@ -239,8 +255,8 @@ fn main() {
     let window_config = WindowConfig::new_app(OneClientApp {
         needs_location,
         start_maximized,
-        boot_launch: Cell::new(cli.launch.clone()),
-        boot_share: Cell::new(cli.share.clone()),
+        boot_launch: Cell::new(cli.launch_folder()),
+        boot_share: Cell::new(cli.share_code()),
     })
     .with_title(constants::WINDOW_TITLE)
     .with_app_id(constants::WINDOW_APP_ID)

@@ -8,6 +8,10 @@ use oneclient_content::modpacks::{
     import_blocked_files,
 };
 use oneclient_content::packages::ResolvedAlternative;
+use oneclient_core::busy::{
+    Busy, JobSlot, claim_modpack_job, lock_modpack_job, modpack_change_block, modpack_job_cluster,
+    modpack_job_idle, release_modpack_job, with_modpack_job,
+};
 use oneclient_core::clusters::{
     ExistingPack, LoaderPlan, ModpackCluster, ModpackSource, PreparedImport, PreparedModpack,
     create_modpack_instance, import_modpack_into_cluster, install_modpack_instance,
@@ -28,63 +32,14 @@ use crate::utils::count_label;
 
 const MAX_LISTED: usize = 3;
 
-enum JobSlot {
-    Idle,
-    Preparing(Option<ClusterId>),
-    AwaitingConfirm(Box<PreparedModpack>),
-    AwaitingImport(Box<PreparedImport>),
-    Running(ClusterId),
-}
-
-static JOB: Mutex<JobSlot> = Mutex::new(JobSlot::Idle);
-
 static WAITING: Mutex<VecDeque<ModpackSource>> = Mutex::new(VecDeque::new());
 
 fn waiting() -> MutexGuard<'static, VecDeque<ModpackSource>> {
     WAITING.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-fn with_slot<R>(change: impl FnOnce(&mut JobSlot) -> R) -> R {
-    let mut slot = JOB.lock().unwrap_or_else(PoisonError::into_inner);
-    change(&mut slot)
-}
-
-#[must_use]
-pub(super) fn modpack_job_idle() -> bool {
-    with_slot(|slot| matches!(slot, JobSlot::Idle))
-}
-
-fn busy_cluster() -> Option<ClusterId> {
-    with_slot(|slot| match slot {
-        JobSlot::Running(id) | JobSlot::Preparing(Some(id)) => Some(*id),
-        JobSlot::AwaitingImport(import) => Some(import.cluster_id),
-        _ => None,
-    })
-}
-
-#[must_use]
-pub fn modpack_job_running(cluster_id: ClusterId) -> bool {
-    busy_cluster() == Some(cluster_id)
-}
-
-pub(crate) async fn modpack_job_in_shared_dir(cluster_id: ClusterId) -> bool {
-    let Some(busy) = busy_cluster().filter(|id| *id != cluster_id) else {
-        return false;
-    };
-    let Ok(state) = launcher::state() else {
-        return false;
-    };
-    match (
-        state.clusters.get(cluster_id).await,
-        state.clusters.get(busy).await,
-    ) {
-        (Ok(cluster), Ok(busy)) => cluster.shares_dir_with(&busy),
-        _ => false,
-    }
-}
-
 fn take_prepared() -> Option<PreparedModpack> {
-    with_slot(
+    with_modpack_job(
         |slot| match std::mem::replace(slot, JobSlot::Preparing(None)) {
             JobSlot::AwaitingConfirm(prepared) => Some(*prepared),
             other => {
@@ -96,7 +51,7 @@ fn take_prepared() -> Option<PreparedModpack> {
 }
 
 fn take_prepared_import() -> Option<PreparedImport> {
-    with_slot(
+    with_modpack_job(
         |slot| match std::mem::replace(slot, JobSlot::Preparing(None)) {
             JobSlot::AwaitingImport(prepared) => {
                 *slot = JobSlot::Preparing(Some(prepared.cluster_id));
@@ -322,22 +277,12 @@ fn split_choices(
 
 impl Actions {
     fn claim_modpack_job(&self, target: Option<ClusterId>) -> bool {
-        if super::external_import::import_running() {
-            self.notify(t("oneclient.actions.modpacks.busy.import"))
-                .body(t("oneclient.actions.modpacks.busy.body"))
-                .error()
-                .send();
-            return false;
-        }
-        let claimed = with_slot(|slot| match slot {
-            JobSlot::Idle => {
-                *slot = JobSlot::Preparing(target);
-                true
-            }
-            _ => false,
-        });
-        if !claimed {
-            self.notify(t("oneclient.actions.modpacks.busy.install"))
+        if let Err(busy) = claim_modpack_job(target) {
+            let title = match busy {
+                Busy::Importing => t("oneclient.actions.modpacks.busy.import"),
+                _ => t("oneclient.actions.modpacks.busy.install"),
+            };
+            self.notify(title)
                 .body(t("oneclient.actions.modpacks.busy.body"))
                 .error()
                 .send();
@@ -352,7 +297,7 @@ impl Actions {
     }
 
     fn lock_modpack_cluster(&self, cluster_id: ClusterId) {
-        with_slot(|slot| *slot = JobSlot::Running(cluster_id));
+        lock_modpack_job(cluster_id);
         self.station
             .clone()
             .write_channel(AppChannel::Installs)
@@ -361,7 +306,7 @@ impl Actions {
     }
 
     fn release_modpack_job(&self) {
-        with_slot(|slot| *slot = JobSlot::Idle);
+        release_modpack_job();
         {
             let mut station = self.station;
             let mut app = station.write_channel(AppChannel::Installs);
@@ -373,7 +318,7 @@ impl Actions {
     }
 
     pub(super) fn resume_imports(&self) {
-        if super::external_import::import_running() || !modpack_job_idle() {
+        if oneclient_core::busy::import_running() || !modpack_job_idle() {
             return;
         }
         let launcher_jobs = super::external_import::take_waiting();
@@ -389,7 +334,7 @@ impl Actions {
 
     pub fn install_modpack(&self, source: ModpackSource) {
         if matches!(source, ModpackSource::File(_))
-            && (super::external_import::import_running() || !modpack_job_idle())
+            && (oneclient_core::busy::import_running() || !modpack_job_idle())
         {
             waiting().push_back(source);
             self.notify(t("oneclient.actions.modpacks.queued.title"))
@@ -451,7 +396,7 @@ impl Actions {
                         view.notices
                             .insert(0, t("oneclient.actions.modpacks.queued_notice").to_string());
                     }
-                    with_slot(|slot| *slot = JobSlot::AwaitingConfirm(Box::new(prepared)));
+                    with_modpack_job(|slot| *slot = JobSlot::AwaitingConfirm(Box::new(prepared)));
                     actions.with_engine(move |app| app.notifications.open_modpack_confirm(view));
                 }
                 Err(err) => {
@@ -475,7 +420,7 @@ impl Actions {
     }
 
     pub fn import_modpack(&self, cluster_id: ClusterId, source: ModpackSource) {
-        if busy_cluster() == Some(cluster_id) {
+        if modpack_job_cluster() == Some(cluster_id) {
             return;
         }
         if self.refuse_while_running(cluster_id) || !self.claim_modpack_job(Some(cluster_id)) {
@@ -519,7 +464,7 @@ impl Actions {
             match prepared {
                 Ok(prepared) => {
                     let view = import_view(&prepared);
-                    with_slot(|slot| *slot = JobSlot::AwaitingImport(Box::new(prepared)));
+                    with_modpack_job(|slot| *slot = JobSlot::AwaitingImport(Box::new(prepared)));
                     actions.with_engine(move |app| app.notifications.open_modpack_confirm(view));
                 }
                 Err(err) => {
@@ -540,7 +485,7 @@ impl Actions {
         choices: HashMap<String, FlaggedChoice>,
         existing: ExistingPack,
     ) {
-        let pending = with_slot(|slot| match slot {
+        let pending = with_modpack_job(|slot| match slot {
             JobSlot::AwaitingImport(import) => Some(import.cluster_id),
             _ => None,
         });
@@ -619,7 +564,7 @@ impl Actions {
 
     pub fn cancel_modpack(&self) {
         self.with_engine(|app| app.notifications.close_modpack_confirm());
-        let waiting = with_slot(|slot| {
+        let waiting = with_modpack_job(|slot| {
             matches!(
                 slot,
                 JobSlot::AwaitingConfirm(_) | JobSlot::AwaitingImport(_)
@@ -648,39 +593,32 @@ impl Actions {
     }
 
     fn refuse_while_running(&self, cluster_id: ClusterId) -> bool {
-        if super::share::exporting(cluster_id) {
-            self.notify(t("oneclient.actions.modpacks.blocked.exporting.title"))
-                .body(t("oneclient.actions.modpacks.blocked.exporting.body"))
-                .error()
-                .send();
-            return true;
-        }
-        if oneclient_core::clusters::is_resetting(cluster_id) {
-            self.notify(t("oneclient.actions.modpacks.blocked.resetting.title"))
-                .body(t("oneclient.actions.modpacks.blocked.resetting.body"))
-                .error()
-                .send();
-            return true;
-        }
-        if self.station.peek().installs.cluster_installing(cluster_id) {
-            self.notify(t("oneclient.actions.modpacks.blocked.installing.title"))
-                .body(t("oneclient.actions.modpacks.blocked.installing.body"))
-                .error()
-                .send();
-            return true;
-        }
-        if self.refuse_during_update_check(cluster_id) {
-            return true;
-        }
-        let running = self.station.peek().game.is_launch_pending(cluster_id)
-            || launcher::state().is_ok_and(|state| state.games.is_active(cluster_id));
-        if running {
-            self.notify(t("oneclient.actions.modpacks.blocked.running.title"))
-                .body(t("oneclient.actions.modpacks.blocked.running.body"))
-                .error()
-                .send();
-        }
-        running
+        let installing = self.station.peek().installs.cluster_installing(cluster_id);
+        let busy = launcher::state()
+            .ok()
+            .and_then(|state| modpack_change_block(&state, cluster_id));
+        let (title, body) = match busy {
+            Some(Busy::Exporting) => (
+                t("oneclient.actions.modpacks.blocked.exporting.title"),
+                t("oneclient.actions.modpacks.blocked.exporting.body"),
+            ),
+            Some(Busy::Resetting) => (
+                t("oneclient.actions.modpacks.blocked.resetting.title"),
+                t("oneclient.actions.modpacks.blocked.resetting.body"),
+            ),
+            _ if installing => (
+                t("oneclient.actions.modpacks.blocked.installing.title"),
+                t("oneclient.actions.modpacks.blocked.installing.body"),
+            ),
+            _ if self.refuse_during_update_check(cluster_id) => return true,
+            None if !self.station.peek().game.is_launch_pending(cluster_id) => return false,
+            _ => (
+                t("oneclient.actions.modpacks.blocked.running.title"),
+                t("oneclient.actions.modpacks.blocked.running.body"),
+            ),
+        };
+        self.notify(title).body(body).error().send();
+        true
     }
 
     fn run_modpack_job(&self, job: ModpackJob) {

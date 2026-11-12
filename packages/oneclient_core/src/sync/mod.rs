@@ -6,7 +6,7 @@ mod store;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use async_tempfile::TempDir;
 use chrono::Utc;
@@ -110,6 +110,31 @@ struct Snapshot {
 
 pub fn sync_dir() -> LauncherResult<PathBuf> {
     Ok(oneclient_common::paths::data_dir()?.join("sync"))
+}
+
+static ENGINE: OnceLock<Option<Arc<CloudSync>>> = OnceLock::new();
+
+#[must_use]
+pub fn engine(auth: Arc<AuthService>) -> Option<Arc<CloudSync>> {
+    ENGINE
+        .get_or_init(|| match CloudSync::from_defaults(auth) {
+            Ok(engine) => Some(Arc::new(engine.with_busy(crate::busy::modpack_job_running))),
+            Err(err) => {
+                tracing::warn!(error = %err, "cloud sync is unavailable");
+                None
+            }
+        })
+        .clone()
+}
+
+pub async fn forget_deleted_cluster(state: &LauncherState, cluster_id: i64) {
+    let Some(engine) = engine(state.auth.clone()) else {
+        return;
+    };
+    let account = current_account(state).await.ok();
+    if let Err(err) = engine.cluster_deleted(account.as_ref(), cluster_id).await {
+        tracing::warn!(cluster_id, error = %err, "could not remove the deleted instance from cloud sync");
+    }
 }
 
 pub fn default_store(auth: Arc<AuthService>) -> Arc<dyn SyncStore> {

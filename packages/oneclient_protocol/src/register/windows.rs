@@ -2,8 +2,8 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use super::SCHEME;
 use super::registry::{read_string, write_string};
+use crate::SCHEME;
 
 fn root_key() -> String {
     format!(r"Software\Classes\{SCHEME}")

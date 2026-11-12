@@ -88,8 +88,8 @@ pub use logs::{
 };
 pub use migration::{MigrationQuery, has_migration_data, migration_detection, use_migration};
 pub use mutations::{
-    ClusterAction, ClusterMutation, invalidate_cluster_content_queries, invalidate_cluster_queries,
-    invalidate_profile_queries, use_cluster_mutation,
+    ClusterAction, ClusterMutation, invalidate_after_cli, invalidate_cluster_content_queries,
+    invalidate_cluster_queries, invalidate_profile_queries, use_cluster_mutation,
 };
 pub use package_updates::{package_updates, stale_hashes, use_package_updates};
 pub use packages::ALL_VERSIONS;

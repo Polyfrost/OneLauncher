@@ -36,8 +36,10 @@ pub struct ShortcutRequest {
 }
 
 pub fn create(request: &ShortcutRequest) -> Result<PathBuf> {
-    let exe = launcher_exe()?;
+    create_with(request, &launcher_exe()?)
+}
 
+pub fn create_with(request: &ShortcutRequest, exe: &Path) -> Result<PathBuf> {
     std::fs::create_dir_all(&request.dir)
         .with_context(|| format!("couldn't open {}", request.dir.display()))?;
 
@@ -46,7 +48,7 @@ pub fn create(request: &ShortcutRequest) -> Result<PathBuf> {
         &file_stem(&request.cluster_name),
         imp::EXTENSION,
     )?;
-    imp::write(request, &exe, &path)
+    imp::write(request, exe, &path)
         .with_context(|| format!("couldn't write {}", path.display()))?;
 
     tracing::info!(path = %path.display(), folder = request.folder_name, "wrote cluster shortcut");

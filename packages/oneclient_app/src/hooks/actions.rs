@@ -11,16 +11,17 @@ mod external_import;
 pub use external_import::{AlternativePick, ExternalImportJob};
 mod modpacks;
 
-pub(crate) use modpacks::{listed, modpack_job_in_shared_dir};
-pub use modpacks::modpack_job_running;
+pub(crate) use modpacks::listed;
+use oneclient_core::busy::UpdateCheckClaim;
+pub use oneclient_core::busy::{exporting, modpack_job_running, update_check_running};
 mod release_migration;
 mod share;
 pub use share::{
-    add_collaborator, exporting, load_collaborators, load_is_shared, load_owner_check,
+    add_collaborator, load_collaborators, load_is_shared, load_owner_check,
     load_setting_files, remove_collaborator,
 };
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -1151,9 +1152,11 @@ impl Actions {
             return;
         }
 
+        let claim = oneclient_core::busy::LaunchClaim::take(cluster_id);
         let station = self.station;
         let actions = self.clone();
         spawn_in_window(async move {
+            let _claim = claim;
             let started = Instant::now();
             match cluster_busy_elsewhere(cluster_id).await {
                 Some((title, body)) => actions.notify(title).body(body).send(),
@@ -2586,38 +2589,29 @@ fn cluster_busy(cluster_id: ClusterId) -> Option<(&'static str, &'static str)> {
 }
 
 async fn cluster_busy_elsewhere(cluster_id: ClusterId) -> Option<(&'static str, &'static str)> {
-    if let Some(reason) = super::sync_actions::sync_launch_block(cluster_id).await {
-        return Some((t("oneclient.actions.launch.syncing"), reason));
-    }
-    modpacks::modpack_job_in_shared_dir(cluster_id)
-        .await
-        .then_some((
+    use oneclient_core::busy::Busy;
+    let state = launcher::state().ok()?;
+    match oneclient_core::busy::launch_block(&state, cluster_id).await? {
+        Busy::Syncing => Some((
+            t("oneclient.actions.launch.syncing"),
+            t("oneclient.sync_actions.launch_block.this"),
+        )),
+        Busy::SharedSync => Some((
+            t("oneclient.actions.launch.syncing"),
+            t("oneclient.sync_actions.launch_block.other"),
+        )),
+        Busy::SharedModpackJob => Some((
             t("oneclient.actions.launch.shared_modpack.title"),
             t("oneclient.actions.launch.shared_modpack.body"),
-        ))
+        )),
+        _ => cluster_busy(cluster_id),
+    }
 }
 
 #[derive(Clone, Copy, Default)]
 struct UpdateCheck {
     found: bool,
     failed: bool,
-}
-
-static UPDATE_CHECKS: Mutex<BTreeSet<ClusterId>> = Mutex::new(BTreeSet::new());
-
-struct UpdateCheckClaim(ClusterId);
-
-impl UpdateCheckClaim {
-    fn take(cluster_id: ClusterId) -> Self {
-        UPDATE_CHECKS.lock().unwrap().insert(cluster_id);
-        Self(cluster_id)
-    }
-}
-
-impl Drop for UpdateCheckClaim {
-    fn drop(&mut self) {
-        UPDATE_CHECKS.lock().unwrap().remove(&self.0);
-    }
 }
 
 static CLUSTER_WRITES: Mutex<BTreeMap<ClusterId, usize>> = Mutex::new(BTreeMap::new());
@@ -2647,10 +2641,6 @@ fn cluster_writing(cluster_id: ClusterId) -> bool {
     CLUSTER_WRITES.lock().unwrap().contains_key(&cluster_id)
 }
 
-#[must_use]
-pub fn update_check_running(cluster_id: ClusterId) -> bool {
-    UPDATE_CHECKS.lock().unwrap().contains(&cluster_id)
-}
 
 async fn launch(actions: &Actions, cluster_id: ClusterId, extra_jvm_arg: Option<String>) {
     let Ok(state) = launcher::state() else { return };

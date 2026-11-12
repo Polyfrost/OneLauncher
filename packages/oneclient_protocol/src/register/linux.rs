@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-use super::SCHEME;
+use crate::SCHEME;
 use crate::file_content::url_handler_entry;
 
 const ICON: &str = "oneclient_app";

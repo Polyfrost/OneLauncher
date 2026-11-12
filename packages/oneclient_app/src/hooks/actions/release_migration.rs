@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use freya::prelude::spawn_in_window;
+use freya::query::{MutationStateData, UseMutation};
 use std::collections::HashSet;
 
 use oneclient_content::packages::release_migration::{
@@ -20,6 +21,7 @@ use oneclient_events::Level;
 
 use super::Actions;
 use crate::components::IconType;
+use crate::hooks::{ClusterAction, ClusterMutation};
 use crate::i18n::{t, tf};
 use crate::launcher;
 use crate::notifications::NotificationSpec;
@@ -513,6 +515,26 @@ impl Actions {
         } else {
             guard.release_migration_checking.remove(&cluster_id);
         }
+    }
+
+    pub fn create_cluster_and_migrate(
+        &self,
+        mutation: UseMutation<ClusterMutation>,
+        action: ClusterAction,
+        source_cluster_id: i64,
+    ) {
+        let actions = self.clone();
+        spawn_in_window(async move {
+            let created = match &*mutation.mutate_async(action).await.state() {
+                MutationStateData::Settled {
+                    res: Ok(Some(id)), ..
+                } => Some(*id),
+                _ => None,
+            };
+            if let Some(target_cluster_id) = created {
+                actions.open_manual_migration(target_cluster_id, source_cluster_id);
+            }
+        });
     }
 
     pub fn open_manual_migration(&self, target_cluster_id: i64, source_cluster_id: i64) {

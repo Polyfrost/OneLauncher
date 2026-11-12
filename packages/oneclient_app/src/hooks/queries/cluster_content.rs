@@ -5,7 +5,9 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use oneclient_content::packages::release_migration::has_packages_to_migrate;
+use oneclient_content::packages::release_migration::{
+    has_migratable_packages, has_packages_to_migrate,
+};
 use oneclient_content::packages::{ContentType, PackageStore};
 use oneclient_core::game::{DuplicateMods, FolderPack, list_folder_packs};
 use oneclient_core::{LauncherError, LinkedArtifactInfo};
@@ -96,7 +98,12 @@ impl QueryCapability for MigratableRoutesQuery {
             let content = state.services.content();
             let mut migratable = HashSet::new();
             for (target, source) in routes {
-                if has_packages_to_migrate(source, target, &state.bundles, &content).await? {
+                let found = if source == target {
+                    has_migratable_packages(source, &content).await?
+                } else {
+                    has_packages_to_migrate(source, target, &state.bundles, &content).await?
+                };
+                if found {
                     migratable.insert((target, source));
                 }
             }
@@ -111,6 +118,10 @@ pub fn use_migratable_routes(
 ) -> Arc<HashSet<(ClusterId, ClusterId)>> {
     let query = use_query(Query::new(routes, MigratableRoutesQuery));
     super::state::settled_or_loading(&query).unwrap_or_default()
+}
+
+pub fn use_is_migration_source(cluster_id: ClusterId) -> bool {
+    use_migratable_routes(vec![(cluster_id, cluster_id)]).contains(&(cluster_id, cluster_id))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

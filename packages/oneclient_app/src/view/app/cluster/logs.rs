@@ -13,10 +13,11 @@ use crate::components::{
 };
 use crate::hooks::{
     ClusterLogsQuery, LogAction, UploadLogKeys, UseLogAction, UseUploadLog,
-    invalidate_logs_queries, try_cluster_logs, try_log_content, use_cluster_logs, use_log_action,
-    use_log_content, use_overlay_claim_when, use_upload_log,
+    invalidate_logs_queries, try_cluster_logs, try_log_content, use_cluster_logs, use_dispatch,
+    use_game_snapshot, use_log_action, use_log_content, use_overlay_claim_when, use_upload_log,
 };
 use crate::i18n::{t, tf};
+use crate::launcher::off_ui;
 use crate::layout::cluster_content;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui;
@@ -126,12 +127,15 @@ impl Component for ClusterLogs {
         let action = use_log_action();
         let search = use_state(String::new);
         let level = use_state(|| LevelFilter::All);
-        let confirm = use_state(|| None::<Confirm>);
+        let mut confirm = use_state(|| None::<Confirm>);
         let mut category = use_state(|| Category::Logs);
         let mut selected = use_state(PathBuf::new);
         let search_id = use_a11y();
         let open_game_output = use_hook(try_consume_root_context::<OpenGameOutput>);
-
+        let dispatch = use_dispatch();
+        let mut dumping = use_state(|| false);
+        let running = use_game_snapshot().is_running(cluster_id);
+        let current_cluster = use_reactive(&cluster_id);
 
         // Reads `category` too so switching the picker re-picks a file instead of keeping a stale selection
         use_side_effect(move || {
@@ -202,6 +206,51 @@ impl Component for ClusterLogs {
         let selected_info = files.iter().find(|f| f.path == selected_path).cloned();
         let upload_path = selected_info.as_ref().map(|info| info.path.clone());
 
+        let dump_button = running.then(|| {
+            Button::new()
+                .secondary()
+                .enabled(!dumping())
+                .tooltip(t("oneclient.cluster.logs.thread_dump.tooltip"))
+                .on_press(move |_| {
+                    let dispatch = dispatch.clone();
+                    dumping.set(true);
+                    spawn(async move {
+                        let result = off_ui(async move {
+                            let state = crate::launcher::state()?;
+                            let path =
+                                oneclient_core::game::thread_dump(&state, cluster_id).await?;
+                            let too_long = oneclient_core::log_exceeds_upload_limit(&path)
+                                .await
+                                .unwrap_or_default();
+                            Ok::<_, oneclient_core::LauncherError>((path, too_long))
+                        })
+                        .await;
+                        dumping.set(false);
+                        match result {
+                            Ok(_) if *current_cluster.peek() != cluster_id => {}
+                            Ok((path, too_long)) => {
+                                invalidate_logs_queries().await;
+                                category.set(Category::Logs);
+                                selected.set(path);
+                                confirm.set(Some(if too_long {
+                                    Confirm::UploadTooLong
+                                } else {
+                                    Confirm::Upload
+                                }));
+                            }
+                            Err(err) => dispatch
+                                .notify(t("oneclient.cluster.logs.thread_dump.failed"))
+                                .body(err.to_string())
+                                .error()
+                                .send(),
+                        }
+                    });
+                })
+                .child(Icon::new(IconType::Terminal).size(15.))
+                .text(t("oneclient.cluster.logs.thread_dump"))
+                .into_element()
+        });
+
         let lines = try_log_content(&content_query).unwrap_or_default();
         let viewer_lines: Arc<Vec<Arc<str>>> = Arc::new(
             lines
@@ -222,6 +271,7 @@ impl Component for ClusterLogs {
                 selected,
                 confirm,
                 category,
+                dump_button,
             ))
             .child(rect().width(Size::fill()).height(Size::flex(1.0)).child(
                 LogViewer::new("", viewer_lines).header(viewer_header(
@@ -258,6 +308,7 @@ fn top_bar(
     selected: State<PathBuf>,
     mut confirm: State<Option<Confirm>>,
     category: State<Category>,
+    dump_button: Option<Element>,
 ) -> impl IntoElement {
     let has_log = !files.is_empty();
     let selected_path = selected_info.as_ref().map(|i| i.path.clone());
@@ -312,6 +363,7 @@ fn top_bar(
         )
         .child(rect().width(Size::flex(1.0)))
         .maybe_child(folder.map(open_folder_button))
+        .maybe_child(dump_button)
         .child(
             Button::new()
                 .secondary()

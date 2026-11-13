@@ -13,6 +13,7 @@ mod reattach;
 mod session;
 mod shared_dir;
 mod tail;
+mod thread_dump;
 
 pub use analytics::{
     Analytics, DayPlaytime, Persona, PlaytimeStats, ServerStat, WEEKDAY_LABELS, aggregate_servers,
@@ -59,3 +60,4 @@ pub use shared_dir::{
     leave_shared_folder, link_cluster_logs, materialize_content, shadowed_bundle_mods,
     split_dedicated_packs, sync_cluster_mods, unlink_cluster_logs, write_allowed_symlinks,
 };
+pub use thread_dump::thread_dump;

@@ -309,4 +309,5 @@ fn main() {
     }
 
     launch(launch_config);
+    oneclient_app::servers::stop_all_blocking();
 }

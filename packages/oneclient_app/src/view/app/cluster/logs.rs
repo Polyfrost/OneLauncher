@@ -132,7 +132,6 @@ impl Component for ClusterLogs {
         let search_id = use_a11y();
         let open_game_output = use_hook(try_consume_root_context::<OpenGameOutput>);
 
-
         // Reads `category` too so switching the picker re-picks a file instead of keeping a stale selection
         use_side_effect(move || {
             let files = visible_files(&logs_query, *category.read());
@@ -342,6 +341,19 @@ pub fn viewer_header(
     upload_path: Option<PathBuf>,
     search_id: AccessibilityId,
 ) -> impl IntoElement {
+    viewer_header_inset(search, level, confirm, has_log, upload_path, search_id, 14.)
+}
+
+/// [`viewer_header`] with its own side padding, for a viewer already inset by its container
+pub fn viewer_header_inset(
+    search: State<String>,
+    level: State<LevelFilter>,
+    confirm: State<Option<Confirm>>,
+    has_log: bool,
+    upload_path: Option<PathBuf>,
+    search_id: AccessibilityId,
+    inset_x: f32,
+) -> impl IntoElement {
     let on_key_down = move |e: Event<KeyboardEventData>| {
         let find = matches!(&e.key, Key::Character(c) if c.as_str().eq_ignore_ascii_case("f"))
             && e.modifiers.contains(Modifiers::ctrl_or_meta());
@@ -374,7 +386,7 @@ pub fn viewer_header(
         .cross_align(Alignment::Center)
         .content(Content::Flex)
         .spacing(10.)
-        .padding(Gaps::new_symmetric(10., 14.))
+        .padding(Gaps::new_symmetric(10., inset_x))
         .on_global_key_down(on_key_down)
         .child(rect().width(Size::flex(1.0)).child(search_input))
         .child(

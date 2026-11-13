@@ -124,6 +124,10 @@ pub fn clusters_dir() -> PathsResult<PathBuf> {
     Ok(data_dir()?.join("clusters"))
 }
 
+pub fn servers_dir() -> PathsResult<PathBuf> {
+    Ok(data_dir()?.join("servers"))
+}
+
 pub fn cluster_trash_dir() -> PathsResult<PathBuf> {
     Ok(data_dir()?.join(".trash"))
 }

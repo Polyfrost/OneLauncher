@@ -172,6 +172,12 @@ fn navbar_center(is_small: bool) -> impl IntoElement {
             over_art,
         })
         .child(NavLink {
+            active: crate::layout::server_id_of(&route).is_some() || route == Route::Servers {},
+            target: NavTarget::Route(Route::Servers {}),
+            nav_label: t("oneclient.components.navbar.servers"),
+            over_art,
+        })
+        .child(NavLink {
             active: route == Route::Wardrobe {},
             target: NavTarget::Route(Route::Wardrobe {}),
             nav_label: t("oneclient.components.navbar.wardrobe"),

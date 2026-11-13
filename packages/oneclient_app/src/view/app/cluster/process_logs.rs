@@ -32,7 +32,6 @@ impl Component for ProcessLogs {
         let confirm = use_state(|| None::<Confirm>);
         let search_id = use_a11y();
 
-
         let game = use_game_snapshot();
         let Some(_cluster) = use_cluster(self.cluster_id) else {
             return cluster_not_found();
@@ -77,7 +76,7 @@ impl Component for ProcessLogs {
     }
 }
 
-fn filter_lines(
+pub(crate) fn filter_lines(
     lines: &Arc<Vec<Arc<str>>>,
     search: &str,
     level: LevelFilter,

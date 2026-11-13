@@ -6,6 +6,7 @@ use crate::layout::AppShell;
 use crate::layout::ClusterShell;
 use crate::layout::OnboardingShell;
 use crate::layout::RootLayout;
+use crate::layout::ServerShell;
 use crate::layout::SettingsShell;
 
 use crate::view::{
@@ -16,6 +17,10 @@ use crate::view::{
         cluster::{
             ClusterDataPacks, ClusterLogs, ClusterMods, ClusterOverview, ClusterScreenshots,
             ClusterSettings, ClusterShaders, ClusterTextures, ClusterWorlds, ProcessLogs,
+        },
+        servers::{
+            ServerBackups, ServerConsole, ServerLiveConsole, ServerMods, ServerOverview,
+            ServerPlayers, ServerSettings, ServerWorlds, Servers,
         },
         settings::{
             SettingsAccounts, SettingsApis, SettingsAppearance, SettingsChangelog,
@@ -87,6 +92,28 @@ pub enum Route {
                 ClusterDataPacks { cluster_id: i64 },
                 #[route("/app/clusters/:cluster_id/settings")]
                 ClusterSettings { cluster_id: i64 },
+            #[end_layout]
+
+            #[route("/app/servers")]
+            Servers {},
+
+            #[layout(ServerShell)]
+                #[route("/app/servers/:server_id")]
+                ServerOverview { server_id: String },
+                #[route("/app/servers/:server_id/console")]
+                ServerConsole { server_id: String },
+                #[route("/app/servers/:server_id/players")]
+                ServerPlayers { server_id: String },
+                #[route("/app/servers/:server_id/worlds")]
+                ServerWorlds { server_id: String },
+                #[route("/app/servers/:server_id/backups")]
+                ServerBackups { server_id: String },
+                #[route("/app/servers/:server_id/mods")]
+                ServerMods { server_id: String },
+                #[route("/app/servers/:server_id/settings")]
+                ServerSettings { server_id: String },
+                #[route("/app/servers/:server_id/live")]
+                ServerLiveConsole { server_id: String },
             #[end_layout]
 
             #[route("/app/browser/:cluster_id/:package_type?:pick_cluster")]
@@ -163,6 +190,15 @@ impl Route {
             Route::ClusterWorlds { .. } => t("oneclient.routes.cluster_worlds"),
             Route::ClusterDataPacks { .. } => t("oneclient.routes.cluster_data_packs"),
             Route::ClusterSettings { .. } => t("oneclient.routes.cluster_settings"),
+            Route::Servers { .. } => t("oneclient.routes.servers"),
+            Route::ServerOverview { .. }
+            | Route::ServerConsole { .. }
+            | Route::ServerPlayers { .. }
+            | Route::ServerWorlds { .. }
+            | Route::ServerBackups { .. }
+            | Route::ServerMods { .. }
+            | Route::ServerSettings { .. }
+            | Route::ServerLiveConsole { .. } => t("oneclient.routes.server"),
             Route::Browser { .. } => t("oneclient.routes.browser"),
             Route::BrowserPackage { .. } => t("oneclient.routes.browser_package"),
             Route::Wardrobe { .. } => t("oneclient.routes.wardrobe"),

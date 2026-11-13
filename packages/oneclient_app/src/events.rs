@@ -173,7 +173,9 @@ impl EventPump {
                 Event::Game(GameEvent::Stage { cluster_id, stage }) => {
                     folded.saw_stage = true;
                     if stage == LaunchStage::Exited {
-                        crate::hooks::cloud_sync_signal(crate::hooks::CloudSignal::Exited(cluster_id));
+                        crate::hooks::cloud_sync_signal(crate::hooks::CloudSignal::Exited(
+                            cluster_id,
+                        ));
                     }
                     if stage.is_busy() {
                         folded.launched.push(cluster_id);
@@ -541,6 +543,7 @@ pub async fn start_launcher(
 
     crate::hooks::invalidate_profile_queries().await;
     crate::updater::spawn_update_check(auto_update, state.services.events.clone());
+    crate::servers::spawn_autostart(station);
     Ok(())
 }
 

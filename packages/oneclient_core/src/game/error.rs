@@ -64,6 +64,15 @@ pub enum GameError {
 
     #[error("start the game once on this version before changing this setting")]
     OptionsOutdated,
+
+    #[error("the game isn't running")]
+    NotRunning,
+
+    #[error("this Java installation has no jcmd; use a full JDK to take thread dumps")]
+    JcmdMissing,
+
+    #[error("thread dump failed: {0}")]
+    ThreadDump(String),
 }
 
 impl GameError {

@@ -12,7 +12,8 @@ pub(crate) mod test_support;
 mod welcome;
 
 pub(crate) use selection::{
-    archive_selected, default_selection, is_default_bundle, pkg_key, set_archive_selected,
+    UNCREATED_CLUSTER, archive_selected, bundle_plan, bundle_taken, default_selection,
+    is_default_bundle, is_default_file, pkg_key, set_archive_selected,
 };
 
 pub use account::OnboardingAccount;

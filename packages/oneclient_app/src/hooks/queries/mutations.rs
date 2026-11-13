@@ -1,9 +1,7 @@
 use freya::query::{Mutation, MutationCapability, QueriesStorage, UseMutation, use_mutation};
 use oneclient_common::domain::GameLoader;
 use oneclient_content::packages::LiveSync;
-use oneclient_core::BundleArchive;
-use oneclient_db::models::{ClusterId, ClusterKind, OverrideType};
-use std::collections::HashSet;
+use oneclient_db::models::{ClusterId, ClusterKind};
 use std::path::PathBuf;
 
 use super::bundles::{
@@ -142,36 +140,6 @@ pub async fn invalidate_profile_queries() {
     QueriesStorage::<ClusterProfileQuery>::invalidate_all().await;
     QueriesStorage::<ClusterSettingsQuery>::invalidate_all().await;
     QueriesStorage::<ListClustersQuery>::invalidate_all().await;
-}
-
-fn bundle_selection_overrides(
-    archives: &[BundleArchive],
-    selected: &[String],
-) -> Vec<(String, String, OverrideType)> {
-    let taken = |archive: &BundleArchive| selected.contains(&archive.manifest.name);
-
-    let mut kept: HashSet<String> = HashSet::new();
-    for archive in archives.iter().filter(|archive| taken(archive)) {
-        for file in archive.manifest.files.iter().filter(|file| file.enabled) {
-            kept.insert(file.kind.package_id());
-        }
-    }
-
-    let mut overrides = Vec::new();
-    for archive in archives.iter().filter(|archive| !taken(archive)) {
-        for file in archive.manifest.files.iter().filter(|file| file.enabled) {
-            let package_id = file.kind.package_id();
-            if kept.contains(&package_id) {
-                continue;
-            }
-            overrides.push((
-                archive.manifest.name.clone(),
-                package_id,
-                OverrideType::Removed,
-            ));
-        }
-    }
-    overrides
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -585,7 +553,11 @@ impl MutationCapability for ClusterMutation {
                                     .archives_for(content, &cluster.mc_version, cluster.mc_loader)
                                     .await
                                     .unwrap_or_default();
-                                let overrides = bundle_selection_overrides(&archives, selected);
+                                let (overrides, choices) = crate::view::onboarding::bundle_plan(
+                                    crate::view::onboarding::UNCREATED_CLUSTER,
+                                    &archives,
+                                    &selected.iter().cloned().collect(),
+                                );
                                 if let Err(err) = oneclient_core::set_bundle_package_overrides(
                                     cluster.id, &overrides, content,
                                 )
@@ -593,14 +565,6 @@ impl MutationCapability for ClusterMutation {
                                 {
                                     tracing::warn!(cluster_id = cluster.id, error = %err, "failed to record the bundle choices for the new instance");
                                 }
-                                let choices: Vec<_> = archives
-                                    .iter()
-                                    .filter(|archive| !archive.manifest.enabled)
-                                    .map(|archive| {
-                                        let name = &archive.manifest.name;
-                                        (name.clone(), selected.contains(name))
-                                    })
-                                    .collect();
                                 if let Err(err) = oneclient_content::bundles::set_bundle_choices(
                                     cluster.id, &choices, content,
                                 )

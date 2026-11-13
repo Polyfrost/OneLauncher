@@ -38,8 +38,11 @@ fn create_action(wizard: Wizard, picks: &Picks) -> Option<ClusterAction> {
         description: wizard.details.description_value(),
         tags: wizard.details.tags.read().clone(),
         cover_source: wizard.details.cover.read().clone(),
-        bundles: (picks.kind == ClusterKind::OneClient && picks.bundles.loaded)
-            .then(|| picks.bundles.taken()),
+        bundles: (picks.kind == ClusterKind::OneClient && picks.bundles.loaded).then(|| {
+            let mut picked: Vec<String> = picks.bundles.picked.iter().cloned().collect();
+            picked.sort();
+            picked
+        }),
         require_bundles: false,
         dedicated: picks.kind == ClusterKind::OneClient && picks.folder == FolderChoice::Dedicated,
         shared_group: match &picks.folder {
@@ -204,7 +207,8 @@ impl Component for CreateInstanceModal {
             query: use_state(String::new),
             loader: use_state(|| prefill_loader),
             loader_version: use_state(|| None::<String>),
-            declined: use_state(|| None::<HashSet<String>>),
+            picked: use_state(|| None::<HashSet<String>>),
+            editing: use_state(|| None::<String>),
             modpack_origin: use_state(|| ModpackOrigin::Browse),
             import_source: use_state(|| ImportSource::File),
             share_code: use_state(String::new),
@@ -241,6 +245,7 @@ impl Component for CreateInstanceModal {
         let index = picks.index;
         let mut step = wizard.step;
         let mut query = wizard.query;
+        let mut editing = wizard.editing;
 
         let invite = crate::invite_join::wizard_invite(
             self.invite,
@@ -311,6 +316,7 @@ impl Component for CreateInstanceModal {
                 if first {
                     close_cancel.call(());
                 } else {
+                    editing.set(None);
                     step.set(index.saturating_sub(1));
                 }
             })
@@ -344,6 +350,7 @@ impl Component for CreateInstanceModal {
                     }
                 } else {
                     query.set(String::new());
+                    editing.set(None);
                     step.set(index + 1);
                 }
             })

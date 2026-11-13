@@ -1,8 +1,11 @@
 use std::collections::HashSet;
 
 use oneclient_core::{BundleArchive, BundleFile};
+use oneclient_db::models::OverrideType;
 
 use crate::hooks::ClusterBundles;
+
+pub const UNCREATED_CLUSTER: i64 = 0;
 
 pub fn pkg_key(cluster_id: i64, bundle_name: &str, package_id: &str) -> String {
     format!("{cluster_id}|{bundle_name}|{package_id}")
@@ -86,6 +89,106 @@ pub fn set_archive_selected(
             selected.remove(&key);
         }
     }
+}
+
+pub fn bundle_plan(
+    cluster_id: i64,
+    archives: &[BundleArchive],
+    selected: &HashSet<String>,
+) -> (Vec<(String, String, OverrideType)>, Vec<(String, bool)>) {
+    let kept = kept_package_ids(cluster_id, archives, selected);
+    let overrides = archives
+        .iter()
+        .flat_map(|archive| archive_overrides(cluster_id, archive, selected, &kept))
+        .collect();
+    let choices = archives
+        .iter()
+        .filter(|archive| !archive.manifest.enabled)
+        .map(|archive| {
+            let taken = bundle_taken(cluster_id, archive, selected);
+            (archive.manifest.name.clone(), taken)
+        })
+        .collect();
+    (overrides, choices)
+}
+
+/// True once anything visible in the bundle was taken including one opted-in extra that would otherwise lose its dependencies
+pub fn bundle_taken(cluster_id: i64, archive: &BundleArchive, selected: &HashSet<String>) -> bool {
+    archive.manifest.files.iter().any(|file| {
+        !file.hidden
+            && selected.contains(&pkg_key(
+                cluster_id,
+                &archive.manifest.name,
+                &file.kind.package_id(),
+            ))
+    })
+}
+
+/// Bundles overlap deciding each archive alone recorded a removal for a package an accepted bundle was about to install
+fn kept_package_ids(
+    cluster_id: i64,
+    archives: &[BundleArchive],
+    selected: &HashSet<String>,
+) -> HashSet<String> {
+    let mut kept = HashSet::new();
+
+    for archive in archives {
+        let takes_hidden = bundle_taken(cluster_id, archive, selected);
+        for file in &archive.manifest.files {
+            let package_id = file.kind.package_id();
+            let wanted = if file.hidden {
+                takes_hidden
+            } else {
+                selected.contains(&pkg_key(cluster_id, &archive.manifest.name, &package_id))
+            };
+            if wanted {
+                kept.insert(package_id);
+            }
+        }
+    }
+
+    kept
+}
+
+fn archive_overrides(
+    cluster_id: i64,
+    archive: &BundleArchive,
+    selected: &HashSet<String>,
+    kept_elsewhere: &HashSet<String>,
+) -> Vec<(String, String, OverrideType)> {
+    let bundle_name = &archive.manifest.name;
+    let wants = |file: &BundleFile| {
+        selected.contains(&pkg_key(cluster_id, bundle_name, &file.kind.package_id()))
+    };
+
+    // Hidden files follow the bundle kept if anything from it was taken dropped if not
+    let takes_hidden = bundle_taken(cluster_id, archive, selected);
+
+    let mut overrides = Vec::new();
+    for file in &archive.manifest.files {
+        let wanted = if file.hidden {
+            takes_hidden
+        } else {
+            wants(file)
+        };
+
+        let override_type = match (wanted, file.enabled) {
+            // Matches the manifest default nothing to record
+            (true, true) | (false, false) => continue,
+            // Opting into a mod the bundle ships turned off
+            (true, false) => OverrideType::Enabled,
+            // Only really declined if no bundle the user took ships the same package
+            (false, true) => {
+                if kept_elsewhere.contains(&file.kind.package_id()) {
+                    continue;
+                }
+                OverrideType::Removed
+            }
+        };
+
+        overrides.push((bundle_name.clone(), file.kind.package_id(), override_type));
+    }
+    overrides
 }
 
 #[cfg(test)]
@@ -202,6 +305,36 @@ mod tests {
         set_archive_selected(1, pvp, false, &mut selected);
         assert!(!archive_selected(1, pvp, &selected));
         assert!(selected.is_empty());
+    }
+
+    #[test]
+    fn untouched_new_instance_picks_record_nothing_for_default_bundles() {
+        let archives = vec![
+            archive(
+                "QoL",
+                true,
+                vec![
+                    file("qol-a", true, false),
+                    file("qol-opt", false, false),
+                    file("qol-dep", true, true),
+                ],
+            ),
+            archive("Utility", true, vec![file("util-a", true, false)]),
+            archive("SkyBlock", false, vec![file("sb-a", true, false)]),
+        ];
+        let mut picked = HashSet::new();
+        for archive in archives.iter().filter(|a| is_default_bundle(a)) {
+            set_archive_selected(UNCREATED_CLUSTER, archive, true, &mut picked);
+        }
+
+        let (overrides, choices) = bundle_plan(UNCREATED_CLUSTER, &archives, &picked);
+
+        let skyblock = "OneClient 1.21.11 Fabric [SkyBlock]";
+        assert_eq!(
+            overrides,
+            vec![(skyblock.to_string(), "sb-a".to_string(), OverrideType::Removed)]
+        );
+        assert_eq!(choices, vec![(skyblock.to_string(), false)]);
     }
 
     #[test]

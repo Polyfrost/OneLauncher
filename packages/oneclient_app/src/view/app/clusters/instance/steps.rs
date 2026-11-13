@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use freya::prelude::*;
 use oneclient_cluster::naming::{MAX_NAME_CHARS, validate_instance_name};
-use oneclient_core::BundleArchive;
 use oneclient_core::clusters::DirTarget;
+use oneclient_core::{BundleArchive, BundleFile};
 
 use super::cards::{
     BUNDLE_CARD_H, BUNDLE_COLUMNS, CARD_RADIUS, CellCard, LOADER_CARD_H, LOADER_COLUMNS,
@@ -21,7 +21,8 @@ use super::model::{
 use super::model::{kind_bit, version_kinds};
 use super::rail::version_art;
 use crate::components::{
-    Button, Dropdown, GRID_GAP, Icon, IconType, ScrollArea, TextInput, centered_spinner,
+    Button, CARD_GRID_H, Dropdown, GRID_GAP, Icon, IconType, OptionalModCard, ScrollArea,
+    TextInput, centered_spinner,
 };
 use crate::hooks::{
     ClusterAction, settled_or_loading, use_cluster_mutation, use_clusters, use_dispatch,
@@ -31,6 +32,10 @@ use crate::i18n::{t, tf};
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, centered_note, divider, fixed_grid, note};
 use crate::utils::bundle_display_name;
+use crate::view::app::cluster::package_manager::make_row;
+use crate::view::onboarding::{UNCREATED_CLUSTER, is_default_file, pkg_key};
+
+const MOD_COLUMNS: usize = 2;
 use oneclient_common::GameLoader;
 use oneclient_content::packages::release_migration::migration_check;
 use oneclient_events::{Choice, Prompt};
@@ -148,7 +153,8 @@ fn type_step(mut wizard: Wizard, picks: &Picks) -> Element {
                             if !blocked {
                                 wizard.choice.set(choice);
                                 wizard.version.set(None);
-                                wizard.declined.set(None);
+                                wizard.picked.set(None);
+                                wizard.editing.set(None);
                             }
                         })
                         .into(),
@@ -477,8 +483,13 @@ fn dimmed(element: Element, disabled: bool, height: Size) -> Element {
 }
 
 fn select_loader(mut wizard: Wizard, choice: LoaderChoice) {
+    if *wizard.loader.peek() == choice {
+        return;
+    }
     wizard.loader.set(choice);
     wizard.loader_version.set(None);
+    wizard.picked.set(None);
+    wizard.editing.set(None);
 }
 
 fn loader_step(wizard: Wizard, picks: &Picks) -> Element {
@@ -674,6 +685,8 @@ fn version_controls(mut wizard: Wizard, picks: &Picks) -> Element {
                             let mask = *wizard.filter.peek();
                             wizard.filter.set(mask ^ kind_bit(*kind));
                             wizard.version.set(None);
+                            wizard.picked.set(None);
+                            wizard.editing.set(None);
                         }
                     }),
                 )
@@ -743,8 +756,10 @@ fn version_list(mut wizard: Wizard, picks: &Picks) -> Element {
                 &row,
                 is_selected,
                 (move |()| {
-                    if !disabled {
+                    if !disabled && wizard.version.peek().as_ref() != Some(&id) {
                         wizard.version.set(Some(id.clone()));
+                        wizard.picked.set(None);
+                        wizard.editing.set(None);
                     }
                 })
                 .into(),
@@ -842,19 +857,20 @@ fn list_reset_key(picks: &Picks, needle: &str) -> u64 {
     hasher.finish()
 }
 
+fn bundle_file_name(file: &BundleFile, names: &HashMap<String, String>) -> String {
+    names
+        .get(&file.kind.package_id())
+        .cloned()
+        .unwrap_or_else(|| super::tidy_file_name(&file.display_name()))
+}
+
 fn bundle_blurb(archive: &BundleArchive, names: &HashMap<String, String>) -> String {
     let mut listed: Vec<String> = archive
         .manifest
         .files
         .iter()
         .filter(|file| file.enabled && !file.hidden)
-        .map(|file| {
-            let package_id = file.kind.package_id();
-            names
-                .get(&package_id)
-                .cloned()
-                .unwrap_or_else(|| super::tidy_file_name(&file.display_name()))
-        })
+        .map(|file| bundle_file_name(file, names))
         .collect();
 
     let total = listed.len();
@@ -873,6 +889,36 @@ fn bundle_blurb(archive: &BundleArchive, names: &HashMap<String, String>) -> Str
     }
 }
 
+fn update_picked(
+    mut wizard: Wizard,
+    defaults: &HashSet<String>,
+    change: impl FnOnce(&mut HashSet<String>),
+) {
+    let mut next = wizard
+        .picked
+        .read()
+        .clone()
+        .unwrap_or_else(|| defaults.clone());
+    change(&mut next);
+    wizard.picked.set(Some(next));
+}
+
+fn file_keys(archive: &BundleArchive, keep: impl Fn(&BundleFile) -> bool) -> Vec<String> {
+    archive
+        .manifest
+        .files
+        .iter()
+        .filter(|file| !file.hidden && keep(file))
+        .map(|file| {
+            pkg_key(
+                UNCREATED_CLUSTER,
+                &archive.manifest.name,
+                &file.kind.package_id(),
+            )
+        })
+        .collect()
+}
+
 fn bundles_step(mut wizard: Wizard, picks: &Picks) -> Element {
     if picks.bundles.archives.is_empty() {
         return centered_note(if picks.bundles.loaded {
@@ -880,6 +926,17 @@ fn bundles_step(mut wizard: Wizard, picks: &Picks) -> Element {
         } else {
             t("oneclient.clusters.instance.steps.bundles.loading")
         });
+    }
+
+    let editing = wizard.editing.read().clone();
+    if let Some(archive) = editing.and_then(|name| {
+        picks
+            .bundles
+            .archives
+            .iter()
+            .find(|archive| archive.manifest.name == name)
+    }) {
+        return bundle_mods(wizard, picks, archive);
     }
 
     let cards: Vec<Element> = picks
@@ -894,9 +951,28 @@ fn bundles_step(mut wizard: Wizard, picks: &Picks) -> Element {
                 .iter()
                 .filter(|file| file.enabled && !file.hidden)
                 .count();
+            let taken = picks.bundles.taken(archive);
+            let visible = file_keys(archive, |_| true);
+            let mut turn_on = file_keys(archive, is_default_file);
+            if turn_on.is_empty() {
+                turn_on = visible.clone();
+            }
+
+            let edit = Button::new()
+                .secondary()
+                .small()
+                .text(t("oneclient.common.edit"))
+                .on_press({
+                    let name = name.clone();
+                    move |e: Event<PressEventData>| {
+                        e.stop_propagation();
+                        wizard.editing.set(Some(name.clone()));
+                    }
+                })
+                .into_element();
 
             cell_card(CellCard {
-                id: name.clone(),
+                id: name,
                 title: bundle_display_name(archive),
                 blurb: bundle_blurb(archive, &picks.bundles.names),
                 meta: Some(match count {
@@ -906,21 +982,21 @@ fn bundles_step(mut wizard: Wizard, picks: &Picks) -> Element {
                         &[&many],
                     ),
                 }),
-                corner: None,
-                selected: !picks.bundles.declined.contains(&name),
+                corner: Some(edit),
+                selected: taken,
                 checkbox: true,
                 on_press: {
-                    let defaults = picks.bundles.declined.clone();
+                    let defaults = picks.bundles.picked.clone();
                     (move |()| {
-                        let mut next = wizard
-                            .declined
-                            .read()
-                            .clone()
-                            .unwrap_or_else(|| defaults.clone());
-                        if !next.remove(&name) {
-                            next.insert(name.clone());
-                        }
-                        wizard.declined.set(Some(next));
+                        update_picked(wizard, &defaults, |picked| {
+                            if taken {
+                                for key in &visible {
+                                    picked.remove(key);
+                                }
+                            } else {
+                                picked.extend(turn_on.iter().cloned());
+                            }
+                        });
                     })
                     .into()
                 },
@@ -929,4 +1005,90 @@ fn bundles_step(mut wizard: Wizard, picks: &Picks) -> Element {
         .collect();
 
     fixed_grid(cards, BUNDLE_COLUMNS, BUNDLE_CARD_H, GRID_GAP)
+}
+
+fn bundle_mods(mut wizard: Wizard, picks: &Picks, archive: &BundleArchive) -> Element {
+    let rows: Vec<Element> = archive
+        .manifest
+        .files
+        .iter()
+        .filter(|file| !file.hidden)
+        .map(|file| {
+            let key = pkg_key(
+                UNCREATED_CLUSTER,
+                &archive.manifest.name,
+                &file.kind.package_id(),
+            );
+            let provider = file.kind.metadata_provider();
+            let entry = make_row(
+                file.kind.package_id(),
+                Some(archive.manifest.name.clone()),
+                provider,
+                file.size,
+                Vec::new(),
+                picks.bundles.picked.contains(&key),
+                file.enabled,
+                file.is_github_hosted(),
+                None,
+                picks.bundles.meta.get(&(provider, file.kind.package_id())),
+                bundle_file_name(file, &picks.bundles.names),
+                false,
+                false,
+                true,
+            );
+            let defaults = picks.bundles.picked.clone();
+            let on_toggle: EventHandler<()> = (move |()| {
+                update_picked(wizard, &defaults, |picked| {
+                    if !picked.remove(&key) {
+                        picked.insert(key.clone());
+                    }
+                });
+            })
+            .into();
+
+            OptionalModCard {
+                entry,
+                cluster_id: UNCREATED_CLUSTER,
+                on_toggle,
+            }
+            .into_element()
+        })
+        .collect();
+
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .height(Size::fill())
+        .content(Content::Flex)
+        .spacing(12.)
+        .child(
+            rect()
+                .horizontal()
+                .width(Size::fill())
+                .cross_align(Alignment::Center)
+                .spacing(10.)
+                .child(
+                    Button::new()
+                        .secondary()
+                        .small()
+                        .text(t("oneclient.common.back"))
+                        .on_press(move |_: Event<PressEventData>| wizard.editing.set(None)),
+                )
+                .child(
+                    label()
+                        .text(bundle_display_name(archive))
+                        .font_size(text_size(14.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .max_lines(1)
+                        .color(colors::fg_primary()),
+                ),
+        )
+        .child(
+            ScrollArea::new()
+                .width(Size::fill())
+                .height(Size::flex(1.0))
+                .scrollbar_gutter(true)
+                .child(fixed_grid(rows, MOD_COLUMNS, CARD_GRID_H, GRID_GAP)),
+        )
+        .into_element()
 }

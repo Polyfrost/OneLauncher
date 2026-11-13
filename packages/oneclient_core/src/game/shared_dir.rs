@@ -1518,7 +1518,7 @@ async fn skip_shadowed_bundle_mods(
     let shadowed = shadowed_bundle_hashes(
         services,
         cluster.id,
-        cluster.mc_loader == GameLoader::Fabric,
+        matches!(cluster.mc_loader, GameLoader::Fabric | GameLoader::Ornithe),
         &mods,
     )
     .await
@@ -1653,7 +1653,8 @@ pub async fn shadowed_bundle_mods(state: &LauncherState, cluster_id: i64) -> Dup
         .await
         .ok()
         .flatten()
-        .is_some_and(|row| row.mc_loader == GameLoader::Fabric as i64);
+        .and_then(|row| GameLoader::from_repr(row.mc_loader as u8))
+        .is_some_and(|loader| matches!(loader, GameLoader::Fabric | GameLoader::Ornithe));
 
     shadowed_bundle_hashes(services, cluster_id, loader_picks_newer, &mods).await
 }

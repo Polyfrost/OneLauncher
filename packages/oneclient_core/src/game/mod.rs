@@ -34,7 +34,10 @@ pub use fabric::{mods_folder_argument, uses_cluster_mods_folder};
 pub use folder_packs::{
     FolderPack, list_folder_packs, remove_folder_pack, set_folder_pack_enabled,
 };
-pub use game_options::{read_graphics_backend, write_graphics_backend};
+pub use game_options::{
+    changed_options, export_options, is_boolean_option, read_graphics_backend, read_options,
+    write_graphics_backend, write_options,
+};
 pub use heal::clear_zeroed_files;
 pub use launch::{
     LaunchedGame, crash_mod_issues, is_running, launch_cluster, launch_cluster_with, repair_cluster,

@@ -833,6 +833,7 @@
   "oneclient.cluster.settings.instance.title": "Instance Details",
   "oneclient.cluster.settings.java.automatic": "Automatic",
   "oneclient.cluster.settings.java.description": "The Java runtime used to launch this cluster.",
+  "oneclient.cluster.settings.java.manage": "Manage Java runtimes",
   "oneclient.cluster.settings.java.none": "No runtimes installed",
   "oneclient.cluster.settings.java.title": "Java Runtime",
   "oneclient.cluster.settings.jvm_args.description": "Extra arguments passed to Java. Separate them with spaces; quote values containing spaces.",

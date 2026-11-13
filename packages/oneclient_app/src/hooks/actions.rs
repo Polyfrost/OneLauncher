@@ -560,6 +560,48 @@ impl Actions {
         });
     }
 
+    pub fn save_game_options(&self, game_dir: PathBuf, edits: HashMap<String, String>) {
+        spawn_in_window(async move {
+            let Ok(state) = launcher::state() else { return };
+            match oneclient_core::game::write_options(&game_dir, &edits).await {
+                Ok(()) => QueriesStorage::<GraphicsBackendQuery>::invalidate_all().await,
+                Err(err) => state
+                    .services
+                    .events
+                    .notify(t("oneclient.actions.game_options_failed"))
+                    .body(err.to_string())
+                    .error()
+                    .send(),
+            }
+        });
+    }
+
+    pub fn export_game_options(&self, game_dir: PathBuf, edits: HashMap<String, String>) {
+        spawn_in_window(async move {
+            let Ok(state) = launcher::state() else { return };
+            let Some(file) = rfd::AsyncFileDialog::new()
+                .set_title(t("oneclient.clusters.export.save_file_ellipsis"))
+                .set_file_name("options.txt")
+                .add_filter("TXT", &["txt"])
+                .save_file()
+                .await
+            else {
+                return;
+            };
+            if let Err(err) =
+                oneclient_core::game::export_options(&game_dir, &edits, file.path()).await
+            {
+                state
+                    .services
+                    .events
+                    .notify(t("oneclient.actions.game_options_failed"))
+                    .body(err.to_string())
+                    .error()
+                    .send();
+            }
+        });
+    }
+
     pub fn create_and_assign_cluster_profile(
         &self,
         cluster_id: ClusterId,

@@ -33,7 +33,7 @@ as well as our [GitHub releases](https://github.com/Polyfrost/OneLauncher/releas
 ```
 cd Downloads
 ```
-2. Then you can install the package:
+2. Then you can install the package: (change filename with the one you downloaded)
 ```
 flatpak install ./OneClient_2.10.2_linux_x86_64.flatpak 
 ```

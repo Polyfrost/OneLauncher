@@ -128,11 +128,43 @@ fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
 
 /// Replaces the world with the one in the backup, only while the server is stopped
 pub async fn restore_backup(dir: &Path, backup: &Path) -> LauncherResult<()> {
-    let world = dir.join(world_name(dir).await);
-    if tokio::fs::try_exists(&world).await.unwrap_or(false) {
-        tokio::fs::remove_dir_all(&world).await?;
+    let staging = dir.join(".restore");
+    let _ = tokio::fs::remove_dir_all(&staging).await;
+    let result = swap_in_backup(dir, backup, &staging).await;
+    let _ = tokio::fs::remove_dir_all(&staging).await;
+    result
+}
+
+async fn swap_in_backup(dir: &Path, backup: &Path, staging: &Path) -> LauncherResult<()> {
+    polyio::extract_zip(backup, staging).await?;
+    let mut extracted = None;
+    let mut entries = tokio::fs::read_dir(staging).await?;
+    while let Some(entry) = entries.next_entry().await? {
+        if entry.file_type().await?.is_dir() {
+            extracted = Some(entry.path());
+            break;
+        }
     }
-    polyio::extract_zip(backup, dir).await?;
+    let extracted = extracted
+        .ok_or_else(|| LauncherError::Server("the backup has no world folder in it".into()))?;
+
+    let name = world_name(dir).await;
+    let world = dir.join(&name);
+    let aside = dir.join(format!(".{name}-replaced"));
+    let had_world = tokio::fs::try_exists(&world).await.unwrap_or(false);
+    if had_world {
+        let _ = tokio::fs::remove_dir_all(&aside).await;
+        tokio::fs::rename(&world, &aside).await?;
+    }
+    if let Err(err) = tokio::fs::rename(&extracted, &world).await {
+        if had_world {
+            let _ = tokio::fs::rename(&aside, &world).await;
+        }
+        return Err(err.into());
+    }
+    if had_world {
+        let _ = tokio::fs::remove_dir_all(&aside).await;
+    }
     Ok(())
 }
 

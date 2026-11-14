@@ -15,7 +15,7 @@ pub use chat::{
     start_invite_join,
 };
 
-pub use debounce::use_debounced;
+pub use debounce::{use_debounced, use_debounced_save};
 pub use overlay_claims::{
     OverlayClaims, use_overlay_claim, use_overlay_claim_when, use_overlay_claims,
     use_provide_overlay_claims,

@@ -13,7 +13,7 @@ use crate::hooks::{
     cluster_content_items, content_type_for_slug, package_meta_batch, project_detail,
     use_bundle_overrides, use_bundles_with_status, use_cluster_content, use_dispatch,
     use_installs_snapshot, use_link_confirm, use_package_meta_batch, use_package_project,
-    use_package_versions_when, version_list, versions_total,
+    use_package_versions_when, use_server_hub, version_list, versions_total,
 };
 use crate::hooks::{settled_or_loading, use_cluster, use_clusters};
 use crate::i18n::tf;
@@ -27,7 +27,7 @@ use super::{
     ModpackLoaderPrompt, ModpackVersionPrompt, PackageBanner, Thumbnail, WorldInstallPrompt,
     activity_badge, cluster_version, cluster_versions, installed_badge, installed_map,
     instance_choices, loader_options, minecraft_choices, preferred_version, use_saved_override,
-    use_version_filter,
+    use_server_browse, use_version_filter,
 };
 use crate::utils::abbreviate_number;
 
@@ -57,6 +57,7 @@ struct Installer {
     add_to_cluster: bool,
     cluster_name: Option<String>,
     incompatible: IncompatibleMode,
+    server_id: Option<String>,
 }
 
 impl Installer {
@@ -91,6 +92,16 @@ impl Installer {
             return;
         }
 
+        if let Some(server_id) = self.server_id.clone() {
+            crate::servers::install_mod(
+                self.dispatch.station(),
+                server_id,
+                self.provider,
+                project_id,
+                version_id,
+            );
+            return;
+        }
         if self.add_to_cluster {
             self.dispatch.import_modpack(
                 self.cluster_id,
@@ -218,8 +229,11 @@ impl Component for BrowserPackage {
         let add_to_cluster = self.add_to_cluster && content_type == ContentType::Modpack;
 
         let cluster = use_cluster(cluster_id);
-        let search_override =
-            use_saved_override(cluster_id, &self.package_type).filter(|_| !is_modpack_type);
+        let server = use_server_browse();
+        let server_id = server.as_ref().map(|s| s.id.clone());
+        let hub = use_server_hub();
+        let search_override = use_saved_override(cluster_id, &self.package_type)
+            .filter(|_| !is_modpack_type && server.is_none());
         let (game_version, loader, incompatible) =
             use_version_filter(cluster_id, content_type, search_override.clone());
 
@@ -258,20 +272,28 @@ impl Component for BrowserPackage {
             _ => all_versions,
         };
 
-        let (installing, waiting) = use_installs_snapshot().package_busy(
-            content_type == ContentType::Modpack,
-            cluster_id,
-            provider,
-            &project_id,
-        );
+        let installs = use_installs_snapshot();
+        let (installing, waiting) = match &server_id {
+            Some(id) => (hub.get(id).installing.contains(&project_id), false),
+            None => installs.package_busy(
+                content_type == ContentType::Modpack,
+                cluster_id,
+                provider,
+                &project_id,
+            ),
+        };
 
-        let installed = installed_map(
+        let mut installed = installed_map(
             cluster_content_items(&use_cluster_content(cluster_id, content_type)),
             &bundles_with_status_items(&use_bundles_with_status(cluster_id)),
             &bundle_overrides_map(&use_bundle_overrides(cluster_id)),
-        )
-        .remove(&(provider, project_id.clone()))
-        .filter(|_| !is_datapack);
+        );
+        if let Some(server) = &server {
+            installed = server.installed.clone();
+        }
+        let installed = installed
+            .remove(&(provider, project_id.clone()))
+            .filter(|_| !is_datapack);
 
         let project = project_detail(&project_query);
 
@@ -291,12 +313,24 @@ impl Component for BrowserPackage {
             add_to_cluster,
             cluster_name: cluster.as_ref().map(|c| c.name.clone()),
             incompatible,
+            server_id: server_id.clone(),
         };
 
         let remove_id = project.as_ref().map(|p| p.id.clone());
         let remove_dispatch = dispatch.clone();
         let (on_remove, remove_dialog) = use_shared_delete(cluster_id, move |(name, hash)| {
-            if let Some(project_id) = &remove_id {
+            if let Some(server_id) = server_id.clone() {
+                crate::servers::run(
+                    crate::i18n::t("oneclient.servers.mods.remove_failed"),
+                    async move {
+                        let file = oneclient_core::servers::server_dir(&server_id)?
+                            .join("mods")
+                            .join(hash);
+                        tokio::fs::remove_file(file).await?;
+                        Ok(())
+                    },
+                );
+            } else if let Some(project_id) = &remove_id {
                 remove_dispatch.remove_package_version(
                     cluster_id,
                     provider,

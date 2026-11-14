@@ -49,16 +49,62 @@ pub async fn resolve_required(
     cluster_id: i64,
     ctx: &ContentCtx,
 ) -> ContentResult<DependencyResolution> {
-    let mut resolution = DependencyResolution::default();
     if !root.dependencies.iter().any(is_required) {
-        return Ok(resolution);
+        return Ok(DependencyResolution::default());
     }
-
-    let provider = ctx.providers.get(provider_id)?;
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
-
     // Seeded with installed projects and the root against refetches and self-referencing graphs
-    let mut seen = installed_project_ids(provider_id, cluster_id, ctx).await?;
+    let seen = installed_project_ids(provider_id, cluster_id, ctx).await?;
+    walk_required(provider_id, root, &cluster, seen, Some(cluster_id), ctx).await
+}
+
+pub async fn resolve_required_for(
+    provider_id: ProviderId,
+    root: &VersionDetail,
+    mc_version: &str,
+    loader: GameLoader,
+    installed: HashSet<String>,
+    ctx: &ContentCtx,
+) -> ContentResult<DependencyResolution> {
+    if !root.dependencies.iter().any(is_required) {
+        return Ok(DependencyResolution::default());
+    }
+    let target = detached_row(mc_version, loader);
+    walk_required(provider_id, root, &target, installed, None, ctx).await
+}
+
+fn detached_row(mc_version: &str, loader: GameLoader) -> ClusterRow {
+    ClusterRow {
+        id: 0,
+        name: String::new(),
+        folder_name: String::new(),
+        setting_profile_name: None,
+        mc_version: mc_version.into(),
+        mc_loader: loader as i64,
+        stage: 0,
+        mc_loader_version: None,
+        created_at: None,
+        last_played: None,
+        overall_played: None,
+        linked_modpack_hash: None,
+        kind: 0,
+        user_created: 0,
+        description: None,
+        tags: "[]".into(),
+        cover_path: None,
+    }
+}
+
+async fn walk_required(
+    provider_id: ProviderId,
+    root: &VersionDetail,
+    cluster: &ClusterRow,
+    mut seen: HashSet<String>,
+    cluster_id: Option<i64>,
+    ctx: &ContentCtx,
+) -> ContentResult<DependencyResolution> {
+    let mut resolution = DependencyResolution::default();
+    let provider = ctx.providers.get(provider_id)?;
     seen.insert(root.project_id.clone());
 
     // Read only once something fails to resolve, it opens every jar in the cluster
@@ -78,7 +124,7 @@ pub async fn resolve_required(
             continue;
         }
 
-        let resolved = match resolve_one(provider, &dep, &cluster, ctx).await {
+        let resolved = match resolve_one(provider, &dep, cluster, ctx).await {
             Ok(Some(resolved)) => resolved,
             Ok(None) => {
                 if !installed_under_mod_id(provider, &dep, cluster_id, &mut installed_mod_ids, ctx)
@@ -503,11 +549,11 @@ async fn installed_project_ids(
 async fn installed_under_mod_id(
     provider: &dyn PackageProvider,
     dep: &VersionDependency,
-    cluster_id: i64,
+    cluster_id: Option<i64>,
     installed: &mut Option<HashSet<String>>,
     ctx: &ContentCtx,
 ) -> bool {
-    let Some(project_id) = &dep.project_id else {
+    let (Some(project_id), Some(cluster_id)) = (&dep.project_id, cluster_id) else {
         return false;
     };
     let Ok(project) = provider.get_project(project_id, ctx).await else {

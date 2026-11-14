@@ -12,7 +12,8 @@ use crate::components::{
     memory_field, toggle_controlled, validate_number,
 };
 use crate::hooks::{
-    ServerFiles, settled_or_loading, use_debounced, use_server, use_server_files, use_server_hub,
+    ServerFiles, settled_or_loading, use_debounced_save, use_server, use_server_files,
+    use_server_hub,
 };
 use crate::i18n::{t, tf};
 use crate::servers;
@@ -615,6 +616,12 @@ impl Component for SidebarItem {
     }
 }
 
+fn row_key(parts: &[&str]) -> DiffKey {
+    let mut hasher = std::hash::DefaultHasher::new();
+    std::hash::Hash::hash(parts, &mut hasher);
+    DiffKey::U64(std::hash::Hasher::finish(&hasher))
+}
+
 #[derive(PartialEq)]
 struct PropRow {
     server_id: String,
@@ -628,24 +635,20 @@ struct PropRow {
 }
 
 impl Component for PropRow {
+    fn render_key(&self) -> DiffKey {
+        row_key(&[&self.server_id, self.key])
+    }
+
     fn render(&self) -> impl IntoElement {
         let initial = self.value.clone();
         let mut value = use_state(move || initial);
-        let saved = use_state({
-            let initial = self.value.clone();
-            move || initial
-        });
-        let debounced = use_debounced(value.read().clone(), Duration::from_millis(500));
         {
             let (id, key) = (self.server_id.clone(), self.key);
-            let mut saved = saved;
-            use_side_effect(move || {
-                let next = debounced.read().clone();
-                if next != *saved.peek() {
-                    saved.set(next.clone());
-                    servers::set_property(id.clone(), key, next);
-                }
-            });
+            use_debounced_save(
+                value.read().clone(),
+                Duration::from_millis(500),
+                move |next| servers::set_property(id.clone(), key, next),
+            );
         }
 
         let current = value.read().clone();
@@ -897,24 +900,20 @@ struct MotdRow {
 }
 
 impl Component for MotdRow {
+    fn render_key(&self) -> DiffKey {
+        row_key(&[&self.server.id, "MotdRow"])
+    }
+
     fn render(&self) -> impl IntoElement {
         let initial = self.files.props.get_or("motd", "A Minecraft Server");
         let motd = use_state(move || initial);
-        let debounced = use_debounced(motd.read().clone(), Duration::from_millis(600));
-        let saved = use_state({
-            let initial = self.files.props.get_or("motd", "A Minecraft Server");
-            move || initial
-        });
         {
             let id = self.server.id.clone();
-            let mut saved = saved;
-            use_side_effect(move || {
-                let next = debounced.read().clone();
-                if next != *saved.peek() {
-                    saved.set(next.clone());
-                    servers::set_property(id.clone(), "motd", next);
-                }
-            });
+            use_debounced_save(
+                motd.read().clone(),
+                Duration::from_millis(600),
+                move |next| servers::set_property(id.clone(), "motd", next),
+            );
         }
 
         let live = use_server_hub().get(&self.server.id);
@@ -1013,22 +1012,25 @@ struct MemoryRow {
 }
 
 impl Component for MemoryRow {
+    fn render_key(&self) -> DiffKey {
+        row_key(&[&self.server.id, "MemoryRow"])
+    }
+
     fn render(&self) -> impl IntoElement {
         let initial = self.server.memory_mb.to_string();
         let memory = use_state(move || initial);
-        let debounced = use_debounced(memory.read().clone(), Duration::from_millis(600));
         let id = self.server.id.clone();
-        let current = self.server.memory_mb;
-        let mut saved = use_state(move || current);
-        use_side_effect(move || {
-            if let Ok(mb) = debounced.read().trim().parse::<u32>()
-                && mb >= 512
-                && mb != *saved.peek()
-            {
-                saved.set(mb);
-                servers::update(id.clone(), move |s| s.memory_mb = mb);
-            }
-        });
+        use_debounced_save(
+            memory.read().clone(),
+            Duration::from_millis(600),
+            move |next: String| {
+                if let Ok(mb) = next.trim().parse::<u32>()
+                    && mb >= 512
+                {
+                    servers::update(id.clone(), move |s| s.memory_mb = mb);
+                }
+            },
+        );
         settings_row(
             IconType::Database01,
             t("oneclient.servers.settings.memory.title"),
@@ -1055,20 +1057,22 @@ struct JvmRow {
 }
 
 impl Component for JvmRow {
+    fn render_key(&self) -> DiffKey {
+        row_key(&[&self.server.id, "JvmRow"])
+    }
+
     fn render(&self) -> impl IntoElement {
         let initial = self.server.jvm_args.clone();
         let args = use_state(move || initial);
-        let debounced = use_debounced(args.read().clone(), Duration::from_millis(600));
         let id = self.server.id.clone();
-        let current = self.server.jvm_args.clone();
-        let mut saved = use_state(move || current);
-        use_side_effect(move || {
-            let next = debounced.read().trim().to_string();
-            if next != *saved.peek() {
-                saved.set(next.clone());
+        use_debounced_save(
+            args.read().clone(),
+            Duration::from_millis(600),
+            move |next: String| {
+                let next = next.trim().to_string();
                 servers::update(id.clone(), move |s| s.jvm_args = next);
-            }
-        });
+            },
+        );
         let java = self
             .server
             .java_major

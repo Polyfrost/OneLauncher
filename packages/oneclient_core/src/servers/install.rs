@@ -31,6 +31,41 @@ async fn version_info(state: &LauncherState, mc_version: &str) -> LauncherResult
     )
 }
 
+async fn loader_java(state: &LauncherState, server: &LocalServer) -> Option<u32> {
+    if !server.loader.is_modded() {
+        return None;
+    }
+    let mc = state.services.mc();
+    let mut metadata = state.metadata.lock().await;
+    let (version, _, _) =
+        crate::game::resolve_minecraft_version(&mut metadata, &mc, &server.mc_version)
+            .await
+            .ok()?;
+    let loader_version = crate::game::get_loader_version(
+        &mut metadata,
+        &mc,
+        &server.mc_version,
+        server.loader,
+        None,
+    )
+    .await
+    .ok()
+    .flatten();
+    drop(metadata);
+    crate::game::download_version_info(
+        &mc,
+        None,
+        &version,
+        server.loader,
+        loader_version.as_ref(),
+        false,
+    )
+    .await
+    .ok()?
+    .java_version
+    .map(|java| java.major_version)
+}
+
 pub async fn java_for(state: &LauncherState, server: &LocalServer) -> LauncherResult<PathBuf> {
     if let Some(path) = server.java_path.as_ref().filter(|p| p.exists()) {
         return Ok(path.clone());
@@ -114,11 +149,14 @@ pub async fn install_server(
     tokio::fs::create_dir_all(&dir).await?;
 
     let info = version_info(state, &server.mc_version).await?;
-    let major = info
-        .java_version
-        .as_ref()
-        .map(|java| java.major_version)
-        .ok_or_else(|| fail("this version does not say which Java it needs"))?;
+    let major = match loader_java(state, server).await {
+        Some(major) => major,
+        None => info
+            .java_version
+            .as_ref()
+            .map(|java| java.major_version)
+            .ok_or_else(|| fail("this version does not say which Java it needs"))?,
+    };
     server.java_major = Some(major);
     let java = java_for(state, server).await?;
 
@@ -181,6 +219,18 @@ pub async fn install_server(
             server.loader_version = Some(loader);
             forge_launch(&dir).await?
         }
+        GameLoader::Ornithe => {
+            download(
+                state,
+                &vanilla.url,
+                &dir.join(SERVER_JAR),
+                Some(&vanilla.sha1),
+            )
+            .await?;
+            let (loader, launch) = ornithe_launch(state, server, &dir).await?;
+            server.loader_version = Some(loader);
+            launch
+        }
         other => return Err(fail(format!("{other} servers are not supported yet"))),
     };
 
@@ -188,17 +238,159 @@ pub async fn install_server(
     save_server(server).await
 }
 
-fn installer_url(loader: GameLoader, mc_version: &str, version: &str) -> String {
-    if loader == GameLoader::NeoForge {
-        return format!(
-            "https://maven.neoforged.net/releases/net/neoforged/neoforge/{version}/neoforge-{version}-installer.jar"
-        );
+const ORNITHE_META: &str = "https://meta.ornithemc.net/v3/versions/gen2/fabric-loader";
+const ORNITHE_LIBRARIES: &str = "https://meta.ornithemc.net/v3/versions/gen2/libraries";
+const ORNITHE_SERVER_JAR: &str = "server-ornithe.jar";
+
+#[derive(Deserialize)]
+struct OrnitheProfile {
+    #[serde(rename = "mainClass")]
+    main_class: String,
+    #[serde(default)]
+    arguments: OrnitheArguments,
+    libraries: Vec<OrnitheLibrary>,
+}
+
+#[derive(Default, Deserialize)]
+struct OrnitheArguments {
+    #[serde(default)]
+    jvm: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct OrnitheLibrary {
+    name: String,
+    url: String,
+    sha1: Option<String>,
+}
+
+fn maven_path(coordinate: &str) -> Option<String> {
+    let mut parts = coordinate.split(':');
+    let (group, artifact, version) = (parts.next()?, parts.next()?, parts.next()?);
+    if parts.next().is_some()
+        || [group, artifact, version]
+            .iter()
+            .any(|p| p.is_empty() || p.contains(['/', '\\']) || p.contains(".."))
+    {
+        return None;
     }
+    Some(format!(
+        "{}/{artifact}/{version}/{artifact}-{version}.jar",
+        group.replace('.', "/")
+    ))
+}
+
+async fn ornithe_launch(
+    state: &LauncherState,
+    server: &LocalServer,
+    dir: &Path,
+) -> LauncherResult<(String, Vec<String>)> {
+    #[derive(Deserialize)]
+    struct Build {
+        loader: BuildLoader,
+    }
+    #[derive(Deserialize)]
+    struct BuildLoader {
+        version: String,
+        stable: bool,
+    }
+
+    let mc = &server.mc_version;
+    let builds: Vec<Build> = get_json(state, &format!("{ORNITHE_META}/{mc}")).await?;
+    let wanted = server.loader_version.as_deref().filter(|v| !v.is_empty());
+    let loader = builds
+        .iter()
+        .find(|b| Some(b.loader.version.as_str()) == wanted)
+        .or_else(|| builds.iter().find(|b| b.loader.stable))
+        .or(builds.first())
+        .map(|b| b.loader.version.clone())
+        .ok_or_else(|| fail(format!("Ornithe has no loader for {mc}")))?;
+    let profile: OrnitheProfile =
+        get_json(state, &format!("{ORNITHE_META}/{mc}/{loader}/server/json")).await?;
+    let upgrades: Vec<OrnitheLibrary> =
+        get_json(state, &format!("{ORNITHE_LIBRARIES}/{mc}")).await?;
+
+    let mut classpath = Vec::new();
+    let mut replaced = std::collections::HashSet::new();
+    for (index, library) in upgrades.iter().chain(&profile.libraries).enumerate() {
+        let path = maven_path(&library.name)
+            .ok_or_else(|| fail(format!("Ornithe lists a bad library {}", library.name)))?;
+        let relative = format!("libraries/{path}");
+        let dest = dir.join(&relative);
+        if let Some(parent) = dest.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        let url = format!("{}/{path}", library.url.trim_end_matches('/'));
+        download(state, &url, &dest, library.sha1.as_deref()).await?;
+        if index < upgrades.len() {
+            for name in polyio::zip_entry_names(&dest).await? {
+                if let Some(root) = class_root(&name) {
+                    replaced.insert(root);
+                }
+            }
+        }
+        classpath.push(relative);
+    }
+    strip_classes(&dir.join(SERVER_JAR), &dir.join(ORNITHE_SERVER_JAR), &replaced).await?;
+
+    let separator = if cfg!(windows) { ";" } else { ":" };
+    let mut launch = profile.arguments.jvm;
+    launch.push(format!("-Dfabric.gameJarPath={ORNITHE_SERVER_JAR}"));
+    launch.push("-cp".into());
+    launch.push(classpath.join(separator));
+    launch.push(profile.main_class);
+    launch.push("nogui".into());
+    Ok((loader, launch))
+}
+
+fn class_root(entry: &str) -> Option<String> {
+    let (package, _) = entry.strip_suffix(".class")?.rsplit_once('/')?;
+    Some(package.split('/').take(3).collect::<Vec<_>>().join("/"))
+}
+
+async fn strip_classes(
+    source: &Path,
+    target: &Path,
+    roots: &std::collections::HashSet<String>,
+) -> LauncherResult<()> {
+    let log4j = roots.contains("org/apache/logging");
+    let kept = polyio::read_zip_file_entries(source, |name| {
+        name != "META-INF/INDEX.LIST"
+            && !(log4j && name == "META-INF/log4j-provider.properties")
+            && !roots.iter().any(|root| name.starts_with(&format!("{root}/")))
+    })
+    .await?;
+    let tmp = target.with_extension("jar.tmp");
+    let file = tokio::fs::File::create(&tmp).await?;
+    let mut writer = async_zip::tokio::write::ZipFileWriter::with_tokio(file);
+    for (name, bytes) in kept {
+        let entry = async_zip::ZipEntryBuilder::new(name.into(), async_zip::Compression::Deflate);
+        writer
+            .write_entry_whole(entry, &bytes)
+            .await
+            .map_err(|e| fail(e.to_string()))?;
+    }
+    writer.close().await.map_err(|e| fail(e.to_string()))?;
+    tokio::fs::rename(&tmp, target).await?;
+    Ok(())
+}
+
+fn installer_url(loader: GameLoader, mc_version: &str, version: &str) -> String {
     let full = if version.starts_with(&format!("{mc_version}-")) {
         version.to_string()
     } else {
         format!("{mc_version}-{version}")
     };
+    if loader == GameLoader::NeoForge {
+        if mc_version == "1.20.1" {
+            return format!(
+                "https://maven.neoforged.net/releases/net/neoforged/forge/{full}/forge-{full}-installer.jar"
+            );
+        }
+        return format!(
+            "https://maven.neoforged.net/releases/net/neoforged/neoforge/{version}/neoforge-{version}-installer.jar"
+        );
+    }
     format!(
         "https://maven.minecraftforge.net/net/minecraftforge/forge/{full}/forge-{full}-installer.jar"
     )
@@ -274,7 +466,7 @@ fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
 }
 
 async fn write_defaults(server: &LocalServer, dir: &Path) -> LauncherResult<()> {
-    let mut props = Properties::read(dir).await;
+    let mut props = Properties::load(dir).await?;
     if props.get("server-port").is_none() {
         props.set("server-port", &DEFAULT_PORT.to_string());
     }
@@ -321,18 +513,32 @@ pub async fn copy_from_instance(
             continue;
         }
         let meta = mod_meta(&source).await;
-        candidates.push((source, name.to_owned(), meta));
+        let origin = match (link.provider, &link.project_id, &link.version_id) {
+            (Some(provider), Some(project_id), Some(version_id)) => Some(super::ModSource {
+                provider,
+                project_id: project_id.clone(),
+                version_id: version_id.clone(),
+                version_number: link.display_version.clone().unwrap_or_default(),
+            }),
+            _ => None,
+        };
+        candidates.push((source, name.to_owned(), meta, origin));
     }
 
-    let metas: Vec<ModMeta> = candidates.iter().map(|(_, _, m)| m.clone()).collect();
+    let metas: Vec<ModMeta> = candidates.iter().map(|(_, _, m, _)| m.clone()).collect();
     let keep = server_side(&metas);
     let mut copied = 0;
-    for ((source, name, _), keep) in candidates.iter().zip(&keep) {
+    let mut origins = Vec::new();
+    for ((source, name, _, origin), keep) in candidates.iter().zip(&keep) {
         if *keep {
             tokio::fs::copy(source, mods.join(name)).await?;
             copied += 1;
+            if let Some(origin) = origin {
+                origins.push((name.to_string_lossy().to_string(), origin.clone()));
+            }
         }
     }
+    super::record_sources(dir, origins).await?;
 
     let config = game_dir.join("config");
     if tokio::fs::try_exists(&config).await.unwrap_or(false) {
@@ -462,9 +668,24 @@ pub struct PackInfo {
     pub loader_version: Option<String>,
 }
 
+#[must_use]
+pub fn supports_loader(loader: GameLoader) -> bool {
+    matches!(
+        loader,
+        GameLoader::Vanilla
+            | GameLoader::Fabric
+            | GameLoader::Ornithe
+            | GameLoader::Forge
+            | GameLoader::NeoForge
+    )
+}
+
 pub async fn read_mrpack(path: &Path) -> LauncherResult<PackInfo> {
     let index = mrpack_index(path).await?;
     let (loader, loader_version) = pack_loader(&index.dependencies);
+    if !supports_loader(loader) {
+        return Err(fail(format!("{loader} servers are not supported yet")));
+    }
     Ok(PackInfo {
         name: index.name,
         mc_version: index
@@ -553,6 +774,44 @@ mod tests {
         assert_eq!(
             installer_url(GameLoader::Forge, "1.20.1", "1.20.1-47.2.0"),
             want
+        );
+    }
+
+    #[test]
+    fn class_roots_cover_the_library_not_the_game() {
+        assert_eq!(
+            class_root("org/apache/logging/log4j/Logger.class").as_deref(),
+            Some("org/apache/logging")
+        );
+        assert_eq!(
+            class_root("joptsimple/OptionParser.class").as_deref(),
+            Some("joptsimple")
+        );
+        assert_eq!(class_root("Main.class"), None);
+        assert_eq!(class_root("META-INF/MANIFEST.MF"), None);
+    }
+
+    #[test]
+    fn maven_coordinates_become_repository_paths() {
+        assert_eq!(
+            maven_path("net.ornithemc:calamus-intermediary-gen2:1.8.9").as_deref(),
+            Some("net/ornithemc/calamus-intermediary-gen2/1.8.9/calamus-intermediary-gen2-1.8.9.jar")
+        );
+        assert_eq!(maven_path("net.fabricmc:../evil:1.0"), None);
+        assert_eq!(maven_path("a:b:c:natives"), None);
+    }
+
+    #[test]
+    fn neoforge_1_20_1_lives_under_the_old_forge_artifact() {
+        let want = "https://maven.neoforged.net/releases/net/neoforged/forge/1.20.1-47.1.106/forge-1.20.1-47.1.106-installer.jar";
+        assert_eq!(installer_url(GameLoader::NeoForge, "1.20.1", "47.1.106"), want);
+        assert_eq!(
+            installer_url(GameLoader::NeoForge, "1.20.1", "1.20.1-47.1.106"),
+            want
+        );
+        assert_eq!(
+            installer_url(GameLoader::NeoForge, "1.21.1", "21.1.77"),
+            "https://maven.neoforged.net/releases/net/neoforged/neoforge/21.1.77/neoforge-21.1.77-installer.jar"
         );
     }
 

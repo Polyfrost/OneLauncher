@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use bytes::Bytes;
 use freya::prelude::*;
+use freya::router::RouterContext;
 use oneclient_common::domain::ProviderId;
 use oneclient_common::search::SearchQuery;
 use oneclient_core::servers::{self as core, ServerMod};
@@ -17,6 +18,7 @@ use crate::hooks::{
     settled_or_loading, use_server, use_server_files, use_server_hub, use_view_state,
 };
 use crate::i18n::{t, tf};
+use crate::routes::Route;
 use crate::servers;
 use crate::theme::{colors, rounded, rounded_px, text_size};
 use crate::ui::{ImageFallbackExt, centered_note, note};
@@ -200,6 +202,23 @@ impl Component for ServerMods {
                 .child(
                     Button::new()
                         .primary()
+                        .height(Size::px(CONTROL_H))
+                        .font_size(text_size(12.))
+                        .enabled(modded)
+                        .on_press({
+                            let server_id = self.server_id.clone();
+                            move |_| {
+                                let _ = RouterContext::get().push(Route::ServerBrowser {
+                                    server_id: server_id.clone(),
+                                });
+                            }
+                        })
+                        .child(Icon::new(IconType::Plus).size(15.))
+                        .text(t("oneclient.cluster.package_manager.add_content")),
+                )
+                .child(
+                    Button::new()
+                        .secondary()
                         .height(Size::px(CONTROL_H))
                         .font_size(text_size(12.))
                         .enabled(modded)

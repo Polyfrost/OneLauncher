@@ -18,6 +18,9 @@ use crate::state::{AppChannel, AppState};
 const MAX_LINES: usize = 5000;
 const STATS_EVERY: Duration = Duration::from_secs(2);
 const STOP_GRACE: Duration = Duration::from_secs(45);
+const STOP_POLL: Duration = Duration::from_millis(250);
+const BOOT_WAIT: Duration = Duration::from_secs(600);
+const STOP_POLLS: u128 = STOP_GRACE.as_millis() / STOP_POLL.as_millis();
 
 type Station = RadioStation<AppState, AppChannel>;
 
@@ -43,9 +46,12 @@ pub struct ServerLive {
     pub lines: Arc<Vec<Arc<str>>>,
     pub started: Option<Instant>,
     pub players: Vec<String>,
+    pub uuids: HashMap<String, String>,
     pub memory_bytes: Option<u64>,
     pub cpu_percent: Option<f32>,
     pub pid: Option<u32>,
+    pub installing: Vec<String>,
+    pub booted: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -77,6 +83,7 @@ static STDIN: LazyLock<Mutex<HashMap<String, mpsc::UnboundedSender<String>>>> =
     LazyLock::new(Default::default);
 static STOPPING: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
 static PIDS: LazyLock<Mutex<HashMap<String, u32>>> = LazyLock::new(Default::default);
+static RESTARTING: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
 
 /// Asks every running server to save and stop before the launcher quits, killing what
 /// is still up after the grace period so nothing is left holding a world lock
@@ -95,14 +102,14 @@ pub fn stop_all_blocking() {
     for (id, _) in &running {
         send_command(id, "stop");
     }
-    for _ in 0..80 {
+    for _ in 0..STOP_POLLS {
         if running
             .iter()
             .all(|(_, pid)| !oneclient_core::game::is_process_alive(*pid, None))
         {
             return;
         }
-        std::thread::sleep(Duration::from_millis(250));
+        std::thread::sleep(STOP_POLL);
     }
     for (_, pid) in &running {
         oneclient_core::game::kill_process(*pid);
@@ -167,11 +174,11 @@ pub async fn stop_all() {
         STOPPING.lock().unwrap().insert(id.clone());
         send_command(id, "stop");
     }
-    for _ in 0..80 {
+    for _ in 0..STOP_POLLS {
         if PIDS.lock().unwrap().is_empty() {
             return;
         }
-        tokio::time::sleep(Duration::from_millis(250)).await;
+        tokio::time::sleep(STOP_POLL).await;
     }
     for pid in PIDS.lock().unwrap().values() {
         oneclient_core::game::kill_process(*pid);
@@ -211,7 +218,8 @@ pub fn send_command(id: &str, command: &str) -> bool {
 
 /// The name in a "joined the game" or "left the game" line
 fn player_event(line: &str) -> Option<(bool, String)> {
-    let message = line.rsplit_once("]: ").map_or(line, |(_, m)| m).trim();
+    let message = line.split_once("]: ").map_or(line, |(_, m)| m).trim();
+    let message = message.strip_prefix("System chat: ").unwrap_or(message);
     let (name, joined) = if let Some(name) = message.strip_suffix(" joined the game") {
         (name, true)
     } else {
@@ -223,12 +231,23 @@ fn player_event(line: &str) -> Option<(bool, String)> {
         .then(|| (joined, name.to_string()))
 }
 
+fn player_uuid(line: &str) -> Option<(String, String)> {
+    let message = line.split_once("]: ").map_or(line, |(_, m)| m).trim();
+    let (name, uuid) = message.strip_prefix("UUID of player ")?.split_once(" is ")?;
+    let uuid = uuid.trim().replace('-', "");
+    (uuid.len() == 32 && uuid.chars().all(|c| c.is_ascii_hexdigit()))
+        .then(|| (name.to_string(), uuid))
+}
+
 fn push_line(live: &mut ServerLive, line: String) {
-    if live.status == ServerStatus::Starting
-        && line.contains("Done (")
-        && line.contains(")! For help")
-    {
-        live.status = ServerStatus::Running;
+    if line.contains("Done (") && line.contains(")! For help") {
+        live.booted = true;
+        if live.status == ServerStatus::Starting {
+            live.status = ServerStatus::Running;
+        }
+    }
+    if let Some((name, uuid)) = player_uuid(&line) {
+        live.uuids.insert(name, uuid);
     }
     match player_event(&line) {
         Some((true, name)) if !live.players.contains(&name) => live.players.push(name),
@@ -276,15 +295,19 @@ pub fn start(station: Station, id: String) {
         })
         .await;
 
-        let (child, server) = match spawned {
+        let (mut child, server) = match spawned {
             Ok(spawned) => spawned,
             Err(err) => {
+                STOPPING.lock().unwrap().remove(&id);
                 write(station, &id, |live| live.status = ServerStatus::Stopped);
                 notify_error(t("oneclient.servers.start_failed"), err);
                 return;
             }
         };
 
+        if STOPPING.lock().unwrap().contains(&id) {
+            let _ = child.start_kill();
+        }
         let (tx, mut rx) = mpsc::unbounded_channel();
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         STDIN.lock().unwrap().insert(id.clone(), cmd_tx);
@@ -321,6 +344,7 @@ pub fn start(station: Station, id: String) {
                         live.status = ServerStatus::Stopped;
                         live.started = None;
                         live.players.clear();
+                        live.uuids.clear();
                         live.pid = None;
                         live.memory_bytes = None;
                         live.cpu_percent = None;
@@ -430,13 +454,31 @@ pub fn stop(station: Station, id: String) {
         oneclient_core::game::kill_process(pid);
         return;
     }
+    let Some(armed) = live.pid else {
+        return;
+    };
     spawn_in_window(async move {
+        if !live.booted {
+            let waiting = Instant::now();
+            loop {
+                tokio::time::sleep(STOP_POLL).await;
+                let now = station.peek().servers.get(&id);
+                if now.status != ServerStatus::Stopping || now.pid != Some(armed) {
+                    return;
+                }
+                if now.booted {
+                    send_command(&id, "stop");
+                    break;
+                }
+                if waiting.elapsed() >= BOOT_WAIT {
+                    break;
+                }
+            }
+        }
         tokio::time::sleep(STOP_GRACE).await;
         let live = station.peek().servers.get(&id);
-        if live.status == ServerStatus::Stopping
-            && let Some(pid) = live.pid
-        {
-            oneclient_core::game::kill_process(pid);
+        if live.status == ServerStatus::Stopping && live.pid == Some(armed) {
+            oneclient_core::game::kill_process(armed);
         }
     });
 }
@@ -446,12 +488,18 @@ pub fn restart(station: Station, id: String) {
         start(station, id);
         return;
     }
+    if !RESTARTING.lock().unwrap().insert(id.clone()) {
+        return;
+    }
     stop(station, id.clone());
     spawn_in_window(async move {
-        while station.peek().servers.status(&id) != ServerStatus::Stopped {
+        while station.peek().servers.status(&id) == ServerStatus::Stopping {
             tokio::time::sleep(Duration::from_millis(250)).await;
         }
-        start(station, id);
+        RESTARTING.lock().unwrap().remove(&id);
+        if station.peek().servers.status(&id) == ServerStatus::Stopped {
+            start(station, id);
+        }
     });
 }
 
@@ -496,8 +544,14 @@ pub fn install(station: Station, mut server: LocalServer, prepare: Prepare, port
     let id = server.id.clone();
     write(station, &id, |live| live.status = ServerStatus::Installing);
     spawn_in_window(async move {
+        let listed = off_ui({
+            let server = server.clone();
+            async move { servers::save_server(&server).await }
+        })
+        .await;
         invalidate_server_queries().await;
         let result = off_ui(async move {
+            listed?;
             let state = launcher::state()?;
             let dir = server.dir()?;
             match prepare {
@@ -508,7 +562,7 @@ pub fn install(station: Station, mut server: LocalServer, prepare: Prepare, port
                 Prepare::Modpack(pack) => servers::unpack_mrpack(&state, &pack, &dir).await?,
                 Prepare::Import(source) => polyio::copy_dir(&source, &dir, &[]).await?,
             }
-            let mut props = servers::Properties::read(&dir).await;
+            let mut props = servers::Properties::load(&dir).await?;
             props.set("server-port", &port.to_string());
             props.write(&dir).await?;
             servers::install_server(&state, &mut server).await
@@ -558,7 +612,7 @@ pub fn set_property(id: String, key: &'static str, value: String) {
     spawn_in_window(async move {
         let result = off_ui(async move {
             let dir = servers::server_dir(&id)?;
-            let mut props = servers::Properties::read(&dir).await;
+            let mut props = servers::Properties::load(&dir).await?;
             props.set(key, &value);
             props.write(&dir).await?;
             Ok::<_, oneclient_core::LauncherError>(())
@@ -579,6 +633,47 @@ where
     spawn_in_window(async move {
         if let Err(err) = off_ui(work).await {
             notify_error(failure, err);
+        }
+        invalidate_server_queries().await;
+    });
+}
+
+pub fn identify_mods(id: String) {
+    spawn_in_window(async move {
+        let result = off_ui(async move {
+            let state = launcher::state()?;
+            servers::identify_mods(&state, &servers::server_dir(&id)?).await
+        })
+        .await;
+        match result {
+            Ok(true) => invalidate_server_queries().await,
+            Ok(false) => {}
+            Err(err) => tracing::warn!(%err, "could not identify the server's mods"),
+        }
+    });
+}
+
+pub fn install_mod(
+    station: Station,
+    id: String,
+    provider: oneclient_common::domain::ProviderId,
+    project_id: String,
+    version_id: String,
+) {
+    write(station, &id, |live| live.installing.push(project_id.clone()));
+    spawn_in_window(async move {
+        let result = off_ui({
+            let (id, project_id) = (id.clone(), project_id.clone());
+            async move {
+                let state = launcher::state()?;
+                let server = servers::load_server(&id).await?;
+                servers::install_mod(&state, &server, provider, &project_id, &version_id).await
+            }
+        })
+        .await;
+        write(station, &id, |live| live.installing.retain(|p| *p != project_id));
+        if let Err(err) = result {
+            notify_error(t("oneclient.servers.mods.install_failed"), err);
         }
         invalidate_server_queries().await;
     });
@@ -626,7 +721,30 @@ pub fn remove_player(id: String, name: String, op: bool) {
 
 #[cfg(test)]
 mod tests {
-    use super::player_event;
+    use super::{player_event, player_uuid};
+
+    #[test]
+    fn reads_the_uuid_the_authenticator_logs() {
+        assert_eq!(
+            player_uuid(
+                "[14:10:54] [User Authenticator #1/INFO]: UUID of player frostbyte is 069a79f4-44e9-4726-a5be-fca90e38aaf5"
+            ),
+            Some((
+                "frostbyte".into(),
+                "069a79f444e94726a5befca90e38aaf5".into()
+            ))
+        );
+        assert_eq!(
+            player_uuid("[14:10:54] [Server thread/INFO]: <Steve> UUID of player x is y"),
+            None
+        );
+        assert_eq!(
+            player_uuid(
+                "[14:10:54] [Server thread/INFO]: <Steve> ]: UUID of player Notch is 069a79f444e94726a5befca90e38aaf5"
+            ),
+            None
+        );
+    }
 
     #[test]
     fn reads_join_and_leave_lines() {
@@ -641,7 +759,15 @@ mod tests {
             Some((false, "Steve_Builds".into()))
         );
         assert_eq!(
+            player_event("[13:05:42] [Server thread/INFO]: System chat: rozwader joined the game"),
+            Some((true, "rozwader".into()))
+        );
+        assert_eq!(
             player_event("[14:10:55] [Server thread/INFO]: <Steve> I joined the game"),
+            None
+        );
+        assert_eq!(
+            player_event("[14:10:55] [Server thread/INFO]: <Steve> x ]: Notch joined the game"),
             None
         );
     }

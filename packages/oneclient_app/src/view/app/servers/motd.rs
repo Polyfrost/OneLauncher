@@ -99,11 +99,63 @@ fn scramble(text: &str) -> String {
         .collect()
 }
 
-pub fn motd_text(text: &str, default: Color, line_height: f32) -> Element {
+fn advance(c: char, bold: bool) -> f32 {
+    let base = match c {
+        '!' | ',' | '.' | ':' | ';' | 'i' | '|' | '\'' => 2.,
+        'l' | '`' => 3.,
+        ' ' | 'I' | 't' | '[' | ']' => 4.,
+        '"' | '(' | ')' | '*' | '<' | '>' | 'f' | 'k' | '{' | '}' => 5.,
+        '@' | '~' => 7.,
+        _ => 6.,
+    };
+    if bold { base + 1. } else { base }
+}
+
+fn wrap(runs: &mut [Run], max: f32) {
+    let mut chars: Vec<(usize, char)> = runs
+        .iter()
+        .enumerate()
+        .flat_map(|(i, run)| run.text.chars().map(move |c| (i, c)))
+        .collect();
+    let (mut i, mut line_start, mut width, mut space) = (0, 0, 0., None);
+    while i < chars.len() {
+        let (run, c) = chars[i];
+        if c == '\n' {
+            (i, line_start, width, space) = (i + 1, i + 1, 0., None);
+            continue;
+        }
+        if c == ' ' {
+            space = Some(i);
+        }
+        width += advance(c, runs[run].bold);
+        if width > max && i > line_start {
+            match space {
+                Some(s) => chars[s].1 = '\n',
+                None => chars.insert(i, (run, '\n')),
+            }
+            i = space.unwrap_or(i) + 1;
+            (line_start, width, space) = (i, 0., None);
+            continue;
+        }
+        i += 1;
+    }
+    for run in runs.iter_mut() {
+        run.text.clear();
+    }
+    for (run, c) in chars {
+        runs[run].text.push(c);
+    }
+}
+
+pub fn motd_text(text: &str, default: Color, line_height: f32, wrap_width: Option<f32>) -> Element {
+    let mut runs = parse(text);
+    if let Some(max) = wrap_width {
+        wrap(&mut runs, max);
+    }
     paragraph()
         .max_lines(2)
         .line_height(line_height)
-        .spans_iter(parse(text).into_iter().map(|run| {
+        .spans_iter(runs.into_iter().map(|run| {
             let body = if run.obfuscated {
                 scramble(&run.text)
             } else {
@@ -161,7 +213,12 @@ pub fn code_picker(mut motd: State<String>) -> Element {
             .secondary()
             .small()
             .on_press(move |_| add(code))
-            .child(motd_text(&sample, colors::fg_primary(), 1.2))
+            .child(
+                rect()
+                    .font_family(crate::theme::MINECRAFT_FONT)
+                    .font_size(20.)
+                    .child(motd_text(&sample, colors::fg_primary(), 1.2, None)),
+            )
             .into_element()
     });
 
@@ -197,6 +254,14 @@ pub fn code_picker(mut motd: State<String>) -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn overflowing_word_moves_down_whole() {
+        let mut runs = parse("hi §cabcdef");
+        wrap(&mut runs, 30.);
+        assert_eq!(runs[0].text, "hi\n");
+        assert_eq!(runs[1].text, "abcde\nf");
+    }
 
     #[test]
     fn colors_reset_formats_and_r_resets_everything() {

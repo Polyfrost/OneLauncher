@@ -37,20 +37,27 @@ impl ListedPlayer {
 }
 
 pub async fn read_list(dir: &Path, file: &str) -> Vec<ListedPlayer> {
-    tokio::fs::read_to_string(dir.join(file))
-        .await
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default()
+    load_list(dir, file).await.unwrap_or_default()
+}
+
+async fn load_list(dir: &Path, file: &str) -> LauncherResult<Vec<ListedPlayer>> {
+    match tokio::fs::read(dir.join(file)).await {
+        Ok(bytes) if bytes.iter().all(u8::is_ascii_whitespace) => Ok(Vec::new()),
+        Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(err) => Err(err.into()),
+    }
 }
 
 pub async fn write_list(dir: &Path, file: &str, players: &[ListedPlayer]) -> LauncherResult<()> {
-    tokio::fs::write(dir.join(file), serde_json::to_vec_pretty(players)?).await?;
+    let tmp = dir.join(format!("{file}.tmp"));
+    tokio::fs::write(&tmp, serde_json::to_vec_pretty(players)?).await?;
+    tokio::fs::rename(&tmp, dir.join(file)).await?;
     Ok(())
 }
 
 pub async fn add_to_list(dir: &Path, file: &str, player: ListedPlayer) -> LauncherResult<()> {
-    let mut players = read_list(dir, file).await;
+    let mut players = load_list(dir, file).await?;
     if !players.iter().any(|p| p.uuid == player.uuid) {
         players.push(player);
     }
@@ -58,7 +65,7 @@ pub async fn add_to_list(dir: &Path, file: &str, player: ListedPlayer) -> Launch
 }
 
 pub async fn remove_from_list(dir: &Path, file: &str, name: &str) -> LauncherResult<()> {
-    let mut players = read_list(dir, file).await;
+    let mut players = load_list(dir, file).await?;
     players.retain(|p| !p.name.eq_ignore_ascii_case(name));
     write_list(dir, file, &players).await
 }

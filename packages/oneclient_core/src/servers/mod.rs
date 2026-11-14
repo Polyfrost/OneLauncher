@@ -12,9 +12,12 @@ pub use backups::{
     BackupInfo, create_backup, list_backups, reset_world, restore_backup, world_name,
 };
 pub use install::{
-    PackInfo, copy_from_instance, install_server, java_for, read_mrpack, unpack_mrpack,
+    PackInfo, copy_from_instance, install_server, java_for, read_mrpack, supports_loader,
+    unpack_mrpack,
 };
-pub use mods::{ServerMod, list_mods, set_mod_enabled};
+pub use mods::{
+    ModSource, ServerMod, identify_mods, install_mod, list_mods, record_sources, set_mod_enabled,
+};
 pub use players::{ListedPlayer, OPS, WHITELIST, add_to_list, read_list, remove_from_list};
 pub use properties::Properties;
 pub use store::{

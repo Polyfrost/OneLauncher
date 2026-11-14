@@ -26,15 +26,17 @@ pub struct SearchFilters {
 pub enum SearchSide {
     Client,
     Server,
+    ServerCompatible,
 }
 
 impl SearchSide {
     pub fn modrinth_facets(self) -> Vec<String> {
-        let facet = match self {
-            Self::Client => "client_side:required",
-            Self::Server => "server_side:required",
+        let facets: &[&str] = match self {
+            Self::Client => &["client_side:required"],
+            Self::Server => &["server_side:required"],
+            Self::ServerCompatible => &["server_side:required", "server_side:optional"],
         };
-        vec![facet.to_string()]
+        facets.iter().map(|f| f.to_string()).collect()
     }
 }
 
@@ -365,6 +367,14 @@ pub struct LinkedArtifactInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn server_compatible_side_accepts_required_or_optional() {
+        assert_eq!(
+            SearchSide::ServerCompatible.modrinth_facets(),
+            ["server_side:required", "server_side:optional"]
+        );
+    }
 
     #[test]
     fn modrinth_version_page_needs_only_ids() {

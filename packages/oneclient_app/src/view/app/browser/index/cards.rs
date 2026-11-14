@@ -10,13 +10,14 @@ use oneclient_core::clusters::ModpackSource;
 use crate::components::{Button, Icon, IconType};
 use crate::hooks::{
     ALL_VERSIONS, ClusterAction, SearchOverride, VERSIONS_PAGE_SIZE, content_type_for_slug,
-    use_cluster, use_dispatch, use_installs_snapshot, use_package_versions_when, version_list,
+    use_cluster, use_dispatch, use_installs_snapshot, use_package_versions_when, use_server_hub,
+    version_list,
 };
 use crate::i18n::{t, tf};
 use crate::routes::Route;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
-use crate::view::app::browser::{cluster_version, use_version_filter};
+use crate::view::app::browser::{cluster_version, use_server_browse, use_version_filter};
 
 type InstalledMap = HashMap<(ProviderId, String), Installed>;
 
@@ -96,12 +97,20 @@ fn open_package(
     provider: ProviderId,
     id: &str,
     add_to_cluster: bool,
+    server_id: Option<String>,
 ) {
-    let _ = RouterContext::get().push(Route::BrowserPackage {
-        cluster_id,
-        package_type: package_type.to_string(),
-        package_id: encode_package_id(provider, id),
-        add_to_cluster,
+    let package_id = encode_package_id(provider, id);
+    let _ = RouterContext::get().push(match server_id {
+        Some(server_id) => Route::ServerBrowserPackage {
+            server_id,
+            package_id,
+        },
+        None => Route::BrowserPackage {
+            cluster_id,
+            package_type: package_type.to_string(),
+            package_id,
+            add_to_cluster,
+        },
     });
 }
 
@@ -147,6 +156,7 @@ impl Component for PackageCard {
         };
         let cluster_id = self.cluster_id;
         let add_to_cluster = self.add_to_cluster;
+        let server_id = use_server_browse().map(|s| s.id);
 
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
@@ -172,7 +182,14 @@ impl Component for PackageCard {
             .a11y_role(AccessibilityRole::Button)
             .cursor(CursorIcon::Pointer)
             .on_press(move |_| {
-                open_package(cluster_id, &package_type, provider, &id, add_to_cluster)
+                open_package(
+                    cluster_id,
+                    &package_type,
+                    provider,
+                    &id,
+                    add_to_cluster,
+                    server_id.clone(),
+                )
             })
             .child(
                 rect()
@@ -290,6 +307,7 @@ impl Component for ListRow {
         let provider = item.provider;
         let package_type = self.package_type.clone();
         let add_to_cluster = self.add_to_cluster;
+        let server_id = use_server_browse().map(|s| s.id);
 
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
@@ -319,7 +337,14 @@ impl Component for ListRow {
             .a11y_role(AccessibilityRole::Button)
             .cursor(CursorIcon::Pointer)
             .on_press(move |_| {
-                open_package(cluster_id, &package_type, provider, &id, add_to_cluster)
+                open_package(
+                    cluster_id,
+                    &package_type,
+                    provider,
+                    &id,
+                    add_to_cluster,
+                    server_id.clone(),
+                )
             })
             .child(Thumbnail::new(item.icon_url.clone(), 48.).radius(6.))
             .child(
@@ -415,6 +440,8 @@ impl Component for InstallButton {
 
         let dispatch = use_dispatch();
         let cluster = use_cluster(cluster_id);
+        let server_id = use_server_browse().map(|s| s.id);
+        let hub = use_server_hub();
 
         // The same narrowing the package page does so both agree on what "latest" installs
         let is_modpack = self.content_type == ContentType::Modpack;
@@ -447,8 +474,11 @@ impl Component for InstallButton {
         let mut choices = use_state(Vec::new);
 
         // Nothing to start twice while an install is running or before versions arrive
-        let (installing, waiting) =
-            use_installs_snapshot().package_busy(is_modpack, cluster_id, provider, &project_id);
+        let installs = use_installs_snapshot();
+        let (installing, waiting) = match &server_id {
+            Some(id) => (hub.get(id).installing.contains(&project_id), false),
+            None => installs.package_busy(is_modpack, cluster_id, provider, &project_id),
+        };
 
         if let Some(installed) = &self.installed {
             if let Some(action) = installed.enable.clone() {
@@ -501,7 +531,15 @@ impl Component for InstallButton {
                             let Some(version_id) = latest.clone() else {
                                 return;
                             };
-                            if add_to_cluster {
+                            if let Some(server_id) = server_id.clone() {
+                                crate::servers::install_mod(
+                                    dispatch.station(),
+                                    server_id,
+                                    provider,
+                                    project_id.clone(),
+                                    version_id,
+                                );
+                            } else if add_to_cluster {
                                 dispatch.import_modpack(
                                     cluster_id,
                                     ModpackSource::Provider {

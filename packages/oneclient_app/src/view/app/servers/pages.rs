@@ -90,11 +90,9 @@ impl Component for ServerPlayers {
                         .content(Content::Flex)
                         .cross_align(Alignment::Center)
                         .child(
-                            label()
-                                .text(name.clone())
+                            rect()
                                 .width(Size::flex(1.0))
-                                .font_size(text_size(14.))
-                                .color(colors::fg_primary()),
+                                .child(super::player_head(&live, name, 24.)),
                         )
                         .child(
                             Button::new()

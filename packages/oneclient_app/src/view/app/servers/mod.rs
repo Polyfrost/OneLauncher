@@ -126,6 +126,30 @@ pub fn fmt_bytes(bytes: u64) -> String {
 
 pub const DASH: &str = "\u{2014}";
 
+pub fn head(live: &crate::servers::ServerLive, name: &str, size: f32) -> Element {
+    let uuid = live.uuids.get(name).cloned().unwrap_or_default();
+    crate::components::Avatar::new(uuid)
+        .size(size)
+        .radius(size / 5.)
+        .into_element()
+}
+
+pub fn player_head(live: &crate::servers::ServerLive, name: &str, size: f32) -> Element {
+    rect()
+        .horizontal()
+        .cross_align(Alignment::Center)
+        .spacing(8.)
+        .child(head(live, name, size))
+        .child(
+            label()
+                .text(name.to_string())
+                .max_lines(1)
+                .font_size(text_size(14.))
+                .color(colors::fg_primary()),
+        )
+        .into_element()
+}
+
 pub fn card() -> Rect {
     rect()
         .vertical()
@@ -138,6 +162,7 @@ pub fn card() -> Rect {
 }
 
 pub fn card_title(title: impl Into<String>, subtitle: impl Into<String>) -> Element {
+    let subtitle = subtitle.into();
     rect()
         .vertical()
         .width(Size::flex(1.0))
@@ -149,12 +174,14 @@ pub fn card_title(title: impl Into<String>, subtitle: impl Into<String>) -> Elem
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::fg_primary()),
         )
-        .child(
-            label()
-                .text(subtitle.into())
-                .font_size(text_size(12.))
-                .color(colors::fg_secondary()),
-        )
+        .maybe(!subtitle.is_empty(), |el| {
+            el.child(
+                label()
+                    .text(subtitle)
+                    .font_size(text_size(12.))
+                    .color(colors::fg_secondary()),
+            )
+        })
         .into_element()
 }
 
@@ -253,7 +280,7 @@ pub fn list_preview(
                     rect()
                         .width(Size::fill())
                         .font_size(FONT * GUI)
-                        .child(motd::motd_text(motd, MC_GRAY, LINE_H / FONT)),
+                        .child(motd::motd_text(motd, MC_GRAY, LINE_H / FONT, Some(text_w))),
                 ),
         );
 

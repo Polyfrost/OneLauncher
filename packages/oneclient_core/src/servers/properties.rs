@@ -17,14 +17,21 @@ impl Properties {
     }
 
     pub async fn read(dir: &Path) -> Self {
-        tokio::fs::read_to_string(dir.join(FILE))
-            .await
-            .map(|text| Self::parse(&text))
-            .unwrap_or_default()
+        Self::load(dir).await.unwrap_or_default()
+    }
+
+    pub async fn load(dir: &Path) -> std::io::Result<Self> {
+        match tokio::fs::read(dir.join(FILE)).await {
+            Ok(bytes) => Ok(Self::parse(&decode(bytes))),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
+            Err(err) => Err(err),
+        }
     }
 
     pub async fn write(&self, dir: &Path) -> std::io::Result<()> {
-        tokio::fs::write(dir.join(FILE), self.to_string()).await
+        let tmp = dir.join(format!("{FILE}.tmp"));
+        tokio::fs::write(&tmp, self.to_string()).await?;
+        tokio::fs::rename(&tmp, dir.join(FILE)).await
     }
 
     fn split(line: &str) -> Option<(&str, &str)> {
@@ -71,6 +78,11 @@ impl std::fmt::Display for Properties {
         }
         Ok(())
     }
+}
+
+fn decode(bytes: Vec<u8>) -> String {
+    String::from_utf8(bytes)
+        .unwrap_or_else(|err| err.into_bytes().into_iter().map(char::from).collect())
 }
 
 fn escape(value: &str) -> String {

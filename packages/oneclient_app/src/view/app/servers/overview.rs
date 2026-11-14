@@ -2,7 +2,7 @@ use freya::prelude::*;
 use freya::router::RouterContext;
 
 use super::console::ConsolePanel;
-use super::{DASH, card, card_head, fmt_bytes, fmt_uptime, list_preview};
+use super::{DASH, card, card_head, fmt_bytes, fmt_uptime, head, list_preview, player_head};
 use crate::Route;
 use crate::components::{Button, Icon, IconType, ScrollArea, copy_button};
 use crate::hooks::{
@@ -122,7 +122,13 @@ impl Component for ServerOverview {
     }
 }
 
-fn tile(name: &'static str, value: String, suffix: Option<String>, accent: bool) -> Element {
+fn tile(
+    name: &'static str,
+    value: String,
+    suffix: Option<String>,
+    accent: bool,
+    extra: Option<Element>,
+) -> Element {
     rect()
         .vertical()
         .width(Size::flex(1.0))
@@ -151,6 +157,8 @@ fn tile(name: &'static str, value: String, suffix: Option<String>, accent: bool)
         .child(
             rect()
                 .horizontal()
+                .width(Size::fill())
+                .content(Content::Flex)
                 .cross_align(Alignment::End)
                 .spacing(6.)
                 .child(
@@ -166,7 +174,9 @@ fn tile(name: &'static str, value: String, suffix: Option<String>, accent: bool)
                         .font_size(text_size(12.))
                         .color(colors::fg_secondary())
                         .into_element()
-                })),
+                }))
+                .maybe(extra.is_some(), |el| el.child(rect().width(Size::flex(1.0))))
+                .maybe_child(extra),
         )
         .into_element()
 }
@@ -203,14 +213,14 @@ fn stats(live: &ServerLive, files: &ServerFiles, max_players: &str) -> Element {
                     live.players.len().to_string(),
                     Some(tf("oneclient.servers.stats.slots", &[&max_players])),
                     true,
+                    (running && !live.players.is_empty()).then(|| {
+                        rect()
+                            .horizontal()
+                            .spacing(4.)
+                            .children(live.players.iter().map(|p| head(live, p, 24.)))
+                            .into_element()
+                    }),
                 )))
-                // shortcut: tick rate needs a mod or RCON query, shown empty until there is a source
-                .child(tile(
-                    t("oneclient.servers.stats.tick"),
-                    DASH.to_string(),
-                    None,
-                    false,
-                ))
                 .child(tile(
                     t("oneclient.servers.stats.uptime"),
                     live.started
@@ -218,6 +228,7 @@ fn stats(live: &ServerLive, files: &ServerFiles, max_players: &str) -> Element {
                         .map_or_else(|| DASH.to_string(), fmt_uptime),
                     None,
                     false,
+                    None,
                 )),
         )
         .child(row(vec![
@@ -227,6 +238,7 @@ fn stats(live: &ServerLive, files: &ServerFiles, max_players: &str) -> Element {
                     .map_or_else(|| DASH.to_string(), fmt_bytes),
                 None,
                 false,
+                None,
             ),
             tile(
                 t("oneclient.servers.stats.cpu"),
@@ -234,6 +246,7 @@ fn stats(live: &ServerLive, files: &ServerFiles, max_players: &str) -> Element {
                     .map_or_else(|| DASH.to_string(), |c| format!("{c:.0}%")),
                 None,
                 false,
+                None,
             ),
             tile(
                 t("oneclient.servers.stats.world"),
@@ -244,12 +257,14 @@ fn stats(live: &ServerLive, files: &ServerFiles, max_players: &str) -> Element {
                 },
                 None,
                 false,
+                None,
             ),
             tile(
                 t("oneclient.servers.stats.backup"),
                 last_backup,
                 None,
                 false,
+                None,
             ),
         ]))
         .into_element()
@@ -382,13 +397,7 @@ fn players_card(live: &ServerLive, files: &ServerFiles) -> Element {
         rect()
             .vertical()
             .spacing(6.)
-            .children(live.players.iter().map(|p| {
-                label()
-                    .text(p.clone())
-                    .font_size(text_size(14.))
-                    .color(colors::fg_primary())
-                    .into_element()
-            }))
+            .children(live.players.iter().map(|p| player_head(live, p, 22.)))
             .into_element()
     };
 

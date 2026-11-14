@@ -128,6 +128,11 @@ impl Component for CreateServerModal {
         let step = order[index];
         let last = index + 1 == order.len();
 
+        let available = settled_or_loading(&use_version_loaders(
+            form.version.read().clone().unwrap_or_default(),
+        ))
+        .unwrap_or_default();
+
         // A picked instance or pack fixes the version and loader
         let source = form.source.read().clone();
         let (mc_version, loader, loader_version) = match (&source, kind) {
@@ -136,11 +141,14 @@ impl Component for CreateServerModal {
                 Some(src.loader),
                 src.loader_version.clone(),
             ),
-            _ => (
-                form.version.read().clone(),
-                Some(form.loader.read().primary()),
-                None,
-            ),
+            _ => {
+                let choice = *form.loader.read();
+                (
+                    form.version.read().clone(),
+                    Some(choice.resolve(&available).unwrap_or(choice.primary())),
+                    None,
+                )
+            }
         };
 
         let java = use_java_majors(
@@ -446,10 +454,12 @@ fn instance_step(form: Form, clusters: &[oneclient_core::clusters::Cluster]) -> 
         .width(Size::fill())
         .spacing(4.)
         .children(clusters.iter().map(|cluster| {
+            let supported = servers::supports_loader(cluster.mc_loader);
             let row = VersionRow {
                 id: cluster.name.clone(),
                 meta: format!("{} {}", cluster.mc_loader, cluster.mc_version),
-                badge: None,
+                badge: (!supported)
+                    .then(|| t("oneclient.servers.create.instance.unsupported").to_string()),
                 date: String::new(),
                 loader: Some(cluster.mc_loader),
             };
@@ -466,6 +476,9 @@ fn instance_step(form: Form, clusters: &[oneclient_core::clusters::Cluster]) -> 
                 &row,
                 chosen == Some(id),
                 (move |()| {
+                    if !supported {
+                        return;
+                    }
                     cluster_state.set(Some(id));
                     if name.peek().trim().is_empty() {
                         name.set(format!("{} Server", picked.name));

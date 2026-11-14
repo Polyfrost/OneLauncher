@@ -27,7 +27,8 @@ pub use bad_mods::{
 };
 pub use dependencies::{
     DependencyResolution, ModInstallTarget, ResolvedDependency, artifact_mod_id,
-    find_mod_for_cluster, pick_version, resolve_required, resolves_dependencies,
+    find_mod_for_cluster, pick_version, resolve_required, resolve_required_for,
+    resolves_dependencies,
 };
 pub use error::{PackageError, PackageResult};
 pub use file_identity::{FileIdentity, curseforge_fingerprint};

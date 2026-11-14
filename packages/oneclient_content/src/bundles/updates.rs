@@ -20,8 +20,9 @@ use futures_util::StreamExt;
 use crate::bundles::install::{
     BUNDLE_INSTALL_CONCURRENCY, accepted_bundles, bundle_cluster, decline_unasked_skyblock,
     disable_was_deliberate, external_ids_by_sha1, find_override, find_user_suppression,
-    heal_bundle_activity, install_package_from_bundle, overrides_outside_declined,
-    prefetch_bundle_file, remove_artifact_from_cluster, set_artifact_enabled_to, takes_bundle,
+    heal_bundle_activity, heal_restores, hidden_flags, install_package_from_bundle,
+    overrides_outside_declined, prefetch_bundle_file, remove_artifact_from_cluster,
+    set_artifact_enabled_to, takes_bundle,
 };
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
@@ -962,12 +963,14 @@ pub async fn get_bundles_with_update_status(
         &overrides_map,
     )
     .await?;
-    // Kept out of the opt-out ownership so a bundle not installed yet cannot share away an installed bundle's opt-out
+    // Kept apart from `live_bundles` so awaiting a first install alone gives no opt-out ownership
     let awaiting_install = bundles_awaiting_first_install(
         &archives,
         &bundle_packages,
+        &all_linked_by_hash,
         &overrides_map,
         &accepted_bundles(cluster_id, ctx).await?,
+        &live_bundles,
     );
 
     let (installed_managed_keys, installed_external_hashes) =
@@ -1016,20 +1019,20 @@ pub async fn get_bundles_with_update_status(
             files.push((file.clone(), status));
         }
 
-        let opted_in_types = if live_bundles.contains(&archive.manifest.name)
-            || awaiting_install.contains(&archive.manifest.name)
-        {
-            let suppressed = opt_outs.suppressed(&archive);
-            archive
-                .manifest
-                .files
-                .iter()
-                .map(|f| f.content_type())
-                .filter(|ct| !suppressed.contains(ct))
-                .collect()
-        } else {
-            HashSet::new()
-        };
+        let awaiting_types = awaiting_install.get(&archive.manifest.name);
+        let opted_in_types =
+            if live_bundles.contains(&archive.manifest.name) || awaiting_types.is_some() {
+                let suppressed = opt_outs.suppressed(&archive, awaiting_types);
+                archive
+                    .manifest
+                    .files
+                    .iter()
+                    .map(|f| f.content_type())
+                    .filter(|ct| !suppressed.contains(ct))
+                    .collect()
+            } else {
+                HashSet::new()
+            };
 
         results.push(BundleWithUpdateStatus {
             opted_in_types,
@@ -1158,7 +1161,13 @@ impl<'a> TypeOptOuts<'a> {
         })
     }
 
-    fn signals(&self, archive: &BundleArchive) -> (HashSet<ContentType>, HashSet<ContentType>) {
+    /// `awaiting_install` counts files of the types launch installs for the
+    /// first time, which on an installed type would override the user's opt-out
+    fn signals(
+        &self,
+        archive: &BundleArchive,
+        awaiting_install: Option<&HashSet<ContentType>>,
+    ) -> (HashSet<ContentType>, HashSet<ContentType>) {
         let bundle_name = &archive.manifest.name;
         let mut all_suppressed: HashMap<ContentType, bool> = HashMap::new();
 
@@ -1170,7 +1179,9 @@ impl<'a> TypeOptOuts<'a> {
             let installed = self.installed_keys.contains(&key)
                 || matches!(&file.kind, BundleFileKind::External { file: ext, .. }
                     if self.installed_keys.contains(&external_bundle_key(&ext.sha1)));
-            if override_type.is_none() && !installed {
+            let awaited = file.enabled
+                && awaiting_install.is_some_and(|types| types.contains(&file.content_type()));
+            if override_type.is_none() && !installed && !awaited {
                 continue;
             }
             if self.shared_keys.contains(&key) {
@@ -1193,8 +1204,12 @@ impl<'a> TypeOptOuts<'a> {
         (seen, suppressed)
     }
 
-    fn suppressed(&self, archive: &BundleArchive) -> HashSet<ContentType> {
-        let (seen, mut suppressed) = self.signals(archive);
+    fn suppressed(
+        &self,
+        archive: &BundleArchive,
+        awaiting_install: Option<&HashSet<ContentType>>,
+    ) -> HashSet<ContentType> {
+        let (seen, mut suppressed) = self.signals(archive, awaiting_install);
         suppressed.extend(
             self.remembered
                 .get(&archive.manifest.name)
@@ -1211,7 +1226,7 @@ impl<'a> TypeOptOuts<'a> {
         ctx: &ContentCtx,
     ) -> ContentResult<HashSet<ContentType>> {
         let bundle_name = &archive.manifest.name;
-        let (seen, suppressed) = self.signals(archive);
+        let (seen, suppressed) = self.signals(archive, None);
         let remembered = self.remembered.get(bundle_name);
 
         for ct in &seen {
@@ -1228,7 +1243,7 @@ impl<'a> TypeOptOuts<'a> {
             }
         }
 
-        Ok(self.suppressed(archive))
+        Ok(self.suppressed(archive, None))
     }
 }
 
@@ -1249,6 +1264,9 @@ async fn addition_eligible_bundles(
     let (live_managed_keys, _) = installed_bundle_keys(ctx, live).await?;
 
     let mut eligible = live_bundle_names(bundle_packages, overrides);
+    if !bisect_dao::is_active(&ctx.db, cluster_id).await? {
+        eligible.extend(bundles_launch_heals(archives, bundle_packages, overrides));
+    }
     eligible.extend(infer_subscribed_from_archives(
         archives,
         overrides_map,
@@ -1264,30 +1282,56 @@ async fn addition_eligible_bundles(
     Ok(eligible)
 }
 
+/// The content types of each taken bundle that launch installs for the first
+/// time, kept only while launch installs at least one file of them. A bundle
+/// with copies tracked counts only while live so emptying it stays an opt-out
 fn bundles_awaiting_first_install(
     archives: &[BundleArchive],
     bundle_packages: &[BundleTrackedArtifactRow],
+    linked: &HashMap<String, &LinkedArtifactInfo>,
     overrides_map: &HashMap<(String, String), OverrideType>,
     accepted: &HashSet<String>,
-) -> HashSet<String> {
-    let installed: HashSet<&str> = bundle_packages
-        .iter()
-        .filter_map(|row| row.bundle_name.as_deref())
-        .collect();
+    live: &HashSet<String>,
+) -> HashMap<String, HashSet<ContentType>> {
+    let mut installed: HashMap<&str, HashSet<ContentType>> = HashMap::new();
+    for row in bundle_packages {
+        if let Some(name) = row.bundle_name.as_deref() {
+            installed
+                .entry(name)
+                .or_default()
+                .extend(linked.get(&row.hash).map(|info| info.content_type));
+        }
+    }
 
     archives
         .iter()
-        .filter(|archive| !installed.contains(archive.manifest.name.as_str()))
         .filter(|archive| takes_bundle(archive, accepted))
         .filter(|archive| {
-            archive.manifest.files.iter().any(|file| {
-                let choice = overrides_map
-                    .get(&(archive.manifest.name.clone(), file.kind.package_id()))
-                    .copied();
-                crate::bundles::effective_enabled(file, choice)
-            })
+            live.contains(&archive.manifest.name)
+                || !installed.contains_key(archive.manifest.name.as_str())
         })
-        .map(|archive| archive.manifest.name.clone())
+        .filter_map(|archive| {
+            let tracked = installed.get(archive.manifest.name.as_str());
+            let types: HashSet<ContentType> = archive
+                .manifest
+                .files
+                .iter()
+                .map(|file| file.content_type())
+                .filter(|ct| !tracked.is_some_and(|types| types.contains(ct)))
+                .collect();
+            archive
+                .manifest
+                .files
+                .iter()
+                .any(|file| {
+                    let choice = overrides_map
+                        .get(&(archive.manifest.name.clone(), file.kind.package_id()))
+                        .copied();
+                    types.contains(&file.content_type())
+                        && crate::bundles::effective_enabled(file, choice)
+                })
+                .then(|| (archive.manifest.name.clone(), types))
+        })
         .collect()
 }
 
@@ -1297,13 +1341,7 @@ fn live_bundle_names(
 ) -> HashSet<String> {
     bundle_packages
         .iter()
-        .filter(|bp| {
-            bp.enabled != 0
-                || bp
-                    .package_id
-                    .as_deref()
-                    .is_some_and(|id| !disable_was_deliberate(find_user_suppression(overrides, id)))
-        })
+        .filter(|bp| bp.enabled != 0)
         .filter_map(|bp| bp.bundle_name.clone())
         .chain(
             overrides
@@ -1312,6 +1350,37 @@ fn live_bundle_names(
                 .map(|o| o.bundle_name.clone()),
         )
         .collect()
+}
+
+/// Launch heals one archive at a time in archive order, so a switched-off
+/// package shared by two bundles goes to the earlier one. Launch drops a
+/// declined bundle's own overrides before healing which never changes the
+/// outcome for a taken bundle since that one still reads them
+fn bundles_launch_heals(
+    archives: &[BundleArchive],
+    bundle_packages: &[BundleTrackedArtifactRow],
+    overrides: &[ClusterBundleOverrideRow],
+) -> HashSet<String> {
+    let mut live_packages: HashSet<String> = bundle_packages
+        .iter()
+        .filter(|row| row.enabled != 0)
+        .filter_map(|row| row.package_id.clone())
+        .collect();
+    let mut healed = HashSet::new();
+
+    for archive in archives {
+        let hidden = hidden_flags(std::slice::from_ref(archive));
+        for row in bundle_packages {
+            if let Some((bundle_name, package_id, _)) =
+                heal_restores(row, &hidden, overrides, &live_packages)
+            {
+                live_packages.insert(package_id.to_string());
+                healed.insert(bundle_name.to_string());
+            }
+        }
+    }
+
+    healed
 }
 
 #[tracing::instrument(level = "debug", skip_all)]

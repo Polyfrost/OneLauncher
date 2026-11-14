@@ -1,3 +1,5 @@
+use std::cell::Cell;
+use std::rc::Rc;
 use std::time::Duration;
 
 use freya::prelude::*;
@@ -25,4 +27,27 @@ where
     });
 
     debounced
+}
+
+pub fn use_debounced_save<T>(value: T, delay: Duration, save: impl Fn(T) + 'static)
+where
+    T: Clone + PartialEq + 'static,
+{
+    let pending = use_hook(|| Rc::new(Cell::new(0u64)));
+    let first = use_hook(|| Rc::new(Cell::new(true)));
+    let save = use_hook(|| Rc::new(save));
+    use_side_effect_with_deps(&value, move |value| {
+        if first.replace(false) {
+            return;
+        }
+        let this = pending.get() + 1;
+        pending.set(this);
+        let (pending, save, value) = (pending.clone(), save.clone(), value.clone());
+        spawn_in_window(async move {
+            tokio::time::sleep(delay).await;
+            if pending.get() == this {
+                save(value);
+            }
+        });
+    });
 }

@@ -43,6 +43,7 @@ pub fn close() {
 pub fn quit() {
     let platform = Platform::get();
     spawn_in_window(async move {
+        crate::servers::stop_all().await;
         if let Ok(state) = crate::launcher::state() {
             oneclient_core::shutdown(&state).await;
         }

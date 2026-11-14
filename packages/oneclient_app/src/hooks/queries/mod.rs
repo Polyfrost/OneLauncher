@@ -18,9 +18,9 @@ mod cluster_content;
 mod clusters;
 mod disable_warnings;
 mod external_launchers;
-mod import_screening;
 mod folder_watch;
 mod image;
+mod import_screening;
 mod java;
 mod logs;
 mod migration;
@@ -29,6 +29,7 @@ mod package_updates;
 mod packages;
 mod player_profile;
 mod screenshots;
+mod servers;
 mod settings_profiles;
 mod skin;
 mod state;
@@ -74,9 +75,9 @@ pub use clusters::{
 };
 pub use disable_warnings::{DisableWarningsQuery, disable_warnings, use_disable_warnings};
 pub use external_launchers::{external_launchers, use_external_launchers};
-pub use import_screening::{import_screening, retry_import_screening, use_import_screening};
 pub(crate) use folder_watch::use_folder_watch;
 pub use image::{CachedImageQuery, loaded_image, use_cached_image};
+pub use import_screening::{import_screening, retry_import_screening, use_import_screening};
 pub use java::{
     invalidate_java_queries, java_runtimes, provider_versions, use_java_runtimes,
     use_provider_versions,
@@ -103,6 +104,9 @@ pub use player_profile::use_player_profile;
 pub use screenshots::{
     ScreenshotAction, UseScreenshotAction, invalidate_screenshots_queries, try_cluster_screenshots,
     use_cluster_screenshots, use_local_image, use_screenshot_action, use_screenshot_folder_watch,
+};
+pub use servers::{
+    ServerFiles, ServerIcon, invalidate_server_queries, use_server, use_server_files, use_servers,
 };
 pub use settings_profiles::{
     try_game_profile, use_cluster_profile, use_cluster_settings, use_game_profile,

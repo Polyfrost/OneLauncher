@@ -23,11 +23,11 @@ mod essential_confirm;
 mod file_drop;
 mod filter_menu;
 mod flagged_install_popup;
-mod incompatible_install_popup;
 mod generic_prompt;
-mod invite_join_popup;
 mod icons;
+mod incompatible_install_popup;
 mod instance_row;
+mod invite_join_popup;
 mod java_install_manager;
 mod java_prompt;
 mod link_confirm;
@@ -70,9 +70,6 @@ mod version_art_gallery;
 mod version_card;
 mod warning_card;
 
-pub use cluster_menu::{ClusterContextMenu, ClusterMenuTarget};
-pub(crate) use lobby::modal;
-pub use lobby::{LobbyHeroChip, PartyTab, use_player_name, use_provide_lobby};
 pub use account_switcher::AccountSwitcher;
 pub use active_cluster_panel::ActiveClusterPanel;
 pub use asset_image::AssetImage;
@@ -80,9 +77,13 @@ pub use avatar::Avatar;
 pub use blocked_downloads_popup::BlockedDownloadsPopup;
 pub use bundle_choices_popup::BundleChoicesPopup;
 pub use bundled_install_warning::{BundledInstallWarning, PendingBundledInstall};
-pub use button::{Button, ButtonSize, ButtonVariant, copy_button, link_button, open_folder_button, sized_open_folder_button};
+pub use button::{
+    Button, ButtonSize, ButtonVariant, copy_button, link_button, open_folder_button,
+    sized_open_folder_button,
+};
 pub use charts::{BarChart, PieChart, ValueUnit, slice_color};
 pub use checkbox::checkbox_labeled;
+pub use cluster_menu::{ClusterContextMenu, ClusterMenuTarget};
 pub use cluster_update_popup::ClusterUpdatePopup;
 pub use code_block::CodeBlock;
 pub use color_picker::ColorPicker;
@@ -98,24 +99,26 @@ pub use file_drop::{FileDropOverlay, accept_drop};
 pub use filter_menu::{FilterMenu, FilterOption};
 pub use flagged_install_popup::FlaggedInstallPopup;
 pub(crate) use flagged_install_popup::explanation_panel;
-pub use incompatible_install_popup::IncompatibleInstallPopup;
 pub use generic_prompt::GenericPromptOverlay;
-pub use invite_join_popup::InviteJoinPopup;
 pub use icons::{Icon, IconTint, IconType};
+pub use incompatible_install_popup::IncompatibleInstallPopup;
 pub use instance_row::InstanceRow;
+pub use invite_join_popup::InviteJoinPopup;
 pub use java_install_manager::JavaInstallManager;
 pub use java_prompt::JavaPromptOverlay;
 pub use link_confirm::ConfirmLinkOverlay;
+pub(crate) use lobby::modal;
+pub use lobby::{LobbyHeroChip, PartyTab, use_player_name, use_provide_lobby};
 pub use local_image::LocalImage;
-pub use log_viewer::{LogViewer, clean_line};
+pub use log_viewer::{LogViewer, auto_scroll_toggle, clean_line};
 pub use markdown::{Markdown, MarkdownStyle};
 pub use memory_field::memory_field;
 pub use microsoft_java_prompt::MicrosoftJavaPromptOverlay;
 pub(crate) use microsoft_login::login_dialog;
 pub use microsoft_login::{MicrosoftLogin, use_microsoft_login};
 pub use modpack_confirm_popup::ModpackConfirmPopup;
-pub(crate) use navbar::{window_controls, window_controls_with};
 pub use navbar::{AppNavbar, OnboardingNavbar};
+pub(crate) use navbar::{window_controls, window_controls_with};
 pub use notifications::{ChevronToggle, NotificationCenter};
 pub use optional_mods_popup::OptionalModsPopup;
 pub use overlay_popup::{
@@ -125,7 +128,7 @@ pub use overlay_popup::{
 pub use package_delete_dialog::use_shared_delete;
 pub(crate) use package_row::{
     CARD_GRID_H, CARD_H, GRID_GAP, GRID_MIN_W, badge, bundled_delete_action, disable_request,
-    grid_card, guard_disable, icon_box, kebab_button, meta_size, meta_text, on_secondary,
+    grid_card, guard_disable, icon_box, kebab_button, list_card, meta_size, meta_text, on_secondary,
     package_icon, pill, remote_icon, run_guarded, set_enabled_action, toggle_action,
 };
 pub use package_row::{

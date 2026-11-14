@@ -155,6 +155,7 @@ pub struct LogViewer {
     lines: Arc<Vec<Arc<str>>>,
     streaming: bool,
     header: Option<Element>,
+    auto_scroll: Option<State<bool>>,
 }
 
 impl LogViewer {
@@ -164,11 +165,18 @@ impl LogViewer {
             lines: lines.into(),
             streaming: false,
             header: None,
+            auto_scroll: None,
         }
     }
 
     pub fn streaming(mut self, streaming: bool) -> Self {
         self.streaming = streaming;
+        self
+    }
+
+    /// Auto scroll owned by the caller, which then shows [`auto_scroll_toggle`] itself
+    pub fn auto_scroll(mut self, auto_scroll: State<bool>) -> Self {
+        self.auto_scroll = Some(auto_scroll);
         self
     }
 
@@ -194,7 +202,9 @@ impl Component for LogViewer {
         let content_w = ROW_PAD_X + num_col_w + NUM_GAP + max_chars as f32 * CHAR_W + ROW_PAD_X;
 
         let scroll = use_scroll_controller(ScrollConfig::default);
-        let mut auto_scroll = use_state(|| streaming);
+        let own_auto_scroll = use_state(|| streaming);
+        let mut auto_scroll = self.auto_scroll.unwrap_or(own_auto_scroll);
+        let own_toggle = streaming && self.auto_scroll.is_none();
 
         let sel_anchor = use_state::<Option<(usize, usize)>>(|| None);
         let sel_focus = use_state::<Option<(usize, usize)>>(|| None);
@@ -210,8 +220,8 @@ impl Component for LogViewer {
             .background(colors::page_elevated())
             .corner_radius(rounded(12.))
             .maybe_child(
-                (!self.title.is_empty() || streaming)
-                    .then(|| toolbar(self.title.clone(), streaming, auto_scroll)),
+                (!self.title.is_empty() || own_toggle)
+                    .then(|| toolbar(self.title.clone(), own_toggle, auto_scroll)),
             )
             .maybe_child(self.header.clone())
             .child(
@@ -268,7 +278,7 @@ fn toolbar(title: String, streaming: bool, auto_scroll: State<bool>) -> impl Int
         .into_element()
 }
 
-fn auto_scroll_toggle(mut auto_scroll: State<bool>) -> impl IntoElement {
+pub fn auto_scroll_toggle(mut auto_scroll: State<bool>) -> impl IntoElement {
     let on = *auto_scroll.read();
     rect()
         .horizontal()

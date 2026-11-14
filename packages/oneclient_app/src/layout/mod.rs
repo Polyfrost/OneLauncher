@@ -5,14 +5,17 @@ mod ipc_commands;
 mod onboarding_shell;
 mod pending_launch;
 mod root_layout;
+mod server_shell;
 mod settings_shell;
 
 pub use animated_outlet::AnimatedAppOutlet;
 pub use app_shell::{AppShell, HOME_BACKGROUND_ASSET, HomeArtPrefetch};
 pub use cluster_shell::{ClusterShell, cluster_content};
+pub(crate) use cluster_shell::TabContentOutlet;
 pub use ipc_commands::use_ipc_commands;
 pub use onboarding_shell::OnboardingShell;
 pub use pending_launch::PendingLaunchDriver;
 pub use root_layout::RootLayout;
+pub use server_shell::{ServerShell, server_id_of};
 pub(crate) use settings_shell::SearchItem;
 pub use settings_shell::SettingsShell;

@@ -50,9 +50,13 @@ fn is_cluster_route(route: &Route) -> bool {
     )
 }
 
+fn is_server_route(route: &Route) -> bool {
+    crate::layout::server_id_of(route).is_some()
+}
+
 /// Checks if it should go back to home or somewhere else
 fn escape_exits_section(route: &Route) -> bool {
-    is_cluster_route(route) || is_sidebar_route(route)
+    is_cluster_route(route) || is_sidebar_route(route) || is_server_route(route)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -88,6 +92,7 @@ fn is_text_entry(role: AccessibilityRole) -> bool {
 fn enter_kind(from: &Route, to: &Route) -> Enter {
     if (is_sidebar_route(from) && is_sidebar_route(to))
         || (is_cluster_route(from) && is_cluster_route(to))
+        || (is_server_route(from) && is_server_route(to))
         || (matches!(from, Route::Browser { .. }) && matches!(to, Route::Browser { .. }))
     {
         Enter::None
@@ -131,7 +136,8 @@ impl Component for AnimatedAppOutlet {
 
         let on_global_key = move |e: Event<KeyboardEventData>| {
             if e.code == Code::KeyO
-                && e.modifiers.contains(Modifiers::ctrl_or_meta() | Modifiers::SHIFT)
+                && e.modifiers
+                    .contains(Modifiers::ctrl_or_meta() | Modifiers::SHIFT)
             {
                 if let Ok(dir) = oneclient_common::paths::logs_dir() {
                     crate::platform::open_path(&dir.to_string_lossy());

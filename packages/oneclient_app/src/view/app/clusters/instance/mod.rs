@@ -16,9 +16,14 @@ mod rail;
 mod shell;
 mod steps;
 
-pub(super) use cards::{WideCard, wide_card};
+pub(crate) use cards::{CellCard, cell_card, loader_mark, version_row};
+pub(crate) use cards::{WideCard, wide_card};
 pub use create::CreateInstanceModal;
+pub(crate) use details::field;
 pub use edit::{EditInstanceModal, InstanceFacts};
+pub(crate) use model::{LoaderChoice, VersionRow};
+pub(crate) use rail::{Rail, facts_card, rail};
+pub(crate) use shell::{Shell, shell};
 
 pub fn tidy_file_name(raw: &str) -> String {
     let stem = raw

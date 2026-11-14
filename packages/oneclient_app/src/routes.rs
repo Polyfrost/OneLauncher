@@ -6,16 +6,21 @@ use crate::layout::AppShell;
 use crate::layout::ClusterShell;
 use crate::layout::OnboardingShell;
 use crate::layout::RootLayout;
+use crate::layout::ServerShell;
 use crate::layout::SettingsShell;
 
 use crate::view::{
     NotFound, Relocating, Startup,
     app::{
         Clusters, Debug, Home, Stats, Wardrobe,
-        browser::{Browser, BrowserPackage},
+        browser::{Browser, BrowserPackage, ServerBrowser, ServerBrowserPackage},
         cluster::{
             ClusterDataPacks, ClusterLogs, ClusterMods, ClusterOverview, ClusterScreenshots,
             ClusterSettings, ClusterShaders, ClusterTextures, ClusterWorlds, ProcessLogs,
+        },
+        servers::{
+            ServerBackups, ServerConsole, ServerLiveConsole, ServerMods, ServerOverview,
+            ServerPlayers, ServerSettings, ServerWorlds, Servers,
         },
         settings::{
             SettingsAccounts, SettingsApis, SettingsAppearance, SettingsChangelog,
@@ -88,6 +93,33 @@ pub enum Route {
                 #[route("/app/clusters/:cluster_id/settings")]
                 ClusterSettings { cluster_id: i64 },
             #[end_layout]
+
+            #[route("/app/servers")]
+            Servers {},
+
+            #[layout(ServerShell)]
+                #[route("/app/servers/:server_id")]
+                ServerOverview { server_id: String },
+                #[route("/app/servers/:server_id/console")]
+                ServerConsole { server_id: String },
+                #[route("/app/servers/:server_id/players")]
+                ServerPlayers { server_id: String },
+                #[route("/app/servers/:server_id/worlds")]
+                ServerWorlds { server_id: String },
+                #[route("/app/servers/:server_id/backups")]
+                ServerBackups { server_id: String },
+                #[route("/app/servers/:server_id/mods")]
+                ServerMods { server_id: String },
+                #[route("/app/servers/:server_id/settings")]
+                ServerSettings { server_id: String },
+                #[route("/app/servers/:server_id/live")]
+                ServerLiveConsole { server_id: String },
+            #[end_layout]
+
+            #[route("/app/servers/:server_id/browse")]
+            ServerBrowser { server_id: String },
+            #[route("/app/servers/:server_id/browse/:package_id")]
+            ServerBrowserPackage { server_id: String, package_id: String },
 
             #[route("/app/browser/:cluster_id/:package_type?:pick_cluster")]
             Browser { cluster_id: i64, package_type: String, pick_cluster: bool },
@@ -163,8 +195,19 @@ impl Route {
             Route::ClusterWorlds { .. } => t("oneclient.routes.cluster_worlds"),
             Route::ClusterDataPacks { .. } => t("oneclient.routes.cluster_data_packs"),
             Route::ClusterSettings { .. } => t("oneclient.routes.cluster_settings"),
-            Route::Browser { .. } => t("oneclient.routes.browser"),
-            Route::BrowserPackage { .. } => t("oneclient.routes.browser_package"),
+            Route::Servers { .. } => t("oneclient.routes.servers"),
+            Route::ServerOverview { .. } => t("oneclient.routes.server"),
+            Route::ServerConsole { .. } => t("oneclient.routes.server_console"),
+            Route::ServerPlayers { .. } => t("oneclient.routes.server_players"),
+            Route::ServerWorlds { .. } => t("oneclient.routes.server_worlds"),
+            Route::ServerBackups { .. } => t("oneclient.routes.server_backups"),
+            Route::ServerMods { .. } => t("oneclient.routes.server_mods"),
+            Route::ServerSettings { .. } => t("oneclient.routes.server_settings"),
+            Route::ServerLiveConsole { .. } => t("oneclient.routes.server_live_console"),
+            Route::Browser { .. } | Route::ServerBrowser { .. } => t("oneclient.routes.browser"),
+            Route::BrowserPackage { .. } | Route::ServerBrowserPackage { .. } => {
+                t("oneclient.routes.browser_package")
+            }
             Route::Wardrobe { .. } => t("oneclient.routes.wardrobe"),
             Route::Stats { .. } => t("oneclient.routes.stats"),
             Route::Debug { .. } => t("oneclient.routes.debug"),

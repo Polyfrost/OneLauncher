@@ -38,6 +38,7 @@ cd Downloads
 flatpak install ./OneClient_2.10.2_linux_x86_64.flatpak 
 ```
 </details>
+<details>
 
 <summary><h3>COPR Installation</h3></summary>
 

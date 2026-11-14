@@ -150,6 +150,70 @@ pub async fn has_migratable_packages(cluster_id: i64, ctx: &ContentCtx) -> Conte
     Ok(!migratable_candidates(cluster_id, ctx).await?.is_empty())
 }
 
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn migration_check(
+    source_cluster_id: i64,
+    mc_version: &str,
+    loader: GameLoader,
+    ctx: &ContentCtx,
+) -> ContentResult<(usize, usize)> {
+    let candidates = migratable_candidates(source_cluster_id, ctx).await?;
+    let total = candidates.len();
+
+    let mut found = 0;
+    for (provider_id, candidates) in by_provider(candidates) {
+        let latest = match latest_builds(provider_id, &candidates, mc_version, loader, ctx).await {
+            Ok(latest) => latest,
+            Err(err) if err.is_transient() => return Err(err),
+            Err(err) => {
+                tracing::warn!(provider = ?provider_id, error = %err, "migration check failed for the provider");
+                continue;
+            }
+        };
+        found += candidates
+            .iter()
+            .filter(|candidate| {
+                latest.get(&candidate.hash).is_some_and(|version| {
+                    fits_target(version, candidate.content_type, mc_version, loader)
+                })
+            })
+            .count();
+    }
+    Ok((found, total))
+}
+
+fn by_provider(candidates: Vec<Candidate>) -> HashMap<ProviderId, Vec<Candidate>> {
+    let mut grouped: HashMap<ProviderId, Vec<Candidate>> = HashMap::new();
+    for candidate in candidates {
+        grouped
+            .entry(candidate.provider)
+            .or_default()
+            .push(candidate);
+    }
+    grouped
+}
+
+async fn latest_builds(
+    provider_id: ProviderId,
+    candidates: &[Candidate],
+    mc_version: &str,
+    loader: GameLoader,
+    ctx: &ContentCtx,
+) -> ContentResult<HashMap<String, VersionDetail>> {
+    let installed: Vec<InstalledPackage> = candidates
+        .iter()
+        .map(|candidate| InstalledPackage {
+            hash: candidate.hash.clone(),
+            project_id: candidate.project_id.clone(),
+            content_type: candidate.content_type,
+        })
+        .collect();
+    ctx.providers
+        .get(provider_id)?
+        .latest_for_game_version(&installed, mc_version, loader, ctx)
+        .await
+}
+
 #[tracing::instrument(level = "debug", skip(bundles, ctx))]
 pub async fn has_packages_to_migrate(
     source_cluster_id: i64,
@@ -418,36 +482,12 @@ async fn evaluate_candidates(
     let loader = GameLoader::from_repr(target.mc_loader as u8).unwrap_or(GameLoader::Vanilla);
     let mut evaluation = Evaluation::default();
 
-    let mut by_provider: HashMap<ProviderId, Vec<Candidate>> = HashMap::new();
-    for candidate in candidates {
-        by_provider
-            .entry(candidate.provider)
-            .or_default()
-            .push(candidate);
-    }
-
     let mut offered: Vec<ReleaseMigrationPackage> = Vec::new();
 
-    for (provider_id, candidates) in by_provider {
-        let installed: Vec<InstalledPackage> = candidates
-            .iter()
-            .map(|candidate| InstalledPackage {
-                hash: candidate.hash.clone(),
-                project_id: candidate.project_id.clone(),
-                content_type: candidate.content_type,
-            })
-            .collect();
-
-        let found = match ctx.providers.get(provider_id) {
-            Ok(provider) => {
-                provider
-                    .latest_for_game_version(&installed, &target.mc_version, loader, ctx)
-                    .await
-            }
-            Err(err) => Err(err),
-        };
-
-        let found = match found {
+    for (provider_id, candidates) in by_provider(candidates) {
+        let found = match latest_builds(provider_id, &candidates, &target.mc_version, loader, ctx)
+            .await
+        {
             Ok(found) => found,
             Err(err) if err.is_transient() => {
                 tracing::warn!(provider = ?provider_id, error = %err, "release migration check could not reach the provider");

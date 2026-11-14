@@ -2,12 +2,14 @@ use freya::prelude::*;
 use oneclient_core::storage::{ReclaimableEntry, StorageEntry, StorageReport, format_bytes};
 
 use super::{section_header, settings_page};
+use crate::Route;
 use crate::components::{Button, Icon, IconType, open_folder_button};
 use crate::hooks::{
     StorageAction, mutation_is_running, try_storage_report, use_storage_action, use_storage_report,
     use_storage_scan_progress,
 };
 use crate::i18n::{t, tf};
+use crate::layout::SearchItem;
 use crate::state::StorageScanProgress;
 use crate::theme::{colors, rounded, text_size};
 
@@ -413,4 +415,29 @@ fn footnote() -> impl IntoElement {
                 .color(colors::fg_secondary()),
         )
         .into_element()
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "storage.usage",
+        icon: IconType::Database01,
+        title: "oneclient.layout.search.storage.usage.title",
+        description: "oneclient.layout.search.storage.usage.description",
+        keywords: &["storage", "disk", "space", "size", "usage", "cache"],
+        route: Route::SettingsStorage {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "storage.cleanup",
+        icon: IconType::Trash01,
+        title: "oneclient.layout.search.storage.cleanup.title",
+        description: "oneclient.layout.search.storage.cleanup.description",
+        keywords: &[
+            "storage", "clean", "cleanup", "free", "space", "cache", "unused", "orphan",
+            "leftover",
+        ],
+        route: Route::SettingsStorage {},
+    }
 }

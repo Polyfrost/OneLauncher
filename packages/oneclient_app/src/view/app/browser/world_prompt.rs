@@ -6,6 +6,7 @@ use crate::hooks::{
     query_is_loading, try_cluster_worlds, use_cluster_worlds, use_datapack_world, use_dispatch,
 };
 use crate::i18n::t;
+use crate::install::IncompatibleMode;
 use crate::theme::{colors, text_size};
 use crate::view::app::cluster::dialog;
 
@@ -15,6 +16,7 @@ pub(crate) struct WorldInstallPrompt {
     pub provider: ProviderId,
     pub project_id: String,
     pub pending: State<Option<String>>,
+    pub incompatible: IncompatibleMode,
 }
 
 impl Component for WorldInstallPrompt {
@@ -23,6 +25,7 @@ impl Component for WorldInstallPrompt {
         let provider = self.provider;
         let project_id = self.project_id.clone();
         let mut pending = self.pending;
+        let incompatible = self.incompatible;
 
         let dispatch = use_dispatch();
         let mut remembered = use_datapack_world();
@@ -82,6 +85,7 @@ impl Component for WorldInstallPrompt {
                 project_id.clone(),
                 version_id,
                 Some(world),
+                incompatible,
             );
             pending.set(None);
         };

@@ -51,6 +51,11 @@ pub enum ClientboundPacket {
         message_id: i64,
     },
 
+    GroupRenamed {
+        group_id: i32,
+        name: String,
+    },
+
     Error {
         error_code: String,
         message: String,

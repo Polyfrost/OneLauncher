@@ -141,6 +141,12 @@ pub fn use_essential_guard() -> State<Option<PendingEssential>> {
     consume_root_context::<EssentialGuardState>().0
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SearchOverride {
+    pub loader: Option<GameLoader>,
+    pub version: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct BrowserUiState {
     pub query: String,
@@ -149,6 +155,7 @@ pub struct BrowserUiState {
     pub sort: SearchSort,
     pub loader: Option<GameLoader>,
     pub side: Option<SearchSide>,
+    pub search_override: Option<SearchOverride>,
     pub page: usize,
 }
 
@@ -161,6 +168,7 @@ impl Default for BrowserUiState {
             sort: SearchSort::Relevance,
             loader: None,
             side: None,
+            search_override: None,
             page: 0,
         }
     }

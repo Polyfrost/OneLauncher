@@ -2,6 +2,7 @@ mod index;
 mod package;
 
 pub use index::Browser;
+use index::state_key;
 pub(crate) use index::{browsable_type, encode_package_id};
 
 mod modpack_prompt;
@@ -28,18 +29,57 @@ fn preferred_version(
 }
 pub use package::BrowserPackage;
 
+pub(crate) fn use_saved_override(cluster_id: i64, package_type: &str) -> Option<SearchOverride> {
+    use_browser_state_store()
+        .read()
+        .get(&state_key(cluster_id, package_type, false))
+        .and_then(|saved| saved.search_override.clone())
+}
+
+pub(crate) fn use_version_filter(
+    cluster_id: i64,
+    content_type: ContentType,
+    search_override: Option<SearchOverride>,
+) -> (Option<String>, Option<GameLoader>, IncompatibleMode) {
+    let compat = *use_browser_compat().read();
+    let cluster = use_cluster(cluster_id);
+    let uses_loader = content_type == ContentType::Mod;
+
+    if content_type == ContentType::Modpack {
+        return (None, None, IncompatibleMode::Refuse);
+    }
+    if let Some(o) = search_override {
+        return (
+            o.version,
+            o.loader.filter(|_| uses_loader),
+            IncompatibleMode::Ask,
+        );
+    }
+    match (compat, cluster) {
+        (true, Some(c)) => (
+            Some(c.mc_version),
+            uses_loader.then_some(c.mc_loader),
+            IncompatibleMode::Refuse,
+        ),
+        _ => (None, None, IncompatibleMode::Refuse),
+    }
+}
+
 use std::collections::HashMap;
 
 use freya::prelude::*;
-use oneclient_content::packages::ProviderId;
+use oneclient_common::domain::GameLoader;
+use oneclient_content::packages::{ContentType, ProviderId};
 use oneclient_core::{BundleFileKind, BundleWithUpdateStatus, LinkedArtifactInfo};
 use oneclient_db::models::OverrideType;
 
 use crate::components::{Button, Icon, IconType, set_enabled_action};
 use crate::hooks::{
-    ClusterAction, loaded_image, mutation_is_running, use_cached_image, use_cluster_mutation,
+    ClusterAction, SearchOverride, loaded_image, mutation_is_running, use_browser_compat,
+    use_browser_state_store, use_cached_image, use_cluster, use_cluster_mutation,
 };
 use crate::i18n::t;
+use crate::install::IncompatibleMode;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::{ImageFallbackExt, border_all_color};
 

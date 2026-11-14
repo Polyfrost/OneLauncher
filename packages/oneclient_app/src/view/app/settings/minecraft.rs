@@ -5,11 +5,13 @@ use oneclient_core::settings::{
 };
 
 use super::settings_page;
+use crate::Route;
 use crate::components::{
     Dropdown, Icon, IconType, TextInput, memory_field, toggle, validate_number,
 };
 use crate::hooks::{use_dispatch, use_settings_snapshot};
 use crate::i18n::t;
+use crate::layout::SearchItem;
 use crate::theme::colors;
 use crate::view::app::settings::{resettable, resettable_all, section_header, settings_row};
 
@@ -269,13 +271,17 @@ fn gpu_field(
 ) -> impl IntoElement {
     let system_default = t("oneclient.settings.minecraft.gpu.system_default");
 
+    let default = oneclient_core::game::gpu::DEFAULT;
+
     let current = selected
         .read()
         .as_deref()
+        .or(default)
         .and_then(|id| gpus.iter().find(|gpu| gpu.id == id))
         .map_or(system_default.to_string(), |gpu| gpu.name.clone());
 
-    let options = std::iter::once(system_default.to_string())
+    let offset = usize::from(default.is_none());
+    let options = std::iter::repeat_n(system_default.to_string(), offset)
         .chain(gpus.iter().map(|gpu| gpu.name.clone()))
         .collect();
     let ids: Vec<String> = gpus.iter().map(|gpu| gpu.id.clone()).collect();
@@ -284,7 +290,7 @@ fn gpu_field(
         .width(Size::px(220.))
         .height(Size::px(34.))
         .on_select(move |idx: usize| {
-            selected.set(idx.checked_sub(1).and_then(|i| ids.get(i).cloned()));
+            selected.set(idx.checked_sub(offset).and_then(|i| ids.get(i).cloned()));
         })
 }
 
@@ -378,4 +384,103 @@ fn resolution_field(width: State<String>, height: State<String>) -> impl IntoEle
                 .text_align(TextAlign::Center),
         )
         .into_element()
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "minecraft.force_fullscreen",
+        icon: IconType::Maximize01,
+        title: "oneclient.settings.minecraft.force_fullscreen.title",
+        description: "oneclient.settings.minecraft.force_fullscreen.description",
+        keywords: &["fullscreen", "window"],
+        route: Route::SettingsMinecraft {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "minecraft.resolution",
+        icon: IconType::LayoutTop,
+        title: "oneclient.settings.minecraft.resolution.title",
+        description: "oneclient.settings.minecraft.resolution.description",
+        keywords: &["width", "height", "window size", "resolution"],
+        route: Route::SettingsMinecraft {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "minecraft.memory",
+        icon: IconType::Database01,
+        title: "oneclient.settings.minecraft.memory.title",
+        description: "oneclient.layout.search.minecraft.memory.description",
+        keywords: &["ram", "memory", "heap", "xmx"],
+        route: Route::SettingsMinecraft {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "minecraft.pre_launch",
+        icon: IconType::FilePlus02,
+        title: "oneclient.settings.minecraft.pre_launch.title",
+        description: "oneclient.settings.minecraft.pre_launch.description",
+        keywords: &["hook", "command", "pre launch", "prelaunch"],
+        route: Route::SettingsMinecraft {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "minecraft.wrapper",
+        icon: IconType::ParagraphWrap,
+        title: "oneclient.settings.minecraft.wrapper.title",
+        description: "oneclient.settings.minecraft.wrapper.description",
+        keywords: &["hook", "command", "wrapper", "gamescope"],
+        route: Route::SettingsMinecraft {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "minecraft.post_exit",
+        icon: IconType::FileX02,
+        title: "oneclient.settings.minecraft.post_exit.title",
+        description: "oneclient.settings.minecraft.post_exit.description",
+        keywords: &["hook", "command", "post exit", "postexit"],
+        route: Route::SettingsMinecraft {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "minecraft.jvm_args",
+        icon: IconType::Terminal,
+        title: "oneclient.settings.minecraft.jvm_args.title",
+        description: "oneclient.settings.minecraft.jvm_args.description",
+        keywords: &["jvm", "java", "arguments", "args", "flags", "gc"],
+        route: Route::SettingsMinecraft {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "minecraft.game_args",
+        icon: IconType::Play,
+        title: "oneclient.settings.minecraft.game_args.title",
+        description: "oneclient.settings.minecraft.game_args.description",
+        keywords: &["game", "arguments", "args", "launch options"],
+        route: Route::SettingsMinecraft {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "minecraft.browser_updates",
+        icon: IconType::RefreshCw01,
+        title: "oneclient.settings.minecraft.browser_updates.title",
+        description: "oneclient.settings.minecraft.browser_updates.description",
+        keywords: &["update", "mods", "auto update", "content"],
+        route: Route::SettingsMinecraft {},
+    }
 }

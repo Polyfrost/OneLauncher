@@ -5,9 +5,11 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use oneclient_content::packages::release_migration::has_packages_to_migrate;
+use oneclient_content::packages::release_migration::{
+    has_migratable_packages, has_packages_to_migrate,
+};
 use oneclient_content::packages::{ContentType, PackageStore};
-use oneclient_core::game::DuplicateMods;
+use oneclient_core::game::{DuplicateMods, FolderPack, list_folder_packs};
 use oneclient_core::{LauncherError, LinkedArtifactInfo};
 use oneclient_db::models::ClusterId;
 
@@ -57,6 +59,26 @@ pub fn use_cluster_content(
     ))
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct FolderPacksQuery;
+
+impl QueryCapability for FolderPacksQuery {
+    type Ok = Vec<FolderPack>;
+    type Err = LauncherError;
+    type Keys = ClusterId;
+
+    async fn run(&self, cluster_id: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        let state = crate::launcher::state()?;
+        let game_dir = state.clusters.get(*cluster_id).await?.game_dir()?;
+        Ok(off_ui(async move { list_folder_packs(&game_dir).await }).await)
+    }
+}
+
+pub fn use_folder_packs(cluster_id: ClusterId) -> Vec<FolderPack> {
+    let query = use_query(Query::new(cluster_id, FolderPacksQuery));
+    super::state::settled_or_loading(&query).unwrap_or_default()
+}
+
 pub fn cluster_content_items(query: &UseQuery<ClusterContentQuery>) -> Vec<LinkedArtifactInfo> {
     super::state::settled_or_loading(query).unwrap_or_default()
 }
@@ -76,7 +98,12 @@ impl QueryCapability for MigratableRoutesQuery {
             let content = state.services.content();
             let mut migratable = HashSet::new();
             for (target, source) in routes {
-                if has_packages_to_migrate(source, target, &state.bundles, &content).await? {
+                let found = if source == target {
+                    has_migratable_packages(source, &content).await?
+                } else {
+                    has_packages_to_migrate(source, target, &state.bundles, &content).await?
+                };
+                if found {
                     migratable.insert((target, source));
                 }
             }
@@ -91,6 +118,10 @@ pub fn use_migratable_routes(
 ) -> Arc<HashSet<(ClusterId, ClusterId)>> {
     let query = use_query(Query::new(routes, MigratableRoutesQuery));
     super::state::settled_or_loading(&query).unwrap_or_default()
+}
+
+pub fn use_is_migration_source(cluster_id: ClusterId) -> bool {
+    use_migratable_routes(vec![(cluster_id, cluster_id)]).contains(&(cluster_id, cluster_id))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

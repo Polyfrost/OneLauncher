@@ -9,14 +9,14 @@ use oneclient_core::clusters::ModpackSource;
 
 use crate::components::{Button, Icon, IconType};
 use crate::hooks::{
-    ALL_VERSIONS, ClusterAction, VERSIONS_PAGE_SIZE, content_type_for_slug, use_browser_compat,
+    ALL_VERSIONS, ClusterAction, SearchOverride, VERSIONS_PAGE_SIZE, content_type_for_slug,
     use_cluster, use_dispatch, use_installs_snapshot, use_package_versions_when, version_list,
 };
 use crate::i18n::{t, tf};
 use crate::routes::Route;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
-use crate::view::app::browser::cluster_version;
+use crate::view::app::browser::{cluster_version, use_version_filter};
 
 type InstalledMap = HashMap<(ProviderId, String), Installed>;
 
@@ -51,6 +51,7 @@ pub(super) fn grid_row(
     installed: &InstalledMap,
     cols: usize,
     add_to_cluster: bool,
+    search_override: Option<SearchOverride>,
 ) -> impl IntoElement {
     let package_type = package_type.to_string();
     let fill = cols.saturating_sub(row.len());
@@ -75,6 +76,7 @@ pub(super) fn grid_row(
                         package_type.clone(),
                         installed,
                         add_to_cluster,
+                        search_override.clone(),
                     )
                     .into_element()
                 }),
@@ -110,6 +112,7 @@ struct PackageCard {
     package_type: String,
     installed: Option<CardInstalled>,
     add_to_cluster: bool,
+    search_override: Option<SearchOverride>,
 }
 
 impl PackageCard {
@@ -119,6 +122,7 @@ impl PackageCard {
         package_type: String,
         installed: Option<CardInstalled>,
         add_to_cluster: bool,
+        search_override: Option<SearchOverride>,
     ) -> Self {
         Self {
             item,
@@ -126,6 +130,7 @@ impl PackageCard {
             package_type,
             installed,
             add_to_cluster,
+            search_override,
         }
     }
 }
@@ -243,6 +248,7 @@ impl Component for PackageCard {
                         &self.package_type,
                         self.installed.clone(),
                         self.add_to_cluster,
+                        self.search_override.clone(),
                     )),
             )
     }
@@ -254,6 +260,7 @@ pub(super) fn list_row(
     package_type: &str,
     installed: &InstalledMap,
     add_to_cluster: bool,
+    search_override: Option<SearchOverride>,
 ) -> impl IntoElement {
     ListRow {
         installed: installed_for(installed, &item, cluster_id),
@@ -261,6 +268,7 @@ pub(super) fn list_row(
         cluster_id,
         package_type: package_type.to_string(),
         add_to_cluster,
+        search_override,
     }
 }
 
@@ -271,6 +279,7 @@ struct ListRow {
     package_type: String,
     installed: Option<CardInstalled>,
     add_to_cluster: bool,
+    search_override: Option<SearchOverride>,
 }
 
 impl Component for ListRow {
@@ -359,6 +368,7 @@ impl Component for ListRow {
                 &self.package_type,
                 self.installed.clone(),
                 self.add_to_cluster,
+                self.search_override.clone(),
             ))
     }
 }
@@ -369,6 +379,7 @@ struct InstallButton {
     project_id: String,
     cluster_id: i64,
     content_type: ContentType,
+    search_override: Option<SearchOverride>,
     /// Cluster already has this one, so the control becomes a static pill
     installed: Option<CardInstalled>,
     add_to_cluster: bool,
@@ -381,6 +392,7 @@ impl InstallButton {
         package_type: &str,
         installed: Option<CardInstalled>,
         add_to_cluster: bool,
+        search_override: Option<SearchOverride>,
     ) -> Self {
         let content_type = content_type_for_slug(package_type);
         Self {
@@ -388,6 +400,7 @@ impl InstallButton {
             project_id: item.id.clone(),
             cluster_id,
             content_type,
+            search_override,
             installed,
             add_to_cluster: add_to_cluster && content_type == ContentType::Modpack,
         }
@@ -401,18 +414,12 @@ impl Component for InstallButton {
         let project_id = self.project_id.clone();
 
         let dispatch = use_dispatch();
-        let compat = *use_browser_compat().read();
         let cluster = use_cluster(cluster_id);
 
         // The same narrowing the package page does so both agree on what "latest" installs
         let is_modpack = self.content_type == ContentType::Modpack;
-        let (game_version, loader) = match (compat && !is_modpack, &cluster) {
-            (true, Some(c)) => (
-                Some(c.mc_version.clone()),
-                (self.content_type == ContentType::Mod).then_some(c.mc_loader),
-            ),
-            _ => (None, None),
-        };
+        let (game_version, loader, incompatible_mode) =
+            use_version_filter(cluster_id, self.content_type, self.search_override.clone());
 
         let versions = version_list(&use_package_versions_when(
             self.installed.is_none(),
@@ -524,6 +531,7 @@ impl Component for InstallButton {
                                     project_id.clone(),
                                     version_id,
                                     None,
+                                    incompatible_mode,
                                 );
                             }
                         }
@@ -559,6 +567,7 @@ impl Component for InstallButton {
                 provider,
                 project_id: project_id.clone(),
                 pending: world_prompt,
+                incompatible: incompatible_mode,
             }))
             .maybe_child(modpack_prompt.read().then(|| ModpackVersionPrompt {
                 provider,

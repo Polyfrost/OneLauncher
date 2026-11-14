@@ -66,8 +66,8 @@ pub use changelog::{
     use_changelog,
 };
 pub use cluster_content::{
-    cluster_content_items, use_cluster_content, use_migratable_routes, use_mods_folder_sync,
-    use_shadowed_mods,
+    cluster_content_items, use_cluster_content, use_folder_packs, use_is_migration_source,
+    use_migratable_routes, use_mods_folder_sync, use_shadowed_mods,
 };
 pub use clusters::{
     GraphicsBackendQuery, use_cluster, use_clusters, use_graphics_backend, use_shared_groups,

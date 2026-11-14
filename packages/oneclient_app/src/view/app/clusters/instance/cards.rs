@@ -325,7 +325,12 @@ pub fn cell_card(card: CellCard) -> Element {
     .into_element()
 }
 
-pub fn version_row(row: &VersionRow, selected: bool, on_press: EventHandler<()>) -> Element {
+pub fn version_row(
+    row: &VersionRow,
+    selected: bool,
+    on_press: EventHandler<()>,
+    trailing: Option<Element>,
+) -> Element {
     let content = rect()
         .horizontal()
         .width(Size::fill())
@@ -367,6 +372,7 @@ pub fn version_row(row: &VersionRow, selected: bool, on_press: EventHandler<()>)
                 .color(colors::fg_secondary())
                 .into_element()
         }))
+        .maybe_child(trailing)
         .into_element();
 
     SelectCard {

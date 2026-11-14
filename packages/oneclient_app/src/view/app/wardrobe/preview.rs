@@ -540,7 +540,8 @@ impl Component for PreviewPanel {
             .child(
                 rect()
                     .width(Size::fill())
-                    .height(Size::px(330.))
+                    .height(Size::percent(80.))
+                    .min_height(Size::px(330.))
                     .child(LookThumb {
                         uuid: data.uuid.clone(),
                         skin,
@@ -608,7 +609,7 @@ impl Component for VariantChip {
                     .font_size(text_size(12.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(if self.selected {
-                        colors::fg_primary()
+                        colors::on_brand()
                     } else {
                         colors::fg_secondary()
                     }),
@@ -1031,7 +1032,8 @@ impl Component for StoreDetailPanel {
             .child(
                 panel_box()
                     .width(Size::fill())
-                    .height(Size::px(330.))
+                    .height(Size::percent(55.))
+                    .min_height(Size::px(330.))
                     .child(shop_thumbnail(data, &item, &variant, true))
                     .maybe_child(badge.map(|(text, color)| {
                         rect()
@@ -1045,7 +1047,7 @@ impl Component for StoreDetailPanel {
                                     .text(text)
                                     .font_size(text_size(11.))
                                     .font_weight(FontWeight::MEDIUM)
-                                    .color(colors::fg_primary()),
+                                    .color(colors::on_color(color)),
                             )
                     })),
             )

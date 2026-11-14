@@ -3,14 +3,15 @@ use oneclient_content::packages::ContentType;
 
 use crate::hooks::{
     bundle_overrides_map, bundles_with_status_items, cluster_content_items, stale_hashes,
-    use_bundle_overrides, use_bundles_with_status, use_cluster_content, use_package_updates,
+    use_bundle_overrides, use_bundles_with_status, use_cluster_content, use_folder_packs,
+    use_package_updates,
 };
 use crate::i18n::t;
 use crate::layout::cluster_content;
 
 use super::cluster_not_found;
 use super::package_manager::{
-    PackageManager, bundle_categories, bundle_packages, use_content_meta,
+    PackageManager, bundle_categories, bundle_packages, folder_pack_rows, use_content_meta,
 };
 use crate::hooks::use_cluster;
 
@@ -25,6 +26,7 @@ impl Component for ClusterTextures {
         let bundles = use_bundles_with_status(self.cluster_id);
         let overrides = use_bundle_overrides(self.cluster_id);
         let updates = use_package_updates(self.cluster_id);
+        let folder_packs = use_folder_packs(self.cluster_id);
         let bundle_items = bundles_with_status_items(&bundles);
         let content_items = cluster_content_items(&content);
         let meta = use_content_meta(&content_items, &bundle_items, ContentType::ResourcePack);
@@ -34,7 +36,7 @@ impl Component for ClusterTextures {
         };
 
         let all_categories = bundle_categories(&bundle_items);
-        let items = bundle_packages(
+        let mut items = bundle_packages(
             content_items,
             &bundle_items,
             &bundle_overrides_map(&overrides),
@@ -42,6 +44,7 @@ impl Component for ClusterTextures {
             &stale_hashes(&updates),
             ContentType::ResourcePack,
         );
+        items.extend(folder_pack_rows(folder_packs));
 
         cluster_content()
             .child(

@@ -18,16 +18,20 @@ pub fn use_shared_delete(
             let delete = delete.clone();
             spawn(async move {
                 let clusters = match crate::launcher::state() {
-                    Ok(state) => oneclient_core::clusters_sharing_artifact(
-                        cluster_id,
-                        &hash,
-                        &state.services.content(),
-                    )
-                    .await
-                    .unwrap_or_else(|err| {
-                        tracing::warn!(%err, "could not check whether this package is shared");
-                        None
-                    }),
+                    Ok(state) => {
+                        let content = state.services.content();
+                        let shared = if crate::components::parse_folder_pack_id(&hash).is_some() {
+                            oneclient_core::clusters_sharing_global_folders(cluster_id, &content)
+                                .await
+                        } else {
+                            oneclient_core::clusters_sharing_artifact(cluster_id, &hash, &content)
+                                .await
+                        };
+                        shared.unwrap_or_else(|err| {
+                            tracing::warn!(%err, "could not check whether this package is shared");
+                            None
+                        })
+                    }
                     Err(_) => None,
                 };
                 match clusters {

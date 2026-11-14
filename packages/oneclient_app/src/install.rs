@@ -305,6 +305,19 @@ async fn flagged_install(
     }
 }
 
+pub enum InstallBlocked {
+    Flagged(FlaggedInstall),
+    Incompatible { name: String },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum IncompatibleMode {
+    Refuse,
+    Ask,
+    Allow,
+}
+
+#[allow(clippy::too_many_arguments)]
 pub async fn install_package(
     state: &Arc<LauncherState>,
     provider: oneclient_content::packages::ProviderId,
@@ -313,7 +326,8 @@ pub async fn install_package(
     cluster_id: i64,
     world: Option<String>,
     allow_flagged: bool,
-) -> Result<PackageInstall, FlaggedInstall> {
+    incompatible: IncompatibleMode,
+) -> Result<PackageInstall, InstallBlocked> {
     let lookup = async {
         let provider_impl = state.services.packages.get(provider)?;
         let project = provider_impl
@@ -350,7 +364,17 @@ pub async fn install_package(
 
     if screened && let Some(entry) = bad_mods.check(&project, &version) {
         tracing::warn!(project = %project.name, version = %version.version_number, "refusing to install flagged mod");
-        return Err(flagged_install(project.name, entry, cluster_id, &content).await);
+        return Err(InstallBlocked::Flagged(
+            flagged_install(project.name, entry, cluster_id, &content).await,
+        ));
+    }
+
+    if incompatible == IncompatibleMode::Ask {
+        match PackageStore::check_compatible(&project, &version, cluster_id, &content).await {
+            Ok(true) => {}
+            Ok(false) => return Err(InstallBlocked::Incompatible { name: project.name }),
+            Err(err) => return Ok(PackageInstall::failed(err.into())),
+        }
     }
 
     // Resolved before the session starts so its children can be announced up front
@@ -383,7 +407,9 @@ pub async fn install_package(
             "oneclient.install.required_by",
             &[&dependency.project.name, &project.name],
         );
-        return Err(flagged_install(name, entry, cluster_id, &content).await);
+        return Err(InstallBlocked::Flagged(
+            flagged_install(name, entry, cluster_id, &content).await,
+        ));
     }
 
     let session = oneclient_events::GroupedProgressSession::start(
@@ -459,7 +485,7 @@ pub async fn install_package(
         &project,
         &version,
         cluster_id,
-        false,
+        incompatible == IncompatibleMode::Allow,
         false,
         Some(&child),
         &state.services.content(),

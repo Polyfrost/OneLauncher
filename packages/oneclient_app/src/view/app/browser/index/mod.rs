@@ -42,9 +42,12 @@ use super::{
 use crate::utils::abbreviate_number;
 
 mod cards;
+mod override_modal;
 mod sidebar;
 mod skeletons;
 use cards::{empty_state, grid_row, list_row};
+use override_modal::OverrideButton;
+pub(super) use override_modal::summary as override_summary;
 use sidebar::CategorySidebar;
 use skeletons::{SkeletonListRow, skeleton_grid_row};
 
@@ -145,7 +148,7 @@ fn type_title(package_type: &str) -> &'static str {
         .map_or(t("oneclient.browser.index.type.mods"), |(_, title)| *title)
 }
 
-fn state_key(cluster_id: i64, package_type: &str, pick_cluster: bool) -> String {
+pub(super) fn state_key(cluster_id: i64, package_type: &str, pick_cluster: bool) -> String {
     if pick_cluster && content_type_for_slug(package_type) == ContentType::Modpack {
         package_type.to_string()
     } else {
@@ -234,6 +237,7 @@ impl Component for BrowserBody {
         let sort = use_state(|| saved.sort);
         let loader = use_state(|| saved.loader);
         let side = use_state(|| saved.side);
+        let search_override = use_state(|| saved.search_override.clone());
         let page = use_state(|| saved.page);
 
         {
@@ -247,6 +251,7 @@ impl Component for BrowserBody {
                     sort: *sort.read(),
                     loader: *loader.read(),
                     side: *side.read(),
+                    search_override: search_override.read().clone(),
                     page: *page.read(),
                 };
                 store.write().insert(key.clone(), snapshot);
@@ -264,20 +269,30 @@ impl Component for BrowserBody {
         let cats = selected_categories.read().clone();
 
         let targets_cluster = content_type != ContentType::Modpack;
+        let overridden = search_override.read().clone().filter(|_| targets_cluster);
         let compat_cluster = cluster
             .as_ref()
-            .filter(|_| compat && (targets_cluster || cluster_modpacks));
-        let game_versions = compat_cluster
-            .map(|c| vec![c.mc_version.clone()])
-            .unwrap_or_default();
-        let loader_fixed = compat_cluster.is_some_and(|c| {
-            content_type == ContentType::Mod || (cluster_modpacks && c.mc_loader.is_modded())
-        });
+            .filter(|_| compat && (targets_cluster || cluster_modpacks) && overridden.is_none());
+        let game_versions = match &overridden {
+            Some(o) => o.version.clone().into_iter().collect(),
+            None => compat_cluster
+                .map(|c| vec![c.mc_version.clone()])
+                .unwrap_or_default(),
+        };
+        let loader_fixed = overridden.is_some()
+            || compat_cluster.is_some_and(|c| {
+                content_type == ContentType::Mod || (cluster_modpacks && c.mc_loader.is_modded())
+            });
         let loader_filterable =
             matches!(content_type, ContentType::Mod | ContentType::Modpack) && !loader_fixed;
         let picked_loader = (*loader.read()).filter(|_| loader_filterable);
-        let loaders = match (loader_fixed, compat_cluster) {
-            (true, Some(c)) => vec![c.mc_loader],
+        let loaders = match (&overridden, compat_cluster) {
+            (Some(o), _) => o
+                .loader
+                .filter(|_| content_type == ContentType::Mod)
+                .into_iter()
+                .collect(),
+            (None, Some(c)) if loader_fixed => vec![c.mc_loader],
             _ => picked_loader.into_iter().collect(),
         };
         let curseforge_blocked = loader_fixed && loaders.contains(&GameLoader::Ornithe);
@@ -293,7 +308,7 @@ impl Component for BrowserBody {
         // Normalised like the search key so a query differing only by a space does not reset the page
         let sort_by = *sort.read();
         let signature = format!(
-            "{provider_id:?}|{}|{compat}|{}|{sort_by:?}|{picked_loader:?}|{picked_side:?}",
+            "{provider_id:?}|{}|{compat}|{}|{sort_by:?}|{picked_loader:?}|{picked_side:?}|{overridden:?}",
             normalize_query(&debounced_query.read()).to_lowercase(),
             cats.join(",")
         );
@@ -373,6 +388,7 @@ impl Component for BrowserBody {
             .padding(Gaps::new(0., SCROLLBAR_GUTTER, 0., 0.));
 
         let pkg = package_type.clone();
+        let ovr = overridden.clone();
         let results = if !packages.is_empty() {
             match mode {
                 ViewLayout::Grid => {
@@ -387,6 +403,7 @@ impl Component for BrowserBody {
                             &installed,
                             cols,
                             cluster_modpacks,
+                            ovr.clone(),
                         )
                         .into_element()
                     })
@@ -398,6 +415,7 @@ impl Component for BrowserBody {
                         &pkg,
                         &installed,
                         cluster_modpacks,
+                        ovr.clone(),
                     )
                     .into_element()
                 }),
@@ -443,6 +461,13 @@ impl Component for BrowserBody {
                     cluster_id,
                     package_type: package_type.clone(),
                     disabled: !targets_cluster,
+                }),
+                targets_cluster.then(|| OverrideButton {
+                    content_type,
+                    search_override,
+                    cluster: cluster
+                        .as_ref()
+                        .map(|c| (c.mc_loader, c.mc_version.clone())),
                 }),
                 provider,
                 curseforge_blocked,
@@ -516,10 +541,12 @@ impl Component for BrowserBody {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn header(
     package_type: &str,
     target: Option<(&'static str, String)>,
     picker: Option<ClusterPicker>,
+    override_button: Option<OverrideButton>,
     provider: State<ProviderId>,
     curseforge_blocked: bool,
     query: State<String>,
@@ -559,11 +586,20 @@ fn header(
                         .font_weight(FontWeight::BOLD)
                         .color(colors::fg_primary()),
                 )
-                .maybe_child(match picker {
-                    Some(picker) => Some(picker.into_element()),
-                    // Without the picker the cluster is fixed so the same pill is read-only
-                    None => target.map(|(verb, name)| target_pill(verb, &name).into_element()),
-                }),
+                .child(
+                    rect()
+                        .horizontal()
+                        .cross_align(Alignment::End)
+                        .spacing(8.)
+                        .maybe_child(match picker {
+                            Some(picker) => Some(picker.into_element()),
+                            // Without the picker the cluster is fixed so the same pill is read-only
+                            None => {
+                                target.map(|(verb, name)| target_pill(verb, &name).into_element())
+                            }
+                        })
+                        .maybe_child(override_button),
+                ),
         )
         .child(rect().width(Size::flex(1.0)))
         .child(

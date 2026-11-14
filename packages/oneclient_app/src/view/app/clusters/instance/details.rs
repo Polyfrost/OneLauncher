@@ -357,9 +357,13 @@ fn chosen_tags(state: DetailsState, tags: &[String], open: bool) -> Element {
                         .max_lines(1)
                         .font_size(text_size(12.))
                         .font_weight(FontWeight::MEDIUM)
-                        .color(Color::WHITE),
+                        .color(colors::on_brand()),
                 )
-                .child(Icon::new(IconType::XClose).size(10.).color(Color::WHITE))
+                .child(
+                    Icon::new(IconType::XClose)
+                        .size(10.)
+                        .color(colors::on_brand()),
+                )
                 .into_element()
         }))
         .child(if open {

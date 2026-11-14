@@ -19,10 +19,15 @@ pub(crate) fn navbar_button(foreground: Option<Color>) -> Button {
 }
 
 pub fn window_controls() -> impl IntoElement {
-    window_controls_with(None)
+    window_controls_with(None, close_launcher)
 }
 
-pub fn window_controls_with(foreground: Option<Color>) -> impl IntoElement {
+pub(crate) fn close_launcher() {
+    crate::view::chat::close_chat_window();
+    crate::platform::close();
+}
+
+pub fn window_controls_with(foreground: Option<Color>, on_close: fn()) -> impl IntoElement {
     let minimize = |_| {
         Platform::get().with_window(Platform::window_id(), |win| {
             win.set_minimized(true);
@@ -35,10 +40,7 @@ pub fn window_controls_with(foreground: Option<Color>) -> impl IntoElement {
         });
     };
 
-    let close = |_| {
-        crate::view::chat::close_chat_window();
-        crate::platform::close();
-    };
+    let close = move |_| on_close();
 
     rect()
         .horizontal()

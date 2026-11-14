@@ -14,4 +14,5 @@ pub use ipc_commands::use_ipc_commands;
 pub use onboarding_shell::OnboardingShell;
 pub use pending_launch::PendingLaunchDriver;
 pub use root_layout::RootLayout;
+pub(crate) use settings_shell::SearchItem;
 pub use settings_shell::SettingsShell;

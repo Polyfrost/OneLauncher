@@ -11,19 +11,23 @@ use crate::components::{
 use crate::hooks::{
     ALL_VERSIONS, VERSIONS_PAGE_SIZE, bundle_overrides_map, bundles_with_status_items,
     cluster_content_items, content_type_for_slug, package_meta_batch, project_detail,
-    use_browser_compat, use_bundle_overrides, use_bundles_with_status, use_cluster_content,
-    use_dispatch, use_installs_snapshot, use_link_confirm, use_package_meta_batch,
-    use_package_project, use_package_versions_when, version_list, versions_total,
+    use_bundle_overrides, use_bundles_with_status, use_cluster_content, use_dispatch,
+    use_installs_snapshot, use_link_confirm, use_package_meta_batch, use_package_project,
+    use_package_versions_when, version_list, versions_total,
 };
 use crate::hooks::{settled_or_loading, use_cluster, use_clusters};
+use crate::i18n::tf;
+use crate::install::IncompatibleMode;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
+use super::index::override_summary;
 use super::{
     EnableButton, EnableVariant, Installed, InstalledVersion, ModpackInstancePrompt,
     ModpackLoaderPrompt, ModpackVersionPrompt, PackageBanner, Thumbnail, WorldInstallPrompt,
     activity_badge, cluster_version, cluster_versions, installed_badge, installed_map,
-    instance_choices, loader_options, minecraft_choices, preferred_version,
+    instance_choices, loader_options, minecraft_choices, preferred_version, use_saved_override,
+    use_version_filter,
 };
 use crate::utils::abbreviate_number;
 
@@ -52,6 +56,7 @@ struct Installer {
     import_prompt: Option<State<bool>>,
     add_to_cluster: bool,
     cluster_name: Option<String>,
+    incompatible: IncompatibleMode,
 }
 
 impl Installer {
@@ -81,6 +86,7 @@ impl Installer {
                 project_name: self.project_name.clone(),
                 version_label,
                 bundled_version: installed.bundled_version_label(),
+                incompatible: self.incompatible,
             }));
             return;
         }
@@ -113,6 +119,7 @@ impl Installer {
                 project_id,
                 version_id,
                 None,
+                self.incompatible,
             ),
         }
     }
@@ -194,10 +201,10 @@ impl Component for BrowserPackage {
         let cluster_id = self.cluster_id;
         let (provider, project_id) = decode_package_id(&self.package_id);
         let content_type = content_type_for_slug(&self.package_type);
+        let is_modpack_type = content_type == ContentType::Modpack;
 
         let active_tab = use_state(|| 0usize);
         let versions_page = use_state(|| 0usize);
-        let compatible_only = use_browser_compat();
         let dispatch = use_dispatch();
         let confirm = use_link_confirm();
         let world_prompt = use_state(|| None::<String>);
@@ -211,20 +218,16 @@ impl Component for BrowserPackage {
         let add_to_cluster = self.add_to_cluster && content_type == ContentType::Modpack;
 
         let cluster = use_cluster(cluster_id);
-        let compat = *compatible_only.read();
-        let narrows = content_type != ContentType::Modpack;
-        let (game_version, loader) = match (compat && narrows, &cluster) {
-            (true, Some(c)) => (
-                Some(c.mc_version.clone()),
-                (content_type == ContentType::Mod).then_some(c.mc_loader),
-            ),
-            _ => (None, None),
-        };
+        let search_override =
+            use_saved_override(cluster_id, &self.package_type).filter(|_| !is_modpack_type);
+        let (game_version, loader, incompatible) =
+            use_version_filter(cluster_id, content_type, search_override.clone());
 
         let mut versions_page_state = versions_page;
-        let mut last_compat = use_state(|| compat);
-        if *last_compat.peek() != compat {
-            last_compat.set(compat);
+        let filter = (game_version.clone(), loader);
+        let mut last_filter = use_state(|| filter.clone());
+        if *last_filter.peek() != filter {
+            last_filter.set(filter);
             if *versions_page_state.peek() != 0 {
                 versions_page_state.set(0);
             }
@@ -287,6 +290,7 @@ impl Component for BrowserPackage {
                 .then_some(import_prompt),
             add_to_cluster,
             cluster_name: cluster.as_ref().map(|c| c.name.clone()),
+            incompatible,
         };
 
         let remove_id = project.as_ref().map(|p| p.id.clone());
@@ -401,6 +405,15 @@ impl Component for BrowserPackage {
                     .width(Size::flex(1.0))
                     .spacing(12.)
                     .child(tabs(active_tab, has_gallery))
+                    .maybe_child(search_override.map(|o| {
+                        label()
+                            .text(tf(
+                                "oneclient.browser.package.override_active",
+                                &[&override_summary(&o, content_type == ContentType::Mod)],
+                            ))
+                            .font_size(text_size(12.))
+                            .color(colors::fg_secondary())
+                    }))
                     .child(body),
             )
             .into_element();
@@ -424,6 +437,7 @@ impl Component for BrowserPackage {
                 provider,
                 project_id: project_id.clone(),
                 pending: world_prompt,
+                incompatible,
             }))
             .maybe_child(loader_prompt.read().then(|| ModpackLoaderPrompt {
                 options: loaders.clone(),

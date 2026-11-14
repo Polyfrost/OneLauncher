@@ -4,10 +4,12 @@ use freya::prelude::*;
 use oneclient_java::{JavaRuntime, JavaVendor, is_launcher_managed};
 
 use super::settings_page;
+use crate::Route;
 use crate::components::{Button, Icon, IconType, JavaInstallManager, OverlayPopup, ScrollArea};
 use crate::hooks::{Actions, java_runtimes, use_dispatch, use_java_runtimes};
 use crate::i18n::t;
 use crate::invalidate_java_queries;
+use crate::layout::SearchItem;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::view::app::settings::section_header;
@@ -411,4 +413,26 @@ fn remove_button(
                 .color(colors::danger()),
         )
         .into_element()
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "java.install",
+        icon: IconType::Download01,
+        title: "oneclient.layout.search.java.install.title",
+        description: "oneclient.layout.search.java.install.description",
+        keywords: &["java", "runtime", "temurin", "zulu", "install manager"],
+        route: Route::SettingsJava {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "java.add_folder",
+        icon: IconType::Folder,
+        title: "oneclient.layout.search.java.add_folder.title",
+        description: "oneclient.layout.search.java.add_folder.description",
+        keywords: &["java", "runtime", "custom", "folder", "path"],
+        route: Route::SettingsJava {},
+    }
 }

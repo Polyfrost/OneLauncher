@@ -1,9 +1,11 @@
 use freya::prelude::*;
 
 use super::settings_page;
+use crate::Route;
 use crate::components::{IconType, TextInput};
 use crate::hooks::{use_dispatch, use_settings_snapshot};
 use crate::i18n::t;
+use crate::layout::SearchItem;
 use crate::view::app::settings::{resettable, section_header, settings_row};
 
 fn normalize(value: &str) -> Option<String> {
@@ -132,5 +134,60 @@ impl Component for SettingsApis {
                 ),
             ))
             .into_element()
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "apis.modrinth_key",
+        icon: IconType::Key01,
+        title: "oneclient.layout.search.apis.modrinth_key.title",
+        description: "oneclient.settings.apis.modrinth_key.description",
+        keywords: &["modrinth", "token", "api key", "pat"],
+        route: Route::SettingsApis {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "apis.curseforge_key",
+        icon: IconType::Key01,
+        title: "oneclient.layout.search.apis.curseforge_key.title",
+        description: "oneclient.settings.apis.curseforge_key.description",
+        keywords: &["curseforge", "api key"],
+        route: Route::SettingsApis {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "apis.custom_endpoint",
+        icon: IconType::Globe01,
+        title: "oneclient.settings.apis.custom_endpoint.title",
+        description: "oneclient.settings.apis.custom_endpoint.description",
+        keywords: &["endpoint", "api", "backend", "url"],
+        route: Route::SettingsApis {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "apis.custom_plus_endpoint",
+        icon: IconType::Globe01,
+        title: "oneclient.settings.apis.custom_plus_endpoint.title",
+        description: "oneclient.settings.apis.custom_plus_endpoint.description",
+        keywords: &["endpoint", "poly+", "plus", "chat", "staging", "url"],
+        route: Route::SettingsApis {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "apis.meta_url_base",
+        icon: IconType::Globe01,
+        title: "oneclient.settings.apis.meta_url_base.title",
+        description: "oneclient.settings.apis.meta_url_base.description",
+        keywords: &["meta", "metadata", "url", "mirror", "versions"],
+        route: Route::SettingsApis {},
     }
 }

@@ -18,7 +18,7 @@ use crate::ui::{border_all_color, clamp_to_window};
 pub(super) const CARD_CHROME: f32 = 81.;
 pub(super) const CAPE_ZOOM: f32 = 2.1;
 pub(super) const GRID_GAP: f32 = 12.;
-pub(super) const COLUMNS: usize = 4;
+pub(super) const CARD_WIDTH: f32 = 220.;
 pub(super) const BACK_YAW: f32 = std::f32::consts::PI - 0.45;
 pub(super) const FRONT_YAW: f32 = 0.45;
 
@@ -118,7 +118,7 @@ fn badge_tab(badge: &Badge) -> Element {
     let (background, color) = match badge.style {
         BadgeStyle::New => (colors::success(), colors::fg_primary()),
         BadgeStyle::Sale => (colors::fg_primary(), colors::page()),
-        BadgeStyle::Accent => (colors::brand(), colors::fg_primary()),
+        BadgeStyle::Accent => (colors::brand(), colors::on_brand()),
     };
     rect()
         .horizontal()
@@ -391,7 +391,11 @@ impl Component for WardrobeCard {
             colors::component_border()
         };
 
-        let strip_color = colors::fg_primary();
+        let strip_color = if self.equipped {
+            colors::on_brand()
+        } else {
+            colors::fg_primary()
+        };
         let strip_line = if *strip_hovered.read() && self.action_enabled {
             colors::component_border_hover()
         } else {
@@ -748,7 +752,7 @@ impl Component for SectionChip {
     fn render(&self) -> impl IntoElement {
         let mut hovered = use_state(|| false);
         let color = if self.selected {
-            colors::fg_primary()
+            colors::on_brand()
         } else {
             colors::fg_secondary()
         };

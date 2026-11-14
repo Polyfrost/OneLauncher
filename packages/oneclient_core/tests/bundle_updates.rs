@@ -1017,6 +1017,38 @@ async fn an_unrelated_catalog_bundle_sharing_a_mod_does_not_undo_the_opt_out() {
 }
 
 #[tokio::test]
+async fn a_bundle_not_installed_yet_counts_as_opted_in() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![managed_file(true)]))
+        .await
+        .unwrap();
+    let global = state.settings.read().global_game_settings.clone();
+    let cluster = state
+        .clusters
+        .create(
+            &global,
+            CreateClusterOptions::new("Fresh Cluster", MC_VERSION, GameLoader::Fabric),
+        )
+        .await
+        .unwrap();
+
+    let bundles = get_bundles_with_update_status(
+        cluster.id,
+        state.bundles.as_ref(),
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+
+    assert!(
+        bundles
+            .iter()
+            .all(|b| b.opted_in_types.contains(&ContentType::Mod)),
+        "a cluster that has not launched yet still gets the bundle so its files belong in the All tab"
+    );
+}
+
+#[tokio::test]
 async fn untracked_older_install_counts_as_opted_in() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
     oneclient_core::dev::seed_bundle_archive(

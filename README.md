@@ -20,7 +20,8 @@ as well as our [GitHub releases](https://github.com/Polyfrost/OneLauncher/releas
 |                  | App Bundle 🔄                 | DEB                                                     |
 |                  |                               | RPM                                                     |
 |                  |                               | *[RPM (COPR)](https://copr.fedorainfracloud.org/coprs/polyfrost/OneClient/) 🔄 |
-|                  |                               | [AUR](https://aur.archlinux.org/packages/oneclient-bin) |
+|                  |                               | [AUR](https://aur.archlinux.org/packages/oneclient-bin)|
+|                  |                               | Flatpak|
 
 > 🔄 = Has support for autoupdating built-in
 

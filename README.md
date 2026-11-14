@@ -21,7 +21,7 @@ as well as our [GitHub releases](https://github.com/Polyfrost/OneLauncher/releas
 |                  |                               | RPM                                                     |
 |                  |                               | *[RPM (COPR)](https://copr.fedorainfracloud.org/coprs/polyfrost/OneClient/) 🔄 |
 |                  |                               | [AUR](https://aur.archlinux.org/packages/oneclient-bin)|
-|                  |                               | Flatpak|
+|                  |                               | Flatpak 🔄|
 
 > 🔄 = Has support for autoupdating built-in
 

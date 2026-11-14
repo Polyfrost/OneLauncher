@@ -950,3 +950,198 @@ async fn ornithe_exports_name_fabric_for_other_launchers() {
     let cluster = create_modpack_instance(&state, &prepared).await.unwrap();
     assert_eq!(cluster.mc_loader, GameLoader::Ornithe);
 }
+
+#[tokio::test]
+async fn playtime_travels_only_when_asked() {
+    use oneclient_core::clusters::{ExportOptions, export_cluster_with};
+    use oneclient_db::dao::game_session as session_dao;
+    use oneclient_db::models::NewGameSession;
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let global = state.settings.read().global_game_settings.clone();
+    let db = &state.services.db;
+    let source = state
+        .clusters
+        .create(
+            &global,
+            CreateClusterOptions::new("Played", "1.21.1", GameLoader::Vanilla)
+                .kind(ClusterKind::Modded),
+        )
+        .await
+        .unwrap();
+    let started = "2026-11-01T10:00:00+00:00";
+    session_dao::insert_session(
+        db,
+        &NewGameSession {
+            cluster_id: source.id,
+            started_at: started,
+            ram_allocated_mb: 4096,
+            mods_enabled: 3,
+            java_vendor: Some("Azul"),
+            java_version: Some("21"),
+        },
+    )
+    .await
+    .unwrap();
+    session_dao::finish_session_at(db, started, "2026-11-01T11:00:00+00:00", Some(0))
+        .await
+        .unwrap();
+    session_dao::insert_server_join_at(
+        db,
+        started,
+        "play.example.net",
+        None,
+        "2026-11-01T10:05:00+00:00",
+    )
+    .await
+    .unwrap();
+    session_dao::finish_server_at(db, "2026-11-01T10:05:00+00:00", "2026-11-01T10:50:00+00:00")
+        .await
+        .unwrap();
+    let played = state
+        .clusters
+        .add_playtime(source.id, std::time::Duration::from_secs(3600))
+        .await
+        .unwrap()
+        .last_played;
+    assert!(played.is_some());
+
+    let scratch = polyio::testing::ScratchDir::new("cluster-share-playtime");
+    let without = scratch.path().join("without.mrpack");
+    let with = scratch.path().join("with.mrpack");
+    let compat = scratch.path().join("compat.mrpack");
+    export_cluster(&state, source.id, &without, ExportMode::OneClient, None)
+        .await
+        .unwrap();
+    export_cluster_with(
+        &state,
+        source.id,
+        &with,
+        ExportOptions::new(ExportMode::OneClient).with_playtime(true),
+        None,
+    )
+    .await
+    .unwrap();
+    export_cluster_with(
+        &state,
+        source.id,
+        &compat,
+        ExportOptions::new(ExportMode::Compatibility).with_playtime(true),
+        None,
+    )
+    .await
+    .unwrap();
+
+    let mut imported = Vec::new();
+    for file in [&without, &with] {
+        let prepared = prepare_modpack(&state, &ModpackSource::File(file.clone()), None)
+            .await
+            .unwrap();
+        let cluster = create_modpack_instance(&state, &prepared).await.unwrap();
+        let installed = install_modpack_instance(&state, cluster.id, &prepared, None)
+            .await
+            .unwrap();
+        imported.push(installed.cluster);
+    }
+    assert!(
+        oneclient_content::modpacks::read_cluster_share(&compat)
+            .await
+            .unwrap()
+            .is_none_or(|share| share.playtime.is_none())
+    );
+
+    assert_eq!(imported[0].overall_played.as_secs(), 0);
+    let none = oneclient_core::game::cluster_analytics(db, imported[0].id)
+        .await
+        .unwrap();
+    assert_eq!(none.playtime.session_count, 0);
+
+    assert_eq!(imported[1].overall_played.as_secs(), 3600);
+    assert_eq!(imported[1].last_played, played);
+    let carried = oneclient_core::game::cluster_analytics(db, imported[1].id)
+        .await
+        .unwrap();
+    assert_eq!(carried.playtime.session_count, 1);
+    assert_eq!(carried.playtime.total_secs, 3600);
+    assert!(carried.servers.is_empty());
+
+    let original = oneclient_core::game::cluster_analytics(db, source.id)
+        .await
+        .unwrap();
+    assert_eq!(original.playtime.session_count, 1);
+    assert_eq!(original.servers[0].total_secs, 45 * 60);
+}
+
+#[tokio::test]
+async fn imported_playtime_drops_impossible_sessions() {
+    use oneclient_core::clusters::{ExportOptions, export_cluster_with};
+    use oneclient_db::dao::game_session as session_dao;
+    use oneclient_db::models::NewGameSession;
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let global = state.settings.read().global_game_settings.clone();
+    let db = &state.services.db;
+    let source = state
+        .clusters
+        .create(
+            &global,
+            CreateClusterOptions::new("Odd", "1.21.1", GameLoader::Vanilla)
+                .kind(ClusterKind::Modded),
+        )
+        .await
+        .unwrap();
+    for (started, ended) in [
+        ("2026-08-01T00:00:00+00:00", "2026-09-30T00:00:00+00:00"),
+        ("2026-11-02T10:00:00+00:00", "2026-11-02T09:00:00+00:00"),
+        ("2026-11-03T10:00:00+00:00", "2026-11-03T10:30:00+00:00"),
+    ] {
+        session_dao::insert_session(
+            db,
+            &NewGameSession {
+                cluster_id: source.id,
+                started_at: started,
+                ram_allocated_mb: 2048,
+                mods_enabled: 0,
+                java_vendor: None,
+                java_version: None,
+            },
+        )
+        .await
+        .unwrap();
+        session_dao::finish_session_at(db, started, ended, Some(0))
+            .await
+            .unwrap();
+    }
+    state
+        .clusters
+        .add_playtime(source.id, std::time::Duration::from_secs(i64::MAX as u64))
+        .await
+        .unwrap();
+
+    let scratch = polyio::testing::ScratchDir::new("cluster-share-odd-playtime");
+    let file = scratch.path().join("odd.mrpack");
+    export_cluster_with(
+        &state,
+        source.id,
+        &file,
+        ExportOptions::new(ExportMode::OneClient).with_playtime(true),
+        None,
+    )
+    .await
+    .unwrap();
+    let prepared = prepare_modpack(&state, &ModpackSource::File(file.clone()), None)
+        .await
+        .unwrap();
+    let cluster = create_modpack_instance(&state, &prepared).await.unwrap();
+    let installed = install_modpack_instance(&state, cluster.id, &prepared, None)
+        .await
+        .unwrap()
+        .cluster;
+
+    assert!(installed.overall_played.as_secs() <= 100 * 365 * 24 * 60 * 60);
+    let carried = oneclient_core::game::cluster_analytics(db, installed.id)
+        .await
+        .unwrap();
+    assert_eq!(carried.playtime.session_count, 1);
+    assert_eq!(carried.playtime.total_secs, 30 * 60);
+}

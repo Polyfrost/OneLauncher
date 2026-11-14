@@ -921,6 +921,7 @@
   "oneclient.clusters.export.ready.settings.other": "%s settings files",
   "oneclient.clusters.export.ready.subtitle": "Friends paste this code in OneClient to get the same setup.",
   "oneclient.clusters.export.ready.title": "Share code ready",
+  "oneclient.clusters.export.playtime": "Include playtime stats",
   "oneclient.clusters.export.save_file": "Save as file",
   "oneclient.clusters.export.settings.include": "Include settings",
   "oneclient.clusters.export.settings.private": "Login and token files aren't listed. Anything that still looks like a password or key is removed when you share.",

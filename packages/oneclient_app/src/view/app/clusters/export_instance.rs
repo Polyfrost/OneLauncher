@@ -13,7 +13,7 @@ use oneclient_core::sharing::{Collaborator, LinkedPush, MAX_SHARE_BYTES};
 use super::export_files::EmbeddedFiles;
 use super::instance::{WideCard, wide_card};
 use crate::components::{
-    Button, FileChoice, Icon, IconType, OverlayPopup, Spinner, TextInput, note,
+    Button, FileChoice, Icon, IconType, OverlayPopup, Spinner, TextInput, checkbox_labeled, note,
     settings_file_picker,
 };
 use crate::hooks::{
@@ -338,6 +338,7 @@ impl Component for ExportInstanceModal {
         let copied = use_state(|| None::<Copied>);
         let saving = use_state(|| false);
         let file_mode = use_state(|| ExportMode::OneClient);
+        let playtime = use_state(|| false);
         let owner = use_state(|| OwnerCheck::Checking);
         use_side_effect(move || {
             if !*team.open.read() || team.people.peek().is_some() {
@@ -418,6 +419,7 @@ impl Component for ExportInstanceModal {
                 cluster_id,
                 picks,
                 file_mode,
+                playtime,
                 saving,
                 &dispatch,
                 close.clone(),
@@ -1097,6 +1099,7 @@ fn save_view(
     cluster_id: i64,
     picks: Picks,
     mut file_mode: State<ExportMode>,
+    playtime: State<bool>,
     mut saving: State<bool>,
     dispatch: &crate::hooks::Actions,
     close: EventHandler<()>,
@@ -1160,13 +1163,21 @@ fn save_view(
         );
     }
     body.push(settings_card(picks, expanded));
+    if !expanded && chosen == ExportMode::OneClient {
+        body.push(
+            checkbox_labeled(playtime, t("oneclient.clusters.export.playtime")).into_element(),
+        );
+    }
     let footer = footer(
         Some(back_button(move || saving.set(false))),
         vec![
             Button::new()
                 .primary()
                 .on_press(move |_| {
-                    let options = picks.export_options(*file_mode.peek());
+                    let mode = *file_mode.peek();
+                    let options = picks
+                        .export_options(mode)
+                        .with_playtime(mode == ExportMode::OneClient && *playtime.peek());
                     export.export_cluster(cluster_id, options);
                     close_export.call(());
                 })

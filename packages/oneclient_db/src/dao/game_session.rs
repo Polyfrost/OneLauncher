@@ -7,7 +7,7 @@ use crate::models::{
 };
 
 pub async fn insert_session(
-    pool: &SqlitePool,
+    pool: impl sqlx::SqliteExecutor<'_>,
     new: &NewGameSession<'_>,
 ) -> Result<GameSessionRow, sqlx::Error> {
     sqlx::query_as!(
@@ -42,7 +42,7 @@ pub async fn finish_session(
 
 /// For exit times inferred from the game's log rather than observed live
 pub async fn finish_session_at(
-    pool: &SqlitePool,
+    pool: impl sqlx::SqliteExecutor<'_>,
     started_at: &str,
     ended_at: &str,
     exit_code: Option<i64>,

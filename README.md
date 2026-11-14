@@ -27,6 +27,17 @@ as well as our [GitHub releases](https://github.com/Polyfrost/OneLauncher/releas
 
 <details>
 
+<summary><h3>Flatpak Installation</h3></summary>
+
+1. First, navigate to the folder the .flatpak was downloaded in (example: Downloads)
+```
+cd Downloads
+```
+2. Then you can install the package:
+```
+flatpak install ./OneClient_2.10.2_linux_x86_64.flatpak 
+```
+
 <summary><h3>COPR Installation</h3></summary>
 
 On supported distributions (RHEL, Fedora, etc.), you can make use of the Fedora COPR instead of using the AppImage or manually installing the RPM file.

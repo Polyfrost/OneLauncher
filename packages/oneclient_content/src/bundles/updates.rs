@@ -952,7 +952,7 @@ pub async fn get_bundles_with_update_status(
         .collect();
 
     // Same liveness the updater uses so an untracked older install is not hidden from the list while it still takes on new files
-    let mut live_bundles = addition_eligible_bundles(
+    let live_bundles = addition_eligible_bundles(
         ctx,
         cluster_id,
         &archives,
@@ -962,12 +962,13 @@ pub async fn get_bundles_with_update_status(
         &overrides_map,
     )
     .await?;
-    live_bundles.extend(bundles_awaiting_first_install(
+    // Kept out of the opt-out ownership so a bundle not installed yet cannot share away an installed bundle's opt-out
+    let awaiting_install = bundles_awaiting_first_install(
         &archives,
         &bundle_packages,
         &overrides_map,
         &accepted_bundles(cluster_id, ctx).await?,
-    ));
+    );
 
     let (installed_managed_keys, installed_external_hashes) =
         installed_bundle_keys(ctx, &all_linked).await?;
@@ -1015,7 +1016,9 @@ pub async fn get_bundles_with_update_status(
             files.push((file.clone(), status));
         }
 
-        let opted_in_types = if live_bundles.contains(&archive.manifest.name) {
+        let opted_in_types = if live_bundles.contains(&archive.manifest.name)
+            || awaiting_install.contains(&archive.manifest.name)
+        {
             let suppressed = opt_outs.suppressed(&archive);
             archive
                 .manifest
@@ -1267,21 +1270,14 @@ fn bundles_awaiting_first_install(
     overrides_map: &HashMap<(String, String), OverrideType>,
     accepted: &HashSet<String>,
 ) -> HashSet<String> {
-    let names: HashSet<&str> = archives
+    let installed: HashSet<&str> = bundle_packages
         .iter()
-        .map(|archive| archive.manifest.name.as_str())
+        .filter_map(|row| row.bundle_name.as_deref())
         .collect();
-    let installed_any = bundle_packages.iter().any(|row| {
-        row.bundle_name
-            .as_deref()
-            .is_some_and(|name| names.contains(name))
-    });
-    if installed_any {
-        return HashSet::new();
-    }
 
     archives
         .iter()
+        .filter(|archive| !installed.contains(archive.manifest.name.as_str()))
         .filter(|archive| takes_bundle(archive, accepted))
         .filter(|archive| {
             archive.manifest.files.iter().any(|file| {
@@ -1301,7 +1297,13 @@ fn live_bundle_names(
 ) -> HashSet<String> {
     bundle_packages
         .iter()
-        .filter(|bp| bp.enabled != 0)
+        .filter(|bp| {
+            bp.enabled != 0
+                || bp
+                    .package_id
+                    .as_deref()
+                    .is_some_and(|id| !disable_was_deliberate(find_user_suppression(overrides, id)))
+        })
         .filter_map(|bp| bp.bundle_name.clone())
         .chain(
             overrides

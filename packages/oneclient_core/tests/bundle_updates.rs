@@ -1,17 +1,19 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
+use oneclient_content::ContentCtx;
 use oneclient_content::bundles::{
     BundleFile, BundleFileKind, BundleFileType, BundleManifest, check_bundle_updates,
     get_bundles_with_update_status, install_cluster_bundles, on_user_disable_artifact,
     on_user_remove_artifact, set_bundle_package_enabled,
 };
-use oneclient_content::ContentCtx;
 use oneclient_core::LauncherState;
 use oneclient_core::clusters::CreateClusterOptions;
+use oneclient_db::dao::cluster::ClusterMigration;
 use oneclient_db::dao::{
-    artifact as artifact_dao, cluster_bisect as bisect_dao, cluster_bundle as bundle_dao,
+    artifact as artifact_dao, cluster as cluster_dao, cluster_bisect as bisect_dao,
+    cluster_bundle as bundle_dao,
 };
 use oneclient_db::models::OverrideType;
 
@@ -1016,36 +1018,248 @@ async fn an_unrelated_catalog_bundle_sharing_a_mod_does_not_undo_the_opt_out() {
     );
 }
 
+async fn opted_in(state: &LauncherState, cluster_id: i64, name: &str) -> HashSet<ContentType> {
+    get_bundles_with_update_status(
+        cluster_id,
+        state.bundles.as_ref(),
+        &state.services.content(),
+    )
+    .await
+    .unwrap()
+    .into_iter()
+    .find(|b| b.archive.manifest.name == name)
+    .unwrap_or_else(|| panic!("{name} missing from the package list"))
+    .opted_in_types
+}
+
 #[tokio::test]
 async fn a_bundle_not_installed_yet_counts_as_opted_in() {
+    const NEW_BUNDLE: &str = "New Bundle";
+    const DECLINED: &str = "Declined Bundle";
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![managed_file(true)]))
+    let db = &state.services.db;
+    let mut retained = manifest(vec![managed_file(true)]);
+    let mut added = named_manifest(NEW_BUNDLE, vec![newly_shipped_file()]);
+    let mut declined = named_manifest(DECLINED, vec![fabric_api_file()]);
+    declined.enabled = false;
+    for m in [&mut retained, &mut added, &mut declined] {
+        m.mc_version = "26.3".to_string();
+    }
+    for m in [retained, added, declined] {
+        oneclient_core::dev::seed_bundle_archive(&state, m)
+            .await
+            .unwrap();
+    }
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    oneclient_content::bundles::set_bundle_choices(
+        cluster_id,
+        &[(DECLINED.to_string(), false)],
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+    assert!(
+        bundle_dao::list_bundle_choices(db, cluster_id)
+            .await
+            .unwrap()
+            .contains(&(DECLINED.to_string(), false))
+    );
+    let source = cluster_dao::get_by_id(db, cluster_id)
         .await
+        .unwrap()
         .unwrap();
-    let global = state.settings.read().global_game_settings.clone();
-    let cluster = state
-        .clusters
-        .create(
-            &global,
-            CreateClusterOptions::new("Fresh Cluster", MC_VERSION, GameLoader::Fabric),
-        )
-        .await
-        .unwrap();
+    cluster_dao::migrate_version_if_unchanged(
+        db,
+        &source,
+        ClusterMigration {
+            mc_version: "26.3",
+            mc_loader: source.mc_loader,
+            mc_loader_version: source.mc_loader_version.as_deref(),
+            stage: source.stage,
+            name: None,
+            folder_name: &source.folder_name,
+        },
+    )
+    .await
+    .unwrap()
+    .unwrap();
 
     let bundles = get_bundles_with_update_status(
-        cluster.id,
+        cluster_id,
         state.bundles.as_ref(),
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+    let opted_in = |name: &str| {
+        &bundles
+            .iter()
+            .find(|b| b.archive.manifest.name == name)
+            .unwrap_or_else(|| panic!("{name} missing from the package list"))
+            .opted_in_types
+    };
+
+    assert!(opted_in(BUNDLE).contains(&ContentType::Mod));
+    let new_bundle = bundles
+        .iter()
+        .find(|b| b.archive.manifest.name == NEW_BUNDLE)
+        .unwrap();
+    assert!(
+        new_bundle.files.iter().any(|(file, _)| {
+            file.kind.package_id() == "newcomer"
+                && new_bundle.opted_in_types.contains(&file.content_type())
+        }),
+        "a bundle the migrated cluster has not installed yet still belongs in the All tab"
+    );
+    assert!(
+        opted_in(DECLINED).is_empty(),
+        "a declined bundle stays opted out"
+    );
+}
+
+#[tokio::test]
+async fn an_accepted_opt_in_bundle_not_installed_yet_counts_as_opted_in() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let mut opt_in = named_manifest("Opt In", vec![newly_shipped_file()]);
+    opt_in.enabled = false;
+    oneclient_core::dev::seed_bundle_archive(&state, opt_in)
+        .await
+        .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    oneclient_content::bundles::set_bundle_choices(
+        cluster_id,
+        &[("Opt In".to_string(), true)],
         &state.services.content(),
     )
     .await
     .unwrap();
 
     assert!(
-        bundles
-            .iter()
-            .all(|b| b.opted_in_types.contains(&ContentType::Mod)),
-        "a cluster that has not launched yet still gets the bundle so its files belong in the All tab"
+        opted_in(&state, cluster_id, "Opt In")
+            .await
+            .contains(&ContentType::Mod)
     );
+}
+
+#[tokio::test]
+async fn a_bundle_not_installed_yet_with_nothing_switched_on_is_not_opted_in() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let mut optional = newly_shipped_file();
+    optional.enabled = false;
+    for m in [
+        manifest(vec![managed_file(true)]),
+        named_manifest("Optional Only", vec![optional]),
+        named_manifest("Switched Off", vec![newly_shipped_file()]),
+    ] {
+        oneclient_core::dev::seed_bundle_archive(&state, m)
+            .await
+            .unwrap();
+    }
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    bundle_dao::save_override(
+        &state.services.db,
+        cluster_id,
+        "Switched Off",
+        "newcomer",
+        OverrideType::Disabled,
+    )
+    .await
+    .unwrap();
+
+    for name in ["Optional Only", "Switched Off"] {
+        let types = opted_in(&state, cluster_id, name).await;
+        assert!(types.is_empty(), "{name} has nothing to install: {types:?}");
+    }
+}
+
+#[tokio::test]
+async fn an_installed_bundle_does_not_lose_its_opt_out_to_one_not_installed_yet() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        manifest(vec![
+            managed_file(true),
+            newly_shipped_file(),
+            resource_pack_file(),
+        ]),
+    )
+    .await
+    .unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        named_manifest("Unrelated Bundle", vec![managed_file(true)]),
+    )
+    .await
+    .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    artifact_dao::update_cluster_artifact(&state.services.db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    for (package_id, choice) in [
+        (PROJECT_ID, OverrideType::Disabled),
+        ("looks", OverrideType::Enabled),
+    ] {
+        bundle_dao::save_override(&state.services.db, cluster_id, BUNDLE, package_id, choice)
+            .await
+            .unwrap();
+    }
+
+    let types = opted_in(&state, cluster_id, BUNDLE).await;
+    assert!(
+        !types.contains(&ContentType::Mod) && types.contains(&ContentType::ResourcePack),
+        "the list must keep the opt-out the updater keeps: {types:?}"
+    );
+}
+
+async fn cluster_with_every_copy_off(state: &LauncherState) -> i64 {
+    oneclient_core::dev::seed_bundle_archive(
+        state,
+        manifest(vec![
+            managed_file(true),
+            newly_shipped_file(),
+            resource_pack_file(),
+        ]),
+    )
+    .await
+    .unwrap();
+    let cluster_id = cluster_with_tracked_mod(state).await;
+    artifact_dao::update_cluster_artifact(&state.services.db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    cluster_id
+}
+
+#[tokio::test]
+async fn a_bundle_with_every_copy_switched_off_by_accident_counts_as_opted_in() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = cluster_with_every_copy_off(&state).await;
+
+    let types = opted_in(&state, cluster_id, BUNDLE).await;
+    assert!(
+        types.contains(&ContentType::Mod),
+        "launch switches these copies back on so the bundle is still live: {types:?}"
+    );
+    assert!(
+        added_ids(&state, cluster_id)
+            .await
+            .contains(&"newcomer".to_string())
+    );
+}
+
+#[tokio::test]
+async fn a_bundle_with_every_copy_switched_off_on_purpose_stays_opted_out() {
+    for choice in [OverrideType::Disabled, OverrideType::Removed] {
+        let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+        let cluster_id = cluster_with_every_copy_off(&state).await;
+        bundle_dao::save_override(&state.services.db, cluster_id, BUNDLE, PROJECT_ID, choice)
+            .await
+            .unwrap();
+
+        let types = opted_in(&state, cluster_id, BUNDLE).await;
+        assert!(types.is_empty(), "{choice:?}: {types:?}");
+        let added = added_ids(&state, cluster_id).await;
+        assert!(added.is_empty(), "{choice:?}: {added:?}");
+    }
 }
 
 #[tokio::test]

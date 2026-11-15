@@ -845,8 +845,10 @@ async fn resync_once(station: Station) {
     refresh_conversations(station).await;
     load_invite_games(station).await;
 
-    // Other conversations load their messages when opened
-    if let Some(group_id) = station.peek().chat.active {
+    // Other conversations load their messages when opened. Read `active`
+    // first so the peek guard is dropped before load_messages writes.
+    let active = station.peek().chat.active;
+    if let Some(group_id) = active {
         load_messages(station, group_id).await;
         if unread_in_view(station, group_id) {
             mark_read(station, group_id).await;

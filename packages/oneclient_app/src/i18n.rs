@@ -167,8 +167,17 @@ mod tests {
         used.retain(|key| key.starts_with("oneclient."));
         let defined: BTreeSet<String> = EN_US.keys().cloned().collect();
 
+        // Keys kept in variables (e.g. `let title = "..."; t(title)`) still count as used
+        let literal = regex::Regex::new(r#""(oneclient\.[A-Za-z0-9_.]+)""#).unwrap();
+        let mut referenced = used.clone();
+        collect_keys(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &literal,
+            &mut referenced,
+        );
+
         let missing: Vec<_> = used.difference(&defined).collect();
-        let unused: Vec<_> = defined.difference(&used).collect();
+        let unused: Vec<_> = defined.difference(&referenced).collect();
         assert!(
             missing.is_empty(),
             "keys used but not in en_us.json: {missing:?}"

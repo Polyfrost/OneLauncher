@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
@@ -10,6 +10,7 @@ use oneclient_content::packages::PackageError;
 use oneclient_core::clusters::ModpackSource;
 use oneclient_core::{
     ExternalImportReport, ExternalInstance, ImportChoices, InstanceArchive, UnpublishedCheck,
+    UnpublishedFile,
     alternative_version_id, discard_instance_archive, find_unpublished_mods,
     import_external_instance, instance_mods_stamp, is_instance_archive, open_instance_archive,
 };
@@ -57,9 +58,11 @@ fn next_batch() -> Option<Vec<ExternalImportJob>> {
     Some(std::mem::take(pending))
 }
 
-static CONFIRMING: Mutex<Vec<(ExternalImportJob, bool)>> = Mutex::new(Vec::new());
+type HeldImport = (ExternalImportJob, Option<Vec<String>>);
 
-fn confirming() -> MutexGuard<'static, Vec<(ExternalImportJob, bool)>> {
+static CONFIRMING: Mutex<Vec<HeldImport>> = Mutex::new(Vec::new());
+
+fn confirming() -> MutexGuard<'static, Vec<HeldImport>> {
     CONFIRMING.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
@@ -118,7 +121,8 @@ pub struct ExternalImportJob {
     pub choices: ImportChoices,
     pub alternatives: Vec<AlternativePick>,
     pub workdir: Option<PathBuf>,
-    pub reviewed: Option<u64>,
+    pub bundles: Option<Vec<String>>,
+    pub reviewed: Option<(u64, Vec<UnpublishedFile>)>,
 }
 
 #[derive(Debug, Clone)]
@@ -135,6 +139,7 @@ impl ExternalImportJob {
             choices: ImportChoices::default(),
             alternatives: Vec::new(),
             workdir: None,
+            bundles: None,
             reviewed: None,
         }
     }
@@ -183,28 +188,33 @@ impl Actions {
                 actions.start_external_imports(held.jobs.take().unwrap_or_default());
                 return;
             };
-            let to_check: Vec<(ExternalInstance, Option<u64>)> = held
+            let to_check: Vec<(ExternalInstance, Option<(u64, Vec<UnpublishedFile>)>)> = held
                 .jobs
                 .iter()
                 .flatten()
-                .map(|job| (job.instance.clone(), job.reviewed))
+                .map(|job| (job.instance.clone(), job.reviewed.clone()))
                 .collect();
             let found = off_ui(async move {
                 let mut session = None;
                 let mut found = Vec::new();
                 for (instance, reviewed) in to_check {
-                    if let Some(stamp) = reviewed
-                        && instance_mods_stamp(&instance).await == stamp
-                    {
-                        continue;
-                    }
-                    session.get_or_insert_with(|| {
-                        GroupedProgressSession::start(
-                            &state.services.events,
-                            t("oneclient.actions.external_import.checking"),
-                        )
-                    });
-                    let check = find_unpublished_mods(&state, &instance).await;
+                    let check = match reviewed {
+                        Some((stamp, mods)) if instance_mods_stamp(&instance).await == stamp => {
+                            UnpublishedCheck {
+                                mods,
+                                unconfirmed: 0,
+                            }
+                        }
+                        _ => {
+                            session.get_or_insert_with(|| {
+                                GroupedProgressSession::start(
+                                    &state.services.events,
+                                    t("oneclient.actions.external_import.checking"),
+                                )
+                            });
+                            find_unpublished_mods(&state, &instance).await
+                        }
+                    };
                     if !check.mods.is_empty() || check.unconfirmed > 0 {
                         found.push(unpublished_view(&instance, check));
                     }
@@ -221,16 +231,21 @@ impl Actions {
                 actions.start_external_imports(jobs);
                 return;
             }
-            let warned: HashSet<PathBuf> =
-                found.iter().map(|(game_dir, _)| game_dir.clone()).collect();
-            let held: Vec<(ExternalImportJob, bool)> = jobs
-                .into_iter()
-                .map(|job| {
-                    let flagged = warned.contains(&job.instance.game_dir);
-                    (job, flagged)
+            let warned: HashMap<PathBuf, Vec<String>> = found
+                .iter()
+                .map(|(game_dir, view)| {
+                    let hashes = view.mods.iter().map(|file| file.hash.clone()).collect();
+                    (game_dir.clone(), hashes)
                 })
                 .collect();
-            let others = held.iter().filter(|(_, flagged)| !flagged).count();
+            let held: Vec<HeldImport> = jobs
+                .into_iter()
+                .map(|job| {
+                    let unpublished = warned.get(&job.instance.game_dir).cloned();
+                    (job, unpublished)
+                })
+                .collect();
+            let others = held.iter().filter(|(_, unpublished)| unpublished.is_none()).count();
             confirming().extend(held);
             let views = found.into_iter().map(|(_, view)| view).collect();
             actions
@@ -242,7 +257,7 @@ impl Actions {
         self.with_engine(|app| app.notifications.close_unpublished_import());
         let held = std::mem::take(&mut *confirming());
         let (start, skipped): (Vec<_>, Vec<_>) =
-            held.into_iter().partition(|(_, flagged)| all || !flagged);
+            held.into_iter().partition(|(_, unpublished)| all || unpublished.is_none());
         let start: Vec<ExternalImportJob> = start.into_iter().map(|(job, _)| job).collect();
         let kept: HashSet<&PathBuf> = start
             .iter()
@@ -255,6 +270,13 @@ impl Actions {
             .collect();
         discard_workdir_set(unused);
         self.start_external_imports(start);
+    }
+
+    pub fn confirm_unpublished_import_without(&self) {
+        for (job, unpublished) in confirming().iter_mut() {
+            job.choices.skip.extend(unpublished.take().unwrap_or_default());
+        }
+        self.confirm_unpublished_import(true);
     }
 
     pub fn cancel_unpublished_import(&self) {
@@ -318,6 +340,7 @@ impl Actions {
                         choices,
                         alternatives,
                         workdir: _,
+                        bundles,
                         reviewed: _,
                     } = job;
                     let name = instance.name.clone();
@@ -372,6 +395,17 @@ impl Actions {
                                     added: Default::default(),
                                     open_when_done: false,
                                 });
+                            }
+                            if let Some(bundles) = bundles {
+                                crate::hooks::take_bundles(
+                                    &actions,
+                                    &state,
+                                    report.cluster_id,
+                                    &report.cluster_name,
+                                    &bundles,
+                                )
+                                .await;
+                                crate::hooks::invalidate_cluster_queries().await;
                             }
                             unavailable.extend(
                                 actions

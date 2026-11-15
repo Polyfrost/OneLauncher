@@ -374,10 +374,22 @@ async fn start(
     let mods_in_cluster =
         crate::game::uses_cluster_mods_folder(cluster.mc_loader, loader_version_id, &custom_args);
 
-    if let Err(err) =
-        crate::game::materialize_content(&state.services, &cluster, &cwd, mods_in_cluster).await
+    match crate::game::materialize_content(
+        &state.services,
+        &cluster,
+        &cwd,
+        mods_in_cluster,
+        profile.copy_mod_files.unwrap_or(false),
+    )
+    .await
     {
-        tracing::warn!(cluster_id, error = %err, "failed to materialize cluster content");
+        Ok(()) => {}
+        Err(err @ crate::LauncherError::GameError(GameError::ModCopyFailed(_))) => {
+            return Err(err);
+        }
+        Err(err) => {
+            tracing::warn!(cluster_id, error = %err, "failed to materialize cluster content");
+        }
     }
 
     if !dedicated {

@@ -1,5 +1,6 @@
 use oneclient_db::dao::{
-    applied_migration as migration_dao, cluster as cluster_dao, setting_profile as profile_dao,
+    applied_migration as migration_dao, artifact as artifact_dao, cluster as cluster_dao,
+    setting_profile as profile_dao,
 };
 use oneclient_db::models::{ClusterId, ClusterKind, ClusterPatch, NewCluster};
 
@@ -71,6 +72,16 @@ impl ClusterManager {
             .await?
             .ok_or(ClusterError::NotFound(cluster_id))?;
         Cluster::try_from_row(row)
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn set_takes_bundles(&self, cluster_id: ClusterId) -> ClusterResult<Cluster> {
+        cluster_dao::set_takes_bundles(&self.db, cluster_id).await?;
+        let cluster = self.get(cluster_id).await?;
+        if let Ok(dir) = cluster.dir() {
+            crate::identity::write(&dir, &identity_of(&cluster)).await;
+        }
+        Ok(cluster)
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
@@ -414,6 +425,10 @@ impl ClusterManager {
                 .await?;
         }
 
+        if !cluster.uses_dedicated_dir() {
+            self.hand_over_shared_packs(&cluster).await?;
+        }
+
         let trashed = if remove_files && cluster.is_isolated() {
             move_to_trash(&cluster).await
         } else {
@@ -451,6 +466,27 @@ impl ClusterManager {
         }
 
         tracing::info!(cluster_id, remove_files, "deleted cluster");
+        Ok(())
+    }
+
+    /// Pack rows cascade away with the cluster, so a pack only this cluster
+    /// listed would drop out of the shared folder for everyone still using it
+    async fn hand_over_shared_packs(&self, cluster: &Cluster) -> ClusterResult<()> {
+        let sharing: Vec<ClusterId> = self
+            .list()
+            .await?
+            .into_iter()
+            .filter(|other| other.id != cluster.id && other.shares_dir_with(cluster))
+            .map(|other| other.id)
+            .collect();
+        if sharing.is_empty() {
+            return Ok(());
+        }
+
+        for content_type in [ContentType::ResourcePack, ContentType::Shader] {
+            artifact_dao::give_global_links(&self.db, cluster.id, content_type as i64, &sharing)
+                .await?;
+        }
         Ok(())
     }
 
@@ -727,6 +763,7 @@ async fn create_inner(
                 description: options.description.clone(),
                 tags: options.tags.clone(),
                 cover_path: None,
+                takes_bundles: false,
             },
         )
         .await;
@@ -820,6 +857,7 @@ fn identity_of(cluster: &Cluster) -> crate::identity::InstanceIdentity {
         description: cluster.description.clone(),
         tags: cluster.tags.clone(),
         cover_path: cluster.cover_path.clone(),
+        takes_bundles: cluster.takes_bundles,
     }
 }
 

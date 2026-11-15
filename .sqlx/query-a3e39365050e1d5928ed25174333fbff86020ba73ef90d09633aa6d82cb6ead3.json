@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n\t\tINSERT INTO setting_profiles (\n\t\t\tname, java_path, resolution, force_fullscreen, mem_max, launch_args, game_args, launch_env,\n\t\t\thook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode\n\t\t)\n\t\tVALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n\t\tON CONFLICT(name) DO UPDATE SET\n\t\t\tjava_path = excluded.java_path,\n\t\t\tresolution = excluded.resolution,\n\t\t\tforce_fullscreen = excluded.force_fullscreen,\n\t\t\tmem_max = excluded.mem_max,\n\t\t\tlaunch_args = excluded.launch_args,\n\t\t\tgame_args = excluded.game_args,\n\t\t\tlaunch_env = excluded.launch_env,\n\t\t\thook_pre = excluded.hook_pre,\n\t\t\thook_wrapper = excluded.hook_wrapper,\n\t\t\thook_post = excluded.hook_post,\n\t\t\tos_extra = excluded.os_extra,\n\t\t\tbrowser_update_mode = excluded.browser_update_mode\n\t\tRETURNING name, java_path, resolution, force_fullscreen, mem_max, launch_args, game_args, launch_env,\n                  hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode\n\t\t",
+  "query": "\n\t\tINSERT INTO setting_profiles (\n\t\t\tname, java_path, resolution, force_fullscreen, mem_max, launch_args, game_args, launch_env,\n\t\t\thook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode, copy_mod_files\n\t\t)\n\t\tVALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n\t\tON CONFLICT(name) DO UPDATE SET\n\t\t\tjava_path = excluded.java_path,\n\t\t\tresolution = excluded.resolution,\n\t\t\tforce_fullscreen = excluded.force_fullscreen,\n\t\t\tmem_max = excluded.mem_max,\n\t\t\tlaunch_args = excluded.launch_args,\n\t\t\tgame_args = excluded.game_args,\n\t\t\tlaunch_env = excluded.launch_env,\n\t\t\thook_pre = excluded.hook_pre,\n\t\t\thook_wrapper = excluded.hook_wrapper,\n\t\t\thook_post = excluded.hook_post,\n\t\t\tos_extra = excluded.os_extra,\n\t\t\tbrowser_update_mode = excluded.browser_update_mode,\n\t\t\tcopy_mod_files = excluded.copy_mod_files\n\t\tRETURNING name, java_path, resolution, force_fullscreen, mem_max, launch_args, game_args, launch_env,\n                  hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode, copy_mod_files\n\t\t",
   "describe": {
     "columns": [
       {
@@ -145,10 +145,21 @@
             "name": "browser_update_mode"
           }
         }
+      },
+      {
+        "name": "copy_mod_files",
+        "ordinal": 13,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "setting_profiles",
+            "name": "copy_mod_files"
+          }
+        }
       }
     ],
     "parameters": {
-      "Right": 13
+      "Right": 14
     },
     "nullable": [
       false,
@@ -163,8 +174,9 @@
       true,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "598a34a0eb0f4d497cfd9bd77696310d1088e8baec677e07843a21ce6978652e"
+  "hash": "a3e39365050e1d5928ed25174333fbff86020ba73ef90d09633aa6d82cb6ead3"
 }

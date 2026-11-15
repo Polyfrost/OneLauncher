@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 
 use freya::prelude::*;
 use oneclient_cluster::naming::{MAX_NAME_CHARS, validate_instance_name};
@@ -13,7 +14,6 @@ use super::cards::{
 use super::data::{Picks, row_fits};
 use super::details::details_body;
 use super::import::ImportStep;
-use super::import_review::review_step;
 use super::model::{
     FolderChoice, ImportMode, ImportSource, LoaderChoice, ModpackOrigin, Step, TypeChoice,
     VersionCheck, Wizard,
@@ -34,11 +34,11 @@ use crate::ui::{border_all_color, centered_note, divider, fixed_grid, note};
 use crate::utils::bundle_display_name;
 use crate::view::app::cluster::package_manager::make_row;
 use crate::view::onboarding::{UNCREATED_CLUSTER, is_default_file, pkg_key};
-
-const MOD_COLUMNS: usize = 2;
 use oneclient_common::GameLoader;
 use oneclient_content::packages::release_migration::migration_check;
 use oneclient_events::{Choice, Prompt};
+
+const MOD_COLUMNS: usize = 2;
 
 pub fn body(wizard: Wizard, picks: &Picks) -> Element {
     let (key, inner) = match picks.step {
@@ -57,7 +57,6 @@ pub fn body(wizard: Wizard, picks: &Picks) -> Element {
         Step::Modpack => ("step-modpack", modpack_step(wizard, picks)),
         Step::ImportSource => ("step-import-source", import_source_step(wizard, picks)),
         Step::ImportMode => ("step-import-mode", import_mode_step(wizard, picks)),
-        Step::ImportReview => ("step-import-review", review_step(wizard, picks)),
         Step::Import => (
             "step-import",
             ImportStep {
@@ -85,7 +84,7 @@ pub fn body(wizard: Wizard, picks: &Picks) -> Element {
         .height(
             if matches!(
                 picks.step,
-                Step::Folder | Step::Version | Step::Import | Step::ImportReview
+                Step::Folder | Step::Version | Step::Import
             ) {
                 Size::fill()
             } else {
@@ -260,6 +259,7 @@ fn import_source_step(wizard: Wizard, picks: &Picks) -> Element {
 }
 
 fn import_mode_step(wizard: Wizard, picks: &Picks) -> Element {
+    let pack = picks.choice == TypeChoice::Modpack;
     let cards = [
         (
             ImportMode::Improve,
@@ -267,14 +267,26 @@ fn import_mode_step(wizard: Wizard, picks: &Picks) -> Element {
             t("oneclient.clusters.instance.steps.import_mode.improve.title"),
             Some(t("oneclient.clusters.instance.steps.recommended")),
             t("oneclient.clusters.instance.steps.import_mode.improve.blurb"),
-            t("oneclient.clusters.instance.steps.import_mode.improve.meta"),
+            if pack {
+                t("oneclient.clusters.instance.steps.import_mode.improve.meta_modpack")
+            } else {
+                t("oneclient.clusters.instance.steps.import_mode.improve.meta")
+            },
         ),
         (
             ImportMode::AsIs,
             IconType::FolderDownload,
-            t("oneclient.clusters.instance.steps.import_mode.as_is.title"),
+            if pack {
+                t("oneclient.clusters.instance.steps.import_mode.as_is.title_modpack")
+            } else {
+                t("oneclient.clusters.instance.steps.import_mode.as_is.title")
+            },
             None,
-            t("oneclient.clusters.instance.steps.import_mode.as_is.blurb"),
+            if pack {
+                t("oneclient.clusters.instance.steps.import_mode.as_is.blurb_modpack")
+            } else {
+                t("oneclient.clusters.instance.steps.import_mode.as_is.blurb")
+            },
             t("oneclient.clusters.instance.steps.import_mode.as_is.meta"),
         ),
     ];
@@ -891,16 +903,18 @@ fn bundle_blurb(archive: &BundleArchive, names: &HashMap<String, String>) -> Str
 
 fn update_picked(
     mut wizard: Wizard,
+    target: Option<PathBuf>,
     defaults: &HashSet<String>,
     change: impl FnOnce(&mut HashSet<String>),
 ) {
-    let mut next = wizard
-        .picked
-        .read()
-        .clone()
-        .unwrap_or_else(|| defaults.clone());
+    let mut next = defaults.clone();
     change(&mut next);
-    wizard.picked.set(Some(next));
+    match target {
+        Some(key) => {
+            wizard.import_picked.write().insert(key, next);
+        }
+        None => wizard.picked.set(Some(next)),
+    }
 }
 
 fn file_keys(archive: &BundleArchive, keep: impl Fn(&BundleFile) -> bool) -> Vec<String> {
@@ -920,6 +934,13 @@ fn file_keys(archive: &BundleArchive, keep: impl Fn(&BundleFile) -> bool) -> Vec
 }
 
 fn bundles_step(mut wizard: Wizard, picks: &Picks) -> Element {
+    let target = picks.bundle_target().map(|target| target.key.clone());
+    if picks.improving && target.is_none() {
+        return match &picks.improve_targets {
+            None => centered_spinner(t("oneclient.clusters.instance.steps.bundles.loading")),
+            Some(_) => centered_note(t("oneclient.clusters.instance.steps.bundles.none_improve")),
+        };
+    }
     if picks.bundles.archives.is_empty() {
         return centered_note(if picks.bundles.loaded {
             t("oneclient.clusters.instance.steps.bundles.none")
@@ -987,8 +1008,9 @@ fn bundles_step(mut wizard: Wizard, picks: &Picks) -> Element {
                 checkbox: true,
                 on_press: {
                     let defaults = picks.bundles.picked.clone();
+                    let target = target.clone();
                     (move |()| {
-                        update_picked(wizard, &defaults, |picked| {
+                        update_picked(wizard, target.clone(), &defaults, |picked| {
                             if taken {
                                 for key in &visible {
                                     picked.remove(key);
@@ -1037,8 +1059,9 @@ fn bundle_mods(mut wizard: Wizard, picks: &Picks, archive: &BundleArchive) -> El
                 true,
             );
             let defaults = picks.bundles.picked.clone();
+            let target = picks.bundle_target().map(|target| target.key.clone());
             let on_toggle: EventHandler<()> = (move |()| {
-                update_picked(wizard, &defaults, |picked| {
+                update_picked(wizard, target.clone(), &defaults, |picked| {
                     if !picked.remove(&key) {
                         picked.insert(key.clone());
                     }

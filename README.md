@@ -20,10 +20,24 @@ as well as our [GitHub releases](https://github.com/Polyfrost/OneLauncher/releas
 |                  | App Bundle 🔄                 | DEB                                                     |
 |                  |                               | RPM                                                     |
 |                  |                               | *[RPM (COPR)](https://copr.fedorainfracloud.org/coprs/polyfrost/OneClient/) 🔄 |
-|                  |                               | [AUR](https://aur.archlinux.org/packages/oneclient-bin) |
+|                  |                               | [AUR](https://aur.archlinux.org/packages/oneclient-bin)|
+|                  |                               | Flatpak|
 
 > 🔄 = Has support for autoupdating built-in
 
+<details>
+
+<summary><h3>Flatpak Installation</h3></summary>
+
+1. First, navigate to the folder the .flatpak was downloaded in (example: Downloads)
+```
+cd Downloads
+```
+2. Then you can install the package: (change filename with the one you downloaded)
+```
+flatpak install ./OneClient_2.10.2_linux_x86_64.flatpak 
+```
+</details>
 <details>
 
 <summary><h3>COPR Installation</h3></summary>

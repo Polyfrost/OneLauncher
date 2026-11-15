@@ -55,6 +55,7 @@ pub struct ClusterRow {
     pub description: Option<String>,
     pub tags: String,
     pub cover_path: Option<String>,
+    pub takes_bundles: i64,
 }
 
 impl ClusterRow {
@@ -67,7 +68,7 @@ impl ClusterRow {
     }
 
     pub fn uses_bundles(&self) -> bool {
-        self.kind().uses_bundles()
+        self.kind().uses_bundles() || self.takes_bundles != 0
     }
 }
 

@@ -1,22 +1,21 @@
 use freya::prelude::*;
 use uuid::Uuid;
 
-use crate::components::{IconType, PartyTab};
 use crate::chat::ThreadStatus;
+use crate::components::{IconType, PartyTab, SwitchSide, pill_switch};
 use crate::hooks::{
     settled_or_loading, use_chat_inbox, use_chat_roster, use_chat_thread, use_current_account,
     use_dispatch, use_social_tab,
 };
 use crate::i18n::t;
 use crate::state::SocialTab;
-use crate::theme::{colors, rounded, text_size};
+use crate::theme::{colors, text_size};
 
-use super::common::{HeaderButton, ROW_RADIUS_PX, inset_border};
+use super::common::HeaderButton;
 use super::list::{BlockedPane, ListPane, PanelHeader};
 use super::thread::ThreadView;
 
 const SWITCH_HEIGHT_PX: f32 = 32.;
-const SWITCH_INSET_PX: f32 = 3.;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum PanelMode {
@@ -214,6 +213,7 @@ fn social_tabs(current: SocialTab) -> Element {
         SwitchSide {
             label,
             active: current == tab,
+            accent: false,
             on_press: EventHandler::new(move |_| dispatch.set_social_tab(tab)),
         }
     };
@@ -222,68 +222,13 @@ fn social_tabs(current: SocialTab) -> Element {
         .width(Size::fill())
         .padding(Gaps::new(0., 16., 12., 16.))
         .child(
-            rect()
-                .horizontal()
-                .width(Size::fill())
-                .height(Size::px(SWITCH_HEIGHT_PX))
-                .content(Content::Flex)
-                .padding(Gaps::new_all(SWITCH_INSET_PX))
-                .corner_radius(rounded(ROW_RADIUS_PX))
-                .background(colors::component_bg())
-                .border(inset_border(colors::component_border()))
-                .child(side(SocialTab::Chat, t("oneclient.chat.tabs.social_chat")))
-                .child(side(SocialTab::Party, t("oneclient.chat.tabs.party"))),
+            pill_switch([
+                side(SocialTab::Chat, t("oneclient.chat.tabs.social_chat")),
+                side(SocialTab::Party, t("oneclient.chat.tabs.party")),
+            ])
+            .height(Size::px(SWITCH_HEIGHT_PX)),
         )
         .into_element()
-}
-
-#[derive(PartialEq)]
-struct SwitchSide {
-    label: &'static str,
-    active: bool,
-    on_press: EventHandler<()>,
-}
-
-impl Component for SwitchSide {
-    fn render(&self) -> impl IntoElement {
-        let a11y_id = use_a11y();
-        let focus = use_focus(a11y_id);
-        let mut hovered = use_state(|| false);
-        let on_press = self.on_press.clone();
-
-        rect()
-            .width(Size::flex(1.0))
-            .height(Size::fill())
-            .center()
-            .corner_radius(rounded(ROW_RADIUS_PX - SWITCH_INSET_PX))
-            .background(match (self.active, hovered()) {
-                (true, _) => colors::component_bg(),
-                (false, true) => colors::ghost_overlay(),
-                (false, false) => Color::TRANSPARENT,
-            })
-            .maybe(focus().is_focused(), |el| {
-                el.border(inset_border(colors::fg_secondary()))
-            })
-            .cursor(CursorIcon::Pointer)
-            .a11y_id(a11y_id)
-            .a11y_focusable(true)
-            .a11y_role(AccessibilityRole::Button)
-            .on_pointer_over(move |_| hovered.set(true))
-            .on_pointer_out(move |_| hovered.set(false))
-            .on_press(move |_| on_press.call(()))
-            .child(
-                label()
-                    .text(self.label)
-                    .font_size(text_size(12.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .max_lines(1)
-                    .color(if self.active {
-                        colors::fg_primary()
-                    } else {
-                        colors::fg_secondary()
-                    }),
-            )
-    }
 }
 
 fn empty_detail() -> Element {

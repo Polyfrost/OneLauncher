@@ -462,16 +462,11 @@ impl ClusterManager {
     /// Pack rows cascade away with the cluster, so a pack only this cluster
     /// listed would drop out of the shared folder for everyone still using it
     async fn hand_over_shared_packs(&self, cluster: &Cluster) -> ClusterResult<()> {
-        let group = cluster.shared_group();
         let sharing: Vec<ClusterId> = self
             .list()
             .await?
             .into_iter()
-            .filter(|other| {
-                other.id != cluster.id
-                    && !other.uses_dedicated_dir()
-                    && other.shared_group() == group
-            })
+            .filter(|other| other.id != cluster.id && other.shares_dir_with(cluster))
             .map(|other| other.id)
             .collect();
         if sharing.is_empty() {

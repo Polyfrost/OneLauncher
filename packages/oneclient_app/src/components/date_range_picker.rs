@@ -326,7 +326,7 @@ impl<F: FnMut(NaiveDate) + Clone + 'static> Component for DayCell<F> {
         };
 
         let color = if self.edge {
-            colors::fg_primary()
+            colors::on_brand()
         } else if !enabled || self.outside {
             colors::fg_secondary().with_a(90)
         } else {

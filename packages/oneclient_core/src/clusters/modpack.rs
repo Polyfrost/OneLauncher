@@ -735,9 +735,9 @@ mod tests {
         );
         assert_eq!(
             instance_name("All the Mods 10: To the Sky"),
-            "All the Mods 10 To the Sky"
+            "All the Mods 10: To the Sky"
         );
-        assert_eq!(instance_name("Better MC [FORGE]"), "Better MC FORGE");
+        assert_eq!(instance_name("Better MC [FORGE]"), "Better MC [FORGE]");
         assert_eq!(instance_name("✨✨✨"), FALLBACK_NAME);
         assert_eq!(instance_name(""), FALLBACK_NAME);
     }

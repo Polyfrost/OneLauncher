@@ -1,52 +1,30 @@
+#![allow(deprecated)]
+
 use std::borrow::Cow;
 use std::path::Path;
 
-use async_zip::base::read1::ZipOptions;
-use async_zip::base::read1::seek::ZipArchiveReader;
-use async_zip::spec::constructs::CDR;
+use async_zip::StoredZipEntry;
+use async_zip::base::read::seek::ZipFileReader;
 use futures_lite::{AsyncBufRead, AsyncSeek};
 use tokio_util::compat::{Compat, TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use crate::{IOError, PolyIOResult};
 
-type FileZipReader = ZipArchiveReader<Compat<tokio::io::BufReader<tokio::fs::File>>>;
+type FileZipReader = ZipFileReader<Compat<tokio::io::BufReader<tokio::fs::File>>>;
 
 async fn open_zip<R: AsyncBufRead + AsyncSeek + Unpin>(
     reader: R,
-) -> PolyIOResult<ZipArchiveReader<R>> {
-    Ok(ZipArchiveReader::open_with_options(reader, ZipOptions::untrusted()).await?)
+) -> PolyIOResult<ZipFileReader<R>> {
+    Ok(ZipFileReader::new(reader).await?)
 }
 
 async fn open_zip_file(zip_path: &Path) -> PolyIOResult<FileZipReader> {
-    open_zip_file_with(zip_path, ZipOptions::untrusted()).await
-}
-
-async fn open_large_zip_file(zip_path: &Path) -> PolyIOResult<FileZipReader> {
-    let options = ZipOptions {
-        max_uncompressed_size_per_file: u64::MAX,
-        max_compressed_size_per_file: u64::MAX,
-        max_cd_num_files: 1024 * 1024,
-        max_cd_num_files_load: 1024 * 1024,
-        max_cd_size_in_bytes: 256 * 1024 * 1024,
-        ..ZipOptions::untrusted()
-    };
-    open_zip_file_with(zip_path, options).await
-}
-
-async fn open_zip_file_with(zip_path: &Path, options: ZipOptions) -> PolyIOResult<FileZipReader> {
     let file = tokio::fs::File::open(zip_path).await?;
-    Ok(
-        ZipArchiveReader::open_with_options(tokio::io::BufReader::new(file).compat(), options)
-            .await?,
-    )
+    open_zip(tokio::io::BufReader::new(file).compat()).await
 }
 
-fn entry_name(cdr: &CDR) -> Cow<'_, str> {
-    String::from_utf8_lossy(cdr.insecure_file_name.as_bytes())
-}
-
-fn unix_permissions(cdr: &CDR) -> Option<u32> {
-    (cdr.cdrh.v_made_by >> 8 == 3).then_some(cdr.cdrh.exter_attr >> 16)
+fn entry_name(entry: &StoredZipEntry) -> Cow<'_, str> {
+    String::from_utf8_lossy(entry.filename().as_bytes())
 }
 
 #[tracing::instrument(
@@ -159,11 +137,11 @@ pub async fn zip_uncompressed_size(
     zip_path: impl AsRef<std::path::Path>,
     filter: impl Fn(&str) -> bool,
 ) -> PolyIOResult<u64> {
-    let reader = open_large_zip_file(zip_path.as_ref()).await?;
+    let reader = open_zip_file(zip_path.as_ref()).await?;
     let mut total = 0u64;
-    for cdr in reader.cdrs() {
-        if filter(&entry_name(cdr)) {
-            total = total.saturating_add(cdr.uncompressed_size()?);
+    for entry in reader.file().entries() {
+        if filter(&entry_name(entry)) {
+            total = total.saturating_add(entry.uncompressed_size());
         }
     }
     Ok(total)
@@ -179,7 +157,7 @@ pub async fn extract_zip_limited(
     let dest_path = dest_path.as_ref().to_path_buf();
 
     off_caller_thread(move || async move {
-        let reader = open_large_zip_file(&zip_path).await?;
+        let reader = open_zip_file(&zip_path).await?;
         extract_entries(
             reader,
             &dest_path,
@@ -193,17 +171,17 @@ pub async fn extract_zip_limited(
 }
 
 async fn extract_entries<R: AsyncBufRead + AsyncSeek + Unpin>(
-    mut reader: ZipArchiveReader<R>,
+    mut reader: ZipFileReader<R>,
     dest_path: &Path,
     filter_entries: Option<impl Fn(&str) -> bool>,
     modify_entry_name: Option<impl Fn(&str) -> String>,
     max_bytes: Option<u64>,
 ) -> PolyIOResult<()> {
-    let inner = reader.inner().clone();
+    let entries = reader.file().entries().to_vec();
     let mut written = 0u64;
 
-    for (index, cdr) in inner.cdrs().iter().enumerate() {
-        let old_name = entry_name(cdr);
+    for (index, entry) in entries.iter().enumerate() {
+        let old_name = entry_name(entry);
 
         if let Some(filter) = &filter_entries
             && !filter(&old_name)
@@ -226,7 +204,7 @@ async fn extract_entries<R: AsyncBufRead + AsyncSeek + Unpin>(
 
             let file = tokio::fs::File::create(&path).await?;
             let writer = tokio::io::BufWriter::new(file);
-            let entry_reader = reader.file(index).await?;
+            let entry_reader = reader.reader_without_entry(index).await?;
 
             match max_bytes {
                 Some(max) => {
@@ -245,7 +223,11 @@ async fn extract_entries<R: AsyncBufRead + AsyncSeek + Unpin>(
             }
 
             #[cfg(unix)]
-            if let Some(mode) = unix_permissions(cdr).filter(|mode| mode & 0o777 != 0) {
+            if let Some(mode) = entry
+                .unix_permissions()
+                .map(u32::from)
+                .filter(|mode| mode & 0o777 != 0)
+            {
                 use std::os::unix::fs::PermissionsExt;
 
                 let mode = (mode & 0o777) | 0o600;
@@ -275,12 +257,12 @@ pub async fn read_zip_file_entries(
     filter: impl Fn(&str) -> bool,
 ) -> PolyIOResult<Vec<(String, Vec<u8>)>> {
     let zip_path = zip_path.as_ref();
-    let mut reader = open_large_zip_file(zip_path).await?;
-    let inner = reader.inner().clone();
+    let mut reader = open_zip_file(zip_path).await?;
+    let entries = reader.file().entries().to_vec();
 
     let mut out = Vec::new();
-    for (index, cdr) in inner.cdrs().iter().enumerate() {
-        let Some(name) = cdr.insecure_file_name.as_str() else {
+    for (index, entry) in entries.iter().enumerate() {
+        let Ok(name) = entry.filename().as_str() else {
             continue;
         };
         let name = name.to_string();
@@ -289,7 +271,7 @@ pub async fn read_zip_file_entries(
             continue;
         }
 
-        let uncompressed_size = cdr.uncompressed_size()?;
+        let uncompressed_size = entry.uncompressed_size();
         if uncompressed_size > MAX_ZIP_ENTRY_BYTES {
             tracing::warn!(
                 "skipping '{name}' in {}: declares {uncompressed_size} bytes over the {MAX_ZIP_ENTRY_BYTES} byte entry cap",
@@ -298,7 +280,7 @@ pub async fn read_zip_file_entries(
             continue;
         }
 
-        let entry_reader = reader.file(index).await?;
+        let entry_reader = reader.reader_without_entry(index).await?;
         let mut data = Vec::new();
         futures_lite::AsyncReadExt::read_to_end(
             &mut futures_lite::AsyncReadExt::take(entry_reader, MAX_ZIP_ENTRY_BYTES + 1),
@@ -326,8 +308,8 @@ pub async fn read_zip_bytes_entry<K: Ord>(
 ) -> PolyIOResult<Option<(String, Vec<u8>)>> {
     let mut reader = open_zip(futures_lite::io::Cursor::new(data)).await?;
     let mut candidates: Vec<(K, String, usize, u64)> = Vec::new();
-    for (index, cdr) in reader.cdrs().iter().enumerate() {
-        let Some(name) = cdr.insecure_file_name.as_str() else {
+    for (index, entry) in reader.file().entries().iter().enumerate() {
+        let Ok(name) = entry.filename().as_str() else {
             continue;
         };
         if name.ends_with('/') {
@@ -336,7 +318,7 @@ pub async fn read_zip_bytes_entry<K: Ord>(
         let Some(key) = rank(name) else {
             continue;
         };
-        candidates.push((key, name.to_string(), index, cdr.uncompressed_size()?));
+        candidates.push((key, name.to_string(), index, entry.uncompressed_size()));
     }
     candidates.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
 
@@ -344,7 +326,7 @@ pub async fn read_zip_bytes_entry<K: Ord>(
         if declared > MAX_ZIP_ENTRY_BYTES {
             continue;
         }
-        let entry_reader = reader.file(index).await?;
+        let entry_reader = reader.reader_without_entry(index).await?;
         let mut data = Vec::new();
         futures_lite::AsyncReadExt::read_to_end(
             &mut futures_lite::AsyncReadExt::take(entry_reader, MAX_ZIP_ENTRY_BYTES + 1),
@@ -363,18 +345,18 @@ pub async fn read_zip_bytes_entry<K: Ord>(
 pub async fn read_zip_bytes_entries(data: Vec<u8>) -> PolyIOResult<Vec<(String, Vec<u8>)>> {
     let mut reader = open_zip(futures_lite::io::Cursor::new(data)).await?;
     let mut entries: Vec<(String, usize)> = Vec::new();
-    for (index, cdr) in reader.cdrs().iter().enumerate() {
-        let Some(name) = cdr.insecure_file_name.as_str() else {
+    for (index, entry) in reader.file().entries().iter().enumerate() {
+        let Ok(name) = entry.filename().as_str() else {
             continue;
         };
-        if !name.ends_with('/') && cdr.uncompressed_size()? <= MAX_ZIP_ENTRY_BYTES {
+        if !name.ends_with('/') && entry.uncompressed_size() <= MAX_ZIP_ENTRY_BYTES {
             entries.push((name.to_string(), index));
         }
     }
 
     let mut out = Vec::with_capacity(entries.len());
     for (name, index) in entries {
-        let entry_reader = reader.file(index).await?;
+        let entry_reader = reader.reader_without_entry(index).await?;
         let mut data = Vec::new();
         futures_lite::AsyncReadExt::read_to_end(
             &mut futures_lite::AsyncReadExt::take(entry_reader, MAX_ZIP_ENTRY_BYTES + 1),
@@ -407,8 +389,8 @@ impl ZipEntryCursor {
         let reader = open_zip_file(zip_path.as_ref()).await?;
 
         let mut indices = std::collections::HashMap::new();
-        for (index, cdr) in reader.cdrs().iter().enumerate() {
-            let Some(name) = cdr.insecure_file_name.as_str() else {
+        for (index, entry) in reader.file().entries().iter().enumerate() {
+            let Ok(name) = entry.filename().as_str() else {
                 continue;
             };
             if name.ends_with('/') || !filter(name) {
@@ -427,7 +409,7 @@ impl ZipEntryCursor {
     #[must_use]
     pub fn uncompressed_size(&self, name: &str) -> Option<u64> {
         let index = *self.indices.get(name)?;
-        self.reader.cdrs()[index].uncompressed_size().ok()
+        Some(self.reader.file().entries()[index].uncompressed_size())
     }
 
     pub async fn read(&mut self, name: &str) -> PolyIOResult<Vec<u8>> {
@@ -438,14 +420,14 @@ impl ZipEntryCursor {
                 file_name: name.to_string(),
             })?;
 
-        let declared = self.reader.cdrs()[index].uncompressed_size()?;
+        let declared = self.reader.file().entries()[index].uncompressed_size();
         if declared > MAX_STREAMED_ENTRY_BYTES {
             return Err(IOError::IOError(std::io::Error::other(format!(
                 "'{name}' declares {declared} bytes, over the {MAX_STREAMED_ENTRY_BYTES} byte limit"
             ))));
         }
 
-        let entry_reader = self.reader.file(index).await?;
+        let entry_reader = self.reader.reader_without_entry(index).await?;
         let mut data = Vec::with_capacity(usize::try_from(declared).unwrap_or_default());
         futures_lite::AsyncReadExt::read_to_end(
             &mut futures_lite::AsyncReadExt::take(entry_reader, MAX_STREAMED_ENTRY_BYTES + 1),
@@ -469,12 +451,13 @@ impl ZipEntryCursor {
     fields(zip_path = %zip_path.as_ref().display())
 )]
 pub async fn zip_entry_names(zip_path: impl AsRef<std::path::Path>) -> PolyIOResult<Vec<String>> {
-    let reader = open_large_zip_file(zip_path.as_ref()).await?;
+    let reader = open_zip_file(zip_path.as_ref()).await?;
 
     Ok(reader
-        .cdrs()
+        .file()
+        .entries()
         .iter()
-        .filter_map(|cdr| cdr.insecure_file_name.as_str().map(ToString::to_string))
+        .filter_map(|entry| entry.filename().as_str().ok().map(ToString::to_string))
         .collect())
 }
 
@@ -487,13 +470,15 @@ where
     let mut zip_reader = open_zip(reader.compat()).await?;
 
     let index = zip_reader
-        .find(file_name.as_bytes())?
-        .next()
+        .file()
+        .entries()
+        .iter()
+        .position(|entry| entry.filename().as_bytes() == file_name.as_bytes())
         .ok_or_else(|| IOError::FileNotFoundInZip {
             file_name: file_name.to_string(),
         })?;
 
-    let entry_reader = zip_reader.file(index).await?;
+    let entry_reader = zip_reader.reader_without_entry(index).await?;
 
     let mut data: Vec<u8> = Vec::new();
 

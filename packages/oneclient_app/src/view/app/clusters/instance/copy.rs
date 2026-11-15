@@ -267,12 +267,16 @@ fn review_parts(picks: &Picks) -> Vec<String> {
 pub fn is_ready(picks: &Picks) -> bool {
     match picks.step {
         Step::Type | Step::Folder | Step::Bundles | Step::Modpack => true,
-        Step::Loader => picks.loader.chosen.is_some(),
+        Step::Loader => picks.loader.chosen.is_some_and(|loader| picks.fits(loader)),
         Step::Version => {
             picks.versions.chosen.is_some()
-                && (picks.choice == TypeChoice::Scratch || picks.loader.chosen.is_some())
+                && (picks.choice == TypeChoice::Scratch
+                    || picks.loader.chosen.is_some_and(|loader| picks.fits(loader)))
         }
-        Step::Customize => validate_instance_name(&picks.name).is_ok(),
+        Step::Customize => {
+            validate_instance_name(&picks.name).is_ok()
+                && picks.loader.chosen.is_none_or(|loader| picks.fits(loader))
+        }
         Step::ImportSource => {
             picks.import_source != ImportSource::Code
                 || oneclient_core::sharing::ShareCode::parse(&picks.share_code).is_some()

@@ -9,6 +9,7 @@ use crate::hooks::{
     BROWSER_COMPAT_DEFAULT, use_browser_compat, use_dispatch, use_settings_snapshot,
 };
 use crate::i18n::t;
+use crate::layout::SearchItem;
 use crate::view::app::settings::{resettable, section_header, settings_row};
 use crate::view::console::open_log_console;
 
@@ -76,5 +77,49 @@ impl Component for SettingsDeveloper {
                 }),
             ))
             .into_element()
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "developer.compat_only",
+        icon: IconType::SearchMd,
+        title: "oneclient.settings.developer.compat_only.title",
+        description: "oneclient.layout.search.developer.compat_only.description",
+        keywords: &["browser", "compat", "filter"],
+        route: Route::SettingsDeveloper {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "developer.log_debug",
+        icon: IconType::Terminal,
+        title: "oneclient.settings.developer.log_debug.title",
+        description: "oneclient.layout.search.developer.log_debug.description",
+        keywords: &["debug", "logs", "logging"],
+        route: Route::SettingsDeveloper {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "developer.debug_page",
+        icon: IconType::CodeSnippet02,
+        title: "oneclient.settings.developer.debug_page.title",
+        description: "oneclient.layout.search.developer.debug_page.description",
+        keywords: &["debug", "page", "devtools", "developer"],
+        route: Route::SettingsDeveloper {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "developer.log_console",
+        icon: IconType::Terminal,
+        title: "oneclient.settings.developer.log_console.title",
+        description: "oneclient.settings.developer.log_console.description",
+        keywords: &["log", "console", "logs", "output"],
+        route: Route::SettingsDeveloper {},
     }
 }

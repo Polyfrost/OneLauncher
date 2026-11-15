@@ -213,7 +213,14 @@ pub(crate) fn choice_row(
     active: bool,
     on_press: impl FnMut(()) + 'static,
 ) -> Element {
-    choice_row_sized(title, subtitle, active, Size::auto(), on_press)
+    choice_row_sized(
+        title,
+        subtitle,
+        active,
+        Size::auto(),
+        colors::fg_primary(),
+        on_press,
+    )
 }
 
 pub(crate) fn choice_row_sized(
@@ -221,11 +228,12 @@ pub(crate) fn choice_row_sized(
     subtitle: &str,
     active: bool,
     height: Size,
+    fg: Color,
     on_press: impl FnMut(()) + 'static,
 ) -> Element {
     let mut on_press = on_press;
     let border_color = if active {
-        colors::fg_primary()
+        fg
     } else {
         colors::component_border()
     };
@@ -253,17 +261,17 @@ pub(crate) fn choice_row_sized(
                         .text(title.to_string())
                         .font_size(text_size(13.))
                         .font_weight(FontWeight::MEDIUM)
-                        .color(colors::fg_primary()),
+                        .color(fg),
                 )
                 .maybe_child((!subtitle.is_empty()).then(|| {
                     label()
                         .text(subtitle.to_string())
                         .font_size(text_size(11.))
-                        .color(colors::fg_primary())
+                        .color(fg)
                         .into_element()
                 })),
         )
-        .maybe_child(active.then(|| Icon::new(IconType::Check).size(15.)))
+        .maybe_child(active.then(|| Icon::new(IconType::Check).size(15.).color(fg)))
         .into_element()
 }
 

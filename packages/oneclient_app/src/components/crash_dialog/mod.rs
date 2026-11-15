@@ -1,14 +1,18 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use freya::prelude::*;
 use freya::router::*;
 
+use oneclient_cluster::logs::cluster_output_log;
 use oneclient_common::constants::DISCORD_URL;
 use oneclient_events::{CrashFix, CrashRemedy, GameCrash};
 
 use crate::Route;
+use crate::components::upload_mclogs::UploadToMclogs;
 use crate::components::{Button, Icon, IconType, OVERLAY_BASE_LEVEL, OverlayPopup, ScrollArea};
-use crate::hooks::{use_dispatch, use_link_confirm};
+use crate::hooks::{use_cluster, use_dispatch, use_link_confirm, use_log_action, use_upload_log};
+use crate::view::app::cluster::logs::{Confirm, confirm_overlay};
 use crate::i18n::{t, tf};
 use crate::theme;
 use crate::theme::{colors, rounded, text_size};
@@ -64,6 +68,12 @@ impl Component for CrashDialog {
         let cluster_id = crash.cluster_id;
         let dispatch = use_dispatch();
         let confirm = use_link_confirm();
+        let upload = use_upload_log();
+        let action = use_log_action();
+        let upload_confirm = use_state(|| None::<Confirm>);
+
+        let log_path =
+            use_cluster(cluster_id).and_then(|cluster| cluster_output_log(&cluster).ok());
 
         let close = dispatch.clone();
         let outside_close = dispatch.clone();
@@ -95,8 +105,15 @@ impl Component for CrashDialog {
                             .child(subtitle(&crash))
                             .child(body(&crash, confirm))
                             .child(discord_card(confirm))
-                            .child(actions(&crash, dispatch)),
+                            .child(actions(&crash, dispatch, log_path.clone(), upload_confirm)),
                     ),
+            )
+            .maybe_child(
+                (*upload_confirm.read())
+                    .zip(log_path)
+                    .map(|(kind, path)| {
+                        confirm_overlay(kind, upload_confirm, action, upload, path).into_element()
+                    }),
             )
     }
 }
@@ -540,7 +557,12 @@ fn excerpt_box(crash: &GameCrash) -> Element {
         .into_element()
 }
 
-fn actions(crash: &GameCrash, dispatch: crate::Actions) -> impl IntoElement {
+fn actions(
+    crash: &GameCrash,
+    dispatch: crate::Actions,
+    log_path: Option<PathBuf>,
+    upload_confirm: State<Option<Confirm>>,
+) -> impl IntoElement {
     let cluster_id = crash.cluster_id;
     let close = dispatch.clone();
 
@@ -550,6 +572,7 @@ fn actions(crash: &GameCrash, dispatch: crate::Actions) -> impl IntoElement {
         .main_align(Alignment::End)
         .cross_align(Alignment::Center)
         .spacing(10.)
+        .child(UploadToMclogs::new(log_path, upload_confirm))
         .child(logs_button(cluster_id, dispatch.clone()));
 
     if let Some(remedy) = crash.remedy {

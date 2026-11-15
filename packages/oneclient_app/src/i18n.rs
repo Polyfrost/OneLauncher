@@ -5,7 +5,7 @@ use std::sync::{LazyLock, RwLock};
 
 use freya::prelude::State;
 
-static EN_US: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
+pub(crate) static EN_US: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
     serde_json::from_str(include_str!("../lang/en_us.json")).expect("lang/en_us.json is valid")
 });
 

@@ -3,7 +3,8 @@ use freya::prelude::*;
 use uuid::Uuid;
 
 use crate::components::{
-    Avatar, Icon, IconType, overlay_is_topmost, use_open_level,
+    Avatar, Icon, IconType, TooltipPlacement, overlay_is_topmost, use_open_level,
+    use_tooltip_anchor,
 };
 use crate::i18n::t;
 use crate::theme::{colors, rounded, text_size};
@@ -210,8 +211,9 @@ impl Component for HeaderButton {
         let mut hovered = use_state(|| false);
         let on_press = self.on_press.clone();
         let hot = hovered();
+        let tooltip = use_tooltip_anchor(Some(self.tooltip.into()), TooltipPlacement::default());
 
-        rect()
+        let button = rect()
             .width(Size::px(30.))
             .height(Size::px(30.))
             .center()
@@ -226,7 +228,8 @@ impl Component for HeaderButton {
                 Icon::new(self.icon)
                     .size(16.)
                     .color(colors::fg_primary().with_a(if hot { 255 } else { 178 })),
-            )
+            );
+        tooltip.attach(button)
     }
 }
 

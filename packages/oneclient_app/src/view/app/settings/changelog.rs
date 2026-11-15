@@ -4,12 +4,14 @@ use freya::animation::{
 use freya::prelude::*;
 
 use super::settings_page;
+use crate::Route;
 use crate::components::{Icon, IconType, Markdown, MarkdownStyle};
 use crate::hooks::{
     changelog_entries, changelog_error, changelog_is_loading, latest_changelog_version,
     use_changelog, use_dispatch, use_settings_snapshot,
 };
 use crate::i18n::{t, tf};
+use crate::layout::SearchItem;
 use crate::theme::{colors, rounded, text_size};
 
 #[derive(PartialEq)]
@@ -169,5 +171,16 @@ impl Component for ReleaseCard {
                 }
             }))
             .into_element()
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "nav.changelog",
+        icon: IconType::RefreshCcw02,
+        title: "oneclient.layout.settings.tab.changelog",
+        description: "oneclient.layout.search.nav.changelog.description",
+        keywords: &["changelog", "release notes", "updates"],
+        route: Route::SettingsChangelog {},
     }
 }

@@ -7,6 +7,7 @@
 //! the caller is handed a [`PendingDisable`] to put in front of them, and
 //! nothing is written until they confirm.
 
+use std::collections::HashSet;
 use std::time::Duration;
 
 use freya::prelude::{State, WritableUtils, spawn_in_window};
@@ -120,6 +121,7 @@ pub async fn resolve(request: DisableRequest) -> anyhow::Result<Option<PendingDi
 
     let content_lock = state.games.content_lock(request.cluster_id);
     let _content_guard = content_lock.lock().await;
+    roots_linked(&request, &content).await?;
     let pending = impact_of(request, &content).await?;
     if pending.required.is_empty() && pending.optional.is_empty() {
         apply_now(&pending.request, &pending.hashes, &content).await?;
@@ -128,8 +130,6 @@ pub async fn resolve(request: DisableRequest) -> anyhow::Result<Option<PendingDi
     Ok(Some(pending))
 }
 
-/// Works out the impact under the caller's content lock, so what is applied
-/// is what the cluster holds at the time of writing.
 async fn impact_of(
     request: DisableRequest,
     content: &oneclient_content::ContentCtx,
@@ -151,10 +151,6 @@ async fn impact_of(
 }
 
 /// Applies a disable the user has confirmed.
-///
-/// The impact is worked out again under the content lock. When something the
-/// user was not shown would now go off with it, nothing is written and the
-/// fresh impact comes back to be confirmed instead.
 pub async fn apply(pending: &PendingDisable) -> anyhow::Result<Option<PendingDisable>> {
     let state = launcher::state()?;
     let shown = pending.clone();
@@ -162,6 +158,7 @@ pub async fn apply(pending: &PendingDisable) -> anyhow::Result<Option<PendingDis
         let content = state.services.content();
         let content_lock = state.games.content_lock(shown.request.cluster_id);
         let _content_guard = content_lock.lock().await;
+        roots_linked(&shown.request, &content).await?;
         let fresh = impact_of(shown.request.clone(), &content).await?;
         if !fresh.hashes.iter().all(|hash| shown.hashes.contains(hash)) {
             return Ok(Some(fresh));
@@ -179,9 +176,28 @@ pub async fn apply_alone(pending: &PendingDisable) -> anyhow::Result<()> {
         let content = state.services.content();
         let content_lock = state.games.content_lock(request.cluster_id);
         let _content_guard = content_lock.lock().await;
+        roots_linked(&request, &content).await?;
         apply_now(&request, &root_hashes(&request), &content).await
     })
     .await
+}
+
+async fn roots_linked(
+    request: &DisableRequest,
+    content: &oneclient_content::ContentCtx,
+) -> anyhow::Result<()> {
+    let linked: HashSet<String> = PackageStore::list_linked_artifacts(request.cluster_id, content)
+        .await?
+        .into_iter()
+        .map(|info| info.hash)
+        .collect();
+    if !root_hashes(request)
+        .iter()
+        .all(|hash| linked.contains(hash))
+    {
+        anyhow::bail!("{}", t("oneclient.disable.changed"));
+    }
+    Ok(())
 }
 
 fn root_hashes(request: &DisableRequest) -> Vec<String> {
@@ -195,7 +211,6 @@ fn root_hashes(request: &DisableRequest) -> Vec<String> {
         .collect()
 }
 
-/// Writes a disable. The caller holds the cluster's content lock.
 async fn apply_now(
     request: &DisableRequest,
     hashes: &[String],

@@ -1772,6 +1772,7 @@
   "oneclient.console.severity.info": "Info",
   "oneclient.console.severity.warn": "Warnings",
   "oneclient.console.window_title": "OneClient - Log Console",
+  "oneclient.disable.changed": "The package changed while you were deciding. Try again.",
   "oneclient.disable.confirm.all": "Disable all %s",
   "oneclient.disable.confirm.anyway": "Disable anyway",
   "oneclient.disable.disabled_heading": "Will be disabled with %s (%s)",

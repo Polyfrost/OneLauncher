@@ -143,9 +143,6 @@ async fn start(
             slot
         }
     };
-    // Held through the bundle install below, so a package edit waits for the
-    // launch's content work instead of racing it. Taken after the slot so the
-    // edit is not also held up by another cluster's launch.
     let content_lock = state.games.content_lock(cluster_id);
     let content_guard = match content_lock.try_lock() {
         Ok(guard) => guard,

@@ -289,8 +289,6 @@ impl MutationCapability for ClusterMutation {
                     .send();
             }
         };
-        // Only the package writes: a version migration rewrites these, and
-        // nothing a launch waits on goes through here.
         let _content_guard = match keys {
             ClusterAction::SetArtifactEnabled { cluster_id, .. }
             | ClusterAction::RemoveArtifact { cluster_id, .. }

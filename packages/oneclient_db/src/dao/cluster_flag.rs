@@ -7,6 +7,7 @@ pub enum ClusterFlag {
     ResetUnfinished,
     BundleJavaOverride,
     LoaderUpdate,
+    RetargetMods,
 }
 
 impl ClusterFlag {
@@ -16,6 +17,7 @@ impl ClusterFlag {
             Self::ResetUnfinished => "reset-unfinished",
             Self::BundleJavaOverride => "bundle-java-override",
             Self::LoaderUpdate => "loader-update",
+            Self::RetargetMods => "retarget-mods",
         }
     }
 }
@@ -81,4 +83,11 @@ pub async fn clear(
         .await?;
 
     Ok(())
+}
+
+pub async fn clusters_with(pool: &SqlitePool, flag: ClusterFlag) -> Result<Vec<i64>, sqlx::Error> {
+    sqlx::query_scalar::<_, i64>("SELECT cluster_id FROM cluster_flags WHERE key = ?")
+        .bind(flag.as_str())
+        .fetch_all(pool)
+        .await
 }

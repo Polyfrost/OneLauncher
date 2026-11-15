@@ -2,8 +2,13 @@ use std::sync::Arc;
 
 use oneclient_core::LauncherState;
 
-use oneclient_content::packages::PackageStore;
-use oneclient_events::Level;
+use oneclient_content::packages::{
+    LiveSync, PackageStore, ProjectDetail, ProviderId, VersionDetail,
+};
+use oneclient_content::{ContentCtx, ContentResult};
+use oneclient_db::models::{ArtifactRow, ClusterRow};
+use oneclient_events::{GroupedProgressChild, Level};
+use tokio::sync::Mutex as AsyncMutex;
 
 use crate::components::IconType;
 use crate::i18n::{t, tf};
@@ -318,6 +323,33 @@ pub enum IncompatibleMode {
 }
 
 #[allow(clippy::too_many_arguments)]
+async fn install_for(
+    provider: ProviderId,
+    project: &ProjectDetail,
+    version: &VersionDetail,
+    before: &ClusterRow,
+    skip_compatibility: bool,
+    child: &GroupedProgressChild,
+    write_lock: &AsyncMutex<()>,
+    content: &ContentCtx,
+) -> ContentResult<(ArtifactRow, LiveSync)> {
+    PackageStore::download_and_cache(provider, project, version, false, Some(child), content)
+        .await?;
+    let _write = PackageStore::lock_writes(Some(write_lock), before, content).await?;
+    PackageStore::install_to_cluster(
+        provider,
+        project,
+        version,
+        before.id,
+        skip_compatibility,
+        false,
+        None,
+        None,
+        content,
+    )
+    .await
+}
+
 pub async fn install_package(
     state: &Arc<LauncherState>,
     provider: oneclient_content::packages::ProviderId,
@@ -377,6 +409,10 @@ pub async fn install_package(
         }
     }
 
+    let before = match PackageStore::get_cluster(cluster_id, &content).await {
+        Ok(cluster) => cluster,
+        Err(err) => return Ok(PackageInstall::failed(err.into())),
+    };
     // Resolved before the session starts so its children can be announced up front
     let mut resolution = oneclient_content::packages::DependencyResolution::default();
     if oneclient_content::packages::resolves_dependencies(project.content_type) {
@@ -431,7 +467,6 @@ pub async fn install_package(
 
     let mut installed_dependencies = Vec::new();
     let mut missing_dependencies = resolution.unresolved;
-    // A version migration rewrites the cluster's mods
     let write_lock = state.games.content_lock(cluster_id);
 
     // Dependencies first so the package is never in a cluster without them however the run ends
@@ -446,16 +481,15 @@ pub async fn install_package(
             oneclient_events::TaskCategory::Packages,
         );
 
-        let result = PackageStore::install_to_cluster(
+        let result = install_for(
             provider,
             &dependency.project,
             &dependency.version,
-            cluster_id,
+            &before,
             false,
-            false,
-            Some(&child),
-            Some(&write_lock),
-            &state.services.content(),
+            &child,
+            &write_lock,
+            &content,
         )
         .await;
 
@@ -483,16 +517,15 @@ pub async fn install_package(
         oneclient_events::TaskCategory::Packages,
     );
 
-    let result = PackageStore::install_to_cluster(
+    let result = install_for(
         provider,
         &project,
         &version,
-        cluster_id,
+        &before,
         incompatible == IncompatibleMode::Allow,
-        false,
-        Some(&child),
-        Some(&write_lock),
-        &state.services.content(),
+        &child,
+        &write_lock,
+        &content,
     )
     .await;
 

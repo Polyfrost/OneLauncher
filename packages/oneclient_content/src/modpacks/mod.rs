@@ -75,6 +75,11 @@ pub fn is_file_bundle(bundle_name: &str) -> bool {
     bundle_name.starts_with(FILE_BUNDLE_PREFIX)
 }
 
+#[must_use]
+pub fn is_modpack_bundle(bundle_name: &str) -> bool {
+    bundle_name == MODPACK_BUNDLE_NAME || is_imported_bundle(bundle_name)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct WantedFile {
     pub sha1: String,

@@ -17,7 +17,6 @@ enum LoaderCheck {
     Offer(String, String),
 }
 
-/// `hold` is the launch's content lock, let go while the offer is open
 pub(crate) async fn offer_before_launch(
     actions: &Actions,
     cluster_id: ClusterId,

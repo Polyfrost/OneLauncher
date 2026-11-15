@@ -7,14 +7,15 @@ use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::bundle as bundle_catalog_dao;
 use oneclient_db::dao::cluster_bisect as bisect_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
-use oneclient_db::models::ClusterRow;
+use oneclient_db::dao::cluster_flag::{self as flag_dao, ClusterFlag};
 use oneclient_db::models::OverrideType;
+use oneclient_db::models::{BundleRow, ClusterRow};
 
 use crate::bundles::error::BundleError;
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
 use crate::bundles::types::{BundleArchive, BundleFile, BundleFileKind, BundleManifest};
-use crate::bundles::updates::prefetch_until;
+use crate::bundles::updates::{cluster_lock, prefetch_until};
 use crate::ctx::ContentCtx;
 use crate::error::ContentError;
 use crate::error::ContentResult;
@@ -446,6 +447,8 @@ pub async fn install_bundle(
     bundles: &BundlesManager,
     ctx: &ContentCtx,
 ) -> ContentResult<Vec<String>> {
+    let lock = cluster_lock(ctx, cluster_id);
+    let _guard = lock.lock().await;
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
     if !cluster.uses_bundles() {
         return Ok(Vec::new());
@@ -651,6 +654,7 @@ async fn supersede_outdated_user_copies(
     }
 
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    let migrating = flag_dao::is_set(&ctx.db, cluster_id, ClusterFlag::RetargetMods).await?;
     let rows = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
     let tracked_projects: std::collections::HashSet<String> = rows
         .iter()
@@ -703,7 +707,7 @@ async fn supersede_outdated_user_copies(
             }
         };
         if !ships_newer(&shipped, copy)
-            && !built_for_another_version(copy, &cluster.mc_version, ctx).await
+            && !(migrating && built_for_another_version(copy, &cluster.mc_version, ctx).await)
         {
             continue;
         }
@@ -724,8 +728,6 @@ async fn supersede_outdated_user_copies(
     Ok(())
 }
 
-/// A copy whose release does not list the cluster's game version, such as one
-/// carried over from an instance on another version. Unknown counts as fine.
 async fn built_for_another_version(
     copy: &LinkedArtifactInfo,
     mc_version: &str,
@@ -741,47 +743,61 @@ async fn built_for_another_version(
         .is_ok_and(|version| !supports_game_version(&version.game_versions, mc_version))
 }
 
-/// Bundle names carry the game version, so content tracked under another
-/// version's bundle is left over from before the cluster's version changed.
-/// Bundle updates never match it, and while it is linked the current bundle's
-/// build of the same project is treated as already installed. Where a current
-/// bundle wants the project, the leftover is dropped once that build is
-/// linked. A disable or removal filed under the old bundle moves to the current
-/// one, so the project stays off. While the current build is not in, by failure
-/// or by `deadline`, the leftover is switched off without an override, so the
-/// current build goes in switched on once it arrives.
 async fn drop_other_version_bundle_copies(
     cluster: &ClusterRow,
     archives: &[BundleArchive],
+    bundles: &BundlesManager,
     progress: Option<&GroupedProgressSession>,
     ctx: &ContentCtx,
     deadline: Option<Instant>,
-) -> ContentResult<()> {
+) -> ContentResult<bool> {
     if archives.is_empty() || bisect_dao::is_active(&ctx.db, cluster.id).await? {
-        return Ok(());
+        return Ok(true);
     }
 
     let mut current = std::collections::HashSet::new();
     let mut other = std::collections::HashSet::new();
+    let mut other_rows = Vec::new();
     for row in bundle_catalog_dao::list_all(&ctx.db).await? {
-        let Some(name) = row.name else {
+        let Some(name) = row.name.clone() else {
             continue;
         };
         if row.mc_version == cluster.mc_version && row.mc_loader == cluster.mc_loader {
             current.insert(name);
         } else {
             other.insert(name);
+            other_rows.push(row);
         }
     }
     current.extend(archives.iter().map(|archive| archive.manifest.name.clone()));
 
+    let shipped_now: std::collections::HashSet<&str> = archives
+        .iter()
+        .flat_map(|archive| &archive.manifest.files)
+        .map(file_sha1)
+        .collect();
+    let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster.id).await?;
+    let reused_leftovers = if tracked.iter().any(|row| {
+        row.bundle_name
+            .as_ref()
+            .is_some_and(|name| current.contains(name) && other.contains(name))
+            && !shipped_now.contains(row.hash.as_str())
+    }) {
+        shipped_by_other_versions(other_rows, &current, &shipped_now, bundles, ctx).await
+    } else {
+        std::collections::HashSet::new()
+    };
+
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster.id).await?;
     let accepted = accepted_bundles(cluster.id, ctx).await?;
-    for row in bundle_dao::list_bundle_tracked(&ctx.db, cluster.id).await? {
+    let mut complete = true;
+    for row in tracked {
         let (Some(old_bundle), Some(package_id)) = (&row.bundle_name, &row.package_id) else {
             continue;
         };
-        if current.contains(old_bundle) || !other.contains(old_bundle) {
+        if !other.contains(old_bundle)
+            || (current.contains(old_bundle) && !reused_leftovers.contains(&row.hash))
+        {
             continue;
         }
         let shipping: Vec<(&BundleArchive, &BundleFile)> = archives
@@ -817,7 +833,6 @@ async fn drop_other_version_bundle_copies(
                 BundleFileKind::Managed { sha1, .. } => sha1,
                 BundleFileKind::External { file, .. } => &file.sha1,
             };
-            // Detaching would evict the very file the current bundle ships
             if *sha1 == row.hash {
                 bundle_dao::track_bundle_artifact(
                     &ctx.db,
@@ -828,6 +843,13 @@ async fn drop_other_version_bundle_copies(
                     package_id,
                 )
                 .await?;
+                if row.enabled == 0
+                    && let Err(err) =
+                        PackageStore::set_artifact_enabled_to(cluster.id, &row.hash, true, ctx)
+                            .await
+                {
+                    tracing::warn!(hash = %row.hash, error = %err, "failed to switch the current build back on");
+                }
                 continue;
             }
             let child = file_child(file, progress);
@@ -853,7 +875,7 @@ async fn drop_other_version_bundle_copies(
                     "could not install the current build"
                 );
             }
-            if !matches!(installed, Some(Ok(_))) {
+            if !matches!(installed, Some(Ok(_))) && !current.contains(old_bundle) {
                 if row.enabled != 0 {
                     tracing::info!(
                         cluster_id = cluster.id,
@@ -870,6 +892,7 @@ async fn drop_other_version_bundle_copies(
                 }
                 continue;
             }
+            complete &= matches!(installed, Some(Ok(_)));
         }
 
         tracing::info!(
@@ -881,12 +904,48 @@ async fn drop_other_version_bundle_copies(
         detach_artifact(cluster.id, &row.hash, ctx).await?;
     }
 
-    Ok(())
+    Ok(complete)
 }
 
-/// Projects whose copy from another version's bundle the next bundle sync
-/// swaps: ones a current bundle wants, and ones a current bundle ships that
-/// the user switched off or removed, whose choice moves to that bundle.
+async fn shipped_by_other_versions(
+    rows: Vec<BundleRow>,
+    names: &std::collections::HashSet<String>,
+    shipped_now: &std::collections::HashSet<&str>,
+    bundles: &BundlesManager,
+    ctx: &ContentCtx,
+) -> std::collections::HashSet<String> {
+    let mut hashes = std::collections::HashSet::new();
+    for row in rows {
+        if !row.name.as_ref().is_some_and(|name| names.contains(name)) {
+            continue;
+        }
+        let remote_path = row.remote_path.clone();
+        let manifest = match bundles.manifest_for_row(ctx, row).await {
+            Ok(manifest) => manifest,
+            Err(err) => {
+                tracing::warn!(remote_path, error = %err, "could not read another version's bundle");
+                continue;
+            }
+        };
+        hashes.extend(
+            manifest
+                .files
+                .iter()
+                .map(file_sha1)
+                .filter(|sha1| !shipped_now.contains(sha1))
+                .map(str::to_string),
+        );
+    }
+    hashes
+}
+
+fn file_sha1(file: &BundleFile) -> &str {
+    match &file.kind {
+        BundleFileKind::Managed { sha1, .. } => sha1,
+        BundleFileKind::External { file, .. } => &file.sha1,
+    }
+}
+
 pub async fn projects_bundle_sync_swaps(
     cluster_id: i64,
     archives: &[BundleArchive],
@@ -1142,12 +1201,18 @@ pub(crate) async fn install_bundle_files(
     }))
     .await;
 
-    if fetched.iter().any(|(_, _, fetched)| fetched.is_none()) {
+    if !fetched
+        .iter()
+        .all(|(_, _, fetched)| matches!(fetched, Some(Ok(()))))
+    {
         tracing::info!(
             bundle = %bundle_name,
-            "bundle files still downloading at the deadline, linking none of them until all are ready"
+            "bundle files not all downloaded by the deadline, linking none of them until all are ready"
         );
-        for (_, child, fetched) in fetched {
+        for (file, child, fetched) in fetched {
+            if let Some(Err(err)) = &fetched {
+                tracing::warn!(file = %file.display_name(), error = %err, "bundle download failed, leaving it for later");
+            }
             if let (Some(child), Some(_)) = (child, fetched) {
                 child.finish();
             }
@@ -1155,21 +1220,18 @@ pub(crate) async fn install_bundle_files(
         return Vec::new();
     }
 
-    futures_util::stream::iter(fetched.into_iter().filter_map(|(file, child, fetched)| {
-        if let Some(Err(err)) = fetched {
-            tracing::warn!(file = %file.display_name(), error = %err, "bundle download failed, leaving it for later");
-            if let Some(child) = child {
-                child.finish();
-            }
-            return None;
-        }
-        Some((file, child))
-    }))
-    .map(|(file, child)| async move {
-        let result =
-            link_file(&file, cluster_id, bundle_name, skip_compatibility, child, ctx).await;
+    futures_util::stream::iter(fetched.into_iter().map(|(file, child, _)| async move {
+        let result = link_file(
+            &file,
+            cluster_id,
+            bundle_name,
+            skip_compatibility,
+            child,
+            ctx,
+        )
+        .await;
         (file, result)
-    })
+    }))
     .buffer_unordered(BUNDLE_INSTALL_CONCURRENCY)
     .collect::<Vec<_>>()
     .await
@@ -1454,6 +1516,8 @@ pub async fn install_cluster_bundles(
     ctx: &ContentCtx,
     deadline: Option<Instant>,
 ) -> ContentResult<()> {
+    let lock = cluster_lock(ctx, cluster_id);
+    let _guard = lock.lock().await;
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
     if !cluster.uses_bundles() {
         tracing::debug!(cluster_id, "instance does not take bundle content");
@@ -1475,12 +1539,24 @@ pub async fn install_cluster_bundles(
         bundles = archives.len(),
         "installing enabled bundle content"
     );
-    drop_other_version_bundle_copies(&cluster, &archives, progress, ctx, deadline).await?;
+    let (progress, deadline, staged) = match deadline {
+        Some(_) if stage_bundle_files(&cluster, &archives, progress, ctx, deadline).await? => {
+            (None, deadline, true)
+        }
+        Some(_) => (None, Some(Instant::now()), false),
+        None => (progress, None, true),
+    };
+    let complete =
+        drop_other_version_bundle_copies(&cluster, &archives, bundles, progress, ctx, deadline)
+            .await?;
+    if !staged || (deadline.is_some() && !complete) {
+        return Ok(());
+    }
     let accepted = accepted_bundles(cluster_id, ctx).await?;
     for archive in &archives {
         let taken = takes_bundle(archive, &accepted);
         let installed =
-            install_enabled_bundle_files(archive, cluster_id, taken, true, progress, ctx, deadline)
+            install_enabled_bundle_files(archive, cluster_id, taken, true, progress, ctx, None)
                 .await?;
         tracing::info!(
             cluster_id,
@@ -1491,6 +1567,70 @@ pub async fn install_cluster_bundles(
     }
 
     Ok(())
+}
+
+async fn stage_bundle_files(
+    cluster: &ClusterRow,
+    archives: &[BundleArchive],
+    progress: Option<&GroupedProgressSession>,
+    ctx: &ContentCtx,
+    deadline: Option<Instant>,
+) -> ContentResult<bool> {
+    let overrides = bundle_dao::list_overrides(&ctx.db, cluster.id).await?;
+    let accepted = accepted_bundles(cluster.id, ctx).await?;
+    let present = PresentContent::load(cluster.id, ctx).await?;
+    let mut seen = std::collections::HashSet::new();
+    let files: Vec<&BundleFile> = archives
+        .iter()
+        .flat_map(|archive| {
+            let taken = takes_bundle(archive, &accepted);
+            let overrides = &overrides;
+            archive.manifest.files.iter().filter(move |file| {
+                wants_file(
+                    file,
+                    find_override(overrides, &archive.manifest.name, &file.kind.package_id()),
+                    taken,
+                )
+            })
+        })
+        .filter(|file| {
+            let sha1 = match &file.kind {
+                BundleFileKind::Managed { sha1, .. } => sha1,
+                BundleFileKind::External { file, .. } => &file.sha1,
+            };
+            !present.contains(file) && !present.has_hash(sha1) && seen.insert(sha1.clone())
+        })
+        .collect();
+    if let Some(p) = progress {
+        p.expect(
+            TaskCategory::Packages,
+            files.len() as u64,
+            files.iter().map(|f| f.size.max(1)).sum(),
+        );
+    }
+
+    let fetched = futures_util::future::join_all(files.iter().map(|file| async move {
+        let child = file_child(file, progress);
+        let fetched = prefetch_until(file, child.as_ref(), deadline, ctx).await;
+        if let (Some(child), Some(_)) = (child, &fetched) {
+            child.finish();
+        }
+        if let Some(Err(err)) = &fetched {
+            tracing::warn!(file = %file.display_name(), error = %err, "bundle download failed, leaving it for later");
+        }
+        fetched
+    }))
+    .await;
+    let staged = fetched
+        .iter()
+        .all(|fetched| matches!(fetched, Some(Ok(()))));
+    if !staged {
+        tracing::info!(
+            cluster_id = cluster.id,
+            "bundle files not all downloaded by the deadline, changing no bundle content until all are ready"
+        );
+    }
+    Ok(staged)
 }
 
 #[tracing::instrument(level = "debug", skip(ctx))]

@@ -2209,7 +2209,7 @@ impl Actions {
         match plan_launch_updates(mode, pending) {
             LaunchUpdatePlan::Nothing => Some(false),
             LaunchUpdatePlan::Apply(updates) => self
-                .apply_updates_for_launch(state, &updates)
+                .apply_updates_for_launch(state, &updates, hold.is_some())
                 .await
                 .then_some(true),
             LaunchUpdatePlan::Prompt(updates) => {
@@ -2217,13 +2217,15 @@ impl Actions {
                     crate::install::package_update_group(cluster_id, &updates, &state.services)
                         .await?;
                 let chosen = self.prompt_package_updates(group, hold).await;
-                (chosen.is_empty() || self.apply_updates_for_launch(state, &chosen).await)
+                (chosen.is_empty()
+                    || self
+                        .apply_updates_for_launch(state, &chosen, hold.is_some())
+                        .await)
                     .then_some(true)
             }
         }
     }
 
-    /// `hold` is the launch's content lock, let go while a prompt is open
     async fn run_update_checks(
         &self,
         state: &Arc<oneclient_core::LauncherState>,
@@ -2275,6 +2277,7 @@ impl Actions {
         &self,
         state: &Arc<oneclient_core::LauncherState>,
         updates: &[oneclient_core::BrowserPackageUpdate],
+        locked: bool,
     ) -> bool {
         let state = state.clone();
         let updates = updates.to_vec();
@@ -2298,10 +2301,11 @@ impl Actions {
                     1,
                     oneclient_events::TaskCategory::Packages,
                 );
+                let write_lock = (!locked).then(|| state.games.content_lock(update.cluster_id));
                 match oneclient_core::apply_browser_package_update(
                     update,
                     Some(&child),
-                    None,
+                    write_lock.as_deref(),
                     &content,
                 )
                 .await
@@ -2487,13 +2491,10 @@ impl Actions {
             state.center_open = false;
         });
 
-        // Nothing is applied from the answer, so a version change while the
-        // prompt was open does not make it stale
         let (outcome, _) = hold.release_during(wait).await;
         outcome.unwrap_or(OptionalModsOutcome::Launch)
     }
 
-    /// Empty when the cluster changed version while the prompt was open
     async fn prompt_package_updates(
         &self,
         group: PackageUpdateGroup,
@@ -2727,9 +2728,6 @@ pub fn update_check_running(cluster_id: ClusterId) -> bool {
     UPDATE_CHECKS.lock().unwrap().contains(&cluster_id)
 }
 
-/// A launch's hold on the cluster's content lock through the work before the
-/// game starts. A prompt waiting on the player runs without it, so package
-/// edits are not held up by an open popup.
 pub(crate) struct ContentHold {
     state: Arc<oneclient_core::LauncherState>,
     cluster_id: ClusterId,
@@ -2762,9 +2760,6 @@ impl ContentHold {
         *self.guard.lock().unwrap() = Some(guard);
     }
 
-    /// Awaits `wait` without the lock. The flag is false once the cluster
-    /// moved to another game version or loader meanwhile: an answer given for
-    /// the old one no longer fits it.
     pub(crate) async fn release_during<T>(&self, wait: impl Future<Output = T>) -> (T, bool) {
         let before = self.version().await;
         self.guard.lock().unwrap().take();
@@ -2786,8 +2781,6 @@ impl ContentHold {
     }
 }
 
-/// `wait`'s answer, or `None` when the cluster changed version under `hold`
-/// while it waited
 pub(crate) async fn unlocked<T>(
     hold: Option<&ContentHold>,
     wait: impl Future<Output = T>,
@@ -2839,8 +2832,6 @@ async fn launch(actions: &Actions, cluster_id: ClusterId, extra_jvm_arg: Option<
 
     crate::microsoft_java::offer_for_pinned_cluster(actions, cluster_id).await;
 
-    // Held through the content work before launch and handed to the launch,
-    // so a version migration cannot rewrite the cluster under either.
     let hold = ContentHold::take(&state, cluster_id).await;
 
     let _cloud_hold = actions.sync_before_launch(&state, cluster_id).await;

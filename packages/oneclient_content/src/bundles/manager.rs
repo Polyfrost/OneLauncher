@@ -200,6 +200,10 @@ impl BundlesManager {
         self.archive_cache.write().await.insert(path, manifest);
     }
 
+    pub async fn cache_remote_manifest(&self, manifest: RemoteBundleManifest) {
+        *self.manifest.write().await = manifest;
+    }
+
     #[tracing::instrument(level = "debug", skip(self, ctx))]
     pub async fn archives_for(
         &self,
@@ -214,6 +218,25 @@ impl BundlesManager {
             archives.push(BundleArchive { bundle, manifest });
         }
         Ok(archives)
+    }
+
+    pub async fn lists_no_bundles_for(&self, mc_version: &str, loader: GameLoader) -> bool {
+        let refs = self.manifest.read().await.remote_paths();
+        !refs.is_empty()
+            && !refs.iter().any(|entry| {
+                entry.mc_version == mc_version
+                    && GameLoader::from_str(&entry.loader).is_ok_and(|parsed| parsed == loader)
+            })
+    }
+
+    pub async fn manifest_for_row(
+        &self,
+        ctx: &ContentCtx,
+        row: BundleRow,
+    ) -> ContentResult<crate::bundles::types::BundleManifest> {
+        let _catalog = self.catalog.read().await;
+        let bundle = Bundle::try_from_row(row)?;
+        self.manifest_for_archive(ctx, &bundle.path).await
     }
 
     #[tracing::instrument(level = "debug", skip(self, ctx))]

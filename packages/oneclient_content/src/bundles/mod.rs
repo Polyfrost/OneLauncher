@@ -35,5 +35,6 @@ pub use types::{
 };
 pub use updates::{
     BUNDLE_APPLY_BUDGET, Prefetches, apply_bundle_updates, apply_bundle_updates_with,
+    cluster_lock as bundle_write_lock,
     check_bundle_updates, cluster_has_bundle_content, get_bundles_with_update_status,
 };

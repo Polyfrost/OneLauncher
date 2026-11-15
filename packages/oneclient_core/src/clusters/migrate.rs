@@ -1,14 +1,17 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use oneclient_common::domain::ContentType;
-use oneclient_content::bundles::projects_bundle_sync_swaps;
+use oneclient_common::domain::{ContentType, GameLoader};
+use oneclient_content::bundles::{bundle_write_lock, projects_bundle_sync_swaps};
+use oneclient_content::modpacks;
 use oneclient_content::packages::PackageStore;
 use oneclient_content::packages::release_migration::retarget_cluster_mods;
 use oneclient_db::dao::cluster::ClusterMigration;
+use oneclient_db::dao::cluster_flag::{self as flag_dao, ClusterFlag};
 use oneclient_db::dao::{
-    applied_migration as migration_dao, bundle as bundle_catalog_dao, cluster as cluster_dao,
-    cluster_bisect as bisect_dao, cluster_bundle as bundle_dao,
+    applied_migration as migration_dao, browser_package_update as update_dao,
+    bundle as bundle_catalog_dao, cluster as cluster_dao, cluster_bisect as bisect_dao,
+    cluster_bundle as bundle_dao,
 };
 use oneclient_db::models::ClusterRow;
 
@@ -20,11 +23,18 @@ use crate::versions::{MigrationNode, RemoteMigration, cyclic_migration_ids};
 #[tracing::instrument(skip(state))]
 pub async fn apply_remote_migrations(state: &LauncherState) -> LauncherResult<usize> {
     let rules = state.versions.migrations().await;
-    if rules.is_empty() {
+    let pending = flag_dao::clusters_with(&state.services.db, ClusterFlag::RetargetMods).await?;
+    if rules.is_empty() && pending.is_empty() {
         return Ok(0);
     }
 
     let _guard = state.clusters.provisioning_guard().await;
+
+    for cluster_id in pending {
+        if let Err(err) = resume_retarget(state, cluster_id).await {
+            tracing::warn!(cluster_id, error = %err, "could not finish swapping mods for the new version");
+        }
+    }
 
     let cyclic = cyclic_migration_ids(&rules);
     let mut migrated = 0;
@@ -129,12 +139,16 @@ async fn apply_rule(state: &LauncherState, rule: &RemoteMigration) -> LauncherRe
         return Ok(false);
     }
 
-    // Held until the mods are swapped too, so a launch of this cluster waits
-    // for it instead of starting on the new version with the old mods. Taken
-    // before the activity check, while a launch marks itself active before
-    // waiting on it, so whichever comes second sees the other.
-    let content_lock = state.games.content_lock(source.id);
-    let _content_lock = content_lock.lock().await;
+    let Ok(_content_lock) = state.games.content_lock(source.id).try_lock_owned() else {
+        tracing::info!(
+            migration_id = %rule.id,
+            cluster_id = source.id,
+            "cluster content is busy; deferring migration"
+        );
+        return Ok(false);
+    };
+    let bundle_lock = bundle_write_lock(&state.services.content(), source.id);
+    let _bundle_lock = bundle_lock.lock().await;
     if state.games.is_active(source.id) {
         tracing::info!(
             migration_id = %rule.id,
@@ -263,6 +277,20 @@ async fn migrate_cluster(
     .await?;
     let new_name = retarget_identity(&source.name, from, to);
 
+    let were_enabled = if keeps_mods_for_new_version(from, to) {
+        let mut hashes = saved_enabled(state, source.id).await?.unwrap_or_default();
+        hashes.extend(
+            PackageStore::list_linked_artifacts(source.id, &state.services.content())
+                .await?
+                .into_iter()
+                .filter(|info| info.content_type == ContentType::Mod && info.enabled)
+                .map(|info| info.hash),
+        );
+        Some(hashes.into_iter().collect::<Vec<_>>().join(","))
+    } else {
+        None
+    };
+
     let mut renamed: Option<(PathBuf, PathBuf)> = None;
     if let Some(folder) = &new_folder {
         let new_dir = clusters_dir.join(folder);
@@ -331,6 +359,17 @@ async fn migrate_cluster(
         }
     }
 
+    if let Some(were_enabled) = &were_enabled {
+        flag_dao::set(
+            &state.services.db,
+            source.id,
+            ClusterFlag::RetargetMods,
+            Some(were_enabled),
+        )
+        .await?;
+    }
+    update_dao::retain_hashes(&state.services.db, source.id, &[]).await?;
+
     if let Err(err) = state.clusters.refresh_identity(source.id).await {
         tracing::warn!(
             migration_id = %rule.id,
@@ -340,8 +379,8 @@ async fn migrate_cluster(
         );
     }
 
-    if keeps_mods_for_new_version(from, to) {
-        match retarget_mods(state, source.id, to).await {
+    if were_enabled.is_some() {
+        match finish_retarget(state, source.id).await {
             Ok(disabled) => tracing::info!(
                 migration_id = %rule.id,
                 cluster_id = source.id,
@@ -356,6 +395,7 @@ async fn migrate_cluster(
             ),
         }
     } else if changes_loader && !to.loader.compatible_with(from.loader) {
+        flag_dao::clear(&state.services.db, source.id, ClusterFlag::RetargetMods).await?;
         match disable_mods(state, source.id).await {
             Ok(disabled) => tracing::info!(
                 migration_id = %rule.id,
@@ -386,25 +426,36 @@ fn keeps_mods_for_new_version(from: &MigrationNode, to: &MigrationNode) -> bool 
         && (from.loader == to.loader || to.loader.compatible_with(from.loader))
 }
 
-/// Mods from the old version's bundles that the next bundle sync swaps for a
-/// new version's bundle build stay tracked. The other mods are untracked here
-/// so they are swapped through their provider like any other mod; other
-/// content stays with bundle sync. When the new version's bundles cannot be
-/// read, no bundle mod is confirmed, so all of them are untracked and switched
-/// off, and bundle sync puts the shipped ones back once it can.
 async fn retarget_mods(
     state: &LauncherState,
-    cluster_id: i64,
-    to: &MigrationNode,
-) -> LauncherResult<usize> {
+    cluster: &ClusterRow,
+    were_enabled: &mut HashSet<String>,
+) -> LauncherResult<(usize, bool)> {
     let db = &state.services.db;
     let ctx = state.services.content();
+    let cluster_id = cluster.id;
+    let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Vanilla);
     let shipped: Option<HashSet<String>> = match state
         .bundles
-        .archives_for(&ctx, &to.mc_version, to.loader)
+        .archives_for(&ctx, &cluster.mc_version, loader)
         .await
     {
-        Ok(archives) => Some(projects_bundle_sync_swaps(cluster_id, &archives, &ctx).await?),
+        Ok(archives)
+            if !archives.is_empty()
+                || state
+                    .bundles
+                    .lists_no_bundles_for(&cluster.mc_version, loader)
+                    .await =>
+        {
+            Some(projects_bundle_sync_swaps(cluster_id, &archives, &ctx).await?)
+        }
+        Ok(_) => {
+            tracing::warn!(
+                cluster_id,
+                "the new version's bundles are not in the catalog yet; switching off their mods"
+            );
+            None
+        }
         Err(err) => {
             tracing::warn!(
                 cluster_id,
@@ -421,7 +472,12 @@ async fn retarget_mods(
         .map(|info| info.hash)
         .collect();
     for row in bundle_dao::list_bundle_tracked(db, cluster_id).await? {
-        if !mods.contains(&row.hash) {
+        if !mods.contains(&row.hash)
+            || row
+                .bundle_name
+                .as_deref()
+                .is_some_and(modpacks::is_modpack_bundle)
+        {
             continue;
         }
         match &shipped {
@@ -430,13 +486,68 @@ async fn retarget_mods(
                 bundle_dao::clear_bundle_tracking(db, cluster_id, &row.hash).await?;
             }
             None => {
-                bundle_dao::clear_bundle_tracking(db, cluster_id, &row.hash).await?;
                 PackageStore::set_artifact_enabled_to(cluster_id, &row.hash, false, &ctx).await?;
             }
         }
     }
 
-    Ok(retarget_cluster_mods(cluster_id, &ctx).await?)
+    let (disabled, reached) = retarget_cluster_mods(cluster_id, were_enabled, &ctx).await?;
+    Ok((disabled, reached && shipped.is_some()))
+}
+
+async fn resume_retarget(state: &LauncherState, cluster_id: i64) -> LauncherResult<()> {
+    let Ok(_content_lock) = state.games.content_lock(cluster_id).try_lock_owned() else {
+        return Ok(());
+    };
+    let bundle_lock = bundle_write_lock(&state.services.content(), cluster_id);
+    let _bundle_lock = bundle_lock.lock().await;
+    if state.games.is_active(cluster_id)
+        || bisect_dao::is_active(&state.services.db, cluster_id).await?
+    {
+        return Ok(());
+    }
+    let disabled = finish_retarget(state, cluster_id).await?;
+    tracing::info!(
+        cluster_id,
+        disabled,
+        "finished swapping mods for the new version"
+    );
+    Ok(())
+}
+
+async fn finish_retarget(state: &LauncherState, cluster_id: i64) -> LauncherResult<usize> {
+    let db = &state.services.db;
+    let Some(mut were_enabled) = saved_enabled(state, cluster_id).await? else {
+        return Ok(0);
+    };
+    let Some(cluster) = cluster_dao::get_by_id(db, cluster_id).await? else {
+        return Ok(0);
+    };
+    let (disabled, complete) = retarget_mods(state, &cluster, &mut were_enabled).await?;
+    if complete {
+        flag_dao::clear(db, cluster_id, ClusterFlag::RetargetMods).await?;
+    } else {
+        let pending = were_enabled.into_iter().collect::<Vec<_>>().join(",");
+        flag_dao::set(db, cluster_id, ClusterFlag::RetargetMods, Some(&pending)).await?;
+    }
+    Ok(disabled)
+}
+
+async fn saved_enabled(
+    state: &LauncherState,
+    cluster_id: i64,
+) -> LauncherResult<Option<HashSet<String>>> {
+    Ok(
+        flag_dao::get(&state.services.db, cluster_id, ClusterFlag::RetargetMods)
+            .await?
+            .map(|saved| {
+                saved
+                    .split(',')
+                    .filter(|hash| !hash.is_empty())
+                    .map(str::to_owned)
+                    .collect()
+            }),
+    )
 }
 
 async fn disable_mods(state: &LauncherState, cluster_id: i64) -> LauncherResult<usize> {
@@ -676,7 +787,6 @@ mod tests {
         );
 
         drop(guard);
-        // No mods, so it refuses once it gets the lock
         assert!(search.await.is_err());
     }
 
@@ -710,7 +820,6 @@ mod tests {
             allow_without_bundles: false,
         };
 
-        // Parks the launch right after it hands the content lock back
         let slot = state.games.launch_slot().await;
         let guard = state.games.content_lock(source.id).lock_owned().await;
         let launch = tokio::spawn({
@@ -801,10 +910,15 @@ mod tests {
                 .await
                 .is_err()
         );
-        retarget_mods(&state, cluster_id, &node("26.2.1", GameLoader::Fabric))
+        let cluster = cluster_dao::get_by_id(db, cluster_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let (_, complete) = retarget_mods(&state, &cluster, &mut HashSet::new())
             .await
             .unwrap();
 
+        assert!(!complete);
         let link = artifact_dao::get_cluster_artifact(db, cluster_id, HASH)
             .await
             .unwrap();
@@ -813,12 +927,10 @@ mod tests {
             bundle_dao::get_bundle_tracked(db, cluster_id, HASH)
                 .await
                 .unwrap()
-                .is_none()
+                .is_some()
         );
     }
 
-    /// The new version's bundle lists the mod, but ships it switched off, so
-    /// bundle sync never swaps the old version's copy
     #[cfg(debug_assertions)]
     #[tokio::test]
     async fn a_mod_the_new_bundles_do_not_want_is_switched_off() {
@@ -889,7 +1001,11 @@ mod tests {
             .await
             .unwrap();
 
-        retarget_mods(&state, cluster_id, &node(VERSION, GameLoader::Fabric))
+        let cluster = cluster_dao::get_by_id(db, cluster_id)
+            .await
+            .unwrap()
+            .unwrap();
+        retarget_mods(&state, &cluster, &mut HashSet::new())
             .await
             .unwrap();
 
@@ -902,6 +1018,277 @@ mod tests {
                 .await
                 .unwrap()
                 .is_none()
+        );
+    }
+
+    #[cfg(debug_assertions)]
+    #[tokio::test]
+    async fn an_unfinished_swap_resumes_on_the_next_pass() {
+        use oneclient_db::dao::artifact as artifact_dao;
+
+        use crate::clusters::CreateClusterOptions;
+
+        const HASH: &str = "efefefefefefefefefefefefefefefefefefefef";
+        let state = crate::dev::ephemeral_state().await.unwrap();
+        let db = &state.services.db;
+        let global = state.settings.read().global_game_settings.clone();
+        let cluster_id = state
+            .clusters
+            .create(
+                &global,
+                CreateClusterOptions::new("Resumed", "26.2.7", GameLoader::Fabric),
+            )
+            .await
+            .unwrap()
+            .id;
+        artifact_dao::insert_artifact(
+            db,
+            HASH,
+            ContentType::Mod as i64,
+            "artifacts/local.jar",
+            "local.jar",
+            Some(1),
+        )
+        .await
+        .unwrap();
+        artifact_dao::link_cluster_artifact(db, cluster_id, HASH, "local.jar")
+            .await
+            .unwrap();
+        flag_dao::set(db, cluster_id, ClusterFlag::RetargetMods, Some(HASH))
+            .await
+            .unwrap();
+        list_remote_bundles(&state, "26.1").await;
+
+        apply_remote_migrations(&state).await.unwrap();
+
+        let link = artifact_dao::get_cluster_artifact(db, cluster_id, HASH)
+            .await
+            .unwrap();
+        assert_eq!(link.map(|link| link.enabled), Some(0));
+        assert!(
+            !flag_dao::is_set(db, cluster_id, ClusterFlag::RetargetMods)
+                .await
+                .unwrap()
+        );
+    }
+
+    #[cfg(debug_assertions)]
+    async fn list_remote_bundles(state: &LauncherState, mc_version: &str) {
+        let manifest = serde_json::from_value(serde_json::json!({
+            "versions": { mc_version: { "fabric": [{ "path": "remote.mrpack", "sha1": "0" }] } }
+        }))
+        .unwrap();
+        state.bundles.cache_remote_manifest(manifest).await;
+    }
+
+    #[cfg(debug_assertions)]
+    #[tokio::test]
+    async fn bundles_listed_but_not_yet_in_the_catalog_keep_their_tracking() {
+        use oneclient_db::dao::artifact as artifact_dao;
+
+        use crate::clusters::CreateClusterOptions;
+
+        const HASH: &str = "8888888888888888888888888888888888888888";
+        let state = crate::dev::ephemeral_state().await.unwrap();
+        let db = &state.services.db;
+        let global = state.settings.read().global_game_settings.clone();
+        let cluster_id = state
+            .clusters
+            .create(
+                &global,
+                CreateClusterOptions::new("Unsynced", "26.2.8", GameLoader::Fabric),
+            )
+            .await
+            .unwrap()
+            .id;
+        artifact_dao::insert_artifact(
+            db,
+            HASH,
+            ContentType::Mod as i64,
+            "artifacts/bundled.jar",
+            "bundled.jar",
+            Some(1),
+        )
+        .await
+        .unwrap();
+        artifact_dao::link_cluster_artifact(db, cluster_id, HASH, "bundled.jar")
+            .await
+            .unwrap();
+        bundle_dao::track_bundle_artifact(db, cluster_id, HASH, "Old Bundle", "1", "bundled")
+            .await
+            .unwrap();
+        list_remote_bundles(&state, "26.2.8").await;
+        let cluster = cluster_dao::get_by_id(db, cluster_id)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let (_, complete) = retarget_mods(&state, &cluster, &mut HashSet::new())
+            .await
+            .unwrap();
+        assert!(!complete);
+        assert!(
+            bundle_dao::get_bundle_tracked(db, cluster_id, HASH)
+                .await
+                .unwrap()
+                .is_some()
+        );
+
+        list_remote_bundles(&state, "26.1").await;
+        let (_, complete) = retarget_mods(&state, &cluster, &mut HashSet::new())
+            .await
+            .unwrap();
+        assert!(complete);
+        assert!(
+            bundle_dao::get_bundle_tracked(db, cluster_id, HASH)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[cfg(debug_assertions)]
+    #[tokio::test]
+    async fn a_second_migration_keeps_the_mods_an_unfinished_swap_switched_off() {
+        use oneclient_db::dao::artifact as artifact_dao;
+
+        use crate::clusters::CreateClusterOptions;
+        use crate::versions::{MigrationSource, MigrationTarget};
+
+        const HASH: &str = "fafafafafafafafafafafafafafafafafafafafa";
+        let state = crate::dev::ephemeral_state().await.unwrap();
+        let db = &state.services.db;
+        let path = "bundles/26.2.9/Missing Bundle.mrpack";
+        bundle_catalog_dao::upsert_bundle(
+            db,
+            oneclient_db::models::NewBundle {
+                remote_path: path,
+                mc_version: "26.2.9",
+                mc_loader: GameLoader::Fabric as i64,
+                file_name: "Missing Bundle.mrpack",
+                name: Some("Missing Bundle"),
+                version_id: Some("1"),
+                category: Some("test"),
+                loader_version: Some("0.16.0"),
+                disk_path: path,
+                hidden: false,
+                etag: None,
+                synced_at: None,
+            },
+        )
+        .await
+        .unwrap();
+        let global = state.settings.read().global_game_settings.clone();
+        let cluster_id = state
+            .clusters
+            .create(
+                &global,
+                CreateClusterOptions::new("Chained", "26.2.8", GameLoader::Fabric),
+            )
+            .await
+            .unwrap()
+            .id;
+        artifact_dao::insert_artifact(
+            db,
+            HASH,
+            ContentType::Mod as i64,
+            "artifacts/chained.jar",
+            "chained.jar",
+            Some(1),
+        )
+        .await
+        .unwrap();
+        artifact_dao::link_cluster_artifact(db, cluster_id, HASH, "chained.jar")
+            .await
+            .unwrap();
+        artifact_dao::update_cluster_artifact(db, cluster_id, HASH, "chained.jar", 0)
+            .await
+            .unwrap();
+        flag_dao::set(db, cluster_id, ClusterFlag::RetargetMods, Some(HASH))
+            .await
+            .unwrap();
+
+        let rule = RemoteMigration {
+            id: "chained".to_string(),
+            from: MigrationSource {
+                mc_version: "26.2.8".to_string(),
+                loader: "fabric".to_string(),
+            },
+            to: MigrationTarget {
+                mc_version: "26.2.9".to_string(),
+                loader: None,
+            },
+            allow_without_bundles: false,
+        };
+        assert!(apply_rule(&state, &rule).await.unwrap());
+
+        assert_eq!(
+            saved_enabled(&state, cluster_id).await.unwrap(),
+            Some(HashSet::from([HASH.to_string()]))
+        );
+    }
+
+    #[cfg(debug_assertions)]
+    #[tokio::test]
+    async fn a_loader_change_drops_an_unfinished_swap() {
+        use crate::clusters::CreateClusterOptions;
+        use crate::versions::{MigrationSource, MigrationTarget};
+
+        let state = crate::dev::ephemeral_state().await.unwrap();
+        let db = &state.services.db;
+        let global = state.settings.read().global_game_settings.clone();
+        let cluster_id = state
+            .clusters
+            .create(
+                &global,
+                CreateClusterOptions::new("Reloaded", "26.2.8", GameLoader::Fabric),
+            )
+            .await
+            .unwrap()
+            .id;
+        flag_dao::set(
+            db,
+            cluster_id,
+            ClusterFlag::RetargetMods,
+            Some("abababababababababababababababababababab"),
+        )
+        .await
+        .unwrap();
+        let source = cluster_dao::get_by_id(db, cluster_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let rule = RemoteMigration {
+            id: "reloaded".to_string(),
+            from: MigrationSource {
+                mc_version: "26.2.8".to_string(),
+                loader: "fabric".to_string(),
+            },
+            to: MigrationTarget {
+                mc_version: "26.2.8".to_string(),
+                loader: Some("neoforge".to_string()),
+            },
+            allow_without_bundles: false,
+        };
+        let from = MigrationNode {
+            mc_version: "26.2.8".to_string(),
+            loader: GameLoader::Fabric,
+        };
+        let to = MigrationNode {
+            mc_version: "26.2.8".to_string(),
+            loader: GameLoader::NeoForge,
+        };
+
+        assert!(
+            migrate_cluster(&state, &rule, &source, &from, &to)
+                .await
+                .unwrap()
+        );
+
+        assert!(
+            !flag_dao::is_set(db, cluster_id, ClusterFlag::RetargetMods)
+                .await
+                .unwrap()
         );
     }
 

@@ -114,8 +114,6 @@ impl GameProcessManager {
         self.launching.lock().await
     }
 
-    /// Held while a cluster's content is rewritten outside a launch. A launch
-    /// of that cluster waits for it, other clusters launch as usual.
     pub fn content_lock(&self, cluster_id: i64) -> Arc<tokio::sync::Mutex<()>> {
         self.content_locks
             .lock()

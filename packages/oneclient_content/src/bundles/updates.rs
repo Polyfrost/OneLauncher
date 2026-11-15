@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use oneclient_db::dao::artifact as artifact_dao;
@@ -39,13 +39,14 @@ use crate::packages::store::PackageStore;
 use crate::packages::types::LinkedArtifactInfo;
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 
-static CLUSTER_UPDATE_LOCKS: OnceLock<Mutex<HashMap<i64, Arc<AsyncMutex<()>>>>> = OnceLock::new();
-
 type SharedPrefetch = Shared<BoxFuture<'static, Result<(), String>>>;
 
+type PrefetchDeadline = Arc<Mutex<Option<Instant>>>;
+
 pub struct Prefetches {
-    running: Mutex<HashMap<String, (SharedPrefetch, GroupedProgressChild)>>,
+    running: Mutex<HashMap<String, (SharedPrefetch, GroupedProgressChild, PrefetchDeadline)>>,
     permits: Semaphore,
+    cluster_locks: Mutex<HashMap<i64, Arc<AsyncMutex<()>>>>,
 }
 
 impl Default for Prefetches {
@@ -53,6 +54,7 @@ impl Default for Prefetches {
         Self {
             running: Mutex::default(),
             permits: Semaphore::new(BUNDLE_INSTALL_CONCURRENCY),
+            cluster_locks: Mutex::default(),
         }
     }
 }
@@ -74,14 +76,17 @@ fn prefetch_key(file: &BundleFile) -> String {
 fn shared_prefetch(
     file: &BundleFile,
     child: Option<&GroupedProgressChild>,
+    deadline: Option<Instant>,
     ctx: &ContentCtx,
 ) -> SharedPrefetch {
     let key = prefetch_key(file);
     let mut running = ctx.prefetches.running.lock().unwrap();
-    if let Some((task, source)) = running.get(&key) {
+    if let Some((task, source, latest)) = running.get(&key) {
         if let Some(child) = child {
             source.mirror_into(child.clone());
         }
+        let mut latest = latest.lock().unwrap();
+        *latest = latest.zip(deadline).map(|(a, b)| a.max(b));
         return task.clone();
     }
 
@@ -89,13 +94,31 @@ fn shared_prefetch(
     if let Some(child) = child {
         source.mirror_into(child.clone());
     }
+    let latest: PrefetchDeadline = Arc::new(Mutex::new(deadline));
     let task = tokio::spawn({
         let file = file.clone();
         let source = source.clone();
         let ctx = ctx.clone();
         let key = key.clone();
+        let latest = Arc::clone(&latest);
         async move {
-            let _permit = ctx.prefetches.permits.acquire().await;
+            let _permit = loop {
+                let until = *latest.lock().unwrap();
+                let Some(until) = until else {
+                    break ctx.prefetches.permits.acquire().await;
+                };
+                let acquire = ctx.prefetches.permits.acquire();
+                if let Ok(permit) =
+                    tokio::time::timeout_at(tokio::time::Instant::from_std(until), acquire).await
+                {
+                    break permit;
+                }
+                let mut running = ctx.prefetches.running.lock().unwrap();
+                if *latest.lock().unwrap() == Some(until) {
+                    running.remove(&key);
+                    return Err("no caller waits for the download any more".to_string());
+                }
+            };
             let fetched = prefetch_bundle_file(&file, Some(&source), &ctx).await;
             ctx.prefetches.running.lock().unwrap().remove(&key);
             fetched.map_err(|err| format!("{err:#}"))
@@ -104,7 +127,7 @@ fn shared_prefetch(
     let task = async move { task.await.map_err(|err| err.to_string())? }
         .boxed()
         .shared();
-    running.insert(key, (task.clone(), source));
+    running.insert(key, (task.clone(), source, latest));
     task
 }
 
@@ -123,7 +146,7 @@ pub(crate) async fn prefetch_until(
     if past(deadline) {
         return skip();
     }
-    let task = shared_prefetch(file, child, ctx);
+    let task = shared_prefetch(file, child, deadline, ctx);
     match deadline {
         Some(deadline) => {
             match tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), task).await {
@@ -135,9 +158,8 @@ pub(crate) async fn prefetch_until(
     }
 }
 
-fn cluster_lock(cluster_id: i64) -> Arc<AsyncMutex<()>> {
-    let locks = CLUSTER_UPDATE_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut map = locks.lock().unwrap();
+pub fn cluster_lock(ctx: &ContentCtx, cluster_id: i64) -> Arc<AsyncMutex<()>> {
+    let mut map = ctx.prefetches.cluster_locks.lock().unwrap();
     map.entry(cluster_id)
         .or_insert_with(|| Arc::new(AsyncMutex::new(())))
         .clone()
@@ -591,7 +613,7 @@ pub async fn apply_bundle_updates_with(
         return Ok(ApplyBundleUpdatesResult::default());
     }
 
-    let lock = cluster_lock(cluster_id);
+    let lock = cluster_lock(ctx, cluster_id);
     let _guard = lock.lock().await;
 
     // Must run first
@@ -1675,7 +1697,11 @@ mod tests {
         let session = GroupedProgressSession::start(&events, "test");
         let child = session.child("unreachable.jar", 1, TaskCategory::Packages);
 
-        assert!(shared_prefetch(&file, Some(&child), &ctx).await.is_err());
+        assert!(
+            shared_prefetch(&file, Some(&child), None, &ctx)
+                .await
+                .is_err()
+        );
 
         while let Ok(event) = rx.try_recv() {
             assert!(
@@ -1691,15 +1717,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_queued_download_is_dropped_once_its_deadline_passes() {
+        let dir = polyio::tempdir().await.unwrap();
+        let (ctx, _events, _rx) = test_ctx(dir.dir_path()).await;
+        let held = ctx
+            .prefetches
+            .permits
+            .acquire_many(BUNDLE_INSTALL_CONCURRENCY as u32)
+            .await
+            .unwrap();
+        let file = unreachable_file();
+        let deadline = Instant::now() + Duration::from_millis(100);
+
+        assert!(
+            prefetch_until(&file, None, Some(deadline), &ctx)
+                .await
+                .is_none()
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        assert!(ctx.prefetches.running.lock().unwrap().is_empty());
+        drop(held);
+    }
+
+    #[tokio::test]
     async fn a_failed_download_can_be_tried_again() {
         let dir = polyio::tempdir().await.unwrap();
         let (ctx, _events, _rx) = test_ctx(dir.dir_path()).await;
         let file = unreachable_file();
 
-        assert!(shared_prefetch(&file, None, &ctx).await.is_err());
+        assert!(shared_prefetch(&file, None, None, &ctx).await.is_err());
         assert!(ctx.prefetches.running.lock().unwrap().is_empty());
 
-        let retry = shared_prefetch(&file, None, &ctx);
+        let retry = shared_prefetch(&file, None, None, &ctx);
         assert_eq!(ctx.prefetches.running.lock().unwrap().len(), 1);
         assert!(retry.await.is_err());
     }
@@ -1754,7 +1804,7 @@ mod tests {
             unreachable_file(),
             external_revision,
         ] {
-            let _ = shared_prefetch(&file, None, &ctx);
+            let _ = shared_prefetch(&file, None, None, &ctx);
         }
 
         assert_eq!(ctx.prefetches.running.lock().unwrap().len(), 7);
@@ -1768,8 +1818,8 @@ mod tests {
         let session = GroupedProgressSession::start(&events, "test");
         let joiner = session.child("joiner", 10, TaskCategory::Packages);
 
-        let _started = shared_prefetch(&file, None, &ctx);
-        let _joined = shared_prefetch(&file, Some(&joiner), &ctx);
+        let _started = shared_prefetch(&file, None, None, &ctx);
+        let _joined = shared_prefetch(&file, Some(&joiner), None, &ctx);
         let source = ctx.prefetches.running.lock().unwrap()[&prefetch_key(&file)]
             .1
             .clone();

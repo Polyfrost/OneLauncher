@@ -126,8 +126,7 @@ impl Component for DisableDependentsOverlay {
 }
 
 /// Applied off the event handler: the write is a database round trip, and the
-/// modal has already closed on the user's answer. It opens again when the
-/// cluster changed under it and more would now go off.
+/// modal has already closed on the user's answer.
 fn apply(
     pending: PendingDisable,
     alone: bool,

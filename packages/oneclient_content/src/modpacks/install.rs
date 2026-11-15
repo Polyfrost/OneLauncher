@@ -97,13 +97,17 @@ pub async fn install_modpack(
 
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
     let present = PresentContent::load(cluster_id, ctx).await?;
-    let tracked: HashMap<String, (String, String)> =
+    let tracked_rows: Vec<(String, String, String)> =
         bundle_dao::list_bundle_tracked(&ctx.db, cluster_id)
             .await?
             .into_iter()
             .filter(|row| row.bundle_name.as_deref() == Some(bundle_name))
-            .filter_map(|row| Some((row.package_id?, (row.hash, row.bundle_version_id?))))
+            .filter_map(|row| Some((row.package_id?, row.hash, row.bundle_version_id?)))
             .collect();
+    let tracked: HashMap<String, (String, String)> = tracked_rows
+        .iter()
+        .map(|(package_id, hash, version)| (package_id.clone(), (hash.clone(), version.clone())))
+        .collect();
 
     let mut replaced: HashMap<String, String> = HashMap::new();
     let to_install = contents
@@ -276,7 +280,7 @@ pub async fn install_modpack(
         import_override_content(archive_path, &prefixes, &install, &overrides, &mut report).await?;
 
     let wants = super::remove::imported_wants(&cluster).await;
-    remove_dropped_files(contents, &tracked, bundled, &wants, cluster_id, ctx).await;
+    remove_dropped_files(contents, &tracked_rows, bundled, &wants, cluster_id, ctx).await;
 
     for file in &contents.blocked {
         let suppressed = matches!(
@@ -433,7 +437,7 @@ async fn unlink_mismatch(install: &InstallContext<'_>, err: &ContentError) {
 
 async fn remove_dropped_files(
     contents: &ModpackContents,
-    tracked: &HashMap<String, (String, String)>,
+    tracked: &[(String, String, String)],
     bundled: Vec<String>,
     wants: &[(String, WantedFile)],
     cluster_id: i64,
@@ -456,7 +460,7 @@ async fn remove_dropped_files(
     listed.extend(contents.blocked.iter().map(|file| file.project_id.clone()));
     listed.extend(bundled);
 
-    for (package_id, (hash, _)) in tracked {
+    for (package_id, hash, _) in tracked {
         if listed.contains(package_id) {
             continue;
         }

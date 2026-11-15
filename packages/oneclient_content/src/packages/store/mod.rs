@@ -103,8 +103,6 @@ impl PackageStore {
         .await
     }
 
-    /// `write_lock` is held for the cluster writes only, once the download is
-    /// done
     #[allow(clippy::too_many_arguments)]
     #[tracing::instrument(skip(project, version, child, write_lock, ctx), fields(project_id = %project.id, version_id = %version.version_id))]
     pub async fn install_to_cluster(
@@ -144,9 +142,6 @@ impl PackageStore {
         Ok((artifact, live))
     }
 
-    /// Takes `write_lock` for the writes after a download, refusing them when
-    /// the cluster moved to another game version or loader meanwhile: the
-    /// download was picked for `before`.
     pub async fn lock_writes<'a>(
         write_lock: Option<&'a AsyncMutex<()>>,
         before: &ClusterRow,
@@ -546,9 +541,6 @@ impl PackageStore {
         Ok(report)
     }
 
-    /// [`Self::import_local_files`] without asking the providers what the files
-    /// are, so a caller can hold a lock over the cluster writes alone. Hand the
-    /// stored pairs to [`Self::describe_artifacts`] after.
     #[tracing::instrument(level = "debug", skip(files, ctx), fields(files = files.len()))]
     pub async fn store_local_files(
         files: &[(PathBuf, ContentType)],

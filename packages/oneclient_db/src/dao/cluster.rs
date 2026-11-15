@@ -268,8 +268,16 @@ pub async fn set_takes_bundles(pool: &SqlitePool, id: i64) -> Result<(), sqlx::E
 }
 
 pub async fn touch_last_played(pool: &SqlitePool, id: i64) -> Result<(), sqlx::Error> {
+    set_last_played(pool, id, Some(&Utc::now().to_rfc3339())).await
+}
+
+pub async fn set_last_played(
+    pool: impl sqlx::SqliteExecutor<'_>,
+    id: i64,
+    at: Option<&str>,
+) -> Result<(), sqlx::Error> {
     sqlx::query("UPDATE clusters SET last_played = ? WHERE id = ?")
-        .bind(Utc::now().to_rfc3339())
+        .bind(at)
         .bind(id)
         .execute(pool)
         .await?;
@@ -277,7 +285,7 @@ pub async fn touch_last_played(pool: &SqlitePool, id: i64) -> Result<(), sqlx::E
 }
 
 pub async fn add_playtime(
-    pool: &SqlitePool,
+    pool: impl sqlx::SqliteExecutor<'_>,
     id: i64,
     seconds: i64,
 ) -> Result<ClusterRow, sqlx::Error> {

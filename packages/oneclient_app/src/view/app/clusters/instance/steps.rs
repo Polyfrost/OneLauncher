@@ -876,14 +876,31 @@ fn bundle_file_name(file: &BundleFile, names: &HashMap<String, String>) -> Strin
         .unwrap_or_else(|| super::tidy_file_name(&file.display_name()))
 }
 
-fn bundle_blurb(archive: &BundleArchive, names: &HashMap<String, String>) -> String {
-    let mut listed: Vec<String> = archive
-        .manifest
-        .files
-        .iter()
-        .filter(|file| file.enabled && !file.hidden)
-        .map(|file| bundle_file_name(file, names))
-        .collect();
+/// The files a bundle card lists: the picked ones once the bundle is taken, otherwise its defaults
+fn shown_files<'a>(
+    archive: &'a BundleArchive,
+    picked: &HashSet<String>,
+    taken: bool,
+) -> impl Iterator<Item = &'a BundleFile> {
+    archive.manifest.files.iter().filter(move |file| {
+        !file.hidden
+            && if taken {
+                picked.contains(&pkg_key(
+                    UNCREATED_CLUSTER,
+                    &archive.manifest.name,
+                    &file.kind.package_id(),
+                ))
+            } else {
+                file.enabled
+            }
+    })
+}
+
+fn bundle_blurb<'a>(
+    files: impl Iterator<Item = &'a BundleFile>,
+    names: &HashMap<String, String>,
+) -> String {
+    let mut listed: Vec<String> = files.map(|file| bundle_file_name(file, names)).collect();
 
     let total = listed.len();
     listed.truncate(3);
@@ -966,13 +983,8 @@ fn bundles_step(mut wizard: Wizard, picks: &Picks) -> Element {
         .iter()
         .map(|archive| {
             let name = archive.manifest.name.clone();
-            let count = archive
-                .manifest
-                .files
-                .iter()
-                .filter(|file| file.enabled && !file.hidden)
-                .count();
             let taken = picks.bundles.taken(archive);
+            let count = shown_files(archive, &picks.bundles.picked, taken).count();
             let visible = file_keys(archive, |_| true);
             let mut turn_on = file_keys(archive, is_default_file);
             if turn_on.is_empty() {
@@ -995,7 +1007,10 @@ fn bundles_step(mut wizard: Wizard, picks: &Picks) -> Element {
             cell_card(CellCard {
                 id: name,
                 title: bundle_display_name(archive),
-                blurb: bundle_blurb(archive, &picks.bundles.names),
+                blurb: bundle_blurb(
+                    shown_files(archive, &picks.bundles.picked, taken),
+                    &picks.bundles.names,
+                ),
                 meta: Some(match count {
                     1 => t("oneclient.clusters.instance.steps.bundle.packages.one").to_string(),
                     many => tf(

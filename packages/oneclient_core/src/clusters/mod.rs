@@ -1,3 +1,4 @@
+mod bundle_setup;
 mod java_override;
 mod loader_update;
 mod migrate;
@@ -10,10 +11,11 @@ mod reset;
 mod share;
 mod unlink_legacy;
 
+pub use bundle_setup::set_up_bundles;
 pub use java_override::apply_bundle_java_override;
 pub use loader_update::{
-    apply_loader_update, auto_update_loader, available_loader_update, loader_update_policy,
-    set_loader_update_policy,
+    answer_loader_update, apply_loader_update, auto_update_loader, available_loader_update,
+    loader_update_offer, loader_update_policy, loader_update_prompt, set_loader_update_policy,
 };
 pub use migrate::apply_remote_migrations;
 pub use modpack::{
@@ -31,8 +33,9 @@ pub use prepare::{
 };
 pub use provision::{ensure_from_bundles, ensure_from_versions};
 pub use release_migration::{
-    OfferLookup, ReleaseMigrationOffer, can_migrate_manually, copy_configs, manual_migration_offer,
-    rank_migration_sources, record_new_versions, release_migration_offer,
+    MigrationOutcome, OfferLookup, ReleaseMigrationOffer, can_migrate_manually, copy_configs,
+    manual_migration_offer, migrate_release_packages, rank_migration_sources, record_new_versions,
+    release_migration_offer,
 };
 pub use reset::{ResetClaim, ResetReport, is_resetting, reset_cluster, reset_unfinished};
 pub use share::{

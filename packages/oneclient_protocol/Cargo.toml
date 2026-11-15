@@ -1,0 +1,31 @@
+[package]
+name = "oneclient_protocol"
+description = "The oneclient:// url scheme, its OS registration and cluster shortcuts"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+documentation.workspace = true
+readme.workspace = true
+homepage.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+directories.workspace = true
+image.workspace = true
+dunce.workspace = true
+oneclient_common.workspace = true
+open.workspace = true
+percent-encoding.workspace = true
+tracing.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = { version = "=5.19.0", default-features = false, features = ["async-io", "blocking-api"] }
+url.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "=0.62.2", features = [
+  "Win32_Foundation",
+  "Win32_System_Registry",
+] }

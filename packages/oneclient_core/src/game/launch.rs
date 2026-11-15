@@ -84,6 +84,54 @@ pub async fn launch_cluster_with(
     result
 }
 
+/// Only ever one retry if the game still will not start after a full rehash and
+/// repair the problem is not missing files
+pub async fn launch_cluster_or_repair(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+    account: &MinecraftAccount,
+    search_for_java: bool,
+) -> anyhow::Result<LaunchedGame> {
+    let original = match launch_cluster(state, cluster_id, account, search_for_java).await {
+        // A missing file is the one failure the launcher can fix itself and a
+        // path inside our metadata folder gives the user nothing to act on
+        Err(err) if err.indicates_missing_files() => err,
+        other => return Ok(other?),
+    };
+
+    let events = &state.services.events;
+    tracing::warn!(
+        cluster_id,
+        "launch failed on a missing file; repairing: {original:#}"
+    );
+    events
+        .notify("Repairing installation")
+        .body("Some game files are missing. Checking and re-downloading them.")
+        .send();
+
+    let report = match crate::verify_cluster_files(state, cluster_id).await {
+        Ok(report) => report,
+        Err(repair_err) => {
+            tracing::error!(cluster_id, "repair failed: {repair_err:#}");
+            // Lead with the original failure the repair failure explains why
+            // it was not fixed
+            anyhow::bail!("{original:#} (repair also failed: {repair_err:#})");
+        }
+    };
+
+    events
+        .notify("Repair complete")
+        .body(report.summary())
+        .send();
+
+    launch_cluster(state, cluster_id, account, search_for_java)
+        .await
+        .inspect_err(|err| {
+            tracing::error!(cluster_id, "launch failed again after repair: {err:#}");
+        })
+        .map_err(Into::into)
+}
+
 fn jvm_args_with(profile_args: Option<&str>, extra: Option<&str>) -> String {
     match (profile_args.unwrap_or_default(), extra) {
         ("", Some(extra)) => extra.to_string(),

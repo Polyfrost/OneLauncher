@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
 use chrono::{Datelike, NaiveDate};
@@ -373,31 +372,11 @@ pub fn home_cluster(clusters: &[Cluster], active: Option<i64>) -> Option<&Cluste
         .or_else(|| clusters.iter().min_by(|a, b| compare_recent_activity(a, b)))
 }
 
+pub use oneclient_cluster::{compare_recent_activity, version_sort_key};
+
 pub fn sort_clusters_for_home(mut clusters: Vec<Cluster>) -> Vec<Cluster> {
     clusters.sort_by(compare_recent_activity);
     clusters
-}
-
-fn recent_activity(cluster: &Cluster) -> Option<chrono::DateTime<chrono::Utc>> {
-    let created = cluster.created_at.filter(|_| cluster.user_created);
-    cluster.last_played.max(created)
-}
-
-fn compare_recent_activity(a: &Cluster, b: &Cluster) -> Ordering {
-    match (recent_activity(a), recent_activity(b)) {
-        // Most recently played first
-        (Some(a), Some(b)) => b.cmp(&a),
-        (Some(_), None) => Ordering::Less,
-        (None, Some(_)) => Ordering::Greater,
-        // Never played latest version first (major then minor)
-        (None, None) => version_sort_key(&b.mc_version).cmp(&version_sort_key(&a.mc_version)),
-    }
-}
-
-pub fn version_sort_key(version: &str) -> (u32, u32, u32) {
-    parse_mc_version(version)
-        .map(|v| (v.major, v.minor.unwrap_or(0), v.patch.unwrap_or(0)))
-        .unwrap_or((0, 0, 0))
 }
 
 #[cfg(not(target_os = "linux"))]

@@ -112,6 +112,10 @@ pub fn themes_dir() -> PathsResult<PathBuf> {
     Ok(config_dir()?.join("themes"))
 }
 
+pub fn ipc_socket() -> PathsResult<PathBuf> {
+    Ok(config_dir()?.join("ipc.sock"))
+}
+
 pub fn logs_dir() -> PathsResult<PathBuf> {
     Ok(config_dir()?.join("logs"))
 }

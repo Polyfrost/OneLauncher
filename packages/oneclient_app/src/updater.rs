@@ -1,10 +1,11 @@
 use std::cell::Cell;
 
-use cargo_packager_updater::{Config, Update, WindowsConfig, check_update};
+use cargo_packager_updater::Update;
+use oneclient_cli::update::{can_self_update, check_for_update};
 use oneclient_events::{Choice, EventBus, Prompt};
 use uuid::Uuid;
 
-use crate::constants::{RELEASES_URL, UPDATER_ENDPOINT, UPDATER_PUBKEY};
+use crate::constants::RELEASES_URL;
 use crate::i18n::{t, tf};
 
 pub const UPDATE_CHOICE_INSTALL: &str = "update.install";
@@ -117,44 +118,6 @@ pub fn simulate_manual_update_toast() {
         Ok(state) => notify_manual_update(&state.services.events, "9999.9999.9999"),
         Err(err) => tracing::warn!("simulated update toast failed: {err:#}"),
     }
-}
-
-fn can_self_update() -> bool {
-    if cfg!(debug_assertions) {
-        return false;
-    }
-
-    if std::env::var_os("ONECLIENT_DISABLE_AUTOUPDATE")
-        .is_some_and(|val| val.eq_ignore_ascii_case("1"))
-    {
-        return false;
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        std::env::var_os("APPIMAGE").is_some()
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        true
-    }
-}
-
-fn check_for_update() -> anyhow::Result<Option<Update>> {
-    let current = env!("CARGO_PKG_VERSION").parse()?;
-    let config = Config {
-        endpoints: vec![UPDATER_ENDPOINT.parse()?],
-        pubkey: UPDATER_PUBKEY.into(),
-        // The NSIS installer recreates the desktop and start menu shortcuts on every passive
-        // install unless told not to, which brings back a shortcut the user deleted
-        windows: Some(WindowsConfig {
-            installer_args: Some(vec!["/NS".into()]),
-            ..Default::default()
-        }),
-        ..Default::default()
-    };
-
-    Ok(check_update(current, config)?)
 }
 
 async fn download_and_install(update: Update, events: EventBus) -> anyhow::Result<()> {

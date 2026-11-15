@@ -161,7 +161,7 @@ impl ClusterManager {
             folder_stem.clone()
         };
 
-        let folder_name = resolve_unique_folder_name(&folder_stem).await?;
+        let folder_name = resolve_unique_folder_name(&self.db, &folder_stem).await?;
         let cluster_path = oneclient_common::paths::clusters_dir()?.join(&folder_name);
 
         match create_inner(
@@ -845,25 +845,21 @@ fn cap_folder_stem(name: &str) -> String {
         .collect()
 }
 
-async fn resolve_unique_folder_name(name: &str) -> ClusterResult<String> {
+async fn resolve_unique_folder_name(db: &DbPool, name: &str) -> ClusterResult<String> {
     let cluster_dir = oneclient_common::paths::clusters_dir()?;
-    let mut folder_name = name.to_string();
-    let mut path = cluster_dir.join(&folder_name);
+    let mut candidate = name.to_string();
+    let mut which = 0;
 
-    if path.exists() {
-        let mut which = 1;
-        loop {
-            let candidate = format!("{folder_name} ({which})");
-            path = cluster_dir.join(&candidate);
-            if !path.exists() {
-                folder_name = candidate;
-                break;
-            }
-            which += 1;
-        }
+    while cluster_dir.join(&candidate).exists()
+        || cluster_dao::get_by_folder_name(db, &candidate)
+            .await?
+            .is_some()
+    {
+        which += 1;
+        candidate = format!("{name} ({which})");
     }
 
-    Ok(folder_name)
+    Ok(candidate)
 }
 
 #[tracing::instrument(level = "debug")]
@@ -1075,7 +1071,9 @@ mod tests {
             polyio::create_dir_all(path.parent().unwrap())
                 .await
                 .unwrap();
-            polyio::write(&path, body.as_bytes().to_vec()).await.unwrap();
+            polyio::write(&path, body.as_bytes().to_vec())
+                .await
+                .unwrap();
             set_read_only(&path, true);
         }
 

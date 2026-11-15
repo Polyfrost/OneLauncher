@@ -1,20 +1,9 @@
-#[cfg(all(unix, not(target_os = "macos")))]
-mod linux;
-#[cfg(target_os = "macos")]
-mod macos;
-#[cfg(windows)]
-mod registry;
-#[cfg(windows)]
-mod windows;
+mod file_content;
+pub mod open;
+mod register;
+pub mod shortcut;
 
-#[cfg(all(unix, not(target_os = "macos")))]
-use linux as imp;
-#[cfg(target_os = "macos")]
-use macos as imp;
-#[cfg(windows)]
-use windows as imp;
-
-use std::path::Path;
+pub use register::{is_registered, register};
 
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, percent_decode_str, utf8_percent_encode};
 
@@ -54,24 +43,6 @@ pub fn parse_launch_url(raw: &str) -> Option<String> {
     let folder = percent_decode_str(path).decode_utf8().ok()?;
     let folder = folder.trim();
     (!folder.is_empty()).then(|| folder.to_string())
-}
-
-#[must_use]
-pub fn parse_share_url(raw: &str) -> Option<String> {
-    let (scheme, _) = raw.trim().split_once("://")?;
-    if !scheme.eq_ignore_ascii_case(SCHEME) {
-        return None;
-    }
-    oneclient_core::sharing::ShareCode::parse(raw).map(|code| code.as_str().to_string())
-}
-
-pub fn register(exe: &Path) -> anyhow::Result<()> {
-    imp::register(exe)
-}
-
-#[must_use]
-pub fn is_registered() -> bool {
-    imp::is_registered()
 }
 
 #[cfg(test)]

@@ -4,19 +4,18 @@ use anyhow::{Result, bail};
 
 use super::ShortcutRequest;
 use crate::file_content::url_shortcut;
-use crate::protocol;
 
 pub const EXTENSION: &str = "url";
 
 pub fn write(request: &ShortcutRequest, exe: &Path, path: &Path) -> Result<()> {
-    if !protocol::is_registered() {
+    if !crate::is_registered() {
         bail!(
             "the {} :// handler is not registered on this machine",
-            protocol::SCHEME
+            crate::SCHEME
         );
     }
 
-    let url = protocol::launch_url(&request.folder_name);
+    let url = crate::launch_url(&request.folder_name);
     let icon = request
         .icon
         .as_deref()

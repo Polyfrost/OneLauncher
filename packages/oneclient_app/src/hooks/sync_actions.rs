@@ -10,7 +10,7 @@ use oneclient_db::models::ClusterId;
 use oneclient_events::{Choice, Prompt};
 use uuid::Uuid;
 
-use super::actions::{Actions, listed, modpack_job_in_shared_dir, modpack_job_running};
+use super::actions::{Actions, listed, modpack_job_running};
 use super::queries::invalidate_cluster_worlds;
 use crate::i18n::{t, tf};
 use crate::launcher::{self, off_ui};
@@ -74,7 +74,9 @@ impl Actions {
                     .send();
                 return;
             }
-            if modpack_job_running(cluster_id) || modpack_job_in_shared_dir(cluster_id).await {
+            if modpack_job_running(cluster_id)
+                || oneclient_core::busy::modpack_job_in_shared_dir(&state, cluster_id).await
+            {
                 actions
                     .notify(t("oneclient.sync_actions.failed"))
                     .body(t("oneclient.sync_actions.modpack_busy"))
@@ -124,19 +126,10 @@ impl Actions {
 
 pub(crate) async fn sync_launch_block(cluster_id: ClusterId) -> Option<&'static str> {
     let state = launcher::state().ok()?;
-    if state.games.is_syncing(cluster_id) {
-        return Some(t("oneclient.sync_actions.launch_block.this"));
+    match oneclient_core::busy::sync_launch_block(&state, cluster_id).await? {
+        oneclient_core::busy::Busy::Syncing => Some(t("oneclient.sync_actions.launch_block.this")),
+        _ => Some(t("oneclient.sync_actions.launch_block.other")),
     }
-    if !state.games.any_syncing() {
-        return None;
-    }
-    let folder_syncing = state
-        .clusters
-        .get(cluster_id)
-        .await
-        .and_then(|cluster| cluster.game_dir())
-        .is_ok_and(|dir| state.games.is_dir_syncing(&dir));
-    folder_syncing.then(|| t("oneclient.sync_actions.launch_block.other"))
 }
 
 struct ShownSync {

@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -15,6 +16,28 @@ use crate::error::ClusterError;
 use crate::stage::ClusterStage;
 
 pub use oneclient_common::paths::DEDICATED_MARKER;
+
+fn recent_activity(cluster: &Cluster) -> Option<chrono::DateTime<chrono::Utc>> {
+    let created = cluster.created_at.filter(|_| cluster.user_created);
+    cluster.last_played.max(created)
+}
+
+pub fn compare_recent_activity(a: &Cluster, b: &Cluster) -> Ordering {
+    match (recent_activity(a), recent_activity(b)) {
+        // Most recently played first
+        (Some(a), Some(b)) => b.cmp(&a),
+        (Some(_), None) => Ordering::Less,
+        (None, Some(_)) => Ordering::Greater,
+        // Never played latest version first (major then minor)
+        (None, None) => version_sort_key(&b.mc_version).cmp(&version_sort_key(&a.mc_version)),
+    }
+}
+
+pub fn version_sort_key(version: &str) -> (u32, u32, u32) {
+    oneclient_common::parse_mc_version(version)
+        .map(|v| (v.major, v.minor.unwrap_or(0), v.patch.unwrap_or(0)))
+        .unwrap_or((0, 0, 0))
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum DirTarget {

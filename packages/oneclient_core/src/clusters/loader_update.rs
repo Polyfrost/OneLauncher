@@ -3,7 +3,7 @@ use std::sync::Arc;
 use oneclient_common::domain::{GameLoader, PackageUpdateMode};
 use oneclient_content::modpacks::is_newer_version;
 use oneclient_db::dao::cluster_flag::{self as flag_dao, ClusterFlag};
-use oneclient_events::Signal;
+use oneclient_events::{Choice, Prompt, Signal};
 
 use crate::LauncherResult;
 use crate::clusters::{Cluster, ClusterUpdate};
@@ -95,4 +95,62 @@ pub async fn auto_update_loader(
     apply_loader_update(state, cluster.id, version)
         .await
         .map(Some)
+}
+
+/// The current and newest loader version, when the cluster asks before a
+/// loader update and one is out
+pub async fn loader_update_offer(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+) -> Option<(String, String)> {
+    let cluster = state.clusters.get(cluster_id).await.ok()?;
+    match loader_update_policy(state, &cluster).await.ok()? {
+        PackageUpdateMode::Prompt => {}
+        PackageUpdateMode::Automatic | PackageUpdateMode::Skip => return None,
+    }
+    let current = cluster.mc_loader_version.clone()?;
+    match available_loader_update(state, &cluster).await {
+        Ok(latest) => latest.map(|latest| (current, latest)),
+        Err(err) => {
+            tracing::warn!(cluster_id, error = %err, "could not check for a loader update");
+            None
+        }
+    }
+}
+
+/// `None` updates once, a mode is remembered for every later launch
+pub fn loader_update_prompt(current: &str, latest: &str) -> Prompt<Option<PackageUpdateMode>> {
+    Prompt::new(
+        "Fabric Loader update",
+        format!(
+            "Fabric Loader {latest} is available for this instance, which is on {current}. \
+             Would you like to update it?"
+        ),
+    )
+    .option(
+        Choice::new("loader.update.always", "Always update"),
+        Some(PackageUpdateMode::Automatic),
+    )
+    .option(Choice::primary("loader.update.once", "Update"), None)
+    .option(
+        Choice::new("loader.update.never", "Never ask again"),
+        Some(PackageUpdateMode::Skip),
+    )
+    .dismiss("Not now")
+}
+
+/// Applies an answer to [`loader_update_prompt`]. Remembering always update
+/// leaves the update itself to the launch
+pub async fn answer_loader_update(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+    latest: String,
+    answer: Option<PackageUpdateMode>,
+) -> LauncherResult<()> {
+    match answer {
+        None => apply_loader_update(state, cluster_id, latest)
+            .await
+            .map(drop),
+        Some(mode) => set_loader_update_policy(state, cluster_id, mode).await,
+    }
 }

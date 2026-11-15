@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use freya::prelude::spawn_in_window;
 use oneclient_core::sharing::SharingError;
+pub use oneclient_core::sync::forget_deleted_cluster;
 use oneclient_core::sync::{
     self, CloudSync, Resolution, SyncError, SyncOutcome, SyncReport, SyncStatus,
 };
@@ -23,7 +24,6 @@ const EXIT_DELAY: Duration = Duration::from_secs(3);
 const FULL_SYNC_EVERY: Duration = Duration::from_secs(10 * 60);
 const BEFORE_LAUNCH_LIMIT: Duration = Duration::from_secs(90);
 
-static ENGINE: OnceLock<Option<Arc<CloudSync>>> = OnceLock::new();
 static SIGNALS: OnceLock<mpsc::UnboundedSender<CloudSignal>> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,29 +40,7 @@ pub fn cloud_sync_signal(signal: CloudSignal) {
 
 #[must_use]
 pub fn cloud_engine() -> Option<Arc<CloudSync>> {
-    if let Some(engine) = ENGINE.get() {
-        return engine.clone();
-    }
-    let state = launcher::state().ok()?;
-    ENGINE
-        .get_or_init(|| match CloudSync::from_defaults(state.auth.clone()) {
-            Ok(engine) => Some(Arc::new(engine.with_busy(super::modpack_job_running))),
-            Err(err) => {
-                tracing::warn!(error = %err, "cloud sync is unavailable");
-                None
-            }
-        })
-        .clone()
-}
-
-pub async fn forget_deleted_cluster(state: &LauncherState, cluster_id: ClusterId) {
-    let Some(engine) = cloud_engine() else {
-        return;
-    };
-    let account = sync::current_account(state).await.ok();
-    if let Err(err) = engine.cluster_deleted(account.as_ref(), cluster_id).await {
-        tracing::warn!(cluster_id, error = %err, "could not remove the deleted instance from cloud sync");
-    }
+    sync::engine(launcher::state().ok()?.auth.clone())
 }
 
 pub async fn load_sync_left_out(cluster_id: ClusterId) -> BTreeSet<String> {

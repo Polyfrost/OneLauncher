@@ -37,7 +37,8 @@ pub use folder_packs::{
 pub use game_options::{read_graphics_backend, write_graphics_backend};
 pub use heal::clear_zeroed_files;
 pub use launch::{
-    LaunchedGame, crash_mod_issues, is_running, launch_cluster, launch_cluster_with, repair_cluster,
+    LaunchedGame, crash_mod_issues, is_running, launch_cluster, launch_cluster_or_repair,
+    launch_cluster_with, repair_cluster,
 };
 pub use mod_problems::{ModProblem, ModProblemKind, ModRef};
 pub use oneclient_mc::{
@@ -56,6 +57,6 @@ pub use reattach::recover_sessions;
 pub(crate) use shared_dir::lock_mods_sync;
 pub use shared_dir::{
     DuplicateMods, dematerialize_content, import_manual_content, join_shared_folder,
-    leave_shared_folder, link_cluster_logs, materialize_content, shadowed_bundle_mods,
+    leave_shared_folder, link_cluster_logs, switch_game_folder, materialize_content, shadowed_bundle_mods,
     split_dedicated_packs, sync_cluster_mods, unlink_cluster_logs, write_allowed_symlinks,
 };

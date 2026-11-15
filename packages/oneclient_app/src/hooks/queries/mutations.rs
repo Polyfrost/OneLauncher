@@ -136,6 +136,17 @@ async fn invalidate_enabled_flag_queries() {
     .await;
 }
 
+pub async fn invalidate_after_cli() {
+    invalidate_cluster_queries().await;
+    invalidate_profile_queries().await;
+    super::java::invalidate_java_queries().await;
+    super::logs::invalidate_logs_queries().await;
+    super::screenshots::invalidate_screenshots_queries().await;
+    super::storage::invalidate_storage_queries().await;
+    super::storage::invalidate_leftovers_queries().await;
+    super::auth::invalidate_auth_queries(None).await;
+}
+
 pub async fn invalidate_profile_queries() {
     QueriesStorage::<ListNamedProfilesQuery>::invalidate_all().await;
     QueriesStorage::<GameProfileQuery>::invalidate_all().await;

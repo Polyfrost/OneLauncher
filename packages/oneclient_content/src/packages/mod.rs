@@ -40,7 +40,8 @@ pub use metadata_cache::{
     read_cached_package_meta,
 };
 pub use dependents::{
-    DependentPackage, DisableImpact, DisableRoot, disable_impact, ensure_cluster_dependencies,
+    DependentPackage, DisableImpact, DisablePlan, DisableRoot, apply_disable, disable_impact,
+    ensure_cluster_dependencies, plan_disable,
 };
 pub use oneclient_common::domain::{ContentType, GameLoader, HashAlgorithm, ProviderId};
 pub use provider::{PackageProvider, PackageProviderRegistry};

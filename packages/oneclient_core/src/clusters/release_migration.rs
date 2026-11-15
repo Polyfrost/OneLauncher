@@ -1,6 +1,7 @@
 use std::cmp::Reverse;
 use std::collections::HashSet;
 use std::path::Path;
+use std::sync::Arc;
 
 use oneclient_common::domain::GameLoader;
 
@@ -8,7 +9,9 @@ use oneclient_cluster::Cluster;
 use oneclient_common::version::parse_mc_version;
 use oneclient_content::bundles::bundle_override_paths;
 use oneclient_content::packages::release_migration::{
-    has_migratable_packages, has_packages_to_migrate,
+    ReleaseMigrationPackage, ReleaseMigrationPlan, SkipReason, add_to_waitlist,
+    apply_release_migration_dependency, apply_release_migration_package, has_migratable_packages,
+    has_packages_to_migrate,
 };
 
 use crate::LauncherResult;
@@ -455,4 +458,143 @@ mod tests {
         let sources = rank_migration_sources(&target, &clusters);
         assert_eq!(sources.iter().map(|c| c.id).collect::<Vec<_>>(), [2]);
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MigrationOutcome {
+    pub migrated: usize,
+    pub total: usize,
+    pub session_id: uuid::Uuid,
+}
+
+pub async fn migrate_release_packages(
+    state: &Arc<LauncherState>,
+    source: Option<&Cluster>,
+    target: &Cluster,
+    plan: Option<&ReleaseMigrationPlan>,
+    packages: Vec<ReleaseMigrationPackage>,
+    copy_configs_too: bool,
+) -> Option<MigrationOutcome> {
+    let content = state.services.content();
+
+    if let Some(source) = source
+        && let Err(err) =
+            oneclient_content::bundles::inherit_bundle_choices(source.id, target.id, &content).await
+    {
+        tracing::warn!(error = %err, "could not carry the bundle choices over to the target");
+    }
+
+    if packages.is_empty() {
+        return None;
+    }
+
+    let chosen: HashSet<String> = packages
+        .iter()
+        .map(|package| package.source_hash.clone())
+        .collect();
+    let (dependencies, unavailable): (Vec<_>, Vec<_>) = match plan {
+        Some(plan) => (
+            plan.dependencies
+                .iter()
+                .filter(|dependency| dependency.is_needed_by(&chosen))
+                .map(|dependency| (dependency.clone(), dependency.enabled_for(&packages)))
+                .collect(),
+            plan.unavailable
+                .iter()
+                .filter(|skip| skip.reason == SkipReason::NoCompatibleVersion)
+                .cloned()
+                .collect(),
+        ),
+        None => (Vec::new(), Vec::new()),
+    };
+    let waitlisted = !source.is_some_and(|source| source.mc_loader != target.mc_loader);
+    let total = packages.len() + dependencies.len();
+
+    let session = oneclient_events::GroupedProgressSession::start(
+        &state.services.events,
+        format!("Migrating to {}", target.name),
+    );
+    session.expect(
+        oneclient_events::TaskCategory::Packages,
+        total as u64,
+        total as u64,
+    );
+
+    let mut migrated = 0usize;
+    let mut blocked: HashSet<String> = HashSet::new();
+    for (dependency, enabled) in &dependencies {
+        let child = session.child(
+            dependency.project.name.clone(),
+            1,
+            oneclient_events::TaskCategory::Packages,
+        );
+        match apply_release_migration_dependency(
+            target.id,
+            dependency,
+            *enabled,
+            Some(&child),
+            &content,
+        )
+        .await
+        {
+            Ok(_) => migrated += 1,
+            Err(err) => {
+                tracing::warn!(
+                    dependency = %dependency.project.name,
+                    error = %err,
+                    "release migration failed for dependency"
+                );
+                blocked.extend(dependency.required_by.iter().cloned());
+            }
+        }
+        child.finish();
+    }
+
+    for package in &packages {
+        let child = session.child(
+            package.display_name.clone(),
+            1,
+            oneclient_events::TaskCategory::Packages,
+        );
+        if blocked.contains(&package.source_hash) {
+            tracing::warn!(
+                package = %package.display_name,
+                "skipping release migration for a package whose dependency failed"
+            );
+            child.finish();
+            continue;
+        }
+        match apply_release_migration_package(target.id, package, Some(&child), &content).await {
+            Ok(_) => migrated += 1,
+            Err(err) => tracing::warn!(
+                package = %package.display_name,
+                error = %err,
+                "release migration failed for package"
+            ),
+        }
+        child.finish();
+    }
+
+    if !waitlisted {
+        tracing::info!(
+            target_cluster_id = target.id,
+            skipped = unavailable.len(),
+            "cross-loader migration, not adding packages without a build to the waitlist"
+        );
+    } else if let Err(err) = add_to_waitlist(target.id, &unavailable, &content).await {
+        tracing::warn!(error = %err, "could not add packages without a build to the migration waitlist");
+    }
+
+    if let Some(source) = source.filter(|_| copy_configs_too) {
+        match copy_configs(state, source, target).await {
+            Ok(copied) => tracing::info!(copied, "copied config files into the target"),
+            Err(err) => tracing::warn!(error = %err, "could not copy config files"),
+        }
+    }
+
+    Some(MigrationOutcome {
+        migrated,
+        total,
+        session_id: session.detach(),
+    })
 }

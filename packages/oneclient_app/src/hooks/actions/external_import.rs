@@ -7,6 +7,7 @@ use oneclient_common::domain::ProviderId;
 use oneclient_content::ContentError;
 use oneclient_content::modpacks::{SHARE_EXTENSION, detect_format};
 use oneclient_content::packages::PackageError;
+use oneclient_core::busy::{import_running, modpack_job_idle, set_import_running};
 use oneclient_core::clusters::ModpackSource;
 use oneclient_core::{
     ExternalImportReport, ExternalInstance, ImportChoices, InstanceArchive, UnpublishedCheck,
@@ -42,6 +43,7 @@ fn admit(jobs: Vec<ExternalImportJob>) -> Admission {
         }
         None => {
             *queue = Some(Vec::new());
+            set_import_running(true);
             Admission::Start(jobs)
         }
     }
@@ -52,6 +54,7 @@ fn next_batch() -> Option<Vec<ExternalImportJob>> {
     let pending = queue.as_mut()?;
     if pending.is_empty() {
         *queue = None;
+        set_import_running(false);
         return None;
     }
     Some(std::mem::take(pending))
@@ -96,6 +99,7 @@ impl Drop for RunningImport {
             return;
         }
         let dropped = queue().take().unwrap_or_default();
+        set_import_running(false);
         self.hold(&dropped);
         discard_workdir_set(std::mem::take(&mut self.workdirs));
         self.actions
@@ -105,11 +109,6 @@ impl Drop for RunningImport {
             .send();
         self.actions.resume_imports();
     }
-}
-
-#[must_use]
-pub(super) fn import_running() -> bool {
-    queue().is_some()
 }
 
 #[derive(Debug, Clone)]
@@ -273,7 +272,14 @@ impl Actions {
         if jobs.is_empty() {
             return;
         }
-        if !super::modpacks::modpack_job_idle() {
+        if queue().is_none() && import_running() {
+            self.notify("An import is already running")
+                .body("Wait for it to finish, then try again.")
+                .error()
+                .send();
+            return;
+        }
+        if !modpack_job_idle() {
             WAITING_FOR_INSTALL
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)

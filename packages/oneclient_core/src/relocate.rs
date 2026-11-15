@@ -457,6 +457,7 @@ fn config_owned_names(dir: &Path) -> Vec<OsString> {
             paths::damaged_settings_file(),
             paths::auth_file(),
             paths::logs_dir(),
+            paths::ipc_socket(),
         ]
         .into_iter()
         .flatten()

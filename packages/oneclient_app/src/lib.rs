@@ -5,17 +5,14 @@
 
 mod assets;
 pub mod chat;
-pub mod cli;
 mod components;
 pub mod disable;
 pub mod essential;
 pub mod invite_join;
 pub mod events;
-pub(crate) mod file_content;
 pub mod hooks;
 pub(crate) mod i18n;
 mod install;
-pub mod ipc;
 mod launcher;
 mod layout;
 pub mod loader_update;
@@ -23,10 +20,8 @@ pub mod microsoft_java;
 mod motion;
 mod notifications;
 pub mod platform;
-pub mod protocol;
 pub mod recovery;
 mod routes;
-pub mod shortcut;
 pub mod state;
 pub mod theme;
 mod transfer;

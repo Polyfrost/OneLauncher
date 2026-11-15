@@ -8,6 +8,7 @@ use oneclient_common::domain::GraphicsBackend;
 
 use crate::LauncherResult;
 use crate::game::GameError;
+use crate::state::LauncherState;
 
 const OPTIONS_NAME: &str = "options.txt";
 const GRAPHICS_BACKEND_KEY: &str = "preferredGraphicsBackend:";
@@ -55,7 +56,14 @@ pub async fn read_options(game_dir: &Path) -> Option<Vec<(String, String)>> {
     Some(parse_options(&options))
 }
 
-pub async fn write_options(game_dir: &Path, edits: &HashMap<String, String>) -> LauncherResult<()> {
+pub async fn write_options(
+    state: &LauncherState,
+    game_dir: &Path,
+    edits: &HashMap<String, String>,
+) -> LauncherResult<()> {
+    if let Some(running) = state.games.dir_in_use_by(game_dir, None) {
+        return Err(GameError::AlreadyRunning(running).into());
+    }
     let path = game_dir.join(OPTIONS_NAME);
     let options = polyio::read_to_string(&path).await?;
     polyio::write_atomic(&path, apply_options(&options, edits)).await?;

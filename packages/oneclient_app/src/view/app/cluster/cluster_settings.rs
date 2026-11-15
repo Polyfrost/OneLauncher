@@ -19,9 +19,9 @@ use crate::hooks::{
     ClusterAction, java_runtimes, load_is_shared, load_setting_files, load_sync_left_out,
     loader_versions, mutation_is_running, query_error, settled_or_loading, try_game_profile,
     use_cloud_sync, use_cluster_mutation, use_clusters, use_dispatch, use_game_profile,
-    use_game_snapshot, use_graphics_backend, use_is_migration_source, use_java_runtimes,
-    use_launcher, use_loader_versions, use_migratable_routes, use_release_migration_checking,
-    use_settings_snapshot, use_shared_groups,
+    use_game_snapshot, use_graphics_backend, use_has_game_options, use_is_migration_source,
+    use_java_runtimes, use_launcher, use_loader_versions, use_migratable_routes,
+    use_release_migration_checking, use_settings_snapshot, use_shared_groups,
 };
 use crate::i18n::{t, tf};
 use crate::layout::cluster_content;
@@ -1761,7 +1761,7 @@ impl Component for GameOptionsRow {
 
         let dispatch = use_dispatch();
         let game_dir = self.game_dir.clone();
-        let has_options = game_dir.join("options.txt").exists();
+        let has_options = use_has_game_options(game_dir.clone());
         let button = rect()
             .horizontal()
             .cross_align(Alignment::Center)

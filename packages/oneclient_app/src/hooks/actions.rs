@@ -563,7 +563,7 @@ impl Actions {
     pub fn save_game_options(&self, game_dir: PathBuf, edits: HashMap<String, String>) {
         spawn_in_window(async move {
             let Ok(state) = launcher::state() else { return };
-            match oneclient_core::game::write_options(&game_dir, &edits).await {
+            match oneclient_core::game::write_options(&state, &game_dir, &edits).await {
                 Ok(()) => QueriesStorage::<GraphicsBackendQuery>::invalidate_all().await,
                 Err(err) => state
                     .services

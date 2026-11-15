@@ -45,7 +45,7 @@ pub use actions::{
     Actions, AlternativePick, ExternalImportJob, NotificationBuilder, PumpSignal, exporting,
     modpack_job_running, update_check_running,
 };
-pub(crate) use actions::listed;
+pub(crate) use actions::{ContentHold, listed, unlocked};
 pub use queries::ALL_VERSIONS;
 pub(crate) use queries::use_folder_watch;
 pub use queries::{BisectAction, BisectMutation, use_bisect, use_bisect_mutation};

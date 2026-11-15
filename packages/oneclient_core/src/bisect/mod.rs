@@ -334,6 +334,10 @@ pub async fn start_bisect(
     progress: impl Fn(&str, u64, u64),
 ) -> LauncherResult<BisectStatus> {
     let _guard = OPS.lock().await;
+    // Held until the search is recorded, so a version migration either
+    // finishes first or sees the search and defers.
+    let content_lock = state.games.content_lock(cluster_id);
+    let content_guard = content_lock.lock().await;
     ensure_idle(state, cluster_id)?;
     let db = &state.services.db;
     if bisect_dao::is_active(db, cluster_id).await? {
@@ -371,6 +375,7 @@ pub async fn start_bisect(
         .collect();
 
     bisect_dao::start(db, cluster_id, &mods).await?;
+    drop(content_guard);
     tracing::info!(cluster_id, mods = mods.len(), "started problem mod search");
 
     let listed = tokio::time::timeout(

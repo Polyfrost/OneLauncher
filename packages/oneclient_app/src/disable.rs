@@ -17,7 +17,7 @@ use oneclient_db::models::ClusterId;
 
 use crate::hooks::{Actions, invalidate_cluster_queries};
 use crate::i18n::{t, tf};
-use crate::launcher;
+use crate::launcher::{self, off_ui};
 
 /// How long the dependency backfill may hold up a toggle.
 ///
@@ -73,7 +73,7 @@ pub fn request(
 ) {
     spawn_in_window(async move {
         let warned = request.warned.clone();
-        match resolve(request).await {
+        match off_ui(resolve(request)).await {
             // Nothing else was affected, so it is already off.
             Ok(None) => {
                 dispatch.acknowledge_disable_warnings(&warned);
@@ -118,37 +118,70 @@ pub async fn resolve(request: DisableRequest) -> anyhow::Result<Option<PendingDi
         );
     }
 
+    let content_lock = state.games.content_lock(request.cluster_id);
+    let _content_guard = content_lock.lock().await;
+    let pending = impact_of(request, &content).await?;
+    if pending.required.is_empty() && pending.optional.is_empty() {
+        apply_now(&pending.request, &pending.hashes, &content).await?;
+        return Ok(None);
+    }
+    Ok(Some(pending))
+}
+
+/// Works out the impact under the caller's content lock, so what is applied
+/// is what the cluster holds at the time of writing.
+async fn impact_of(
+    request: DisableRequest,
+    content: &oneclient_content::ContentCtx,
+) -> anyhow::Result<PendingDisable> {
     let impact =
-        oneclient_core::disable_impact(request.cluster_id, &request.roots, &content).await?;
+        oneclient_core::disable_impact(request.cluster_id, &request.roots, content).await?;
 
     // A `Package` root has nothing installed, so there is no flag to write —
     // only the bundle override the caller carries.
     let mut hashes = root_hashes(&request);
     hashes.extend(impact.required_hashes());
 
-    if impact.is_empty() {
-        apply_now(&request, &hashes, &content).await?;
-        return Ok(None);
-    }
-
-    Ok(Some(PendingDisable {
+    Ok(PendingDisable {
         request,
         required: impact.required.into_iter().map(|dep| dep.name).collect(),
         optional: impact.optional.into_iter().map(|dep| dep.name).collect(),
         hashes,
-    }))
+    })
 }
 
 /// Applies a disable the user has confirmed.
-pub async fn apply(pending: &PendingDisable) -> anyhow::Result<()> {
+///
+/// The impact is worked out again under the content lock. When something the
+/// user was not shown would now go off with it, nothing is written and the
+/// fresh impact comes back to be confirmed instead.
+pub async fn apply(pending: &PendingDisable) -> anyhow::Result<Option<PendingDisable>> {
     let state = launcher::state()?;
-    apply_now(&pending.request, &pending.hashes, &state.services.content()).await
+    let shown = pending.clone();
+    off_ui(async move {
+        let content = state.services.content();
+        let content_lock = state.games.content_lock(shown.request.cluster_id);
+        let _content_guard = content_lock.lock().await;
+        let fresh = impact_of(shown.request.clone(), &content).await?;
+        if !fresh.hashes.iter().all(|hash| shown.hashes.contains(hash)) {
+            return Ok(Some(fresh));
+        }
+        apply_now(&fresh.request, &fresh.hashes, &content).await?;
+        Ok(None)
+    })
+    .await
 }
 
 pub async fn apply_alone(pending: &PendingDisable) -> anyhow::Result<()> {
     let state = launcher::state()?;
-    let hashes = root_hashes(&pending.request);
-    apply_now(&pending.request, &hashes, &state.services.content()).await
+    let request = pending.request.clone();
+    off_ui(async move {
+        let content = state.services.content();
+        let content_lock = state.games.content_lock(request.cluster_id);
+        let _content_guard = content_lock.lock().await;
+        apply_now(&request, &root_hashes(&request), &content).await
+    })
+    .await
 }
 
 fn root_hashes(request: &DisableRequest) -> Vec<String> {
@@ -162,6 +195,7 @@ fn root_hashes(request: &DisableRequest) -> Vec<String> {
         .collect()
 }
 
+/// Writes a disable. The caller holds the cluster's content lock.
 async fn apply_now(
     request: &DisableRequest,
     hashes: &[String],

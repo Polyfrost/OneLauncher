@@ -16,6 +16,7 @@ use oneclient_db::dao::browser_package_update as update_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
 use oneclient_db::models::{BrowserPackageUpdateRow, ClusterRow, SeenStatus};
 use oneclient_events::GroupedProgressChild;
+use tokio::sync::Mutex as AsyncMutex;
 
 use crate::ctx::ContentCtx;
 use crate::error::{ContentError, ContentResult};
@@ -340,10 +341,13 @@ pub async fn skip_browser_package_update(
 }
 
 /// Download first unlink second so a failed download leaves the cluster as it was
-#[tracing::instrument(level = "debug", skip(update, child, ctx), fields(cluster_id = update.cluster_id, project_id = %update.project_id))]
+///
+/// `write_lock` is held for the cluster writes only, once the downloads are done
+#[tracing::instrument(level = "debug", skip(update, child, write_lock, ctx), fields(cluster_id = update.cluster_id, project_id = %update.project_id))]
 pub async fn apply_browser_package_update(
     update: &BrowserPackageUpdate,
     child: Option<&GroupedProgressChild>,
+    write_lock: Option<&AsyncMutex<()>>,
     ctx: &ContentCtx,
 ) -> ContentResult<String> {
     // Never touch anything a bundle owns however this was called
@@ -365,12 +369,28 @@ pub async fn apply_browser_package_update(
         .get_version(&update.project_id, &update.latest_version_id, ctx)
         .await?;
 
+    let cluster = PackageStore::get_cluster(update.cluster_id, ctx).await?;
+
+    install_new_dependencies(
+        update.provider,
+        update.cluster_id,
+        &project,
+        &version,
+        write_lock,
+        ctx,
+    )
+    .await;
+
+    // Fetched ahead so the install below finds it cached, and the lock covers
+    // the link and the toggle after it together
+    PackageStore::download_and_cache(update.provider, &project, &version, false, child, ctx)
+        .await?;
+    let _write = PackageStore::lock_writes(write_lock, &cluster, ctx).await?;
+
     let enabled_before =
         artifact_dao::get_cluster_artifact(&ctx.db, update.cluster_id, &update.hash)
             .await?
             .map(|link| link.enabled != 0);
-
-    install_new_dependencies(update.provider, update.cluster_id, &project, &version, ctx).await;
 
     // Compatibility is not re-checked
     // a provider disagreeing at install time would strand the user on a build
@@ -383,6 +403,7 @@ pub async fn apply_browser_package_update(
         true,
         false,
         child,
+        None,
         ctx,
     )
     .await?;
@@ -413,12 +434,13 @@ pub async fn apply_browser_package_update(
     Ok(installed.hash)
 }
 
-#[tracing::instrument(level = "debug", skip(project, version, ctx))]
+#[tracing::instrument(level = "debug", skip(project, version, write_lock, ctx))]
 pub(crate) async fn install_new_dependencies(
     provider: ProviderId,
     cluster_id: i64,
     project: &crate::packages::types::ProjectDetail,
     version: &crate::packages::types::VersionDetail,
+    write_lock: Option<&AsyncMutex<()>>,
     ctx: &ContentCtx,
 ) {
     if !resolves_dependencies(project.content_type) {
@@ -446,6 +468,7 @@ pub(crate) async fn install_new_dependencies(
             true,
             false,
             None,
+            write_lock,
             ctx,
         )
         .await

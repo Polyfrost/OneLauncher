@@ -20,7 +20,8 @@ use crate::packages::dependencies::{
 };
 use crate::packages::store::PackageStore;
 use crate::packages::types::{
-    DependencyKind, InstalledPackage, ProjectDetail, VersionDependency, VersionDetail,
+    DependencyKind, InstalledPackage, LinkedArtifactInfo, ProjectDetail, VersionDependency,
+    VersionDetail,
 };
 use crate::packages::updates::{Candidate, browser_installed_any};
 
@@ -877,6 +878,194 @@ pub async fn process_waitlist(
     Ok(installs)
 }
 
+/// Swaps a cluster's provider mods for their builds for the game version the
+/// cluster now has, after that version was changed in place. Bundle-tracked
+/// mods are skipped; bundle sync owns them. Every mod that is not confirmed to
+/// have a build for the new version is switched off, since a jar for the old
+/// version can crash the game at startup. Returns how many were switched off.
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn retarget_cluster_mods(cluster_id: i64, ctx: &ContentCtx) -> ContentResult<usize> {
+    let target = PackageStore::get_cluster(cluster_id, ctx).await?;
+    let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
+    let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
+    let bundle_hashes: HashSet<&str> = tracked.iter().map(|row| row.hash.as_str()).collect();
+    // Also holds mods with no provider build to look up, such as local files,
+    // and untracked copies of a project a bundle tracks, so they count as
+    // unconfirmed
+    let sources: HashSet<String> = linked
+        .iter()
+        .filter(|info| {
+            info.content_type == ContentType::Mod && !bundle_hashes.contains(info.hash.as_str())
+        })
+        .map(|info| info.hash.clone())
+        .collect();
+    if sources.is_empty() {
+        return Ok(0);
+    }
+    let candidates: Vec<Candidate> = migratable_candidates(cluster_id, ctx)
+        .await?
+        .into_iter()
+        .filter(|candidate| candidate.content_type == ContentType::Mod)
+        .collect();
+    let present = kept_projects(&linked, &sources);
+    let were_on: HashSet<(ProviderId, &str)> = linked
+        .iter()
+        .filter(|info| info.enabled)
+        .filter_map(|info| Some((info.provider?, info.project_id.as_deref()?)))
+        .collect();
+    let switched_off: HashSet<&str> = linked
+        .iter()
+        .filter(|info| !info.enabled)
+        .map(|info| info.hash.as_str())
+        .collect();
+
+    let cache = DependencyCache::new();
+    let mut compatible: HashSet<String> = HashSet::new();
+    for (provider, candidates) in by_provider(candidates) {
+        let evaluation = evaluate_candidates(candidates, &target, &present, &cache, ctx).await;
+        if evaluation.unreachable {
+            tracing::warn!(
+                cluster_id,
+                ?provider,
+                "a provider could not be reached; switching off its mods that could not be checked"
+            );
+            continue;
+        }
+        compatible
+            .extend(apply_retarget(cluster_id, &evaluation, &were_on, &switched_off, ctx).await);
+
+        if !evaluation.unavailable.is_empty() {
+            tracing::info!(
+                cluster_id,
+                mc_version = %target.mc_version,
+                unavailable = ?evaluation
+                    .unavailable
+                    .iter()
+                    .map(|skip| format!("{} ({:?})", skip.display_name, skip.reason))
+                    .collect::<Vec<_>>(),
+                "switched off mods with no build for the new version"
+            );
+        }
+    }
+
+    let stale: Vec<String> = PackageStore::list_linked_artifacts(cluster_id, ctx)
+        .await?
+        .into_iter()
+        .filter(|linked| {
+            linked.enabled && sources.contains(&linked.hash) && !compatible.contains(&linked.hash)
+        })
+        .map(|linked| linked.hash)
+        .collect();
+
+    let mut disabled = 0;
+    for hash in &stale {
+        match PackageStore::set_artifact_enabled_to(cluster_id, hash, false, ctx).await {
+            Ok(_) => disabled += 1,
+            Err(err) => {
+                tracing::warn!(cluster_id, hash, %err, "could not switch off a mod with no build for the new version");
+            }
+        }
+    }
+
+    Ok(disabled)
+}
+
+/// What the new builds can rely on: enabled content that is not being swapped.
+/// A mod being swapped counts only through its new build, so one whose build
+/// cannot be installed takes the mods requiring it down with it.
+fn kept_projects(linked: &[LinkedArtifactInfo], sources: &HashSet<String>) -> HashSet<String> {
+    linked
+        .iter()
+        .filter(|info| info.enabled && !sources.contains(&info.hash))
+        .filter_map(|info| info.project_id.clone())
+        .collect()
+}
+
+/// Installs the new builds and returns the hashes that are now right for the
+/// cluster's version. A dependency is on when an enabled mod requires it, or
+/// when any copy of it was on and its new build is not already linked
+/// switched off.
+async fn apply_retarget(
+    cluster_id: i64,
+    evaluation: &Evaluation,
+    were_on: &HashSet<(ProviderId, &str)>,
+    switched_off: &HashSet<&str>,
+    ctx: &ContentCtx,
+) -> HashSet<String> {
+    let mut compatible = HashSet::new();
+    let mut blocked: HashSet<String> = HashSet::new();
+    for dependency in &evaluation.dependencies {
+        let target_off = dependency.version.primary_file().is_some_and(|file| {
+            switched_off
+                .iter()
+                .any(|hash| hash.eq_ignore_ascii_case(&file.sha1))
+        });
+        let enabled = dependency.enabled_for(&evaluation.packages)
+            || (!target_off
+                && were_on.contains(&(dependency.provider, dependency.project.id.as_str())));
+        match apply_release_migration_dependency(cluster_id, dependency, enabled, None, ctx).await {
+            Ok(hash) => {
+                compatible.insert(hash);
+            }
+            Err(err) => {
+                tracing::warn!(dependency = %dependency.project.name, %err, "could not install the new build of a dependency");
+                blocked.extend(dependency.required_by.iter().cloned());
+            }
+        }
+    }
+
+    let packages = evaluation
+        .packages
+        .iter()
+        .filter(|package| !blocked.contains(&package.source_hash));
+    for package in one_per_project(packages) {
+        if is_target_build(&package) {
+            compatible.insert(package.source_hash);
+            continue;
+        }
+        match apply_release_migration_package(cluster_id, &package, None, ctx).await {
+            Ok(hash) => {
+                compatible.insert(hash);
+            }
+            Err(err) => {
+                tracing::warn!(package = %package.display_name, %err, "could not install the new build of a mod");
+            }
+        }
+    }
+    compatible
+}
+
+fn is_target_build(package: &ReleaseMigrationPackage) -> bool {
+    package
+        .version
+        .primary_file()
+        .is_some_and(|file| file.sha1.eq_ignore_ascii_case(&package.source_hash))
+}
+
+/// Copies of one project share one new build, which is on when any copy was.
+/// A copy already on that build stands for the project with its own state,
+/// so it is not reinstalled or switched on under another copy's state.
+fn one_per_project<'a>(
+    packages: impl IntoIterator<Item = &'a ReleaseMigrationPackage>,
+) -> Vec<ReleaseMigrationPackage> {
+    let mut projects: Vec<ReleaseMigrationPackage> = Vec::new();
+    for package in packages {
+        match projects.iter_mut().find(|existing| {
+            existing.provider == package.provider && existing.project_id == package.project_id
+        }) {
+            Some(existing) => {
+                if is_target_build(package) {
+                    *existing = package.clone();
+                } else if !is_target_build(existing) {
+                    existing.enabled |= package.enabled;
+                }
+            }
+            None => projects.push(package.clone()),
+        }
+    }
+    projects
+}
+
 #[tracing::instrument(level = "debug", skip(dependency, child, ctx), fields(project_id = %dependency.project.id))]
 pub async fn apply_release_migration_dependency(
     target_cluster_id: i64,
@@ -893,6 +1082,7 @@ pub async fn apply_release_migration_dependency(
         true,
         false,
         child,
+        None,
         ctx,
     )
     .await?;
@@ -900,10 +1090,9 @@ pub async fn apply_release_migration_dependency(
     artifact_dao::set_seen_status(&ctx.db, target_cluster_id, &installed.hash, SeenStatus::New)
         .await?;
 
-    if !enabled {
-        PackageStore::set_artifact_enabled_to(target_cluster_id, &installed.hash, false, ctx)
-            .await?;
-    }
+    // Set either way: a copy already linked keeps its own flag, and one left off
+    // would leave the mods requiring it on without it
+    PackageStore::set_artifact_enabled_to(target_cluster_id, &installed.hash, enabled, ctx).await?;
 
     Ok(installed.hash)
 }
@@ -929,6 +1118,7 @@ pub async fn apply_release_migration_package(
         true,
         false,
         child,
+        None,
         ctx,
     )
     .await?;
@@ -1043,5 +1233,77 @@ mod tests {
             dependency_key(&loose).as_deref(),
             Some("project:fabric-api")
         );
+    }
+
+    fn package(hash: &str, enabled: bool) -> ReleaseMigrationPackage {
+        ReleaseMigrationPackage {
+            source_hash: hash.into(),
+            enabled,
+            provider: ProviderId::Modrinth,
+            project_id: "p".into(),
+            content_type: ContentType::Mod,
+            display_name: "P".into(),
+            version: version(&["26.3"], vec![GameLoader::Fabric]),
+            version_name: "1.0".into(),
+            size: 1,
+        }
+    }
+
+    #[test]
+    fn copies_of_a_project_share_one_build_on_when_any_copy_was() {
+        for copies in [
+            [package("old", true), package("a", false)],
+            [package("a", false), package("old", true)],
+        ] {
+            let merged = one_per_project(&copies);
+            assert_eq!(merged.len(), 1);
+            assert_eq!(
+                merged[0].source_hash, "a",
+                "the copy already on the new build stands for the project"
+            );
+            assert!(
+                !merged[0].enabled,
+                "the switched off build keeps its own state"
+            );
+        }
+
+        let merged = one_per_project(&[package("x", false), package("y", true)]);
+        assert_eq!(merged.len(), 1);
+        assert!(
+            merged[0].enabled,
+            "a switched off copy must not switch off the build"
+        );
+    }
+
+    fn linked(hash: &str, project_id: &str, enabled: bool) -> LinkedArtifactInfo {
+        LinkedArtifactInfo {
+            hash: hash.into(),
+            cluster_file_name: format!("{hash}.jar"),
+            enabled,
+            content_type: ContentType::Mod,
+            file_name: format!("{hash}.jar"),
+            size_bytes: None,
+            project_id: Some(project_id.into()),
+            version_id: None,
+            display_name: None,
+            display_version: None,
+            provider: Some(ProviderId::Modrinth),
+            published_at: None,
+            added_at: None,
+            seen_status: SeenStatus::default(),
+        }
+    }
+
+    #[test]
+    fn a_dependency_being_swapped_does_not_count_as_present() {
+        let present = kept_projects(
+            &[
+                linked("lib-old", "lib", true),
+                linked("bundled", "api", true),
+                linked("off", "extra", false),
+            ],
+            &HashSet::from(["lib-old".to_string()]),
+        );
+        assert_eq!(present, HashSet::from(["api".to_string()]));
     }
 }

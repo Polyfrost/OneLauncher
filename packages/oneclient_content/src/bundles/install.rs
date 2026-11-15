@@ -4,6 +4,7 @@ use chrono::DateTime;
 use futures_util::StreamExt;
 use oneclient_db::dao::applied_migration as migration_dao;
 use oneclient_db::dao::artifact as artifact_dao;
+use oneclient_db::dao::bundle as bundle_catalog_dao;
 use oneclient_db::dao::cluster_bisect as bisect_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
 use oneclient_db::models::ClusterRow;
@@ -17,6 +18,7 @@ use crate::bundles::updates::prefetch_until;
 use crate::ctx::ContentCtx;
 use crate::error::ContentError;
 use crate::error::ContentResult;
+use crate::packages::dependencies::supports_game_version;
 use crate::packages::store::{
     LiveSync, PackageStore, artifact_absolute_path, drop_unmanaged_mod, evict_if_unused,
     try_unlink_materialized,
@@ -311,6 +313,7 @@ pub async fn install_package_from_bundle(
                 skip_compatibility,
                 false,
                 child,
+                None,
                 ctx,
             )
             .await?;
@@ -647,6 +650,7 @@ async fn supersede_outdated_user_copies(
         return Ok(());
     }
 
+    let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
     let rows = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
     let tracked_projects: std::collections::HashSet<String> = rows
         .iter()
@@ -698,7 +702,9 @@ async fn supersede_outdated_user_copies(
                 continue;
             }
         };
-        if !ships_newer(&shipped, copy) {
+        if !ships_newer(&shipped, copy)
+            && !built_for_another_version(copy, &cluster.mc_version, ctx).await
+        {
             continue;
         }
 
@@ -706,7 +712,7 @@ async fn supersede_outdated_user_copies(
             cluster_id,
             project_id,
             hash = %copy.hash,
-            "switching off the user's older copy so the bundle's package loads instead"
+            "switching off the user's outdated copy so the bundle's package loads instead"
         );
         if let Err(err) =
             PackageStore::set_artifact_enabled_to(cluster_id, &copy.hash, false, ctx).await
@@ -716,6 +722,194 @@ async fn supersede_outdated_user_copies(
     }
 
     Ok(())
+}
+
+/// A copy whose release does not list the cluster's game version, such as one
+/// carried over from an instance on another version. Unknown counts as fine.
+async fn built_for_another_version(
+    copy: &LinkedArtifactInfo,
+    mc_version: &str,
+    ctx: &ContentCtx,
+) -> bool {
+    let (Some(provider), Some(project_id), Some(version_id)) =
+        (copy.provider, &copy.project_id, &copy.version_id)
+    else {
+        return false;
+    };
+    crate::packages::get_version_cached(ctx, provider, project_id, version_id)
+        .await
+        .is_ok_and(|version| !supports_game_version(&version.game_versions, mc_version))
+}
+
+/// Bundle names carry the game version, so content tracked under another
+/// version's bundle is left over from before the cluster's version changed.
+/// Bundle updates never match it, and while it is linked the current bundle's
+/// build of the same project is treated as already installed. Where a current
+/// bundle wants the project, the leftover is dropped once that build is
+/// linked. A disable or removal filed under the old bundle moves to the current
+/// one, so the project stays off. While the current build is not in, by failure
+/// or by `deadline`, the leftover is switched off without an override, so the
+/// current build goes in switched on once it arrives.
+async fn drop_other_version_bundle_copies(
+    cluster: &ClusterRow,
+    archives: &[BundleArchive],
+    progress: Option<&GroupedProgressSession>,
+    ctx: &ContentCtx,
+    deadline: Option<Instant>,
+) -> ContentResult<()> {
+    if archives.is_empty() || bisect_dao::is_active(&ctx.db, cluster.id).await? {
+        return Ok(());
+    }
+
+    let mut current = std::collections::HashSet::new();
+    let mut other = std::collections::HashSet::new();
+    for row in bundle_catalog_dao::list_all(&ctx.db).await? {
+        let Some(name) = row.name else {
+            continue;
+        };
+        if row.mc_version == cluster.mc_version && row.mc_loader == cluster.mc_loader {
+            current.insert(name);
+        } else {
+            other.insert(name);
+        }
+    }
+    current.extend(archives.iter().map(|archive| archive.manifest.name.clone()));
+
+    let overrides = bundle_dao::list_overrides(&ctx.db, cluster.id).await?;
+    let accepted = accepted_bundles(cluster.id, ctx).await?;
+    for row in bundle_dao::list_bundle_tracked(&ctx.db, cluster.id).await? {
+        let (Some(old_bundle), Some(package_id)) = (&row.bundle_name, &row.package_id) else {
+            continue;
+        };
+        if current.contains(old_bundle) || !other.contains(old_bundle) {
+            continue;
+        }
+        let shipping: Vec<(&BundleArchive, &BundleFile)> = archives
+            .iter()
+            .filter_map(|archive| {
+                let file = archive
+                    .manifest
+                    .files
+                    .iter()
+                    .find(|file| file.kind.package_id() == *package_id)?;
+                Some((archive, file))
+            })
+            .collect();
+        if shipping.is_empty() {
+            continue;
+        }
+
+        if let Some(kind) = find_user_suppression(&overrides, package_id) {
+            for (archive, _) in &shipping {
+                let name = &archive.manifest.name;
+                if find_override(&overrides, name, package_id).is_none() {
+                    bundle_dao::save_override(&ctx.db, cluster.id, name, package_id, kind).await?;
+                }
+            }
+        } else {
+            let Some((archive, file)) = shipping.iter().find(|(archive, file)| {
+                let user_override = find_override(&overrides, &archive.manifest.name, package_id);
+                wants_file(file, user_override, takes_bundle(archive, &accepted))
+            }) else {
+                continue;
+            };
+            let sha1 = match &file.kind {
+                BundleFileKind::Managed { sha1, .. } => sha1,
+                BundleFileKind::External { file, .. } => &file.sha1,
+            };
+            // Detaching would evict the very file the current bundle ships
+            if *sha1 == row.hash {
+                bundle_dao::track_bundle_artifact(
+                    &ctx.db,
+                    cluster.id,
+                    &row.hash,
+                    &archive.manifest.name,
+                    &file.kind.bundle_version_id(),
+                    package_id,
+                )
+                .await?;
+                continue;
+            }
+            let child = file_child(file, progress);
+            let installed = match prefetch_until(file, child.as_ref(), deadline, ctx).await {
+                None => None,
+                Some(Err(err)) if deadline.is_some() => {
+                    tracing::warn!(file = %file.display_name(), error = %err, "bundle download failed, leaving it for later");
+                    if let Some(child) = child {
+                        child.finish();
+                    }
+                    None
+                }
+                Some(_) => Some(
+                    link_file(file, cluster.id, &archive.manifest.name, true, child, ctx).await,
+                ),
+            };
+            if let Some(Err(err)) = &installed {
+                tracing::warn!(
+                    cluster_id = cluster.id,
+                    bundle = %archive.manifest.name,
+                    package_id,
+                    error = %err,
+                    "could not install the current build"
+                );
+            }
+            if !matches!(installed, Some(Ok(_))) {
+                if row.enabled != 0 {
+                    tracing::info!(
+                        cluster_id = cluster.id,
+                        bundle = %old_bundle,
+                        package_id,
+                        "switching off another version's copy until the current build is in"
+                    );
+                    if let Err(err) =
+                        PackageStore::set_artifact_enabled_to(cluster.id, &row.hash, false, ctx)
+                            .await
+                    {
+                        tracing::warn!(hash = %row.hash, error = %err, "failed to switch off another version's copy");
+                    }
+                }
+                continue;
+            }
+        }
+
+        tracing::info!(
+            cluster_id = cluster.id,
+            bundle = %old_bundle,
+            package_id,
+            "dropping content from another version's bundle"
+        );
+        detach_artifact(cluster.id, &row.hash, ctx).await?;
+    }
+
+    Ok(())
+}
+
+/// Projects whose copy from another version's bundle the next bundle sync
+/// swaps: ones a current bundle wants, and ones a current bundle ships that
+/// the user switched off or removed, whose choice moves to that bundle.
+pub async fn projects_bundle_sync_swaps(
+    cluster_id: i64,
+    archives: &[BundleArchive],
+    ctx: &ContentCtx,
+) -> ContentResult<std::collections::HashSet<String>> {
+    let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    let accepted = accepted_bundles(cluster_id, ctx).await?;
+    let mut swapped: std::collections::HashSet<String> = wanted_bundle_files(
+        archives.iter().map(|archive| &archive.manifest),
+        &accepted,
+        |bundle_name, package_id| find_override(&overrides, bundle_name, package_id),
+    )
+    .into_iter()
+    .map(|file| file.kind.package_id())
+    .collect();
+    swapped.extend(
+        archives
+            .iter()
+            .flat_map(|archive| &archive.manifest.files)
+            .map(|file| file.kind.package_id())
+            .filter(|package_id| find_user_suppression(&overrides, package_id).is_some()),
+    );
+    Ok(swapped)
 }
 
 fn ships_newer(shipped: &VersionDetail, copy: &LinkedArtifactInfo) -> bool {
@@ -1281,6 +1475,7 @@ pub async fn install_cluster_bundles(
         bundles = archives.len(),
         "installing enabled bundle content"
     );
+    drop_other_version_bundle_copies(&cluster, &archives, progress, ctx, deadline).await?;
     let accepted = accepted_bundles(cluster_id, ctx).await?;
     for archive in &archives {
         let taken = takes_bundle(archive, &accepted);

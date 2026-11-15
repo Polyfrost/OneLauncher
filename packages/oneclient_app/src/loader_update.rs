@@ -6,7 +6,7 @@ use oneclient_core::clusters::{
 use oneclient_db::models::ClusterId;
 use oneclient_events::{Choice, Prompt};
 
-use crate::hooks::Actions;
+use crate::hooks::{Actions, ContentHold, unlocked};
 use crate::i18n::{t, tf};
 use crate::launcher;
 use crate::launcher::off_ui;
@@ -17,10 +17,12 @@ enum LoaderCheck {
     Offer(String, String),
 }
 
-pub async fn offer_before_launch(
+/// `hold` is the launch's content lock, let go while the offer is open
+pub(crate) async fn offer_before_launch(
     actions: &Actions,
     cluster_id: ClusterId,
     manual: bool,
+    hold: Option<&ContentHold>,
 ) -> Option<bool> {
     let state = launcher::state().ok()?;
 
@@ -75,10 +77,10 @@ pub async fn offer_before_launch(
         LoaderCheck::Offer(current, latest) => (current, latest),
     };
 
-    let answer = match actions.events().ask(offer_prompt(&current, &latest)).await {
-        Ok(Some(chosen)) => chosen.value,
-        Ok(None) => return Some(true),
-        Err(err) => {
+    let answer = match unlocked(hold, actions.events().ask(offer_prompt(&current, &latest))).await {
+        Some(Ok(Some(chosen))) => chosen.value,
+        None | Some(Ok(None)) => return Some(true),
+        Some(Err(err)) => {
             tracing::warn!(cluster_id, error = %err, "loader update offer failed");
             return None;
         }

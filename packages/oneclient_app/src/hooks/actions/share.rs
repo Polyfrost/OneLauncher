@@ -18,7 +18,7 @@ use oneclient_core::sharing::{
 use oneclient_db::models::ClusterId;
 use oneclient_events::{Choice, GroupedProgressSession, Prompt};
 
-use super::Actions;
+use super::{Actions, ContentHold, unlocked};
 use crate::components::IconType;
 use crate::i18n::{t, tf};
 use crate::launcher::{self, off_ui};
@@ -374,6 +374,7 @@ impl Actions {
         &self,
         state: &Arc<LauncherState>,
         cluster_id: ClusterId,
+        hold: &ContentHold,
     ) {
         let check = off_ui({
             let state = state.clone();
@@ -449,10 +450,10 @@ impl Actions {
                             UpdateAnswer::Unlink,
                         )
                         .dismiss(t("oneclient.actions.share.update.later"));
-                let answer = match self.events().ask(prompt).await {
-                    Ok(Some(chosen)) => chosen.value,
-                    Ok(None) => UpdateAnswer::Skip,
-                    Err(err) => {
+                let answer = match unlocked(Some(hold), self.events().ask(prompt)).await {
+                    Some(Ok(Some(chosen))) => chosen.value,
+                    None | Some(Ok(None)) => UpdateAnswer::Skip,
+                    Some(Err(err)) => {
                         tracing::warn!(cluster_id, "share update prompt failed: {err:#}");
                         UpdateAnswer::Skip
                     }

@@ -431,6 +431,8 @@ pub async fn install_package(
 
     let mut installed_dependencies = Vec::new();
     let mut missing_dependencies = resolution.unresolved;
+    // A version migration rewrites the cluster's mods
+    let write_lock = state.games.content_lock(cluster_id);
 
     // Dependencies first so the package is never in a cluster without them however the run ends
     for dependency in &resolution.install {
@@ -452,6 +454,7 @@ pub async fn install_package(
             false,
             false,
             Some(&child),
+            Some(&write_lock),
             &state.services.content(),
         )
         .await;
@@ -488,6 +491,7 @@ pub async fn install_package(
         incompatible == IncompatibleMode::Allow,
         false,
         Some(&child),
+        Some(&write_lock),
         &state.services.content(),
     )
     .await;

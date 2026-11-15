@@ -44,6 +44,33 @@ enum Copied {
     Link,
 }
 
+const EXPORTED_TYPES: [(ContentType, IconType, &str, &str); 3] = [
+    (
+        ContentType::Mod,
+        IconType::CodeSnippet02,
+        "oneclient.clusters.export.content.mods",
+        "oneclient.clusters.export.content.mods.blurb",
+    ),
+    (
+        ContentType::ResourcePack,
+        IconType::Colors,
+        "oneclient.clusters.export.content.resource_packs",
+        "oneclient.clusters.export.content.resource_packs.blurb",
+    ),
+    (
+        ContentType::Shader,
+        IconType::PaintPour,
+        "oneclient.clusters.export.content.shaders",
+        "oneclient.clusters.export.content.shaders.blurb",
+    ),
+];
+
+#[derive(Clone, Copy)]
+enum SaveStep {
+    Content,
+    Format,
+}
+
 #[derive(Clone, Copy)]
 struct Picks {
     mode: State<ExportMode>,
@@ -335,8 +362,9 @@ impl Component for ExportInstanceModal {
             team,
         };
         let copied = use_state(|| None::<Copied>);
-        let saving = use_state(|| false);
+        let saving = use_state(|| None::<SaveStep>);
         let file_mode = use_state(|| ExportMode::OneClient);
+        let types = [use_state(|| true), use_state(|| true), use_state(|| true)];
         let playtime = use_state(|| false);
         let owner = use_state(|| OwnerCheck::Checking);
         use_side_effect(move || {
@@ -384,7 +412,7 @@ impl Component for ExportInstanceModal {
             spawn(async move { files.set(Some(load_setting_files(cluster_id).await)) });
             check_owner(cluster_id, picks, owner);
         });
-        let embeds_mode = if *saving.read() {
+        let embeds_mode = if saving.read().is_some() {
             *file_mode.read()
         } else {
             *picks.mode.read()
@@ -410,14 +438,19 @@ impl Component for ExportInstanceModal {
         let fill = share.is_none()
             && !*team.open.read()
             && !*picks.embeds_open.read()
+            && !matches!(*saving.read(), Some(SaveStep::Content))
             && *picks.open.read();
         let (body, footer) = match share {
             None if *team.open.read() => team_view(team, &owner.read()),
             None if *picks.embeds_open.read() => embeds_view(cluster_id, picks),
-            None if *saving.read() => save_view(
+            None if matches!(*saving.read(), Some(SaveStep::Content)) => {
+                content_view(&self.name, types, saving, close.clone())
+            }
+            None if saving.read().is_some() => save_view(
                 &self.name,
                 cluster_id,
                 picks,
+                types,
                 file_mode,
                 playtime,
                 saving,
@@ -1015,7 +1048,7 @@ fn options_view(
     summary: &Summary,
     owner: &OwnerCheck,
     copied: State<Option<Copied>>,
-    mut saving: State<bool>,
+    mut saving: State<Option<SaveStep>>,
     dispatch: &crate::hooks::Actions,
     close: EventHandler<()>,
 ) -> (Vec<Element>, Element) {
@@ -1049,7 +1082,7 @@ fn options_view(
     let right = vec![
         Button::new()
             .secondary()
-            .on_press(move |_| saving.set(true))
+            .on_press(move |_| saving.set(Some(SaveStep::Content)))
             .child(Icon::new(IconType::Download01).size(16.))
             .text(t("oneclient.clusters.export.save_file"))
             .into_element(),
@@ -1083,17 +1116,77 @@ fn options_view(
     (body, footer(left, right))
 }
 
+fn content_view(
+    name: &str,
+    types: [State<bool>; 3],
+    mut saving: State<Option<SaveStep>>,
+    close: EventHandler<()>,
+) -> (Vec<Element>, Element) {
+    let any = types.iter().any(|picked| *picked.read());
+    let body = vec![
+        dialog_header(
+            tile(
+                IconType::Download01,
+                TILE_SIZE,
+                colors::fg_primary(),
+                colors::component_bg(),
+            ),
+            tf("oneclient.clusters.export.title", &[&name]),
+            Some(t("oneclient.clusters.export.content.description")),
+            None,
+            close,
+        ),
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(10.)
+            .children(EXPORTED_TYPES.iter().zip(types).map(
+                |(&(_, icon, title, blurb), mut picked)| {
+                    wide_card(WideCard {
+                        icon,
+                        title: t(title).to_string(),
+                        badge: None,
+                        blurb: t(blurb).to_string(),
+                        meta: String::new(),
+                        selected: *picked.read(),
+                        on_press: (move |()| picked.toggle()).into(),
+                        trailing: None,
+                    })
+                },
+            ))
+            .into_element(),
+    ];
+    let footer = footer(
+        Some(back_button(move || saving.set(None))),
+        vec![
+            Button::new()
+                .primary()
+                .enabled(any)
+                .on_press(move |_| saving.set(Some(SaveStep::Format)))
+                .text(t("oneclient.common.next"))
+                .into_element(),
+        ],
+    );
+    (body, footer)
+}
+
+#[allow(clippy::too_many_arguments)]
 fn save_view(
     name: &str,
     cluster_id: i64,
     picks: Picks,
+    types: [State<bool>; 3],
     mut file_mode: State<ExportMode>,
     playtime: State<bool>,
-    mut saving: State<bool>,
+    mut saving: State<Option<SaveStep>>,
     dispatch: &crate::hooks::Actions,
     close: EventHandler<()>,
 ) -> (Vec<Element>, Element) {
     let chosen = *file_mode.read();
+    let mods_off = EXPORTED_TYPES
+        .iter()
+        .zip(types)
+        .any(|((kind, ..), picked)| *kind == ContentType::Mod && !*picked.read());
     let cards = [
         (
             ExportMode::OneClient,
@@ -1132,22 +1225,20 @@ fn save_view(
                 .vertical()
                 .width(Size::fill())
                 .spacing(10.)
-                .children(
-                    cards
-                        .into_iter()
-                        .map(|(option, icon, title, badge, blurb)| {
-                            wide_card(WideCard {
-                                icon,
-                                title: title.to_string(),
-                                badge: badge.map(str::to_string),
-                                blurb: blurb.to_string(),
-                                meta: String::new(),
-                                selected: chosen == option,
-                                on_press: (move |()| file_mode.set(option)).into(),
-                                trailing: None,
-                            })
-                        }),
-                )
+                .children(cards.into_iter().filter(|_| !mods_off).map(
+                    |(option, icon, title, badge, blurb)| {
+                        wide_card(WideCard {
+                            icon,
+                            title: title.to_string(),
+                            badge: badge.map(str::to_string),
+                            blurb: blurb.to_string(),
+                            meta: String::new(),
+                            selected: chosen == option,
+                            on_press: (move |()| file_mode.set(option)).into(),
+                            trailing: None,
+                        })
+                    },
+                ))
                 .into_element(),
         );
     }
@@ -1158,15 +1249,22 @@ fn save_view(
         );
     }
     let footer = footer(
-        Some(back_button(move || saving.set(false))),
+        Some(back_button(move || saving.set(Some(SaveStep::Content)))),
         vec![
             Button::new()
                 .primary()
                 .on_press(move |_| {
                     let mode = *file_mode.peek();
+                    let skipped = EXPORTED_TYPES
+                        .iter()
+                        .zip(types)
+                        .filter(|(_, picked)| !*picked.peek())
+                        .map(|((content_type, ..), _)| *content_type)
+                        .collect();
                     let options = picks
                         .export_options(mode)
-                        .with_playtime(mode == ExportMode::OneClient && *playtime.peek());
+                        .with_playtime(mode == ExportMode::OneClient && *playtime.peek())
+                        .without_types(skipped);
                     export.export_cluster(cluster_id, options);
                     close_export.call(());
                 })
@@ -1179,7 +1277,9 @@ fn save_view(
 
 fn embeds_view(cluster_id: i64, picks: Picks) -> (Vec<Element>, Element) {
     let mut open = picks.embeds_open;
-    let mut body = vec![title(t("oneclient.clusters.export.files.title").to_string())];
+    let mut body = vec![title(
+        t("oneclient.clusters.export.files.title").to_string(),
+    )];
     let empty = picks.embeds.files.read().as_ref().map(Vec::is_empty);
     if empty != Some(true) {
         body.push(note(t("oneclient.clusters.export.files.description"), 13.));

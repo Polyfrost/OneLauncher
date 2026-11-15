@@ -227,6 +227,8 @@ pub struct ExportOptions {
     pub mode: ExportMode,
     #[serde(default)]
     pub settings: SettingsChoice,
+    #[serde(default)]
+    pub skip_types: Vec<ContentType>,
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub left_out_files: BTreeSet<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -239,9 +241,16 @@ impl ExportOptions {
         Self {
             mode,
             settings: SettingsChoice::None,
+            skip_types: Vec::new(),
             left_out_files: BTreeSet::new(),
             playtime: false,
         }
+    }
+
+    #[must_use]
+    pub fn without_types(mut self, skip_types: Vec<ContentType>) -> Self {
+        self.skip_types = skip_types;
+        self
     }
 
     #[must_use]
@@ -311,7 +320,13 @@ pub async fn list_embedded_files(
 ) -> LauncherResult<Vec<SettingFile>> {
     let content = state.services.content();
     let cluster = state.clusters.get(cluster_id).await?;
-    let (_, scope) = share_scope(&cluster, mode == ExportMode::Compatibility, &content).await;
+    let (_, scope) = share_scope(
+        &cluster,
+        mode == ExportMode::Compatibility,
+        Vec::new(),
+        &content,
+    )
+    .await;
     let shared = modpacks::collect_share_content(cluster_id, scope, None, &content).await?;
     Ok(shared
         .files
@@ -330,6 +345,7 @@ pub async fn list_embedded_files(
 async fn share_scope(
     cluster: &Cluster,
     compatible: bool,
+    skip_types: Vec<ContentType>,
     content: &ContentCtx,
 ) -> (Option<SharedModpack>, ShareScope) {
     let modpack = match cluster.linked_modpack_hash {
@@ -351,6 +367,7 @@ async fn share_scope(
     let scope = ShareScope {
         skip_bundles: cluster.kind == ClusterKind::OneClient && !compatible,
         skip_modpack: modpack.is_some(),
+        skip_types,
     };
     (modpack, scope)
 }
@@ -382,8 +399,10 @@ pub async fn export_cluster_with(
         child
     });
 
-    let compatible = mode == ExportMode::Compatibility;
-    let (modpack, scope) = share_scope(&cluster, compatible, &content).await;
+    let compatible =
+        mode == ExportMode::Compatibility || options.skip_types.contains(&ContentType::Mod);
+    let (modpack, scope) =
+        share_scope(&cluster, compatible, options.skip_types.clone(), &content).await;
     let kind = if compatible && cluster.kind == ClusterKind::OneClient {
         kind_for(cluster.mc_loader)
     } else {

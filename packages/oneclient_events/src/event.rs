@@ -269,6 +269,11 @@ pub enum ChatEvent {
         message_id: i64,
     },
 
+    GroupRenamed {
+        group_id: i32,
+        name: String,
+    },
+
     PresenceChanged {
         player: Uuid,
         online: bool,

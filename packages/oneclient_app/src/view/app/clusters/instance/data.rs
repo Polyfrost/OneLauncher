@@ -92,9 +92,14 @@ pub struct Picks {
     pub versions: VersionPicks,
     pub loader: LoaderPicks,
     pub bundles: BundlePicks,
+    pub migrate_loader: Option<GameLoader>,
 }
 
 impl Picks {
+    pub fn fits(&self, loader: GameLoader) -> bool {
+        migration_fits(self.migrate_loader, loader)
+    }
+
     pub fn flagged_count(&self) -> usize {
         self.import_screening
             .iter()
@@ -164,10 +169,6 @@ impl Catalogue {
             .iter()
             .find(|entry| entry.id == version)
             .map(|entry| entry.loader)
-    }
-
-    fn lists(&self, version: &str) -> bool {
-        self.oneclient.iter().any(|entry| entry.id == version)
     }
 
     fn offers(&self, version: &str, loader: GameLoader) -> bool {
@@ -272,6 +273,14 @@ fn use_bundle_context(
     }
 }
 
+fn migration_fits(source: Option<GameLoader>, loader: GameLoader) -> bool {
+    source.is_none_or(|source| oneclient_core::clusters::can_migrate_manually(source, loader))
+}
+
+pub fn row_fits(source: Option<GameLoader>, loader: Option<GameLoader>) -> bool {
+    loader.is_none_or(|loader| migration_fits(source, loader))
+}
+
 fn build_version_list(
     choice: TypeChoice,
     catalogue: &Catalogue,
@@ -294,6 +303,7 @@ fn build_version_list(
                     id: entry.id.clone(),
                     meta: entry.loader.to_string(),
                     date: String::new(),
+                    loader: Some(entry.loader),
                 })
                 .collect(),
         );
@@ -311,9 +321,18 @@ fn build_version_list(
     VersionList::Catalogue { all, visible }
 }
 
-fn default_version(choice: TypeChoice, catalogue: &Catalogue, filter: u8) -> Option<String> {
+fn default_version(
+    source: Option<GameLoader>,
+    choice: TypeChoice,
+    catalogue: &Catalogue,
+    filter: u8,
+) -> Option<String> {
     if choice == TypeChoice::OneClient {
-        return catalogue.oneclient.first().map(|entry| entry.id.clone());
+        return catalogue
+            .oneclient
+            .iter()
+            .find(|entry| row_fits(source, Some(entry.loader)))
+            .map(|entry| entry.id.clone());
     }
 
     let all = catalogue.vanilla.as_deref().unwrap_or(&[]);
@@ -388,7 +407,9 @@ pub fn resolve(w: Wizard) -> Picks {
 
     let still_offered = |chosen: &String| {
         if oneclient {
-            catalogue.lists(chosen)
+            catalogue
+                .loader_for(chosen)
+                .is_some_and(|loader| row_fits(w.migrate_loader, Some(loader)))
         } else {
             catalogue
                 .vanilla
@@ -401,7 +422,7 @@ pub fn resolve(w: Wizard) -> Picks {
     };
     let version = (w.version.read().clone())
         .filter(still_offered)
-        .or_else(|| default_version(choice, &catalogue, filter));
+        .or_else(|| default_version(w.migrate_loader, choice, &catalogue, filter));
 
     let available_query = use_version_loaders(version.clone().unwrap_or_default());
     let available = settled_or_loading(&available_query);
@@ -551,6 +572,7 @@ pub fn resolve(w: Wizard) -> Picks {
             names: bundles.names,
             declined,
         },
+        migrate_loader: w.migrate_loader,
     }
 }
 

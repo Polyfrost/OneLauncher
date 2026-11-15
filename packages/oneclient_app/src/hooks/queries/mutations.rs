@@ -10,7 +10,9 @@ use super::bundles::{
     BundleOverridesQuery, BundleUpdatesQuery, BundlesWithStatusQuery, ImportedModpacksQuery,
     ModpackSourcesQuery,
 };
-use super::cluster_content::{ClusterContentQuery, MigratableRoutesQuery, ShadowedModsQuery};
+use super::cluster_content::{
+    ClusterContentQuery, FolderPacksQuery, MigratableRoutesQuery, ShadowedModsQuery,
+};
 use super::clusters::{ListClustersQuery, SharedGroupsQuery};
 use super::package_updates::PackageUpdatesQuery;
 use super::settings_profiles::{
@@ -34,6 +36,11 @@ pub async fn invalidate_cluster_queries() {
     timed(
         "cluster_content",
         QueriesStorage::<ClusterContentQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "folder_packs",
+        QueriesStorage::<FolderPacksQuery>::invalidate_all(),
     )
     .await;
     timed(
@@ -284,6 +291,16 @@ pub enum ClusterAction {
         cluster_id: ClusterId,
         hash: String,
     },
+    SetFolderPackEnabled {
+        cluster_id: ClusterId,
+        name: String,
+        enabled: bool,
+    },
+    RemoveFolderPack {
+        cluster_id: ClusterId,
+        name: String,
+        enabled: bool,
+    },
     DeleteBundledArtifact {
         cluster_id: ClusterId,
         hash: String,
@@ -340,11 +357,11 @@ pub enum ClusterAction {
 }
 
 impl MutationCapability for ClusterMutation {
-    type Ok = ();
+    type Ok = Option<ClusterId>;
     type Err = String;
     type Keys = ClusterAction;
 
-    async fn run(&self, keys: &ClusterAction) -> Result<(), String> {
+    async fn run(&self, keys: &ClusterAction) -> Result<Option<ClusterId>, String> {
         if let ClusterAction::Batch(actions) = keys {
             let mut errors = Vec::new();
             for action in actions {
@@ -353,7 +370,7 @@ impl MutationCapability for ClusterMutation {
                 }
             }
             return if errors.is_empty() {
-                Ok(())
+                Ok(None)
             } else {
                 Err(errors.join("\n"))
             };
@@ -371,6 +388,7 @@ impl MutationCapability for ClusterMutation {
                     .send();
             }
         };
+        let mut created = None;
         let result = match keys {
             ClusterAction::SetArtifactEnabled { cluster_id, .. }
             | ClusterAction::RemoveArtifact { cluster_id, .. }
@@ -396,6 +414,26 @@ impl MutationCapability for ClusterMutation {
                 .map(|live| notify_deferred(live, *cluster_id)),
             ClusterAction::RemoveArtifact { cluster_id, hash } => {
                 oneclient_core::delete_artifact(*cluster_id, hash, content).await
+            }
+            ClusterAction::SetFolderPackEnabled {
+                cluster_id,
+                name,
+                enabled,
+            } => {
+                folder_pack_op(&state, *cluster_id, |dir| async move {
+                    oneclient_core::game::set_folder_pack_enabled(&dir, name, *enabled).await
+                })
+                .await
+            }
+            ClusterAction::RemoveFolderPack {
+                cluster_id,
+                name,
+                enabled,
+            } => {
+                folder_pack_op(&state, *cluster_id, |dir| async move {
+                    oneclient_core::game::remove_folder_pack(&dir, name, *enabled).await
+                })
+                .await
             }
             ClusterAction::RemoveBundlePackageFromDisk { cluster_id, hash } => {
                 oneclient_core::remove_artifact_from_cluster(*cluster_id, hash, false, content)
@@ -659,7 +697,10 @@ impl MutationCapability for ClusterMutation {
                                 }
                                 Err(oneclient_content::ContentError::InvalidData { reason })
                             }
-                            None => Ok(()),
+                            None => {
+                                created = Some(cluster.id);
+                                Ok(())
+                            }
                         }
                     }
                     Err(err) => Err(oneclient_content::ContentError::InvalidData {
@@ -817,10 +858,10 @@ impl MutationCapability for ClusterMutation {
             ok = result.is_ok(),
             "cluster action ran"
         );
-        result.map_err(|e| e.to_string())
+        result.map(|()| created).map_err(|e| e.to_string())
     }
 
-    async fn on_settled(&self, keys: &ClusterAction, result: &Result<(), String>) {
+    async fn on_settled(&self, keys: &ClusterAction, result: &Result<Option<ClusterId>, String>) {
         if let Err(err) = result
             && let Ok(state) = crate::launcher::state()
         {
@@ -844,6 +885,27 @@ impl MutationCapability for ClusterMutation {
             invalidate_cluster_queries().await;
         }
     }
+}
+
+async fn folder_pack_op<F, Fut>(
+    state: &oneclient_core::LauncherState,
+    cluster_id: ClusterId,
+    op: F,
+) -> Result<(), oneclient_content::ContentError>
+where
+    F: FnOnce(PathBuf) -> Fut,
+    Fut: std::future::Future<Output = std::io::Result<()>>,
+{
+    let invalid = |err: &dyn std::fmt::Display| oneclient_content::ContentError::InvalidData {
+        reason: err.to_string(),
+    };
+    let cluster = state
+        .clusters
+        .get(cluster_id)
+        .await
+        .map_err(|e| invalid(&e))?;
+    let dir = cluster.game_dir().map_err(|e| invalid(&e))?;
+    op(dir).await.map_err(|e| invalid(&e))
 }
 
 fn notify_reset(

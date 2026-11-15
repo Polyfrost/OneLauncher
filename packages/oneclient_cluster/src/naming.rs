@@ -16,7 +16,7 @@ impl NameProblem {
         match self {
             Self::Empty => "Enter a name.",
             Self::TooLong => "Use 20 characters or fewer.",
-            Self::ForbiddenCharacters => "Use only letters, digits, spaces and _ - . ( )",
+            Self::ForbiddenCharacters => "Use only letters, digits, spaces and punctuation (no \\).",
             Self::NoUsableCharacters => "Include at least one letter or digit.",
         }
     }
@@ -31,7 +31,7 @@ impl std::fmt::Display for NameProblem {
 /// Letters and digits from any script: "Świat" and "世界" are names too
 #[must_use]
 pub fn is_allowed_name_char(c: char) -> bool {
-    c.is_alphanumeric() || is_name_punctuation(c)
+    c.is_alphanumeric() || c == ' ' || (c.is_ascii_punctuation() && c != '\\')
 }
 
 /// Folders on disk stay ASCII even when the name is not; older Forge on
@@ -97,12 +97,19 @@ mod tests {
             validate_instance_name("🎮"),
             Err(NameProblem::ForbiddenCharacters)
         );
+        assert_eq!(validate_instance_name("a/b"), Ok(()));
+        assert_eq!(validate_instance_name("my:world"), Ok(()));
+        assert_eq!(validate_instance_name("<Pvp> #1 & co!"), Ok(()));
         assert_eq!(
-            validate_instance_name("a/b"),
+            validate_instance_name("a\\b"),
             Err(NameProblem::ForbiddenCharacters)
         );
         assert_eq!(
-            validate_instance_name("my:world"),
+            validate_instance_name("a\nb"),
+            Err(NameProblem::ForbiddenCharacters)
+        );
+        assert_eq!(
+            validate_instance_name("a\u{202E}b"),
             Err(NameProblem::ForbiddenCharacters)
         );
         assert_eq!(
@@ -118,10 +125,7 @@ mod tests {
             validate_modpack_instance_name("All the Mods 10 - To the Sky"),
             Ok(())
         );
-        assert_eq!(
-            validate_modpack_instance_name("my:world"),
-            Err(NameProblem::ForbiddenCharacters)
-        );
+        assert_eq!(validate_modpack_instance_name("my:world"), Ok(()));
     }
 
     #[test]

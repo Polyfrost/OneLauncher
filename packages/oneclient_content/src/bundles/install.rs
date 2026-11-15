@@ -707,16 +707,7 @@ pub async fn heal_bundle_activity(
         return Ok(());
     }
 
-    let mut hidden: std::collections::HashMap<(&str, String), bool> =
-        std::collections::HashMap::new();
-    for archive in archives {
-        for file in &archive.manifest.files {
-            hidden.insert(
-                (archive.manifest.name.as_str(), file.kind.package_id()),
-                file.hidden,
-            );
-        }
-    }
+    let hidden = hidden_flags(archives);
 
     let overrides = overrides_outside_declined(
         cluster_id,
@@ -732,35 +723,19 @@ pub async fn heal_bundle_activity(
         .filter_map(|row| row.package_id.clone())
         .collect();
 
-    for row in tracked.iter().filter(|row| row.enabled == 0) {
-        let (Some(bundle_name), Some(package_id)) = (&row.bundle_name, &row.package_id) else {
-            continue;
-        };
-
-        if live_packages.contains(package_id) {
-            continue;
-        }
-        let Some(is_hidden) = hidden
-            .get(&(bundle_name.as_str(), package_id.clone()))
-            .copied()
+    for row in &tracked {
+        let Some((bundle_name, package_id, is_hidden)) =
+            heal_restores(row, &hidden, &overrides, &live_packages)
         else {
             continue;
         };
-
-        // Across bundles
-        // a package that moved keeps its old override row and reading only its
-        // current bundle would switch it back on
-        let suppression = find_user_suppression(&overrides, package_id);
-        if disable_was_deliberate(suppression) {
-            continue;
-        }
 
         tracing::info!(
             cluster_id,
             bundle = %bundle_name,
             package_id,
             hidden = is_hidden,
-            ?suppression,
+            suppression = ?find_user_suppression(&overrides, package_id),
             "re-enabling bundle content that was switched off with nothing recording the choice"
         );
 
@@ -772,10 +747,54 @@ pub async fn heal_bundle_activity(
             continue;
         }
 
-        live_packages.insert(package_id.clone());
+        live_packages.insert(package_id.to_string());
     }
 
     Ok(())
+}
+
+pub(crate) fn hidden_flags(
+    archives: &[BundleArchive],
+) -> std::collections::HashMap<(&str, String), bool> {
+    archives
+        .iter()
+        .flat_map(|archive| {
+            archive.manifest.files.iter().map(|file| {
+                (
+                    (archive.manifest.name.as_str(), file.kind.package_id()),
+                    file.hidden,
+                )
+            })
+        })
+        .collect()
+}
+
+/// The bundle, package and hidden flag of a copy [`heal_bundle_activity`]
+/// tries to switch back on, `None` when it is left as it is
+pub(crate) fn heal_restores<'a>(
+    row: &'a oneclient_db::models::BundleTrackedArtifactRow,
+    hidden: &std::collections::HashMap<(&str, String), bool>,
+    overrides: &[oneclient_db::models::ClusterBundleOverrideRow],
+    live_packages: &std::collections::HashSet<String>,
+) -> Option<(&'a str, &'a str, bool)> {
+    let (Some(bundle_name), Some(package_id)) = (&row.bundle_name, &row.package_id) else {
+        return None;
+    };
+    if row.enabled != 0 || live_packages.contains(package_id) {
+        return None;
+    }
+    let is_hidden = hidden
+        .get(&(bundle_name.as_str(), package_id.clone()))
+        .copied()?;
+
+    // Across bundles
+    // a package that moved keeps its old override row and reading only its
+    // current bundle would switch it back on
+    (!disable_was_deliberate(find_user_suppression(overrides, package_id))).then_some((
+        bundle_name,
+        package_id,
+        is_hidden,
+    ))
 }
 
 #[tracing::instrument(level = "debug", skip(archive, progress, ctx), fields(bundle = %archive.manifest.name))]
@@ -1358,7 +1377,13 @@ async fn sharing_scope(
     if !global {
         return Ok(None);
     }
+    global_sharing_scope(cluster_id, ctx).await
+}
 
+async fn global_sharing_scope(
+    cluster_id: i64,
+    ctx: &ContentCtx,
+) -> ContentResult<Option<Vec<i64>>> {
     let Some(cluster) = oneclient_db::dao::cluster::get_by_id(&ctx.db, cluster_id).await? else {
         return Ok(None);
     };
@@ -1392,6 +1417,16 @@ pub async fn clusters_sharing_artifact(
     ctx: &ContentCtx,
 ) -> ContentResult<Option<usize>> {
     Ok(sharing_clusters(cluster_id, hash, ctx)
+        .await?
+        .map(|clusters| clusters.len()))
+}
+
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn clusters_sharing_global_folders(
+    cluster_id: i64,
+    ctx: &ContentCtx,
+) -> ContentResult<Option<usize>> {
+    Ok(global_sharing_scope(cluster_id, ctx)
         .await?
         .map(|clusters| clusters.len()))
 }

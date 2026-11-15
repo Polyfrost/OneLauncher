@@ -201,6 +201,7 @@ impl Component for ContextMenu {
                         left: 1.,
                     }),
             )
+            .shadow(Shadow::from((0., 8., 24., 0., Color::from_argb(110, 0, 0, 0))))
             .opacity(if placed { 1. } else { 0. })
             .child(list);
 

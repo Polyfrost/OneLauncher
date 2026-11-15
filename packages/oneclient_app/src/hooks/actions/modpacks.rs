@@ -928,6 +928,7 @@ impl Actions {
                     version_id,
                     None,
                     false,
+                    crate::install::IncompatibleMode::Refuse,
                 );
             }
             actions.release_modpack_job();

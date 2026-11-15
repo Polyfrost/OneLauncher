@@ -284,6 +284,7 @@ async fn refresh_conversations(station: Station) -> bool {
 
     let ticket = next_ticket(&CONVERSATIONS_TICKET);
     let groups = client.groups().await;
+    let special_target = client.is_special_chat_target().await;
     if owner_of(station) != owner {
         return false;
     }
@@ -299,6 +300,13 @@ async fn refresh_conversations(station: Station) -> bool {
                 .write_channel(AppChannel::Chat)
                 .chat
                 .set_conversations(groups);
+            if let Ok(special_target) = special_target {
+                station
+                    .clone()
+                    .write_channel(AppChannel::Chat)
+                    .chat
+                    .special_target = special_target;
+            }
             watch_members(station);
         }
         Err(err) => {
@@ -514,9 +522,17 @@ async fn add_polyplus(actions: &Actions, invite_id: i32) -> bool {
             newest.id,
             None,
             false,
+            crate::install::IncompatibleMode::Refuse,
         )
         .await
-        .map_err(|flagged| anyhow::anyhow!("{} is flagged", flagged.name))?;
+        .map_err(|blocked| match blocked {
+            crate::install::InstallBlocked::Flagged(flagged) => {
+                anyhow::anyhow!("{} is flagged", flagged.name)
+            }
+            crate::install::InstallBlocked::Incompatible { name } => {
+                anyhow::anyhow!("{name} doesn't fit this cluster")
+            }
+        })?;
 
         anyhow::Ok(Some((newest.id, install)))
     })
@@ -949,6 +965,10 @@ pub enum ChatJob {
         members: Vec<Uuid>,
     },
     LeaveGroup(i32),
+    RenameGroup {
+        group_id: i32,
+        name: String,
+    },
     ResolveNames,
     SwitchOwner {
         signed_in: bool,
@@ -1151,6 +1171,24 @@ impl ChatJob {
                 }
             }
             Self::ResolveNames => load_names(station).await,
+            Self::RenameGroup { group_id, name } => {
+                let Some(client) = client() else { return };
+                let owner = owner_of(station);
+
+                let renamed = client.rename_group(group_id, &name).await;
+                if owner_of(station) != owner {
+                    return;
+                }
+
+                match renamed {
+                    Ok(()) => station
+                        .clone()
+                        .write_channel(AppChannel::Chat)
+                        .chat
+                        .rename(group_id, name),
+                    Err(err) => report(station, &err),
+                }
+            }
             Self::LeaveGroup(group_id) => {
                 let Some(client) = client() else { return };
                 let Some(owner) = owner_of(station) else {
@@ -1570,6 +1608,16 @@ impl Actions {
 
         clear_error(self.station());
         self.chat_job(ChatJob::AddMembers { group_id, members });
+    }
+
+    pub fn rename_group(&self, group_id: i32, name: String) {
+        let name = name.trim().to_string();
+        if name.is_empty() {
+            return;
+        }
+
+        clear_error(self.station());
+        self.chat_job(ChatJob::RenameGroup { group_id, name });
     }
 
     pub fn leave_group(&self, group_id: i32) {

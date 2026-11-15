@@ -10,8 +10,8 @@ use oneclient_core::settings::ViewLayout;
 use crate::components::{
     Button, CardLayout, ChevronToggle, ContextMenu, CopyStatus, FilterMenu, FilterOption, Icon,
     IconType, LazySection, OVERLAY_BASE_LEVEL, OverlayPopup, PackageEntry, PackageRow, ScrollArea,
-    Segment, SegmentedControl, TextInput, bundled_delete_action, package_context_menu, run_guarded,
-    use_shared_delete,
+    Segment, SegmentedControl, TextInput, bundled_delete_action, package_context_menu,
+    parse_folder_pack_id, run_guarded, use_shared_delete,
 };
 use crate::hooks::{ClusterAction, Selection, use_cluster_mutation, use_dispatch};
 use crate::i18n::{t, tf};
@@ -632,7 +632,7 @@ impl Component for CategoryChip {
                     .font_weight(FontWeight::MEDIUM)
                     .max_lines(1)
                     .color(if selected {
-                        Color::WHITE
+                        colors::on_brand()
                     } else {
                         colors::fg_primary()
                     }),
@@ -956,9 +956,17 @@ impl Component for ContentBox {
         let warnings_query = use_disable_warnings();
         let mut menu = use_state(|| None::<(f32, f32, PackageEntry)>);
         let mut copies_of = use_state(|| None::<String>);
-        let (on_delete, delete_dialog) = use_shared_delete(cluster_id, move |(_, hash)| {
-            cluster.mutate(ClusterAction::RemoveArtifact { cluster_id, hash });
-        });
+        let (on_delete, delete_dialog) =
+            use_shared_delete(cluster_id, move |(_, hash): (String, String)| {
+                cluster.mutate(match parse_folder_pack_id(&hash) {
+                    Some((name, enabled)) => ClusterAction::RemoveFolderPack {
+                        cluster_id,
+                        name: name.to_string(),
+                        enabled,
+                    },
+                    None => ClusterAction::RemoveArtifact { cluster_id, hash },
+                });
+            });
 
         let bulk = self.bulk.clone();
         let selection = bulk.selection;

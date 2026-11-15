@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use freya::prelude::*;
 use freya::winit::dpi::{PhysicalPosition, PhysicalSize};
 
+use crate::components::{TooltipHost, use_provide_tooltips};
 use crate::hooks::{use_dispatch, use_provide_station};
 use crate::i18n::t;
 use crate::state::AppState;
@@ -115,7 +116,7 @@ pub fn close_chat_window() {
 }
 
 fn window_config(position: Option<PhysicalPosition<i32>>) -> WindowConfig {
-    WindowConfig::new_app(ChatApp)
+    let config = WindowConfig::new_app(ChatApp)
         .with_title(t("oneclient.chat.window.title"))
         .with_app_id(crate::constants::WINDOW_APP_ID)
         .with_icon(LaunchConfig::window_icon(include_bytes!(
@@ -123,17 +124,39 @@ fn window_config(position: Option<PhysicalPosition<i32>>) -> WindowConfig {
         )))
         .with_size(WINDOW_WIDTH_PX, WINDOW_HEIGHT_PX)
         .with_min_size(360., 400.)
-        .with_decorations(true)
         .with_background(colors::page())
-        .with_window_attributes(move |attrs, _| match position {
-            Some(position) => attrs.with_position(position),
-            None => attrs,
-        })
         .with_window_handle(|window| CHAT_WINDOW.opened(window.id()))
         .with_on_close(|_, _| {
             CHAT_WINDOW.forget();
             CloseDecision::Close
-        })
+        });
+
+    #[cfg(target_os = "macos")]
+    let config = config
+        .with_decorations(true)
+        .with_window_attributes(move |attrs, _| {
+            use freya::winit::platform::macos::WindowAttributesExtMacOS;
+            let attrs = attrs
+                .with_title_hidden(true)
+                .with_titlebar_transparent(true)
+                .with_titlebar_buttons_hidden(true)
+                .with_fullsize_content_view(true)
+                .with_has_shadow(true);
+            match position {
+                Some(position) => attrs.with_position(position),
+                None => attrs,
+            }
+        });
+
+    #[cfg(not(target_os = "macos"))]
+    let config = config
+        .with_decorations(false)
+        .with_window_attributes(move |attrs, _| match position {
+            Some(position) => attrs.with_position(position),
+            None => attrs,
+        });
+
+    config
 }
 
 struct ChatApp;
@@ -141,6 +164,7 @@ struct ChatApp;
 impl App for ChatApp {
     fn render(&self) -> impl IntoElement {
         use_provide_station(AppState::default);
+        use_provide_tooltips();
         let dispatch = use_dispatch();
 
         track_focus(&dispatch, &CHAT_FOCUSED);
@@ -164,6 +188,7 @@ impl App for ChatApp {
                 mode: PanelMode::Window,
                 expanded,
             })
+            .child(TooltipHost)
     }
 }
 

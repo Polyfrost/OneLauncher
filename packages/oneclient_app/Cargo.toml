@@ -42,6 +42,7 @@ uuid.workspace = true
 bytes.workspace = true
 sys-locale.workspace = true
 sysinfo.workspace = true
+inventory.workspace = true
 
 notify.workspace = true
 

@@ -15,6 +15,9 @@ pub async fn install_package(
     events: &EventBus,
     progress: Option<&GroupedProgressSession>,
 ) -> JavaResult<PathBuf> {
+    static INSTALLS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _installing = INSTALLS.lock().await;
+
     let java_dir = paths::java_dir()?;
     polyio::create_dir_all(&java_dir).await?;
 
@@ -66,10 +69,28 @@ pub async fn install_package(
     }
     //events.notify("Extracting package...").body(format!("{} {}", package.vendor, major)).send();
 
+    let staging = java_dir.join(format!(
+        "{}.extracting",
+        stem_without_archive(&package.name)
+    ));
+    let _ = polyio::remove_dir_all(&staging).await;
+
     match package.archive {
-        PackageArchive::Zip => polyio::extract_zip(&archive_path, &extract_root).await?,
-        PackageArchive::TarGz => polyio::extract_tar_gz(&archive_path, &extract_root).await?,
+        PackageArchive::Zip => polyio::extract_zip(&archive_path, &staging).await?,
+        PackageArchive::TarGz => polyio::extract_tar_gz(&archive_path, &staging).await?,
     }
+
+    {
+        let staging = staging.clone();
+        tokio::task::spawn_blocking(move || sync_tree(&staging))
+            .await
+            .map_err(|err| polyio::IOError::from(std::io::Error::other(err)))?;
+    }
+
+    if polyio::try_exists(&extract_root).await.unwrap_or(false) {
+        polyio::remove_dir_all(&extract_root).await?;
+    }
+    polyio::rename(&staging, &extract_root).await?;
 
     // Walks the extract root and stats candidates, so it stays off the caller's
     // executor for the same reason the extraction above does
@@ -250,6 +271,24 @@ pub(crate) fn resolve_installed_executable(extract_root: &Path, package: &JavaPa
         }
 
         base_path.join(java_executable_relative_path())
+    }
+}
+
+fn sync_tree(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        match entry.file_type() {
+            Ok(kind) if kind.is_dir() => sync_tree(&path),
+            Ok(kind) if kind.is_file() => {
+                if let Ok(file) = std::fs::OpenOptions::new().write(true).open(&path) {
+                    let _ = file.sync_all();
+                }
+            }
+            _ => {}
+        }
     }
 }
 

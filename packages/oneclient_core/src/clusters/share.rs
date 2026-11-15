@@ -784,6 +784,7 @@ async fn install_shared_bundles(
         state.bundles.as_ref(),
         progress,
         &content,
+        None,
     )
     .await
     {

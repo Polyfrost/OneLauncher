@@ -79,6 +79,7 @@ fn apply_curseforge_auth(
 #[derive(Clone)]
 pub struct RequestClient {
     client: reqwest::Client,
+    http1: reqwest::Client,
     semaphore: Arc<Semaphore>,
     /// Shared across every clone so a settings save is visible to in-flight
     /// handles
@@ -101,23 +102,26 @@ impl RequestClient {
     }
 
     pub fn new(config: NetConfig) -> Result<Self, RequestError> {
-        let mut builder = ClientBuilder::new()
-            .connect_timeout(std::time::Duration::from_secs(10))
-            .read_timeout(std::time::Duration::from_secs(30))
-            .timeout(std::time::Duration::from_mins(10))
-            .tls_backend_rustls()
-            .user_agent(format!(
-                "OneClient {} ({})",
-                env!("CARGO_PKG_VERSION"),
-                env!("CARGO_PKG_HOMEPAGE")
-            ));
+        let builder = || {
+            ClientBuilder::new()
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .read_timeout(std::time::Duration::from_secs(30))
+                .timeout(std::time::Duration::from_mins(10))
+                .tls_backend_rustls()
+                .user_agent(format!(
+                    "OneClient {} ({})",
+                    env!("CARGO_PKG_VERSION"),
+                    env!("CARGO_PKG_HOMEPAGE")
+                ))
+                .no_hickory_dns()
+        };
 
-        builder = builder.no_hickory_dns();
-
-        let client = builder.build()?;
+        let client = builder().build()?;
+        let http1 = builder().http1_only().build()?;
 
         Ok(Self {
             client,
+            http1,
             semaphore: Arc::new(Semaphore::new(MAX_INFLIGHT_REQUESTS)),
             config: Arc::new(ArcSwap::from_pointee(config)),
         })
@@ -163,7 +167,12 @@ impl RequestClient {
                 None
             };
 
-            match self.client.execute(active_request).await {
+            let http = if request.options.own_connection {
+                &self.http1
+            } else {
+                &self.client
+            };
+            match http.execute(active_request).await {
                 Ok(response) => {
                     let status = response.status();
                     let retryable = status.as_u16() == 429 || status.is_server_error();
@@ -188,6 +197,16 @@ impl RequestClient {
                     break response;
                 }
                 Err(err) => {
+                    if request.options.own_connection
+                        && cloneable
+                        && err.is_connect()
+                        && !err.is_timeout()
+                    {
+                        request.options.own_connection = false;
+                        active_request = cloned_backup.as_ref().unwrap().try_clone().unwrap();
+                        continue;
+                    }
+
                     if retries < max_retries {
                         retries += 1;
 

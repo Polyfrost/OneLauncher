@@ -72,8 +72,8 @@ pub use oneclient_cluster::worlds::{
     delete_world, delete_world_datapack, list_cluster_worlds, list_world_datapacks, world_size,
 };
 pub use oneclient_content::bundles::{
-    ApplyBundleUpdatesResult, Bundle, BundleArchive, BundleError, BundleFile, BundleFileKind,
-    BundleFileType, BundleManifest, BundleOptionalPackage, BundleUpdateCheckResult,
+    ApplyBundleUpdatesResult, BUNDLE_APPLY_BUDGET, Bundle, BundleArchive, BundleError, BundleFile,
+    BundleFileKind, BundleFileType, BundleManifest, BundleOptionalPackage, BundleUpdateCheckResult,
     BundleWithUpdateStatus, BundlesManager, FileUpdateStatus, PendingOptionalMod,
     apply_bundle_updates, apply_bundle_updates_with, check_bundle_updates,
     cluster_has_bundle_content, clusters_sharing_artifact, clusters_sharing_global_folders,

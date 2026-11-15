@@ -221,6 +221,7 @@ async fn set_up_bundles(
         state.bundles.as_ref(),
         Some(&session),
         content,
+        None,
     )
     .await
     {

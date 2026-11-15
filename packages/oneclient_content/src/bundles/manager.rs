@@ -530,6 +530,7 @@ mod tests {
             RequestClient::new(NetConfig::default()).unwrap(),
             EventBus::new(tx),
             PackageProviderRegistry::new(),
+            Default::default(),
         );
 
         let bundles = BundlesManager::new();

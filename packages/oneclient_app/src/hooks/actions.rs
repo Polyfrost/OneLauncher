@@ -34,6 +34,7 @@ use oneclient_cluster::{
 };
 use oneclient_common::domain::{ContentType, GraphicsBackend, ProviderId};
 use oneclient_content::packages::{LiveSync, LocalImportReport};
+use oneclient_core::BUNDLE_APPLY_BUDGET;
 use oneclient_core::relocate::RelocationPlan;
 use oneclient_core::settings::LauncherSettings;
 use oneclient_core::settings::store::{save_global_profile, save_settings_and_apply};
@@ -64,9 +65,6 @@ const LAUNCH_HOLD: Duration = Duration::from_secs(2);
 const UPDATE_CHECK_BUDGET: Duration = Duration::from_secs(8);
 const BUNDLE_CHECK_INTERVAL: Duration = Duration::from_secs(15 * 60);
 const BUNDLE_SYNC_BUDGET: Duration = Duration::from_secs(30);
-/// The downloads need one too the net stack alone retries for minutes and the
-/// launch button is already claimed by then
-const BUNDLE_APPLY_BUDGET: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Default)]
 struct BundleCheckLog {
@@ -2182,6 +2180,9 @@ impl Actions {
         let mut changed = false;
         let mut incomplete = !synced;
         let mut failures = Vec::new();
+        let started = Instant::now();
+        let budget_left =
+            || (!manual).then(|| BUNDLE_APPLY_BUDGET.saturating_sub(started.elapsed()));
         for attempt in 1..=2 {
             let deadline = (!manual).then(|| Instant::now() + BUNDLE_APPLY_BUDGET);
             failures = match off_ui({
@@ -2230,6 +2231,7 @@ impl Actions {
                     return Some(UpdateCheck {
                         found: changed,
                         failed: true,
+                        bundle_budget: budget_left(),
                     });
                 }
                 Err(err) => vec![format!("{err:#}")],
@@ -2259,6 +2261,7 @@ impl Actions {
             return Some(UpdateCheck {
                 found: changed,
                 failed: incomplete,
+                bundle_budget: budget_left(),
             });
         }
 
@@ -2374,6 +2377,7 @@ impl Actions {
         Some(UpdateCheck {
             found: loader == Some(true) || bundles.found || packages == Some(true),
             failed: loader.is_none() || bundles.failed || packages.is_none(),
+            bundle_budget: bundles.bundle_budget,
         })
     }
 
@@ -2785,6 +2789,7 @@ async fn cluster_busy_elsewhere(cluster_id: ClusterId) -> Option<(&'static str, 
 struct UpdateCheck {
     found: bool,
     failed: bool,
+    bundle_budget: Option<Duration>,
 }
 
 static UPDATE_CHECKS: Mutex<BTreeSet<ClusterId>> = Mutex::new(BTreeSet::new());
@@ -2893,14 +2898,10 @@ async fn launch(actions: &Actions, cluster_id: ClusterId, extra_jvm_arg: Option<
 
     // Before the game process never after Minecraft reads its mods once at
     // startup
-    if actions
-        .run_update_checks(&state, cluster_id, false)
-        .await
-        .is_none()
-    {
+    let Some(check) = actions.run_update_checks(&state, cluster_id, false).await else {
         events.game_stage(cluster_id, oneclient_events::LaunchStage::Exited);
         return;
-    }
+    };
 
     // After the updates so the player never faces two modals at once
     if actions
@@ -2914,8 +2915,15 @@ async fn launch(actions: &Actions, cluster_id: ClusterId, extra_jvm_arg: Option<
 
     off_ui(async move {
         let extra = extra_jvm_arg.as_deref();
-        if let Err(err) =
-            oneclient_core::launch_cluster_with(&state, cluster_id, &account, true, extra).await
+        if let Err(err) = oneclient_core::launch_cluster_with(
+            &state,
+            cluster_id,
+            &account,
+            true,
+            extra,
+            check.bundle_budget,
+        )
+        .await
         {
             // A missing file is the one failure the launcher can fix itself and a
             // path inside our metadata folder gives the user nothing to act on
@@ -2973,7 +2981,8 @@ async fn repair_and_relaunch(
         .send();
 
     if let Err(err) =
-        oneclient_core::launch_cluster_with(state, cluster_id, account, true, extra_jvm_arg).await
+        oneclient_core::launch_cluster_with(state, cluster_id, account, true, extra_jvm_arg, None)
+            .await
     {
         tracing::error!(cluster_id, "launch failed again after repair: {err:#}");
         events.game_failed(cluster_id, format!("{err:#}"));

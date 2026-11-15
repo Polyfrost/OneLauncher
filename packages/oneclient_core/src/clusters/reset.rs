@@ -176,6 +176,7 @@ async fn reinstall(
             state.bundles.as_ref(),
             progress,
             &state.services.content(),
+            None,
         )
         .await?;
         if let Err(err) =

@@ -1464,6 +1464,7 @@ async fn the_bundle_launch_heals_first_takes_a_shared_switched_off_mod() {
             state.bundles.as_ref(),
             None,
             &state.services.content(),
+            None,
         )
         .await
         .unwrap();
@@ -2332,6 +2333,7 @@ async fn an_opt_in_bundle_switched_off_by_accident_is_repaired_at_install() {
         state.bundles.as_ref(),
         None,
         &state.services.content(),
+        None,
     )
     .await
     .unwrap();
@@ -2592,6 +2594,354 @@ async fn a_failed_download_applies_nothing() {
             .is_some(),
         "the mod due for removal stays until the whole batch can be applied"
     );
+}
+
+#[tokio::test]
+async fn the_deadline_bounds_downloads_already_running() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let body: Vec<u8> = (0..64 * 1024).map(|i| (i % 251) as u8).collect();
+    let sha1 = polyio::sha1_bytes(&body);
+    let (url, connections) = serve_jar(body, Some(std::time::Duration::from_millis(1500))).await;
+
+    let stalled = github_mod_served(&url, &sha1, 64 * 1024);
+    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![stalled]))
+        .await
+        .unwrap();
+    clusters_numbered_from(&state, 7000).await;
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    for _ in 0..2 {
+        let started = std::time::Instant::now();
+        let result = oneclient_content::bundles::apply_bundle_updates(
+            cluster_id,
+            state.bundles.as_ref(),
+            &ctx,
+            Some(started + std::time::Duration::from_millis(300)),
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(1),
+            "took {:?}",
+            started.elapsed()
+        );
+        assert!(result.stopped_early);
+        assert_eq!(result.downloads_failed.len(), 1);
+        assert!(result.downloads_failed[0].contains("ran out of time"));
+    }
+
+    let result = oneclient_content::bundles::apply_bundle_updates(
+        cluster_id,
+        state.bundles.as_ref(),
+        &ctx,
+        None,
+    )
+    .await
+    .unwrap();
+    assert!(
+        result.downloads_failed.is_empty(),
+        "{:?}",
+        result.downloads_failed
+    );
+    assert_eq!(
+        connections.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "later launches join the download already running"
+    );
+    assert!(
+        artifact_dao::get_cluster_artifact(&state.services.db, cluster_id, &sha1)
+            .await
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[tokio::test]
+async fn downloads_left_running_still_count_against_the_limit() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let in_flight = Arc::new(AtomicUsize::new(0));
+    let most = Arc::new(AtomicUsize::new(0));
+    let served = Arc::new(AtomicUsize::new(0));
+    let mut files = Vec::new();
+    for i in 0..12u8 {
+        let body: Vec<u8> = (0..4096).map(|b| (b as u8) ^ i).collect();
+        let sha1 = polyio::sha1_bytes(&body);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/mod-{i}.jar", listener.local_addr().unwrap());
+        let (in_flight, most, served) = (in_flight.clone(), most.clone(), served.clone());
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let (body, in_flight, most, served) = (
+                    body.clone(),
+                    in_flight.clone(),
+                    most.clone(),
+                    served.clone(),
+                );
+                tokio::spawn(async move {
+                    let mut request = [0u8; 1024];
+                    let _ = stream.read(&mut request).await;
+                    let now = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                    most.fetch_max(now, Ordering::SeqCst);
+                    let head = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len());
+                    let _ = stream.write_all(head.as_bytes()).await;
+                    let (first, rest) = body.split_at(body.len() / 2);
+                    let _ = stream.write_all(first).await;
+                    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+                    let _ = stream.write_all(rest).await;
+                    in_flight.fetch_sub(1, Ordering::SeqCst);
+                    served.fetch_add(1, Ordering::SeqCst);
+                });
+            }
+        });
+        let mut file = github_mod_served(&url, &sha1, 4096);
+        file.path = format!("mods/mod-{i}.jar");
+        if let BundleFileKind::External { file: ext, id, .. } = &mut file.kind {
+            ext.name = format!("mod-{i}.jar");
+            *id = Some(format!("mod-{i}"));
+        }
+        files.push(file);
+    }
+    let later = files.split_off(6);
+    clusters_numbered_from(&state, 8000).await;
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    for (shipped, deadline) in [
+        (files, Some(std::time::Duration::from_millis(300))),
+        (later, None),
+    ] {
+        oneclient_core::dev::seed_bundle_archive(&state, manifest(shipped))
+            .await
+            .unwrap();
+        oneclient_content::bundles::apply_bundle_updates(
+            cluster_id,
+            state.bundles.as_ref(),
+            &ctx,
+            deadline.map(|budget| std::time::Instant::now() + budget),
+        )
+        .await
+        .unwrap();
+    }
+    let started = std::time::Instant::now();
+    while served.load(Ordering::SeqCst) < 12
+        && started.elapsed() < std::time::Duration::from_secs(10)
+    {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+
+    assert_eq!(served.load(Ordering::SeqCst), 12);
+    assert!(
+        most.load(Ordering::SeqCst) <= 6,
+        "{} downloads ran at once",
+        most.load(Ordering::SeqCst)
+    );
+}
+
+async fn clusters_numbered_from(state: &LauncherState, first: i64) {
+    sqlx::query("INSERT INTO sqlite_sequence (name, seq) VALUES ('clusters', ?)")
+        .bind(first - 1)
+        .execute(&state.services.db)
+        .await
+        .unwrap();
+}
+
+async fn serve_jar(
+    body: Vec<u8>,
+    stall: Option<std::time::Duration>,
+) -> (String, Arc<std::sync::atomic::AtomicUsize>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let connections = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn({
+        let connections = connections.clone();
+        async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                connections.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let body = body.clone();
+                tokio::spawn(async move {
+                    let mut request = [0u8; 1024];
+                    let _ = stream.read(&mut request).await;
+                    let head = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len());
+                    let _ = stream.write_all(head.as_bytes()).await;
+                    let (first, rest) = body.split_at(body.len() / 2);
+                    let _ = stream.write_all(first).await;
+                    if let Some(stall) = stall {
+                        tokio::time::sleep(stall).await;
+                    }
+                    let _ = stream.write_all(rest).await;
+                });
+            }
+        }
+    });
+    (format!("http://{addr}/github-mod.jar"), connections)
+}
+
+fn github_mod_served(url: &str, sha1: &str, size: u64) -> BundleFile {
+    let mut file = github_mod_file();
+    file.size = size;
+    if let BundleFileKind::External { file: ext, .. } = &mut file.kind {
+        ext.url = url.to_string();
+        ext.sha1 = sha1.to_string();
+        ext.size = size;
+    }
+    file
+}
+
+async fn linked(state: &LauncherState, cluster_id: i64, hash: &str) -> bool {
+    artifact_dao::get_cluster_artifact(&state.services.db, cluster_id, hash)
+        .await
+        .unwrap()
+        .is_some()
+}
+
+#[tokio::test]
+async fn launch_install_stops_waiting_at_the_deadline() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let body: Vec<u8> = (0..64 * 1024).map(|i| (i % 239) as u8).collect();
+    let sha1 = polyio::sha1_bytes(&body);
+    let size = body.len() as u64;
+    let (url, connections) = serve_jar(body, Some(std::time::Duration::from_millis(1500))).await;
+    seed_bundle_with_pack(&state, manifest(vec![github_mod_served(&url, &sha1, size)])).await;
+    let fresh = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    let started = std::time::Instant::now();
+    let deadline = Some(started + std::time::Duration::from_millis(300));
+    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, deadline)
+        .await
+        .unwrap();
+
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(1),
+        "took {:?}",
+        started.elapsed()
+    );
+    assert!(!linked(&state, fresh, &sha1).await);
+
+    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, None)
+        .await
+        .unwrap();
+
+    assert_eq!(connections.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert!(linked(&state, fresh, &sha1).await);
+}
+
+#[tokio::test]
+async fn launch_install_links_nothing_while_part_of_the_bundle_is_downloading() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let fast_body: Vec<u8> = (0..64 * 1024).map(|i| (i % 227) as u8).collect();
+    let slow_body: Vec<u8> = (0..64 * 1024).map(|i| (i % 229) as u8).collect();
+    let fast_sha1 = polyio::sha1_bytes(&fast_body);
+    let slow_sha1 = polyio::sha1_bytes(&slow_body);
+    let size = fast_body.len() as u64;
+    let (fast_url, _) = serve_jar(fast_body, None).await;
+    let (slow_url, slow_connections) =
+        serve_jar(slow_body, Some(std::time::Duration::from_millis(1500))).await;
+    let fast = github_mod_served(&fast_url, &fast_sha1, size);
+    let mut slow = github_mod_served(&slow_url, &slow_sha1, size);
+    slow.path = "mods/slow-mod.jar".to_string();
+    if let BundleFileKind::External { file: ext, id, .. } = &mut slow.kind {
+        ext.name = "slow-mod.jar".to_string();
+        *id = Some("slow-mod".to_string());
+    }
+    seed_bundle_with_pack(&state, manifest(vec![fast, slow])).await;
+    let fresh = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    let deadline = Some(std::time::Instant::now() + std::time::Duration::from_millis(300));
+    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, deadline)
+        .await
+        .unwrap();
+
+    assert!(!linked(&state, fresh, &fast_sha1).await);
+    assert!(!linked(&state, fresh, &slow_sha1).await);
+
+    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, None)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        slow_connections.load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
+    assert!(linked(&state, fresh, &fast_sha1).await);
+    assert!(linked(&state, fresh, &slow_sha1).await);
+}
+
+#[tokio::test]
+async fn launch_install_does_not_retry_a_failed_download() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let body: Vec<u8> = (0..64 * 1024).map(|i| (i % 233) as u8).collect();
+    let wrong_sha1 = polyio::sha1_bytes(b"not the served body");
+    let size = body.len() as u64;
+    let (url, connections) = serve_jar(body, None).await;
+    seed_bundle_with_pack(&state, manifest(vec![github_mod_served(&url, &wrong_sha1, size)])).await;
+    let fresh = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    let deadline = Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
+    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, deadline)
+        .await
+        .unwrap();
+
+    assert_eq!(connections.load(std::sync::atomic::Ordering::SeqCst), 3);
+    assert!(!linked(&state, fresh, &wrong_sha1).await);
+}
+
+#[tokio::test]
+async fn install_without_a_deadline_retries_a_failed_download() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let body: Vec<u8> = (0..64 * 1024).map(|i| (i % 239) as u8).collect();
+    let wrong_sha1 = polyio::sha1_bytes(b"not the served body either");
+    let size = body.len() as u64;
+    let (url, connections) = serve_jar(body, None).await;
+    seed_bundle_with_pack(&state, manifest(vec![github_mod_served(&url, &wrong_sha1, size)])).await;
+    let fresh = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, None)
+        .await
+        .unwrap();
+
+    assert_eq!(connections.load(std::sync::atomic::Ordering::SeqCst), 6);
+    assert!(!linked(&state, fresh, &wrong_sha1).await);
+}
+
+#[tokio::test]
+async fn launch_install_joins_a_download_left_running() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let body: Vec<u8> = (0..64 * 1024).map(|i| (i % 241) as u8).collect();
+    let sha1 = polyio::sha1_bytes(&body);
+    let size = body.len() as u64;
+    let (url, connections) = serve_jar(body, Some(std::time::Duration::from_millis(1500))).await;
+    clusters_numbered_from(&state, 9000).await;
+    seed_bundle_with_pack(&state, manifest(vec![github_mod_served(&url, &sha1, size)])).await;
+    let fresh = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    let result = oneclient_content::bundles::apply_bundle_updates(
+        fresh,
+        state.bundles.as_ref(),
+        &ctx,
+        Some(std::time::Instant::now() + std::time::Duration::from_millis(300)),
+    )
+    .await
+    .unwrap();
+    assert!(result.stopped_early);
+
+    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, None)
+        .await
+        .unwrap();
+
+    assert_eq!(connections.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert!(linked(&state, fresh, &sha1).await);
 }
 
 fn pinned_to(version_id: &str) -> BundleFile {

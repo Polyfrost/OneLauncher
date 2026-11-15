@@ -1,16 +1,19 @@
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use oneclient_common::domain::GameLoader;
 use oneclient_content::ContentCtx;
+use oneclient_content::modpacks;
 use oneclient_content::packages::{
     BadMod, BadModList, FileIdentity, ProjectDetail, ProviderId, ProviderVersionLookup,
     ResolvedAlternative, fetch_explanation, fetch_improvements, resolve_alternatives,
 };
 use oneclient_db::models::ClusterRow;
 
-use crate::LauncherResult;
-use crate::clusters::modpack::kind_for;
+use crate::{LauncherError, LauncherResult};
+use crate::clusters::flag_pack_mods;
+use crate::clusters::modpack::{ModpackSource, PreparedModpack, kind_for, prepare_modpack};
 use crate::state::LauncherState;
 
 use super::ExternalInstance;
@@ -36,6 +39,7 @@ pub struct ImportAlternative {
 pub struct UnpublishedFile {
     pub name: String,
     pub enabled: bool,
+    pub hash: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,7 +107,12 @@ async fn screen_instance(
         return screened;
     }
     let projects = fetch_projects(&found, content).await;
-    let target = screening_target(instance);
+    let target = screening_target(
+        &instance.name,
+        &instance.mc_version,
+        instance.loader,
+        instance.loader_version.clone(),
+    );
 
     for file in &mods {
         let hit = found.get(&file.hash);
@@ -133,6 +142,105 @@ async fn screen_instance(
     }
 
     screened
+}
+
+#[tracing::instrument(skip(state))]
+pub async fn screen_modpack_file(
+    state: &Arc<LauncherState>,
+    path: &Path,
+) -> LauncherResult<(ScreenedInstance, PreparedModpack)> {
+    let content = state.services.content();
+    let list = fetch_improvements(&content).await?;
+    let prepared = prepare_modpack(state, &ModpackSource::File(path.to_path_buf()), None).await?;
+    let manifest = &prepared.manifest;
+
+    let mut screened = ScreenedInstance {
+        game_dir: path.to_path_buf(),
+        name: prepared.instance_name.clone(),
+        mc_version: manifest.mc_version.clone(),
+        flagged: Vec::new(),
+        unpublished: prepared
+            .unlisted
+            .iter()
+            .map(|unlisted| UnpublishedFile {
+                name: unlisted.name.clone(),
+                enabled: true,
+                hash: unlisted.sha1.clone(),
+            })
+            .collect(),
+        unconfirmed: prepared.mods_unconfirmed,
+        mods_stamp: 0,
+    };
+    if prepared.share.is_some() {
+        return Err(LauncherError::ShareNotScreened);
+    }
+    if list.bad_mods.is_empty() || !manifest.loader.is_modded() {
+        return Ok((screened, prepared));
+    }
+
+    let target = screening_target(
+        &prepared.instance_name,
+        &manifest.mc_version,
+        manifest.loader,
+        manifest.loader_version.clone(),
+    );
+    let present = pack_projects(manifest);
+    let disabled = disabled_packages(manifest);
+    screened.flagged = flag_pack_mods(&list, &prepared, Some(&target), &content)
+        .await
+        .into_iter()
+        .filter(|file| !disabled.contains(&file.package_id))
+        .map(|file| FlaggedImportMod {
+            alternatives: file
+                .alternatives
+                .into_iter()
+                .map(|resolved| ImportAlternative {
+                    already_installed: resolved.project_id != file.package_id
+                        && present.contains(&(resolved.provider, resolved.project_id.clone())),
+                    resolved,
+                })
+                .collect(),
+            hash: file.package_id,
+            file_name: file.name.clone(),
+            name: file.name,
+            enabled: true,
+            explanation: file.explanation,
+        })
+        .collect();
+    Ok((screened, prepared))
+}
+
+fn disabled_packages(manifest: &modpacks::ModpackManifest) -> HashSet<String> {
+    manifest
+        .contents
+        .files
+        .iter()
+        .filter(|file| !file.enabled)
+        .map(|file| file.kind.package_id())
+        .collect()
+}
+
+fn pack_projects(manifest: &modpacks::ModpackManifest) -> HashSet<(ProviderId, String)> {
+    let contents = &manifest.contents;
+    contents
+        .files
+        .iter()
+        .filter(|file| file.enabled)
+        .filter_map(|file| match &file.kind {
+            oneclient_content::bundles::BundleFileKind::Managed {
+                provider,
+                project_id,
+                ..
+            } => Some((*provider, project_id.clone())),
+            oneclient_content::bundles::BundleFileKind::External { .. } => None,
+        })
+        .chain(
+            contents
+                .blocked
+                .iter()
+                .map(|file| (ProviderId::CurseForge, file.project_id.clone())),
+        )
+        .collect()
 }
 
 #[tracing::instrument(skip_all, fields(instance = %instance.name))]
@@ -203,6 +311,7 @@ fn unpublished(jars: &[ModJar], found: &ProviderVersionLookup) -> Vec<Unpublishe
         .map(|jar| UnpublishedFile {
             name: jar.name.clone(),
             enabled: jar.enabled,
+            hash: jar.hash.clone(),
         })
         .collect()
 }
@@ -295,25 +404,31 @@ fn file_name(file: &ModJar) -> String {
         .unwrap_or_default()
 }
 
-fn screening_target(instance: &ExternalInstance) -> ClusterRow {
+fn screening_target(
+    name: &str,
+    mc_version: &str,
+    loader: GameLoader,
+    loader_version: Option<String>,
+) -> ClusterRow {
     ClusterRow {
         id: 0,
-        name: instance.name.clone(),
+        name: name.to_string(),
         folder_name: String::new(),
         setting_profile_name: None,
-        mc_version: instance.mc_version.clone(),
-        mc_loader: instance.loader as i64,
+        mc_version: mc_version.to_string(),
+        mc_loader: loader as i64,
         stage: 0,
-        mc_loader_version: instance.loader_version.clone(),
+        mc_loader_version: loader_version,
         created_at: None,
         last_played: None,
         overall_played: None,
         linked_modpack_hash: None,
-        kind: kind_for(instance.loader) as i64,
+        kind: kind_for(loader) as i64,
         user_created: 1,
         description: None,
         tags: String::new(),
         cover_path: None,
+        takes_bundles: 0,
     }
 }
 
@@ -343,11 +458,13 @@ mod tests {
             [
                 UnpublishedFile {
                     name: "a.jar".to_string(),
-                    enabled: true
+                    enabled: true,
+                    hash: "sha-a.jar".to_string(),
                 },
                 UnpublishedFile {
                     name: "b.jar".to_string(),
-                    enabled: false
+                    enabled: false,
+                    hash: "sha-b.jar".to_string(),
                 },
             ]
         );
@@ -355,5 +472,62 @@ mod tests {
         let partial = check_result(&jars, &found, false);
         assert!(partial.mods.is_empty());
         assert_eq!(partial.unconfirmed, 2);
+    }
+
+    #[test]
+    fn a_pack_ships_its_enabled_and_blocked_projects_only() {
+        use oneclient_content::bundles::{BundleFile, BundleFileKind, BundleFileType};
+        use oneclient_content::modpacks::{BlockedFile, ModpackContents, ModpackManifest};
+        use oneclient_content::packages::ContentType;
+
+        let managed = |project_id: &str, enabled: bool| BundleFile {
+            enabled,
+            hidden: false,
+            path: format!("mods/{project_id}.jar"),
+            size: 0,
+            file_type: BundleFileType::Normal,
+            kind: BundleFileKind::Managed {
+                provider: ProviderId::Modrinth,
+                project_id: project_id.to_string(),
+                version_id: "v1".to_string(),
+                sha1: format!("sha-{project_id}"),
+            },
+        };
+        let manifest = ModpackManifest {
+            name: "Pack".to_string(),
+            version: "1.0".to_string(),
+            summary: None,
+            mc_version: "1.21.1".to_string(),
+            loader: GameLoader::Fabric,
+            loader_version: None,
+            contents: ModpackContents {
+                files: vec![managed("sodium", true), managed("optifine", false)],
+                blocked: vec![BlockedFile {
+                    project_id: "123".to_string(),
+                    version_id: "456".to_string(),
+                    project_name: "Blocked".to_string(),
+                    file_name: "blocked.jar".to_string(),
+                    path: "mods/blocked.jar".to_string(),
+                    sha1: "sha-blocked".to_string(),
+                    size: 0,
+                    content_type: ContentType::Mod,
+                    page_url: None,
+                }],
+                ..ModpackContents::default()
+            },
+            override_prefixes: Vec::new(),
+        };
+
+        assert_eq!(
+            pack_projects(&manifest),
+            HashSet::from([
+                (ProviderId::Modrinth, "sodium".to_string()),
+                (ProviderId::CurseForge, "123".to_string()),
+            ])
+        );
+        assert_eq!(
+            disabled_packages(&manifest),
+            HashSet::from(["optifine".to_string()])
+        );
     }
 }

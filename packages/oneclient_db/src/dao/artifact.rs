@@ -990,4 +990,51 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].hash, "hash_managed");
     }
+
+    #[tokio::test]
+    async fn a_pack_handed_over_outlives_the_cluster_that_listed_it() {
+        let pool = pool().await;
+        let leaving = seed_cluster(&pool).await;
+        let staying = cluster_dao::insert(
+            &pool,
+            &NewCluster {
+                name: "26.2 fabric",
+                folder_name: "26.2 fabric",
+                mc_version: "26.2",
+                mc_loader: 1,
+                mc_loader_version: None,
+                setting_profile_name: None,
+                stage: 0,
+                kind: 0,
+                user_created: 0,
+                description: None,
+                tags: "[]",
+                cover_path: None,
+            },
+        )
+        .await
+        .expect("insert cluster")
+        .id;
+
+        insert_artifact(&pool, "hash_pack", 1, "a/pack.zip", "pack.zip", None)
+            .await
+            .expect("insert pack");
+        link_cluster_artifact(&pool, leaving, "hash_pack", "pack.zip")
+            .await
+            .expect("link pack");
+
+        give_global_links(&pool, leaving, 1, &[staying])
+            .await
+            .expect("hand over");
+        cluster_dao::delete_by_id(&pool, leaving)
+            .await
+            .expect("delete cluster");
+
+        let rows = list_global_artifacts(&pool, 1, &[staying])
+            .await
+            .expect("list packs");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].hash, "hash_pack");
+        assert_eq!(rows[0].enabled, 1);
+    }
 }

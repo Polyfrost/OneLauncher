@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -9,9 +10,11 @@ use oneclient_content::{ContentCtx, ContentError};
 use oneclient_content::modpacks::{self, ModpackInstallReport, ModpackManifest, ModpackRelease};
 use oneclient_content::packages::store::artifact_absolute_path;
 use oneclient_content::packages::{
-    PackageStore, ProjectDetail, fetch_modpack_explanation, load_bad_modpacks,
+    PackageStore, ProjectDetail, ResolvedAlternative, fetch_modpack_explanation, load_bad_modpacks,
 };
 use oneclient_db::dao::artifact::get_artifact_by_hash;
+use oneclient_db::dao::cluster_bundle as bundle_dao;
+use oneclient_db::models::OverrideType;
 use oneclient_events::GroupedProgressSession;
 
 use super::share::{
@@ -53,6 +56,14 @@ pub struct PreparedModpack {
     pub mods_unchecked: bool,
     pub mods_unconfirmed: usize,
     pub share: Option<SharedCluster>,
+    pub choices: PackChoices,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct PackChoices {
+    pub skipped: HashSet<String>,
+    pub alternatives: Vec<ResolvedAlternative>,
+    pub bundles: Option<Vec<String>>,
 }
 
 impl PreparedModpack {
@@ -128,6 +139,7 @@ pub async fn prepare_modpack(
             mods_unconfirmed: unlisted.as_ref().map_or(0, |report| report.unconfirmed),
             unlisted: unlisted.map(|report| report.unlisted).unwrap_or_default(),
             share: None,
+            choices: PackChoices::default(),
         });
     };
 
@@ -192,6 +204,7 @@ pub async fn prepare_modpack(
         unlisted: unlisted.map(|report| report.unlisted).unwrap_or_default(),
         instance_name,
         share: Some(shared),
+        choices: PackChoices::default(),
     })
 }
 
@@ -345,6 +358,16 @@ pub async fn install_modpack_instance(
     }
 
     let content = state.services.content();
+    for package_id in &prepared.choices.skipped {
+        bundle_dao::save_override(
+            &content.db,
+            cluster_id,
+            modpacks::MODPACK_BUNDLE_NAME,
+            package_id,
+            OverrideType::Removed,
+        )
+        .await?;
+    }
     let report = modpacks::install_modpack(
         &prepared.archive_path,
         &prepared.manifest,

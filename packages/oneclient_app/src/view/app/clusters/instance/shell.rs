@@ -1,6 +1,6 @@
 use freya::prelude::*;
 
-use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea};
+use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea, Spinner};
 use crate::i18n::t;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
@@ -21,6 +21,7 @@ pub struct Shell {
     pub secondary_label: String,
     pub primary_label: String,
     pub primary_enabled: bool,
+    pub primary_busy: bool,
     pub on_close: EventHandler<()>,
     pub on_secondary: EventHandler<()>,
     pub on_primary: EventHandler<()>,
@@ -38,6 +39,7 @@ pub fn shell(parts: Shell) -> Element {
         secondary_label,
         primary_label,
         primary_enabled,
+        primary_busy,
         on_close,
         on_secondary,
         on_primary,
@@ -104,7 +106,8 @@ pub fn shell(parts: Shell) -> Element {
                                     note,
                                     secondary_label,
                                     primary_label,
-                                    primary_enabled,
+                                    primary_enabled && !primary_busy,
+                                    primary_busy,
                                     on_secondary,
                                     on_primary,
                                 )),
@@ -171,6 +174,7 @@ fn footer(
     secondary_label: String,
     primary_label: String,
     primary_enabled: bool,
+    primary_busy: bool,
     on_secondary: EventHandler<()>,
     on_primary: EventHandler<()>,
 ) -> Element {
@@ -220,6 +224,7 @@ fn footer(
                                 on_primary.call(());
                             }
                         })
+                        .maybe_child(primary_busy.then(|| Spinner::new(14.)))
                         .text(primary_label),
                 ),
         )

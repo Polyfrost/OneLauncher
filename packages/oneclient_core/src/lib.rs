@@ -53,7 +53,7 @@ pub use migration::launchers::{
     detect_folder as detect_external_folder, discard_instance_archive, find_unpublished_mods,
     import_instance as import_external_instance, instance_mods_stamp, is_instance_archive,
     open_instance_archive, same_folder as same_external_folder,
-    screen_instances as screen_external_instances, sweep_instance_archives,
+    screen_instances as screen_external_instances, screen_modpack_file, sweep_instance_archives,
 };
 pub use migration::{
     ImportTarget, MigrationDetection, MigrationSource, SourceInstance, detect as detect_migration,
@@ -91,7 +91,7 @@ pub use oneclient_content::packages::dependents::{
 pub use oneclient_content::packages::updates::{
     BrowserPackageUpdate, BrowserUpdateCheck, apply_browser_package_update,
     cached_browser_package_updates, check_browser_package_updates, refresh_browser_package_updates,
-    skip_browser_package_update,
+    refresh_browser_package_updates_for, skip_browser_package_update,
 };
 pub use oneclient_db::models::SeenStatus;
 pub use oneclient_discord::{DiscordRpc, Presence};

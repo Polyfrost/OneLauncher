@@ -267,12 +267,12 @@ impl GameProcessManager {
         !self.syncs.lock().unwrap().is_empty()
     }
 
-    pub fn dir_in_use_by(&self, dir: &Path, exclude: i64) -> Option<i64> {
+    pub fn dir_in_use_by(&self, dir: &Path, exclude: Option<i64>) -> Option<i64> {
         self.dirs
             .lock()
             .unwrap()
             .iter()
-            .find(|(id, d)| **id != exclude && d.as_path() == dir)
+            .find(|(id, d)| Some(**id) != exclude && d.as_path() == dir)
             .map(|(id, _)| *id)
     }
 

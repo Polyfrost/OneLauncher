@@ -70,11 +70,14 @@ pub use cluster_content::{
     use_migratable_routes, use_mods_folder_sync, use_shadowed_mods,
 };
 pub use clusters::{
-    GraphicsBackendQuery, use_cluster, use_clusters, use_graphics_backend, use_shared_groups,
+    GraphicsBackendQuery, use_cluster, use_clusters, use_graphics_backend, use_has_game_options,
+    use_shared_groups,
 };
 pub use disable_warnings::{DisableWarningsQuery, disable_warnings, use_disable_warnings};
 pub use external_launchers::{external_launchers, use_external_launchers};
-pub use import_screening::{import_screening, retry_import_screening, use_import_screening};
+pub use import_screening::{
+    import_screening, use_import_screening, use_modpack_header,
+};
 pub(crate) use folder_watch::use_folder_watch;
 pub use image::{CachedImageQuery, loaded_image, use_cached_image};
 pub use java::{
@@ -87,11 +90,12 @@ pub use logs::{
     use_log_action, use_log_content, use_upload_log,
 };
 pub use migration::{MigrationQuery, has_migration_data, migration_detection, use_migration};
+pub(crate) use mutations::take_bundles;
 pub use mutations::{
     ClusterAction, ClusterMutation, invalidate_cluster_content_queries, invalidate_cluster_queries,
     invalidate_profile_queries, use_cluster_mutation,
 };
-pub use package_updates::{package_updates, stale_hashes, use_package_updates};
+pub use package_updates::{PackageUpdatesQuery, package_updates, stale_hashes, use_package_updates};
 pub use packages::ALL_VERSIONS;
 pub use packages::{
     BROWSE_PAGE_SIZE, VERSIONS_PAGE_SIZE, category_list, content_type_for_slug, package_meta_batch,

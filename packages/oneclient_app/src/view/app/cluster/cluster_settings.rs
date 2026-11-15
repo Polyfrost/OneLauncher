@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use freya::prelude::*;
 use freya::query::MutationStateData;
+use freya::router::RouterContext;
 use oneclient_common::Patch;
 use oneclient_common::domain::{GameLoader, GraphicsBackend};
 use oneclient_core::settings::{GameSettingsProfile, PackageUpdateMode, ProfileUpdate, Resolution};
@@ -25,6 +26,7 @@ use crate::hooks::{
 };
 use crate::i18n::{t, tf};
 use crate::layout::cluster_content;
+use crate::routes::Route;
 use crate::theme::{self, colors, rounded, text_size};
 use crate::ui::{border_all_color, centered_note};
 use crate::view::app::clusters::{
@@ -1315,11 +1317,35 @@ impl Component for JavaRow {
         })
         .into();
 
+        let manage = Button::new()
+            .small()
+            .ghost()
+            .icon()
+            .tooltip(t("oneclient.cluster.settings.java.manage"))
+            .corner_radius(rounded(7.))
+            .on_press(|_| {
+                let _ = RouterContext::get().push(Route::SettingsJava {});
+            })
+            .child(
+                Icon::new(IconType::Download01)
+                    .size(15.)
+                    .color(colors::fg_secondary()),
+            );
+
         settings_row(
             IconType::CodeSnippet02,
             t("oneclient.cluster.settings.java.title"),
             t("oneclient.cluster.settings.java.description"),
-            override_cell(control, overridden, on_reset),
+            override_cell(
+                rect()
+                    .horizontal()
+                    .cross_align(Alignment::Center)
+                    .spacing(10.)
+                    .child(control)
+                    .child(manage),
+                overridden,
+                on_reset,
+            ),
         )
     }
 }

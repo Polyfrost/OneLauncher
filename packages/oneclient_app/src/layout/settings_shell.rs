@@ -527,14 +527,7 @@ impl Component for SidebarInfo {
         );
 
         let items: [Cow<'static, str>; 4] = [
-            Cow::Borrowed(concat!(
-                "OneClient v",
-                env!("CARGO_PKG_VERSION"),
-                cfg_select! {
-                    debug_assertions => " (debug)",
-                    _ => " (release)"
-                }
-            )),
+            Cow::Borrowed(oneclient_common::constants::LAUNCHER_LABEL),
             Cow::Owned(self.kernel_version.clone()),
             Cow::Owned(self.cpu_kind.clone()),
             Cow::Owned(tf("oneclient.layout.settings.info.ram", &[&self.ram_mb])),

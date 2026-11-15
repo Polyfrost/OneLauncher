@@ -79,6 +79,8 @@ pub struct ClusterShare {
     pub settings: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub left_out_settings: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub playtime: Option<SharedPlaytime>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -128,6 +130,29 @@ pub struct SharedJava {
     pub major: u32,
     #[serde(default)]
     pub vendor: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SharedPlaytime {
+    pub played_secs: u64,
+    #[serde(default)]
+    pub last_played: Option<String>,
+    #[serde(default)]
+    pub sessions: Vec<SharedSession>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SharedSession {
+    pub started_at: String,
+    pub ended_at: String,
+    #[serde(default)]
+    pub exit_code: Option<i64>,
+    pub ram_allocated_mb: i64,
+    pub mods_enabled: i64,
+    #[serde(default)]
+    pub java_vendor: Option<String>,
+    #[serde(default)]
+    pub java_version: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -356,11 +381,8 @@ pub async fn collect_share_content(
         else {
             continue;
         };
-        let file_name = row
-            .cluster_file_name
-            .trim_end_matches(".disabled")
-            .to_string();
-        let path = format!("{}/{}", content_type.folder_name(), file_name);
+        let path = share_path(content_type, &row.cluster_file_name);
+        let file_name = path[content_type.folder_name().len() + 1..].to_string();
         if !is_safe_relative_path(&path) || !seen.insert(path.clone()) {
             continue;
         }
@@ -507,6 +529,15 @@ async fn pack_carryover(cluster_id: i64, ctx: &ContentCtx) -> Option<PackCarryov
             tracing::warn!(cluster_id, error = %err, "could not read the modpack's own files to carry them over");
         })
         .ok()
+}
+
+#[must_use]
+pub fn share_path(content_type: ContentType, cluster_file_name: &str) -> String {
+    format!(
+        "{}/{}",
+        content_type.folder_name(),
+        cluster_file_name.trim_end_matches(".disabled")
+    )
 }
 
 fn shareable(content_type: ContentType) -> bool {
@@ -1299,6 +1330,7 @@ mod tests {
             icon: None,
             settings: vec!["config/sodium-options.json".into()],
             left_out_settings: Vec::new(),
+            playtime: None,
         }
     }
 

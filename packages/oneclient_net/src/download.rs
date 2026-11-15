@@ -203,6 +203,7 @@ async fn download_attempt(
     };
     let stream = response.stream(options, events).await?;
 
+    let tmp = polyio::temp_sibling(dest);
     let mut hasher = expected.map(|expected| ChecksumStream::new(expected.algorithm));
     let mut received = 0u64;
     let deadline = started + SINGLE_STREAM_TIMEOUT;
@@ -225,7 +226,7 @@ async fn download_attempt(
         });
         let stream = std::pin::pin!(stream);
         // Writes to a scratch sibling and renames so `dest` is never truncated
-        let written = polyio::write_stream(dest, stream, Some(total)).await;
+        let written = polyio::write_stream(&tmp, stream, Some(total)).await;
         let secs = started.elapsed().as_secs_f64();
         tracing::debug!(
             bytes = received,
@@ -246,8 +247,7 @@ async fn download_attempt(
 
         let actual = hasher.finish();
         if !expected.matches(&actual) {
-            // Remove it rather than leave it for the next `exists()` check
-            let _ = polyio::remove_file(dest).await;
+            let _ = polyio::remove_file(&tmp).await;
             return Err(RequestError::HashMismatch {
                 source_desc: dest.display().to_string(),
                 expected: format!("{} {}", expected.algorithm.name(), expected.hex),
@@ -258,12 +258,17 @@ async fn download_attempt(
         && received != declared
     {
         // With no hash the byte count is the only evidence the transfer finished
-        let _ = polyio::remove_file(dest).await;
+        let _ = polyio::remove_file(&tmp).await;
         return Err(RequestError::IncompleteBody {
             source_desc: dest.display().to_string(),
             expected: declared,
             actual: received,
         });
+    }
+
+    if let Err(err) = polyio::rename(&tmp, dest).await {
+        let _ = polyio::remove_file(&tmp).await;
+        return Err(err.into());
     }
 
     Ok(())

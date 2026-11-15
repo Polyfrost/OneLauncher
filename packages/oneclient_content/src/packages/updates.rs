@@ -94,17 +94,6 @@ pub(crate) struct Candidate {
 }
 
 /// A missing bundle tracking row is the marker for "the user added this themselves"
-pub(crate) fn browser_installed(
-    linked: &[LinkedArtifactInfo],
-    bundle_hashes: &HashSet<String>,
-    bundle_projects: &HashSet<String>,
-) -> Vec<Candidate> {
-    browser_installed_any(linked, bundle_hashes, bundle_projects)
-        .into_iter()
-        .filter(|candidate| candidate.enabled)
-        .collect()
-}
-
 pub(crate) fn browser_installed_any(
     linked: &[LinkedArtifactInfo],
     bundle_hashes: &HashSet<String>,
@@ -148,6 +137,16 @@ pub async fn check_browser_package_updates(
     cluster_id: i64,
     ctx: &ContentCtx,
 ) -> ContentResult<BrowserUpdateCheck> {
+    let cached = update_dao::list_for_cluster(&ctx.db, cluster_id).await?;
+    check_updates(cluster_id, None, &cached, ctx).await
+}
+
+async fn check_updates(
+    cluster_id: i64,
+    only: Option<&HashSet<String>>,
+    cached: &[BrowserPackageUpdateRow],
+    ctx: &ContentCtx,
+) -> ContentResult<BrowserUpdateCheck> {
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
     let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
 
@@ -158,17 +157,18 @@ pub async fn check_browser_package_updates(
         .collect();
     let bundle_hashes: HashSet<String> = tracked.into_iter().map(|row| row.hash).collect();
 
-    let candidates = browser_installed(&linked, &bundle_hashes, &bundle_projects);
+    let installed = browser_installed_any(&linked, &bundle_hashes, &bundle_projects);
+    let mut check = BrowserUpdateCheck {
+        cluster_id,
+        ..Default::default()
+    };
+    let candidates = pick_candidates(installed, only, &mut check.unchecked);
     if candidates.is_empty() {
-        return Ok(BrowserUpdateCheck {
-            cluster_id,
-            ..Default::default()
-        });
+        return Ok(check);
     }
 
-    let skipped: HashSet<String> = update_dao::list_for_cluster(&ctx.db, cluster_id)
-        .await?
-        .into_iter()
+    let skipped: HashSet<String> = cached
+        .iter()
         .filter(|row| row.skipped != 0)
         .map(|row| format!("{}:{}", row.hash, row.latest_version_id))
         .collect();
@@ -183,11 +183,6 @@ pub async fn check_browser_package_updates(
     .buffer_unordered(UPDATE_CHECK_CONCURRENCY)
     .collect::<Vec<_>>()
     .await;
-
-    let mut check = BrowserUpdateCheck {
-        cluster_id,
-        ..Default::default()
-    };
 
     for (candidate, outcome) in results {
         match outcome {
@@ -228,6 +223,31 @@ pub async fn check_browser_package_updates(
     }
 
     Ok(check)
+}
+
+fn outside(hashes: impl Iterator<Item = String>, only: &HashSet<String>) -> Vec<String> {
+    hashes.filter(|hash| !only.contains(hash)).collect()
+}
+
+fn pick_candidates(
+    installed: Vec<Candidate>,
+    only: Option<&HashSet<String>>,
+    unchecked: &mut Vec<String>,
+) -> Vec<Candidate> {
+    let Some(only) = only else {
+        let (enabled, disabled): (Vec<_>, Vec<_>) = installed
+            .into_iter()
+            .partition(|candidate| candidate.enabled);
+        unchecked.extend(disabled.into_iter().map(|candidate| candidate.hash));
+        return enabled;
+    };
+    let candidates: Vec<Candidate> = installed
+        .into_iter()
+        .filter(|candidate| only.contains(&candidate.hash))
+        .collect();
+    let found: HashSet<&String> = candidates.iter().map(|candidate| &candidate.hash).collect();
+    unchecked.extend(only.iter().filter(|hash| !found.contains(hash)).cloned());
+    candidates
 }
 
 fn parse_published(raw: &str) -> Option<DateTime<Utc>> {
@@ -280,9 +300,31 @@ pub async fn refresh_browser_package_updates(
     cluster_id: i64,
     ctx: &ContentCtx,
 ) -> ContentResult<BrowserUpdateCheck> {
-    let check = check_browser_package_updates(cluster_id, ctx).await?;
+    refresh(cluster_id, None, ctx).await
+}
+
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn refresh_browser_package_updates_for(
+    cluster_id: i64,
+    hashes: &[String],
+    ctx: &ContentCtx,
+) -> ContentResult<BrowserUpdateCheck> {
+    let only: HashSet<String> = hashes.iter().cloned().collect();
+    refresh(cluster_id, Some(&only), ctx).await
+}
+
+async fn refresh(
+    cluster_id: i64,
+    only: Option<&HashSet<String>>,
+    ctx: &ContentCtx,
+) -> ContentResult<BrowserUpdateCheck> {
+    let cached = update_dao::list_for_cluster(&ctx.db, cluster_id).await?;
+    let check = check_updates(cluster_id, only, &cached, ctx).await?;
 
     let mut keep: Vec<String> = check.unchecked.clone();
+    if let Some(only) = only {
+        keep.extend(outside(cached.into_iter().map(|row| row.hash), only));
+    }
     let mut stored = Vec::with_capacity(check.updates.len());
 
     for update in &check.updates {
@@ -518,7 +560,7 @@ mod tests {
         let bundles: HashSet<String> = ["a".to_string()].into_iter().collect();
 
         assert!(
-            browser_installed(&linked, &bundles, &HashSet::new()).is_empty(),
+            browser_installed_any(&linked, &bundles, &HashSet::new()).is_empty(),
             "a bundle-tracked artifact must stay out of the browser update flow"
         );
     }
@@ -532,7 +574,7 @@ mod tests {
             Some("v1"),
         )];
 
-        let found = browser_installed(&linked, &HashSet::new(), &HashSet::new());
+        let found = browser_installed_any(&linked, &HashSet::new(), &HashSet::new());
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].project_id, "sodium");
         assert_eq!(found[0].version_id, "v1");
@@ -546,7 +588,7 @@ mod tests {
         ];
 
         assert!(
-            browser_installed(&linked, &HashSet::new(), &HashSet::new()).is_empty(),
+            browser_installed_any(&linked, &HashSet::new(), &HashSet::new()).is_empty(),
             "a file with no provider release has no version to compare"
         );
     }
@@ -561,9 +603,50 @@ mod tests {
         )];
 
         assert!(
-            browser_installed(&linked, &HashSet::new(), &HashSet::new()).is_empty(),
+            browser_installed_any(&linked, &HashSet::new(), &HashSet::new()).is_empty(),
             "without an installed version id there is nothing to compare against"
         );
+    }
+
+    #[test]
+    fn a_full_check_leaves_disabled_packages_unchecked() {
+        let mut off = linked("b", Some(ProviderId::Modrinth), Some("iris"), Some("v1"));
+        off.enabled = false;
+        let installed = browser_installed_any(
+            &[
+                linked("a", Some(ProviderId::Modrinth), Some("sodium"), Some("v1")),
+                off,
+            ],
+            &HashSet::new(),
+            &HashSet::new(),
+        );
+
+        let mut unchecked = Vec::new();
+        let picked = pick_candidates(installed, None, &mut unchecked);
+
+        assert_eq!(picked.len(), 1);
+        assert_eq!(picked[0].hash, "a");
+        assert_eq!(unchecked, vec!["b"]);
+    }
+
+    #[test]
+    fn a_requested_package_that_cannot_be_checked_is_reported() {
+        let installed = browser_installed_any(
+            &[
+                linked("a", Some(ProviderId::Modrinth), Some("sodium"), Some("v1")),
+                linked("b", Some(ProviderId::Modrinth), Some("iris"), None),
+            ],
+            &HashSet::new(),
+            &HashSet::new(),
+        );
+        let only: HashSet<String> = ["a", "b"].map(String::from).into_iter().collect();
+
+        let mut unchecked = Vec::new();
+        let picked = pick_candidates(installed, Some(&only), &mut unchecked);
+
+        assert_eq!(picked.len(), 1);
+        assert_eq!(picked[0].hash, "a");
+        assert_eq!(unchecked, vec!["b"]);
     }
 
     #[test]
@@ -626,7 +709,7 @@ mod tests {
         let mut info = linked("a", Some(ProviderId::Modrinth), Some("sodium"), Some("v1"));
         info.published_at = Some("2026-02-01T00:00:00Z".into());
 
-        let found = browser_installed(&[info], &HashSet::new(), &HashSet::new());
+        let found = browser_installed_any(&[info], &HashSet::new(), &HashSet::new());
         assert_eq!(found[0].published_at, Some(at("2026-02-01T00:00:00Z")));
     }
     #[test]
@@ -634,7 +717,7 @@ mod tests {
         let mut info = linked("a", Some(ProviderId::Modrinth), Some("sodium"), Some("v1"));
         info.published_at = Some("not a date".into());
 
-        let found = browser_installed(&[info], &HashSet::new(), &HashSet::new());
+        let found = browser_installed_any(&[info], &HashSet::new(), &HashSet::new());
         assert_eq!(found[0].published_at, None);
     }
 }

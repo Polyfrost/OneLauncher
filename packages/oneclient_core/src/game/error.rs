@@ -54,6 +54,11 @@ pub enum GameError {
     )]
     SharedFolderMissing(String),
 
+    #[error(
+        "couldn't copy {0} into this instance's mods folder; check free disk space or turn off Copy Mod Files in its settings"
+    )]
+    ModCopyFailed(String),
+
     #[error("failed to spawn the game process: {0}")]
     Spawn(String),
 

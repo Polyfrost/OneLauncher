@@ -267,6 +267,7 @@ pub struct ChatInbox {
     pub error: Option<String>,
     pub names: Arc<HashMap<Uuid, String>>,
     pub special_target: bool,
+    pub more: bool,
 }
 
 impl ChatInbox {
@@ -305,6 +306,8 @@ pub struct ChatState {
     pub self_status: PlayerStatus,
     pub friend_request: FriendRequestStatus,
     pub special_target: bool,
+    /// Where the next page of conversations starts; `None` once all are loaded
+    pub groups_cursor: Option<String>,
     conversations: Vec<ChatConversation>,
     messages: HashMap<i32, Arc<Vec<ChatMessage>>>,
     pending: HashMap<i32, Vec<PendingMessage>>,
@@ -373,6 +376,7 @@ impl ChatState {
             error: self.error.clone(),
             names: Arc::clone(&self.names),
             special_target: self.special_target,
+            more: self.groups_cursor.is_some(),
         }
     }
 
@@ -508,6 +512,40 @@ impl ChatState {
             .get(&group_id)
             .and_then(|messages| messages.last())
             .map(|message| message.id)
+    }
+
+    /// Applies a fresh first page. When nothing past it was loaded the page is
+    /// the whole known list, so anything missing from it is gone; otherwise
+    /// it is merged so the pages scrolled into stay put.
+    pub fn refresh_first_page(&mut self, summaries: Vec<GroupSummary>, cursor: Option<String>) {
+        if cursor.is_none() || self.conversations.len() <= summaries.len() {
+            self.groups_cursor = cursor;
+            self.set_conversations(summaries);
+        } else {
+            self.merge_conversations(summaries);
+        }
+    }
+
+    pub fn append_page(&mut self, summaries: Vec<GroupSummary>, cursor: Option<String>) {
+        self.groups_cursor = cursor;
+        self.merge_conversations(summaries);
+    }
+
+    fn merge_conversations(&mut self, summaries: Vec<GroupSummary>) {
+        for summary in summaries {
+            let conversation = ChatConversation::from(summary);
+            match self
+                .conversations
+                .iter_mut()
+                .find(|existing| existing.id == conversation.id)
+            {
+                Some(existing) => *existing = conversation,
+                None => self.conversations.push(conversation),
+            }
+        }
+        self.sort();
+        self.status = AsyncStatus::Ready;
+        self.error = None;
     }
 
     pub fn set_conversations(&mut self, summaries: Vec<GroupSummary>) {
@@ -1023,6 +1061,30 @@ mod tests {
             edited: false,
             invite: None,
         }
+    }
+
+    #[test]
+    fn conversations_page_in_and_a_refresh_keeps_scrolled_pages() {
+        let more = || Some("next".to_string());
+        let mut chat = ChatState::default();
+
+        chat.refresh_first_page(vec![summary(1, false), summary(2, false)], more());
+        assert!(!chat.inbox().loading);
+        assert!(chat.inbox().more);
+
+        chat.append_page(vec![summary(3, false)], None);
+        assert_eq!(chat.conversations().len(), 3);
+        assert!(!chat.inbox().more);
+
+        // A refresh past the first page merges rather than dropping page two
+        chat.refresh_first_page(vec![summary(1, true), summary(2, false)], more());
+        assert_eq!(chat.conversations().len(), 3);
+        assert!(chat.conversation(1).is_some_and(|c| c.unread));
+        assert!(!chat.inbox().more);
+
+        // A list that fits one page is authoritative, so a left chat is gone
+        chat.refresh_first_page(vec![summary(1, true)], None);
+        assert!(chat.conversation(3).is_none());
     }
 
     #[test]

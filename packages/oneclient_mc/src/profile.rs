@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::sync::{Arc, LazyLock, Mutex, PoisonError};
+
 use base64::Engine;
 use chrono::{DateTime, TimeDelta, Utc};
 use reqwest::Method;
@@ -462,6 +465,14 @@ pub async fn fetch_player_profile_view(
 ) -> McResult<PlayerProfileView> {
     let authenticated = access_token.is_some_and(|t| !t.is_empty());
 
+    // Concurrent callers for one player wait on the first fetch and then hit
+    // its cache entry instead of each hammering Mojang into a 429
+    let lock = (!authenticated).then(|| profile_lock(uuid));
+    let _turn = match &lock {
+        Some(lock) => Some(lock.lock().await),
+        None => None,
+    };
+
     if !authenticated && let Some(cached) = read_cached_profile(uuid).await {
         if cached.is_fresh() {
             return Ok(cached.view);
@@ -494,6 +505,15 @@ pub async fn fetch_player_profile_view(
             None => Err(err),
         },
     }
+}
+
+type ProfileLocks = HashMap<String, Arc<tokio::sync::Mutex<()>>>;
+static PROFILE_LOCKS: LazyLock<Mutex<ProfileLocks>> = LazyLock::new(Mutex::default);
+
+fn profile_lock(uuid: &str) -> Arc<tokio::sync::Mutex<()>> {
+    let mut locks = PROFILE_LOCKS.lock().unwrap_or_else(PoisonError::into_inner);
+    locks.retain(|_, lock| Arc::strong_count(lock) > 1);
+    Arc::clone(locks.entry(normalize_uuid(uuid).to_owned()).or_default())
 }
 
 pub async fn store_profile_view(uuid: &str, profile: MojangFullPlayerProfile) -> PlayerProfileView {

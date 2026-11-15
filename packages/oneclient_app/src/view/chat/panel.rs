@@ -135,6 +135,7 @@ impl Component for SocialPanel {
             names: chat.names.clone(),
             special_target: chat.special_target,
             loading: chat.loading,
+            more: chat.more,
             error: chat
                 .error
                 .clone()

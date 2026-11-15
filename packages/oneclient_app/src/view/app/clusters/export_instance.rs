@@ -497,9 +497,11 @@ impl Component for ExportInstanceModal {
             .overflow(Overflow::Clip);
         if fill {
             content = content.height(Size::flex(1.)).content(Content::Flex);
-            dialog = dialog.content(Content::Flex).height(Size::func(|ctx| {
-                Some(EXPANDED_MAX_HEIGHT.min(ctx.root * MAX_HEIGHT_PERCENT / 100.))
-            }));
+            // `Size::px` is DPI-scaled, a raw constant in `Size::func` would not be
+            dialog = dialog
+                .content(Content::Flex)
+                .height(Size::window_percent(MAX_HEIGHT_PERCENT))
+                .max_height(Size::px(EXPANDED_MAX_HEIGHT));
         } else {
             dialog = dialog.max_height(Size::window_percent(MAX_HEIGHT_PERCENT));
         }

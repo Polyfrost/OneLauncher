@@ -20,6 +20,10 @@ use crate::hooks::{
     use_version_loaders, use_versions, versions_metadata,
 };
 use crate::utils::version_sort_key;
+use crate::view::app::cluster::package_manager::PackageMetaMap;
+use crate::view::onboarding::{
+    UNCREATED_CLUSTER, bundle_taken, is_default_bundle, set_archive_selected,
+};
 
 pub struct VersionPicks {
     pub chosen: Option<String>,
@@ -40,23 +44,26 @@ pub struct BundlePicks {
     pub archives: Arc<[BundleArchive]>,
     pub loaded: bool,
     pub names: HashMap<String, String>,
-    pub declined: HashSet<String>,
+    pub meta: PackageMetaMap,
+    pub picked: HashSet<String>,
 }
 
 impl BundlePicks {
-    pub fn taken(&self) -> Vec<String> {
-        self.names_of_taken().collect()
+    pub fn taken(&self, archive: &BundleArchive) -> bool {
+        bundle_taken(UNCREATED_CLUSTER, archive, &self.picked)
+    }
+
+    pub fn picked_keys(&self) -> Vec<String> {
+        let mut picked: Vec<String> = self.picked.iter().cloned().collect();
+        picked.sort();
+        picked
     }
 
     pub fn taken_count(&self) -> usize {
-        self.names_of_taken().count()
-    }
-
-    fn names_of_taken(&self) -> impl Iterator<Item = String> + '_ {
         self.archives
             .iter()
-            .map(|archive| archive.manifest.name.clone())
-            .filter(|name| !self.declined.contains(name))
+            .filter(|archive| self.taken(archive))
+            .count()
     }
 }
 
@@ -228,6 +235,7 @@ struct BundleContext {
     archives: Arc<[BundleArchive]>,
     settled: bool,
     names: HashMap<String, String>,
+    meta: PackageMetaMap,
 }
 
 fn use_bundle_context(
@@ -258,16 +266,27 @@ fn use_bundle_context(
     let modrinth = use_package_meta_batch(ProviderId::Modrinth, modrinth_ids);
     let curseforge = use_package_meta_batch(ProviderId::CurseForge, curseforge_ids);
 
-    BundleContext {
-        names: if wants_names {
-            package_names(
-                &archives,
-                &package_meta_batch(&modrinth),
-                &package_meta_batch(&curseforge),
+    let (names, meta) = if wants_names {
+        let modrinth = package_meta_batch(&modrinth);
+        let curseforge = package_meta_batch(&curseforge);
+        let names = package_names(&archives, &modrinth, &curseforge);
+        let meta = modrinth
+            .into_iter()
+            .map(|(id, meta)| ((ProviderId::Modrinth, id), meta))
+            .chain(
+                curseforge
+                    .into_iter()
+                    .map(|(id, meta)| ((ProviderId::CurseForge, id), meta)),
             )
-        } else {
-            HashMap::new()
-        },
+            .collect();
+        (names, meta)
+    } else {
+        (HashMap::new(), PackageMetaMap::new())
+    };
+
+    BundleContext {
+        names,
+        meta,
         archives,
         settled: bundles.is_some(),
     }
@@ -519,17 +538,16 @@ pub fn resolve(w: Wizard) -> Picks {
 
     let kind = kind_for(choice, loader);
     let suggested = suggested_name(version.as_ref(), kind, loader);
-    let chosen_declined = match target {
-        Some(target) => w.import_declined.read().get(&target.key).cloned(),
-        None => w.declined.read().clone(),
+    let chosen_picked = match target {
+        Some(target) => w.import_picked.read().get(&target.key).cloned(),
+        None => w.picked.read().clone(),
     };
-    let declined = chosen_declined.unwrap_or_else(|| {
-        bundles
-            .archives
-            .iter()
-            .filter(|archive| !archive.manifest.enabled)
-            .map(|archive| archive.manifest.name.clone())
-            .collect()
+    let picked = chosen_picked.unwrap_or_else(|| {
+        let mut picked = HashSet::new();
+        for archive in bundles.archives.iter().filter(|a| is_default_bundle(a)) {
+            set_archive_selected(UNCREATED_CLUSTER, archive, true, &mut picked);
+        }
+        picked
     });
 
     Picks {
@@ -570,7 +588,8 @@ pub fn resolve(w: Wizard) -> Picks {
             archives: bundles.archives,
             loaded: bundles.settled,
             names: bundles.names,
-            declined,
+            meta: bundles.meta,
+            picked,
         },
         migrate_loader: w.migrate_loader,
     }

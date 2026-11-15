@@ -39,7 +39,7 @@ fn create_action(wizard: Wizard, picks: &Picks) -> Option<ClusterAction> {
         tags: wizard.details.tags.read().clone(),
         cover_source: wizard.details.cover.read().clone(),
         bundles: (picks.kind == ClusterKind::OneClient && picks.bundles.loaded)
-            .then(|| picks.bundles.taken()),
+            .then(|| picks.bundles.picked_keys()),
         require_bundles: false,
         dedicated: picks.kind == ClusterKind::OneClient && picks.folder == FolderChoice::Dedicated,
         shared_group: match &picks.folder {
@@ -204,7 +204,8 @@ impl Component for CreateInstanceModal {
             query: use_state(String::new),
             loader: use_state(|| prefill_loader),
             loader_version: use_state(|| None::<String>),
-            declined: use_state(|| None::<HashSet<String>>),
+            picked: use_state(|| None::<HashSet<String>>),
+            editing: use_state(|| None::<String>),
             modpack_origin: use_state(|| ModpackOrigin::Browse),
             import_source: use_state(|| ImportSource::File),
             share_code: use_state(String::new),
@@ -212,7 +213,7 @@ impl Component for CreateInstanceModal {
             import_extra: use_state(Vec::new),
             import_mode: use_state(|| ImportMode::Improve),
             bundle_page: use_state(|| 0usize),
-            import_declined: use_state(HashMap::new),
+            import_picked: use_state(HashMap::new),
             import_bundles: use_state(HashMap::new),
             finishing: use_state(|| false),
             modpack_file: use_state(|| None),
@@ -242,7 +243,7 @@ impl Component for CreateInstanceModal {
         let finishing = picks.finishing;
         let current_bundles = picks
             .bundle_target()
-            .map(|target| (target.key.clone(), picks.bundles.taken()));
+            .map(|target| (target.key.clone(), picks.bundles.picked_keys()));
         let finish = (finishes || finishing).then(|| {
             let mut kept = wizard.import_bundles.read().clone();
             kept.extend(current_bundles.clone());
@@ -285,6 +286,7 @@ impl Component for CreateInstanceModal {
         let page = picks.bundle_page;
         let mut step = wizard.step;
         let mut query = wizard.query;
+        let mut editing = wizard.editing;
         let mut bundle_page = wizard.bundle_page;
         let mut import_bundles = wizard.import_bundles;
 
@@ -365,8 +367,10 @@ impl Component for CreateInstanceModal {
                 if first {
                     close_cancel.call(());
                 } else if bundle_step && page > 0 {
+                    editing.set(None);
                     bundle_page.set(page - 1);
                 } else {
+                    editing.set(None);
                     step.set(index.saturating_sub(1));
                 }
             })
@@ -389,6 +393,7 @@ impl Component for CreateInstanceModal {
                     if let Some((key, taken)) = current_bundles.clone() {
                         import_bundles.write().insert(key, taken);
                     }
+                    editing.set(None);
                     bundle_page.set(page + 1);
                 } else if import_step && !improving {
                     dispatch.import_external_instances(import_as_is.clone());
@@ -419,6 +424,7 @@ impl Component for CreateInstanceModal {
                     }
                 } else {
                     query.set(String::new());
+                    editing.set(None);
                     step.set(index + 1);
                 }
             })

@@ -120,6 +120,7 @@ pub use modpack_confirm_popup::ModpackConfirmPopup;
 pub use navbar::{AppNavbar, OnboardingNavbar};
 pub(crate) use navbar::{window_controls, window_controls_with};
 pub use notifications::{ChevronToggle, NotificationCenter};
+pub(crate) use optional_mods_popup::OptionalModCard;
 pub use optional_mods_popup::OptionalModsPopup;
 pub use overlay_popup::{
     OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, OverlayPopup, overlay_is_topmost, popup_surface,

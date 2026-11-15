@@ -1289,4 +1289,3 @@ pub(crate) fn pill(icon: Option<Element>, text: String, accent: Color) -> Elemen
         )
         .into_element()
 }
-

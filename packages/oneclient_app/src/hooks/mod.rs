@@ -99,6 +99,7 @@ pub use queries::{
 };
 pub use queries::{BisectAction, BisectMutation, use_bisect, use_bisect_mutation};
 pub use queries::{GraphicsBackendQuery, use_graphics_backend, use_has_game_options};
+pub(crate) use queries::{UNCREATED_CLUSTER, bundle_plan, bundle_taken, pkg_key};
 pub use queries::{
     add_world_datapacks, delete_world, delete_world_datapack, invalidate_world_contents,
     spawn_world_task, try_cluster_worlds, try_world_datapacks, try_world_size, use_cluster_worlds,

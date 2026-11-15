@@ -14,8 +14,14 @@ use crate::models::{
 use crate::{PlusClient, PlusError, base_url, session};
 
 impl PlusClient {
-    pub async fn groups(&self) -> Result<Vec<GroupSummary>, PlusError> {
-        self.paged("/v1/groups").await
+    /// One page of conversations, most recently active first; pass the
+    /// returned cursor back for the next page.
+    pub async fn groups_page(
+        &self,
+        cursor: Option<&str>,
+        limit: u64,
+    ) -> Result<CursorPage<GroupSummary>, PlusError> {
+        self.page("/v1/groups", cursor, limit).await
     }
 
     pub async fn open_direct_message(&self, player: Uuid) -> Result<GroupSummary, PlusError> {
@@ -286,16 +292,9 @@ impl PlusClient {
         let mut cursor: Option<String> = None;
 
         loop {
-            let mut url = self.url(path)?;
-            {
-                let mut query = url.query_pairs_mut();
-                query.append_pair("limit", &MAX_CURSOR_PAGE_SIZE.to_string());
-                if let Some(cursor) = &cursor {
-                    query.append_pair("cursor", cursor);
-                }
-            }
-
-            let page: CursorPage<T> = self.json(Method::GET, url, None).await?;
+            let page: CursorPage<T> = self
+                .page(path, cursor.as_deref(), MAX_CURSOR_PAGE_SIZE)
+                .await?;
             items.extend(page.items);
 
             match page.cursor {
@@ -303,6 +302,23 @@ impl PlusClient {
                 None => return Ok(items),
             }
         }
+    }
+
+    async fn page<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        cursor: Option<&str>,
+        limit: u64,
+    ) -> Result<CursorPage<T>, PlusError> {
+        let mut url = self.url(path)?;
+        {
+            let mut query = url.query_pairs_mut();
+            query.append_pair("limit", &limit.min(MAX_CURSOR_PAGE_SIZE).to_string());
+            if let Some(cursor) = cursor {
+                query.append_pair("cursor", cursor);
+            }
+        }
+        self.json(Method::GET, url, None).await
     }
 
     async fn account(&self) -> Result<MinecraftAccount, PlusError> {

@@ -486,7 +486,11 @@ pub(crate) fn parse_major_version(version: &str) -> Result<u32, JavaError> {
         });
     }
 
-    let head = version.split('.').next().unwrap_or(version);
+    // Early access builds report `28-beta` or `21-ea`
+    let head = version
+        .split(|c: char| !c.is_ascii_digit())
+        .next()
+        .unwrap_or(version);
     head.parse::<u32>().map_err(|_| JavaError::ParseVersion {
         version: version.to_string(),
     })
@@ -506,6 +510,13 @@ mod tests {
     fn modern_versions_take_the_first() {
         assert_eq!(parse_major_version("21.0.3").unwrap(), 21);
         assert_eq!(parse_major_version("17").unwrap(), 17);
+    }
+
+    #[test]
+    fn early_access_versions_take_the_leading_number() {
+        assert_eq!(parse_major_version("28-beta").unwrap(), 28);
+        assert_eq!(parse_major_version("21-ea").unwrap(), 21);
+        assert_eq!(parse_major_version("17.0.1-internal").unwrap(), 17);
     }
 
     #[test]

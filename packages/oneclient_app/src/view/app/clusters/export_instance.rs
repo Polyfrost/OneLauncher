@@ -34,9 +34,8 @@ const TILE_SIZE: f32 = 40.;
 const ROW_TILE_SIZE: f32 = 32.;
 const MB: f64 = 1024. * 1024.;
 const EXPAND_BUTTON_SIZE: f32 = 36.;
-const FALLBACK_DIALOG_HEIGHT: f32 = 900.;
+const EXPANDED_MAX_HEIGHT: f32 = 900.;
 const MAX_HEIGHT_PERCENT: f32 = 90.;
-const PICKER_HEIGHT: f32 = 430.;
 const MEASURE_DELAY: Duration = Duration::from_millis(400);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -377,7 +376,6 @@ impl Component for ExportInstanceModal {
             })));
         });
         summary.size = *size.read();
-        let fit_height = use_state(|| None::<f32>);
 
         use_hook(move || {
             let mut chosen = picks.files.chosen;
@@ -409,8 +407,10 @@ impl Component for ExportInstanceModal {
             .into()
         };
 
-        let fitting = share.is_none() && !*team.open.read() && !*picks.embeds_open.read();
-        let fill = fitting && *picks.open.read();
+        let fill = share.is_none()
+            && !*team.open.read()
+            && !*picks.embeds_open.read()
+            && *picks.open.read();
         let (body, footer) = match share {
             None if *team.open.read() => team_view(team, &owner.read()),
             None if *picks.embeds_open.read() => embeds_view(cluster_id, picks),
@@ -463,23 +463,12 @@ impl Component for ExportInstanceModal {
             .border(border_all_color(1., colors::component_border()))
             .overflow(Overflow::Clip);
         if fill {
-            let desired = fit_height
-                .read()
-                .map_or(FALLBACK_DIALOG_HEIGHT, |height| height + PICKER_HEIGHT);
             content = content.height(Size::flex(1.)).content(Content::Flex);
-            dialog = dialog.content(Content::Flex).height(Size::func_data(
-                move |ctx| Some(desired.min(ctx.root * MAX_HEIGHT_PERCENT / 100.)),
-                &desired.to_bits(),
-            ));
+            dialog = dialog.content(Content::Flex).height(Size::func(|ctx| {
+                Some(EXPANDED_MAX_HEIGHT.min(ctx.root * MAX_HEIGHT_PERCENT / 100.))
+            }));
         } else {
-            let mut fit_height = fit_height;
-            dialog = dialog
-                .max_height(Size::window_percent(MAX_HEIGHT_PERCENT))
-                .on_sized(move |e: Event<SizedEventData>| {
-                    if fitting {
-                        fit_height.set_if_modified(Some(e.area.height()));
-                    }
-                });
+            dialog = dialog.max_height(Size::window_percent(MAX_HEIGHT_PERCENT));
         }
 
         let close_scrim = close.clone();
@@ -1190,11 +1179,12 @@ fn save_view(
 
 fn embeds_view(cluster_id: i64, picks: Picks) -> (Vec<Element>, Element) {
     let mut open = picks.embeds_open;
-    let mut body = vec![
-        title(t("oneclient.clusters.export.files.title").to_string()),
-        note(t("oneclient.clusters.export.files.description"), 13.),
-    ];
-    match picks.embeds.files.read().as_ref().map(Vec::is_empty) {
+    let mut body = vec![title(t("oneclient.clusters.export.files.title").to_string())];
+    let empty = picks.embeds.files.read().as_ref().map(Vec::is_empty);
+    if empty != Some(true) {
+        body.push(note(t("oneclient.clusters.export.files.description"), 13.));
+    }
+    match empty {
         None if *picks.embeds_failed.read() => {
             body.push(note(t("oneclient.clusters.export.files.failed"), 12.5));
         }

@@ -550,7 +550,15 @@ impl Actions {
                 .await;
             match picked {
                 Ok(Some(version_id)) => {
-                    self.start_install(cluster_id, provider, project_id, version_id, None, true);
+                    self.start_install(
+                        cluster_id,
+                        provider,
+                        project_id,
+                        version_id,
+                        None,
+                        true,
+                        crate::install::IncompatibleMode::Refuse,
+                    );
                 }
                 Ok(None) => unavailable.push(name),
                 Err(err) => {

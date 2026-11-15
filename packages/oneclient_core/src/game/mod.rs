@@ -1,6 +1,7 @@
 mod analytics;
 mod error;
 pub mod fabric;
+mod folder_packs;
 mod game_options;
 pub mod gpu;
 mod heal;
@@ -12,6 +13,7 @@ mod reattach;
 mod session;
 mod shared_dir;
 mod tail;
+mod thread_dump;
 
 pub use analytics::{
     Analytics, DayPlaytime, Persona, PlaytimeStats, ServerStat, WEEKDAY_LABELS, aggregate_servers,
@@ -30,6 +32,9 @@ pub use crashdata::CrashData;
 pub use diagnosis::{CrashDiagnosis, diagnose, suspected_mods};
 pub use error::GameError;
 pub use fabric::{mods_folder_argument, uses_cluster_mods_folder};
+pub use folder_packs::{
+    FolderPack, list_folder_packs, remove_folder_pack, set_folder_pack_enabled,
+};
 pub use game_options::{read_graphics_backend, write_graphics_backend};
 pub use heal::clear_zeroed_files;
 pub use launch::{
@@ -55,3 +60,4 @@ pub use shared_dir::{
     leave_shared_folder, link_cluster_logs, materialize_content, shadowed_bundle_mods,
     split_dedicated_packs, sync_cluster_mods, unlink_cluster_logs, write_allowed_symlinks,
 };
+pub use thread_dump::thread_dump;

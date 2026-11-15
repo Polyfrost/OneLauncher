@@ -11,6 +11,7 @@ use crate::components::{
 };
 use crate::hooks::{Actions, use_debounced, use_dispatch, use_settings_snapshot};
 use crate::i18n::t;
+use crate::layout::SearchItem;
 use crate::routes::Route;
 use crate::theme::{
     colors::{self, Palette},
@@ -456,4 +457,59 @@ fn animations_row(animations_on: State<bool>, default: bool) -> impl IntoElement
         t("oneclient.settings.appearance.animations.description"),
         resettable(toggle(animations_on), animations_on, default),
     )
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "appearance.accent_color",
+        icon: IconType::PaintPour,
+        title: "oneclient.settings.appearance.accent_color.title",
+        description: "oneclient.layout.search.appearance.accent_color.description",
+        keywords: &["theme", "accent", "color", "brand"],
+        route: Route::SettingsAppearance {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "appearance.custom_theme",
+        icon: IconType::Colors,
+        title: "oneclient.settings.appearance.custom_theme.title",
+        description: "oneclient.layout.search.appearance.custom_theme.description",
+        keywords: &["theme", "custom", "import", "export"],
+        route: Route::SettingsAppearance {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "appearance.parallax_background",
+        icon: IconType::Eye,
+        title: "oneclient.settings.appearance.parallax_background.title",
+        description: "oneclient.layout.search.appearance.parallax_background.description",
+        keywords: &["background", "parallax", "motion"],
+        route: Route::SettingsAppearance {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "appearance.animations",
+        icon: IconType::Play,
+        title: "oneclient.settings.appearance.animations.title",
+        description: "oneclient.layout.search.appearance.animations.description",
+        keywords: &["reduce motion", "animations", "effects"],
+        route: Route::SettingsAppearance {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "appearance.theme",
+        icon: IconType::Colors,
+        title: "oneclient.onboarding.summary.accessibility.theme",
+        description: "oneclient.layout.search.appearance.theme.description",
+        keywords: &["theme", "dark", "light", "mode", "colors"],
+        route: Route::SettingsAppearance {},
+    }
 }

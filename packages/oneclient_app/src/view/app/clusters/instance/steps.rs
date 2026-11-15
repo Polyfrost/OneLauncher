@@ -10,12 +10,13 @@ use super::cards::{
     LOADER_MARK_SIZE, VERSION_ROW_H, VERSION_ROW_SPACING, WideCard, cell_card, loader_mark,
     version_row, wide_card,
 };
-use super::data::Picks;
+use super::data::{Picks, row_fits};
 use super::details::details_body;
 use super::import::ImportStep;
 use super::import_review::review_step;
 use super::model::{
-    FolderChoice, ImportMode, ImportSource, LoaderChoice, ModpackOrigin, Step, TypeChoice, Wizard,
+    FolderChoice, ImportMode, ImportSource, LoaderChoice, ModpackOrigin, Step, TypeChoice,
+    VersionCheck, Wizard,
 };
 use super::model::{kind_bit, version_kinds};
 use super::rail::version_art;
@@ -30,6 +31,8 @@ use crate::i18n::{t, tf};
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, centered_note, divider, fixed_grid, note};
 use crate::utils::bundle_display_name;
+use oneclient_common::GameLoader;
+use oneclient_content::packages::release_migration::migration_check;
 use oneclient_events::{Choice, Prompt};
 
 pub fn body(wizard: Wizard, picks: &Picks) -> Element {
@@ -132,7 +135,9 @@ fn type_step(mut wizard: Wizard, picks: &Picks) -> Element {
             cards
                 .into_iter()
                 .map(|(choice, icon, title, badge, blurb, meta)| {
-                    wide_card(WideCard {
+                    let blocked = picks.migrate_loader.is_some()
+                        && matches!(choice, TypeChoice::Modpack | TypeChoice::Import);
+                    let card = wide_card(WideCard {
                         icon,
                         title: title.to_string(),
                         badge: badge.map(str::to_string),
@@ -140,13 +145,16 @@ fn type_step(mut wizard: Wizard, picks: &Picks) -> Element {
                         meta: meta.to_string(),
                         selected: picks.choice == choice,
                         on_press: (move |()| {
-                            wizard.choice.set(choice);
-                            wizard.version.set(None);
-                            wizard.declined.set(None);
+                            if !blocked {
+                                wizard.choice.set(choice);
+                                wizard.version.set(None);
+                                wizard.declined.set(None);
+                            }
                         })
                         .into(),
                         trailing: None,
-                    })
+                    });
+                    dimmed(card, blocked, Size::auto())
                 }),
         )
         .into_element()
@@ -456,6 +464,18 @@ impl Component for FolderStep {
     }
 }
 
+fn dimmed(element: Element, disabled: bool, height: Size) -> Element {
+    if !disabled {
+        return element;
+    }
+    rect()
+        .width(Size::fill())
+        .height(height)
+        .opacity(colors::disabled_opacity())
+        .child(element)
+        .into_element()
+}
+
 fn select_loader(mut wizard: Wizard, choice: LoaderChoice) {
     wizard.loader.set(choice);
     wizard.loader_version.set(None);
@@ -467,16 +487,27 @@ fn loader_step(wizard: Wizard, picks: &Picks) -> Element {
     let cards: Vec<Element> = LoaderChoice::ALL
         .into_iter()
         .map(|choice| {
-            let offered = picks
+            let resolved = picks
                 .loader
                 .available
                 .as_ref()
-                .is_none_or(|available| choice.resolve(available).is_some());
-            cell_card(CellCard {
+                .map_or(Some(choice.primary()), |available| {
+                    choice.resolve(available)
+                });
+            let incompatible = resolved.is_some_and(|loader| !picks.fits(loader));
+            let offered = resolved.is_some() && !incompatible;
+            let card = cell_card(CellCard {
                 id: choice.name(),
                 title: choice.name(),
                 blurb: choice.blurb().to_string(),
                 meta: (!offered).then(|| match picks.versions.chosen.as_deref() {
+                    _ if incompatible => tf(
+                        "oneclient.clusters.instance.steps.loader.not_migratable",
+                        &[&picks
+                            .migrate_loader
+                            .map(|l| l.to_string())
+                            .unwrap_or_default()],
+                    ),
                     Some(version) => tf(
                         "oneclient.clusters.instance.steps.loader.no_build",
                         &[&version],
@@ -492,7 +523,8 @@ fn loader_step(wizard: Wizard, picks: &Picks) -> Element {
                     }
                 })
                 .into(),
-            })
+            });
+            dimmed(card, !offered, Size::fill())
         })
         .collect();
 
@@ -680,6 +712,12 @@ fn version_list(mut wizard: Wizard, picks: &Picks) -> Element {
     let versions = picks.versions.list.clone();
     let count = versions.len();
     let selected = picks.versions.chosen.clone();
+    let migrate_loader = picks.migrate_loader;
+    let checks = wizard.checks.read().clone();
+    let scope = current_scope_id();
+    let check_target = wizard
+        .migrate_source
+        .zip(picks.loader.chosen.filter(|loader| picks.fits(*loader)));
 
     ScrollArea::new()
         .width(Size::fill())
@@ -690,16 +728,92 @@ fn version_list(mut wizard: Wizard, picks: &Picks) -> Element {
             let Some(row) = versions.row(index) else {
                 return rect().into_element();
             };
+            let disabled = !row_fits(migrate_loader, row.loader);
             let id = row.id.clone();
             let is_selected = selected.as_deref() == Some(row.id.as_str());
+            let trailing = check_target
+                .filter(|_| is_selected)
+                .map(|(source, loader)| {
+                    let key = (row.id.clone(), loader);
+                    let state = checks.get(&key).copied();
+                    version_check(wizard, scope, source, key, state)
+                });
 
-            version_row(
+            let element = version_row(
                 &row,
                 is_selected,
-                (move |()| wizard.version.set(Some(id.clone()))).into(),
-            )
+                (move |()| {
+                    if !disabled {
+                        wizard.version.set(Some(id.clone()));
+                    }
+                })
+                .into(),
+                trailing,
+            );
+            dimmed(element, disabled, Size::auto())
         })
         .into_element()
+}
+
+fn version_check(
+    wizard: Wizard,
+    scope: ScopeId,
+    source: i64,
+    key: (String, GameLoader),
+    state: Option<VersionCheck>,
+) -> Element {
+    if let Some(VersionCheck::Done(found, total)) = state {
+        return label()
+            .text(tf(
+                "oneclient.clusters.instance.steps.version.coverage",
+                &[&found, &total],
+            ))
+            .font_size(text_size(12.))
+            .max_lines(1)
+            .color(colors::fg_secondary())
+            .into_element();
+    }
+    let text = match state {
+        Some(VersionCheck::Running) => t("oneclient.clusters.instance.steps.version.checking"),
+        Some(VersionCheck::Failed) => t("oneclient.clusters.instance.steps.version.check_failed"),
+        _ => t("oneclient.clusters.instance.steps.version.check"),
+    };
+    Button::new()
+        .secondary()
+        .small()
+        .enabled(state != Some(VersionCheck::Running))
+        .on_press(move |e: Event<PressEventData>| {
+            e.stop_propagation();
+            let mut checks = wizard.checks;
+            let key = key.clone();
+            checks.write().insert(key.clone(), VersionCheck::Running);
+            spawn_in_scope(
+                async move {
+                    let result = run_version_check(source, key.0.clone(), key.1).await;
+                    checks.write().insert(key, result);
+                },
+                scope,
+            );
+        })
+        .text(text)
+        .into_element()
+}
+
+async fn run_version_check(source: i64, version: String, loader: GameLoader) -> VersionCheck {
+    let Ok(state) = crate::launcher::state() else {
+        return VersionCheck::Failed;
+    };
+    let result = crate::launcher::off_ui(async move {
+        migration_check(source, &version, loader, &state.services.content()).await
+    })
+    .await;
+    match result {
+        Ok((found, total)) => VersionCheck::Done(found, total),
+        Err(err) => {
+            tracing::warn!(source, error = %err, "migration check failed");
+            VersionCheck::Failed
+        }
+    }
 }
 
 fn centered_failure(message: &str) -> Element {

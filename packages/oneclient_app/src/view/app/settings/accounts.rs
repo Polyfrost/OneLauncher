@@ -6,6 +6,7 @@ use oneclient_auth::{AccountKind, MinecraftAccount};
 use uuid::Uuid;
 
 use super::{section_header, settings_page};
+use crate::Route;
 use crate::components::{
     Avatar, Button, Icon, IconType, MicrosoftLogin, OverlayPopup, PlayerModel, TextInput,
     use_microsoft_login,
@@ -17,6 +18,7 @@ use crate::hooks::{
     use_set_default_account,
 };
 use crate::i18n::t;
+use crate::layout::SearchItem;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
@@ -715,4 +717,15 @@ fn empty_state() -> Element {
                 .color(colors::fg_secondary()),
         )
         .into_element()
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "nav.accounts",
+        icon: IconType::Users01,
+        title: "oneclient.layout.settings.tab.accounts",
+        description: "oneclient.layout.search.nav.accounts.description",
+        keywords: &["account", "login", "microsoft", "msa"],
+        route: Route::SettingsAccounts {},
+    }
 }

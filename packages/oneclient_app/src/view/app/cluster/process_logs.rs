@@ -5,7 +5,6 @@ use oneclient_cluster::logs::parse_level;
 use oneclient_core::{LogKind, LogLevel};
 
 use crate::components::LogViewer;
-use crate::components::upload_mclogs::use_mclogs_feedback;
 use crate::hooks::{
     try_cluster_logs, use_cluster, use_cluster_logs, use_game_snapshot, use_log_action,
     use_upload_log,
@@ -33,7 +32,6 @@ impl Component for ProcessLogs {
         let confirm = use_state(|| None::<Confirm>);
         let search_id = use_a11y();
 
-        use_mclogs_feedback(upload);
 
         let game = use_game_snapshot();
         let Some(_cluster) = use_cluster(self.cluster_id) else {

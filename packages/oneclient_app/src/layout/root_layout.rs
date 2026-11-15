@@ -3,7 +3,7 @@ use freya::router::*;
 
 use crate::components::{
     AccountSwitcher, BlockedDownloadsPopup, BundleChoicesPopup, ClusterUpdatePopup, ControlCenter,
-    FlaggedInstallPopup, GenericPromptOverlay, InviteJoinPopup, JavaPromptOverlay,
+    FlaggedInstallPopup, GenericPromptOverlay, IncompatibleInstallPopup, InviteJoinPopup, JavaPromptOverlay,
     MicrosoftJavaPromptOverlay,
     ModpackConfirmPopup, NotificationCenter, OptionalModsPopup, PackageUpdatePopup,
     ReleaseMigrationPopup, SplashCurtain, StatusBar, Toasts, TooltipHost, UnpublishedImportPopup,
@@ -57,6 +57,7 @@ impl Component for RootLayout {
             .child(UnpublishedImportPopup)
             .child(PackageUpdatePopup)
             .child(FlaggedInstallPopup)
+            .child(IncompatibleInstallPopup)
             .child(ReleaseMigrationPopup)
             .child(InviteJoinPopup)
             .child(StatusBar)

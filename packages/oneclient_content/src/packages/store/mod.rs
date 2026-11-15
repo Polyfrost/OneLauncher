@@ -48,6 +48,17 @@ pub struct LocalImportReport {
 }
 
 impl PackageStore {
+    pub async fn check_compatible(
+        project: &ProjectDetail,
+        version: &VersionDetail,
+        cluster_id: i64,
+        ctx: &ContentCtx,
+    ) -> ContentResult<bool> {
+        let cluster = Self::get_cluster(cluster_id, ctx).await?;
+        ensure_takes_mods(project.content_type, &cluster)?;
+        Ok(ensure_compatible(project, version, &cluster).is_ok())
+    }
+
     #[tracing::instrument(level = "debug", skip(ctx))]
     pub async fn get_cluster(cluster_id: i64, ctx: &ContentCtx) -> ContentResult<ClusterRow> {
         cluster_dao::get_by_id(&ctx.db, cluster_id)

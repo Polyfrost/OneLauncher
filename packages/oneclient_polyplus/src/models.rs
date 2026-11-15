@@ -5,6 +5,7 @@ use uuid::Uuid;
 pub const MAX_MESSAGE_LENGTH: usize = 512;
 pub const MAX_PAGE_SIZE: u64 = 200;
 pub const MAX_RESOLVE_BATCH: usize = 100;
+pub const MAX_CURSOR_PAGE_SIZE: u64 = 100;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum GroupKind {
@@ -47,6 +48,12 @@ impl<'de> Deserialize<'de> for PlayerStatus {
             _ => Self::Online,
         })
     }
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct SpecialChatStatus {
+    #[serde(default)]
+    pub is_special_chat_target: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -92,6 +99,8 @@ pub struct GroupSummary {
     pub unread: bool,
     #[serde(default)]
     pub special: bool,
+    #[serde(default)]
+    pub awaiting_reply: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -158,6 +167,11 @@ pub(crate) struct SendMessageRequest<'a> {
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct EditMessageRequest<'a> {
     pub content: &'a str,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct RenameGroupRequest<'a> {
+    pub name: &'a str,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -233,4 +247,11 @@ mod tests {
 
         assert_eq!(summary.kind, GroupKind::Unknown);
     }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CursorPage<T> {
+    pub items: Vec<T>,
+    #[serde(default)]
+    pub cursor: Option<String>,
 }

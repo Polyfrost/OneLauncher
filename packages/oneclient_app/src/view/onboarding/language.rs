@@ -114,7 +114,11 @@ fn language_row(
                     .text(name)
                     .font_size(text_size(16.))
                     .font_weight(FontWeight::MEDIUM)
-                    .color(colors::fg_primary()),
+                    .color(if active {
+                        colors::on_brand()
+                    } else {
+                        colors::fg_primary()
+                    }),
             ),
         )
         .maybe_child(coverage.map(|percentage| {
@@ -125,7 +129,7 @@ fn language_row(
                 ))
                 .font_size(text_size(13.))
                 .color(if active {
-                    colors::fg_primary()
+                    colors::on_brand()
                 } else {
                     colors::fg_secondary()
                 })

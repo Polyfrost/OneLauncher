@@ -391,6 +391,7 @@ fn opt_in_card(
                         ),
                         wanted,
                         Size::fill(),
+                        colors::fg_primary(),
                         move |()| {
                             if wanted {
                                 return;
@@ -408,6 +409,7 @@ fn opt_in_card(
                         "",
                         !wanted,
                         Size::fill(),
+                        colors::fg_primary(),
                         move |()| set_bundle_versions(selected, user_touched, &no_bundle, &[]),
                     )),
             ),

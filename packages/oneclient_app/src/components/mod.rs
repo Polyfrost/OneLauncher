@@ -23,6 +23,7 @@ mod essential_confirm;
 mod file_drop;
 mod filter_menu;
 mod flagged_install_popup;
+mod incompatible_install_popup;
 mod generic_prompt;
 mod icons;
 mod instance_row;
@@ -98,6 +99,7 @@ pub use file_drop::{FileDropOverlay, accept_drop};
 pub use filter_menu::{FilterMenu, FilterOption};
 pub use flagged_install_popup::FlaggedInstallPopup;
 pub(crate) use flagged_install_popup::explanation_panel;
+pub use incompatible_install_popup::IncompatibleInstallPopup;
 pub use generic_prompt::GenericPromptOverlay;
 pub use icons::{Icon, IconTint, IconType};
 pub use instance_row::InstanceRow;
@@ -115,7 +117,7 @@ pub use microsoft_java_prompt::MicrosoftJavaPromptOverlay;
 pub(crate) use microsoft_login::login_dialog;
 pub use microsoft_login::{MicrosoftLogin, use_microsoft_login};
 pub use modpack_confirm_popup::ModpackConfirmPopup;
-pub(crate) use navbar::window_controls;
+pub(crate) use navbar::{window_controls, window_controls_with};
 pub use navbar::{AppNavbar, OnboardingNavbar};
 pub use notifications::{ChevronToggle, NotificationCenter};
 pub use optional_mods_popup::OptionalModsPopup;
@@ -131,7 +133,7 @@ pub(crate) use package_row::{
 };
 pub use package_row::{
     CardLayout, CopyStatus, PackageEntry, PackageRow, github_badge, package_context_menu,
-    provider_badge,
+    parse_folder_pack_id, provider_badge,
 };
 pub use package_update_popup::PackageUpdatePopup;
 pub use pagination::Pagination;

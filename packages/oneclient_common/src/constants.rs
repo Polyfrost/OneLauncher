@@ -29,6 +29,15 @@ pub const SENTRY_DSN: &str = match option_env!("ONECLIENT_SENTRY_DSN") {
     }
 };
 
+pub const LAUNCHER_LABEL: &str = concat!(
+    "OneClient v",
+    env!("CARGO_PKG_VERSION"),
+    cfg_select! {
+        debug_assertions => " (debug)",
+        _ => " (release)"
+    }
+);
+
 pub const TARGET_OS: &str = cfg_select! {
     target_os = "windows" => "windows",
     target_os = "macos" => "osx",

@@ -240,5 +240,12 @@ pub fn init_filtered(filter: impl FnOnce() -> String) -> LauncherResult<()> {
         tracing::info!(path = %log_path.display(), "writing logs to file");
     }
 
+    tracing::info!(
+        "{} on {} {}",
+        oneclient_common::constants::LAUNCHER_LABEL,
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+    );
+
     Ok(())
 }

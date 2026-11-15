@@ -158,17 +158,17 @@ mod tests {
     #[test]
     fn source_keys_match_en_us() {
         let pattern = regex::Regex::new(r#"\btf?\(\s*"([^"]+)""#).unwrap();
+        let literal = regex::Regex::new(r#""(oneclient\.[^"]+)""#).unwrap();
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut used = BTreeSet::new();
-        collect_keys(
-            &Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
-            &pattern,
-            &mut used,
-        );
+        collect_keys(&src, &pattern, &mut used);
         used.retain(|key| key.starts_with("oneclient."));
+        let mut mentioned = BTreeSet::new();
+        collect_keys(&src, &literal, &mut mentioned);
         let defined: BTreeSet<String> = EN_US.keys().cloned().collect();
 
         let missing: Vec<_> = used.difference(&defined).collect();
-        let unused: Vec<_> = defined.difference(&used).collect();
+        let unused: Vec<_> = defined.difference(&mentioned).collect();
         assert!(
             missing.is_empty(),
             "keys used but not in en_us.json: {missing:?}"

@@ -20,32 +20,20 @@ use crate::service::RequestClient;
 /// install incomplete
 const MAX_DOWNLOAD_ATTEMPTS: u32 = 3;
 
-/// Replaces the client's 10 minute total for file bodies: a large file on a slow
-/// link is still progressing, and the client's read timeout catches real stalls
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_hours(1);
 
-/// A single TCP stream on a lossy or shaped link can crawl while a browser on
-/// QUIC is fine, so large files are split across separate connections
 const RANGED_MIN_SIZE: u64 = 16 * 1024 * 1024;
 const RANGED_PARTS: u64 = 4;
 const RANGED_PROGRESS_INTERVAL: Duration = Duration::from_millis(200);
 
-/// Below this a slow connection costs seconds, not minutes, so the file streams
-/// straight to disk without the resumable path's extra file passes
 const RESUMABLE_MIN_SIZE: u64 = 1024 * 1024;
 
-/// A connection averaging under `SLOW_FLOOR_BYTES_PER_SEC` over `SLOW_WINDOW` is dropped
-/// and the rest of its range re-requested on a fresh one, which on a CDN often
-/// lands on a better path or edge. The read timeout only catches full stalls,
-/// so without this a trickling connection is kept until the file ends.
 const SLOW_WINDOW: Duration = if cfg!(test) {
     Duration::from_millis(300)
 } else {
     Duration::from_secs(10)
 };
 const SLOW_FLOOR_BYTES_PER_SEC: u64 = 64 * 1024;
-/// After this many the link itself is slow, and reconnecting again only adds
-/// handshakes, so the part keeps whatever connection it has
 const MAX_SLOW_RECONNECTS: u32 = 3;
 
 fn file_request(url: &str, range: Option<(u64, u64)>) -> Result<HttpRequest, RequestError> {
@@ -94,9 +82,6 @@ pub async fn matches_on_disk(path: &Path, expected_sha1: &str) -> bool {
 
 /// `dest` is only created once the hash matches so a failed attempt leaves
 /// nothing behind for a later `exists()` check to trip over
-///
-/// A grouped progress child in `notify` is never finished here: the caller may
-/// still have work to report on it, and the last handle finishes it on drop.
 #[tracing::instrument(level = "debug", skip(client, events, notify), fields(%url))]
 pub async fn download_verified(
     client: &RequestClient,
@@ -120,8 +105,6 @@ pub async fn download_verified(
 
     let mut attempt = 1;
     loop {
-        // The last attempt always streams in one piece in case the server
-        // mishandles ranges
         match download_attempt(
             client,
             events,
@@ -185,8 +168,6 @@ async fn download_attempt(
         });
     }
 
-    // Parts come from separate responses, so only a checksum proves they are
-    // one file; without one the body streams in one piece
     if allow_ranged
         && let Some(expected) = expected
         && let Some(length) = response.content_length()
@@ -274,7 +255,6 @@ async fn download_attempt(
     Ok(())
 }
 
-/// Writes to a scratch sibling and renames so `dest` is never truncated
 #[allow(clippy::too_many_arguments)]
 async fn download_ranged(
     client: &RequestClient,
@@ -297,7 +277,6 @@ async fn download_ranged(
     } else {
         1
     };
-    // The probe's body is the file from byte 0, so it serves the first part
     let mut probe = Some(probe);
     let received = AtomicU64::new(0);
 
@@ -354,18 +333,13 @@ async fn download_ranged(
     result
 }
 
-/// Removes the preallocated scratch file however the download ends, including
-/// by its future being dropped. `dropped` tells a creation still running on the
-/// blocking pool to remove what it made.
 struct Scratch<'a> {
     path: Option<&'a Path>,
     dropped: Arc<AtomicBool>,
 }
 
-/// Runs on the blocking pool, so the download may be dropped while it does
 fn create_scratch(path: &Path, length: u64, dropped: &AtomicBool) -> std::io::Result<()> {
     let created = std::fs::File::create(path).and_then(|file| file.set_len(length));
-    // Dropped while this ran, the guard found nothing yet to remove
     if dropped.load(Ordering::SeqCst) {
         let _ = std::fs::remove_file(path);
     }
@@ -381,7 +355,6 @@ impl Drop for Scratch<'_> {
     }
 }
 
-/// Whether a 206 holds the bytes asked for, from the same `length`-byte file
 fn serves_range(response: &reqwest::Response, start: u64, length: u64) -> bool {
     response.status() == StatusCode::PARTIAL_CONTENT
         && response
@@ -397,9 +370,6 @@ fn serves_range(response: &reqwest::Response, start: u64, length: u64) -> bool {
             .is_some_and(|(first, total)| first == start && total == length)
 }
 
-/// Fetches `start..end` into its place in `tmp`, starting from `first` when
-/// given, and moves the rest of the range to a fresh connection when the
-/// current one turns slow
 #[allow(clippy::too_many_arguments)]
 async fn download_part(
     client: &RequestClient,
@@ -435,7 +405,6 @@ async fn download_part(
                 let response = client
                     .send(file_request(url, Some((start + got, end)))?)
                     .await?;
-                // A 200 would be the whole file written at this part's offset
                 if !serves_range(&response, start + got, length) {
                     return Err(RequestError::IncompleteBody {
                         source_desc: format!(
@@ -464,7 +433,6 @@ async fn download_part(
                 Ok(None) => break,
                 Ok(Some(chunk)) => {
                     let chunk = chunk?;
-                    // A server ignoring the range end must not spill into the next part
                     let take = chunk.len().min((wanted - got) as usize);
                     writer
                         .write_all(&chunk[..take])
@@ -591,10 +559,6 @@ mod tests {
 
     use super::*;
 
-    /// Minimal HTTP/1.1 server that honours single `bytes=a-b` ranges
-    /// With `stall_probe` the unranged request sends its headers and a few bytes,
-    /// then hangs like a connection stuck on a bad path. With `pause` every
-    /// response sends a few bytes, waits that long, then sends the rest.
     async fn serve(
         body: Arc<Vec<u8>>,
         ranged_hits: Arc<AtomicUsize>,
@@ -612,8 +576,6 @@ mod tests {
         .await
     }
 
-    /// `serve` with each 206's `Content-Range` from `label`, given the range
-    /// asked for and the file's length, counting unranged requests in `probes`
     async fn serve_labelled(
         body: Arc<Vec<u8>>,
         ranged_hits: Arc<AtomicUsize>,
@@ -763,7 +725,6 @@ mod tests {
                 .collect(),
         );
         let ranged_hits = Arc::new(AtomicUsize::new(0));
-        // Past the report interval, inside the slow window
         let pause = RANGED_PROGRESS_INTERVAL + Duration::from_millis(50);
         let url = serve(body.clone(), ranged_hits.clone(), false, Some(pause)).await;
 
@@ -836,7 +797,6 @@ mod tests {
             written.unwrap() == *body,
             "resumed file differs from the source"
         );
-        // The read timeout alone would hold the stalled probe for 30 seconds
         assert!(
             started.elapsed() < Duration::from_secs(5),
             "took {:?}",
@@ -853,8 +813,6 @@ mod tests {
                 .collect(),
         );
         let ranged_hits = Arc::new(AtomicUsize::new(0));
-        // Two slow windows on each connection before the rest arrives, so
-        // reconnecting without a limit never gets past the first bytes
         let url = serve(
             body.clone(),
             ranged_hits.clone(),
@@ -924,7 +882,6 @@ mod tests {
         let dest = dir.join("big.jar");
         let expected = Checksum::sha1(polyio::sha1_bytes(&body));
 
-        // Inside the stalled probe's slow window, before it is resumed
         let download = download_verified(&client, &events, &url, &dest, Some(&expected), 0, None);
         assert!(
             tokio::time::timeout(Duration::from_millis(200), download)
@@ -953,7 +910,6 @@ mod tests {
         };
         let dropped = scratch.dropped.clone();
 
-        // The worst order: the guard runs before the blocking pool creates the file
         drop(scratch);
         let created = create_scratch(&tmp, 1024, &dropped);
 
@@ -963,8 +919,6 @@ mod tests {
         assert!(!left, "the scratch file outlived its download");
     }
 
-    /// Advertises ranges, then answers every request, ranged or not, with the
-    /// whole file
     async fn serve_ignoring_ranges(body: Arc<Vec<u8>>) -> String {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -1020,9 +974,6 @@ mod tests {
         assert!(written.unwrap() == *body);
     }
 
-    /// Each 206 carries the bytes asked for under a `Content-Range` naming
-    /// another start or another file length, so no part is trusted and the
-    /// file comes from the last, unranged attempt
     #[tokio::test]
     async fn a_mislabelled_range_is_not_trusted() {
         let body: Arc<Vec<u8>> = Arc::new(

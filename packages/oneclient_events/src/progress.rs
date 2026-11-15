@@ -145,7 +145,6 @@ struct ChildInner {
     mirrored: Mutex<Mirrored>,
 }
 
-/// Kept for mirrors attached late, so they start from where the task is
 #[derive(Default)]
 struct Mirrored {
     current: Option<u64>,
@@ -337,9 +336,6 @@ impl GroupedProgressChild {
         self.inner.mirrored.lock().unwrap().to.clear();
     }
 
-    /// Repeats this task's progress on `other` until it finishes, for a second
-    /// session waiting on the same work. `other` is never finished from here:
-    /// its owner may still have work of its own after this task's part.
     pub fn mirror_into(&self, other: GroupedProgressChild) {
         let mut mirrored = self.inner.mirrored.lock().unwrap();
         if self.inner.finished.load(Ordering::Relaxed) {

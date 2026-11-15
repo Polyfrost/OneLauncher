@@ -79,9 +79,6 @@ fn apply_curseforge_auth(
 #[derive(Clone)]
 pub struct RequestClient {
     client: reqwest::Client,
-    /// HTTP/1.1 only, see [`RequestOptions::own_connection`]
-    ///
-    /// [`RequestOptions::own_connection`]: crate::request::RequestOptions::own_connection
     http1: reqwest::Client,
     semaphore: Arc<Semaphore>,
     /// Shared across every clone so a settings save is visible to in-flight
@@ -200,9 +197,6 @@ impl RequestClient {
                     break response;
                 }
                 Err(err) => {
-                    // A server offering only HTTP/2 refuses the HTTP/1.1
-                    // handshake, so the request goes again over the shared
-                    // client
                     if request.options.own_connection
                         && cloneable
                         && err.is_connect()

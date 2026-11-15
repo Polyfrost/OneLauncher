@@ -17,9 +17,6 @@ impl From<reqwest::Request> for HttpRequest {
 pub struct RequestOptions {
     pub use_semaphore: bool,
     pub max_retries: usize,
-    /// Sends over HTTP/1.1 so concurrent requests to one host each get their
-    /// own TCP connection instead of sharing one HTTP/2 connection, where a
-    /// single slow path would throttle all of them at once
     pub own_connection: bool,
 }
 

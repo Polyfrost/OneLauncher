@@ -809,7 +809,6 @@ pub(crate) fn heal_restores<'a>(
     ))
 }
 
-/// Files `deadline` cuts short are left out, and go in at a later call
 #[tracing::instrument(level = "debug", skip(archive, progress, ctx), fields(bundle = %archive.manifest.name))]
 pub async fn install_enabled_bundle_files(
     archive: &BundleArchive,
@@ -879,7 +878,6 @@ pub async fn install_enabled_bundle_files(
     Ok(installed)
 }
 
-/// Files `deadline` cuts short are left out of the results
 pub(crate) async fn install_bundle_files(
     to_install: Vec<BundleFile>,
     cluster_id: i64,
@@ -917,8 +915,6 @@ pub(crate) async fn install_bundle_files(
     .await
 }
 
-/// `None` when a `deadline` leaves the file for a later call: it was still
-/// downloading then, and that download carries on, or its download failed.
 async fn fetch_and_install(
     file: &BundleFile,
     cluster_id: i64,
@@ -942,7 +938,6 @@ async fn fetch_and_install(
         c
     });
 
-    // Joins a download a timed-out update left running
     let Some(fetched) = prefetch_until(file, child.as_ref(), deadline, ctx).await else {
         tracing::info!(
             file = %file.display_name(),
@@ -950,8 +945,6 @@ async fn fetch_and_install(
         );
         return None;
     };
-    // Without a deadline a failed fetch falls through so the install reports
-    // its own error. With one, that install would retry the download past it.
     if let Err(err) = fetched
         && deadline.is_some()
     {
@@ -1210,8 +1203,6 @@ pub(crate) async fn bundle_cluster(
     Ok(cluster.uses_bundles().then_some(cluster))
 }
 
-/// Downloads are not waited on past `deadline`, what is not in by then goes in
-/// at a later call
 #[tracing::instrument(skip(bundles, progress, ctx))]
 pub async fn install_cluster_bundles(
     cluster_id: i64,

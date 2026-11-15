@@ -2595,8 +2595,6 @@ async fn a_failed_download_applies_nothing() {
     );
 }
 
-/// A download that stalls mid-flight must not hold the launch past its budget,
-/// and keeps going for the next launch to join rather than restart
 #[tokio::test]
 async fn the_deadline_bounds_downloads_already_running() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
@@ -2659,8 +2657,6 @@ async fn the_deadline_bounds_downloads_already_running() {
     );
 }
 
-/// Downloads left running past one launch's deadline still count against the
-/// limit when the next launch starts others
 #[tokio::test]
 async fn downloads_left_running_still_count_against_the_limit() {
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -2714,8 +2710,6 @@ async fn downloads_left_running_still_count_against_the_limit() {
     let cluster_id = cluster_with_tracked_mod(&state).await;
     let ctx = state.services.content();
 
-    // The second launch has no deadline, so its downloads all start however
-    // long its checks take, and wait only on the ones left running
     for (shipped, deadline) in [
         (files, Some(std::time::Duration::from_millis(300))),
         (later, None),
@@ -2747,8 +2741,6 @@ async fn downloads_left_running_still_count_against_the_limit() {
     );
 }
 
-/// Bundle updates lock per cluster id, and every test's first cluster is 1, so
-/// a timed test gives its clusters ids no other test uses
 async fn clusters_numbered_from(state: &LauncherState, first: i64) {
     sqlx::query("INSERT INTO sqlite_sequence (name, seq) VALUES ('clusters', ?)")
         .bind(first - 1)
@@ -2757,8 +2749,6 @@ async fn clusters_numbered_from(state: &LauncherState, first: i64) {
         .unwrap();
 }
 
-/// Serves `body` to every request, holding the second half back for `stall`.
-/// Returns the URL and a count of the connections made.
 async fn serve_jar(
     body: Vec<u8>,
     stall: Option<std::time::Duration>,
@@ -2810,8 +2800,6 @@ async fn linked(state: &LauncherState, cluster_id: i64, hash: &str) -> bool {
         .is_some()
 }
 
-/// A stalled download must not hold the launch install past its deadline. The
-/// file is left out, and a later install joins the download still running.
 #[tokio::test]
 async fn launch_install_stops_waiting_at_the_deadline() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
@@ -2844,8 +2832,6 @@ async fn launch_install_stops_waiting_at_the_deadline() {
     assert!(linked(&state, fresh, &sha1).await);
 }
 
-/// A download left running past an update's deadline is joined by the launch
-/// install
 #[tokio::test]
 async fn launch_install_joins_a_download_left_running() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();

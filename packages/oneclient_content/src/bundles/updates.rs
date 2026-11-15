@@ -43,13 +43,8 @@ static CLUSTER_UPDATE_LOCKS: OnceLock<Mutex<HashMap<i64, Arc<AsyncMutex<()>>>>> 
 
 type SharedPrefetch = Shared<BoxFuture<'static, Result<(), String>>>;
 
-/// Downloads that outlive a launch's deadline keep running, so a later launch
-/// joins the one already fetching a file instead of starting a second. Each
-/// keeps the progress child it reports to, for joiners to mirror.
 pub struct Prefetches {
     running: Mutex<HashMap<String, (SharedPrefetch, Option<GroupedProgressChild>)>>,
-    /// Bounds downloads across launches, since ones left running past a
-    /// deadline no longer hold a slot in their caller's stream
     permits: Semaphore,
 }
 
@@ -62,13 +57,8 @@ impl Default for Prefetches {
     }
 }
 
-/// Deadline for a launch's bundle downloads, from when they start. The net
-/// stack alone retries for minutes and the launch button is already claimed by
-/// then.
 pub const BUNDLE_APPLY_BUDGET: Duration = Duration::from_secs(60);
 
-/// `child` reports the download this starts, or mirrors the one already
-/// running. The caller still owns it and finishes it once its own work is done.
 fn shared_prefetch(
     file: &BundleFile,
     child: Option<&GroupedProgressChild>,
@@ -107,9 +97,6 @@ fn shared_prefetch(
     task
 }
 
-/// Waits on `file`'s download, or `None` once `deadline` passes first. The
-/// download is spawned, so one cut short keeps filling the artifact cache for
-/// the next launch instead of holding this one until it finishes.
 pub(crate) async fn prefetch_until(
     file: &BundleFile,
     child: Option<&GroupedProgressChild>,
@@ -1651,7 +1638,6 @@ mod tests {
                 file: ExternalFile {
                     name: "unreachable.jar".to_string(),
                     url: "unsupported://example.invalid/unreachable.jar".to_string(),
-                    // Rejected before any path or request, so the test touches no disk
                     sha1: "not a hash".to_string(),
                     size: 1,
                     content_type: ContentType::Mod,
@@ -1694,7 +1680,6 @@ mod tests {
         let source = session.child("source", 10, TaskCategory::Packages);
         let joiner = session.child("joiner", 10, TaskCategory::Packages);
 
-        // Not awaited, so the spawned download has not run and is still registered
         let _started = shared_prefetch(&file, Some(&source), &ctx);
         let _joined = shared_prefetch(&file, Some(&joiner), &ctx);
         source.set_progress(5, Some(10));
@@ -1723,7 +1708,6 @@ mod tests {
     async fn no_download_starts_once_the_deadline_has_passed() {
         let dir = polyio::tempdir().await.unwrap();
         let (ctx, _events, _rx) = test_ctx(dir.dir_path()).await;
-        // A download started anyway waits on these and stays registered
         let _held = ctx
             .prefetches
             .permits

@@ -2650,8 +2650,6 @@ async fn cluster_busy_elsewhere(cluster_id: ClusterId) -> Option<(&'static str, 
 struct UpdateCheck {
     found: bool,
     failed: bool,
-    /// What the bundle update before a launch left of [`BUNDLE_APPLY_BUDGET`],
-    /// `None` when it did not run
     bundle_budget: Option<Duration>,
 }
 

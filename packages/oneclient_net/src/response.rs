@@ -53,7 +53,6 @@ impl ResponseNotifyOptions {
         self.child.as_ref()
     }
 
-    /// Absolute byte counts, for bodies not read through [`ResponseExt::stream`]
     pub(crate) fn report(&self, events: &EventBus, current: u64, total: u64) {
         if let Some(child) = &self.child {
             child.set_progress(current, Some(total));

@@ -52,9 +52,6 @@ pub async fn launch_cluster(
     launch_cluster_with(state, cluster_id, account, search_for_java, None, None).await
 }
 
-/// `bundle_budget` is what a pre-launch bundle update left of
-/// [`BUNDLE_APPLY_BUDGET`], so one stalled download does not hold the launch
-/// twice. `None` gives the bundle install the whole budget.
 #[tracing::instrument(skip(state, account))]
 pub async fn launch_cluster_with(
     state: &Arc<LauncherState>,

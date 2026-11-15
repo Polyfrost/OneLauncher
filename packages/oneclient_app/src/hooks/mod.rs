@@ -98,7 +98,10 @@ pub use queries::{
 pub use queries::{BisectAction, BisectMutation, use_bisect, use_bisect_mutation};
 pub use queries::{GraphicsBackendQuery, use_graphics_backend};
 pub use queries::{
-    ServerFiles, ServerIcon, invalidate_server_queries, use_server, use_server_files, use_servers,
+    ServerFiles, ServerIcon, ServerRun, invalidate_server, invalidate_server_settings, use_server,
+    use_platform_available, use_plugin_versions, use_server_files, use_server_mod_updates,
+    use_server_mods, use_server_run,
+    use_servers,
 };
 pub use queries::{
     add_world_datapacks, delete_world, delete_world_datapack, invalidate_world_contents,

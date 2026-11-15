@@ -2,6 +2,8 @@ use freya::prelude::*;
 use freya::router::*;
 use freya::text_edit::Clipboard;
 
+use oneclient_core::servers::LocalServer;
+
 use crate::components::{Button, Icon, IconType, TabBar, TabItem};
 use crate::hooks::{
     settled_or_loading, use_dispatch, use_server_files, use_server_hub, use_servers,
@@ -40,8 +42,9 @@ impl Tab {
         Tab::Live,
     ];
 
-    fn label(self) -> &'static str {
+    fn label(self, plugins: bool) -> &'static str {
         match self {
+            Tab::Mods if plugins => t("oneclient.servers.tab.plugins"),
             Tab::Overview => t("oneclient.servers.tab.overview"),
             Tab::Console => t("oneclient.servers.tab.console"),
             Tab::Players => t("oneclient.servers.tab.players"),
@@ -82,7 +85,8 @@ fn route_tab(route: &Route) -> Option<(String, Tab)> {
 }
 
 fn server_tab_index(route: &Route) -> Option<i32> {
-    route_tab(route).and_then(|(_, tab)| Tab::ALL.iter().position(|t| *t == tab))
+    route_tab(route)
+        .and_then(|(_, tab)| Tab::ALL.iter().position(|t| *t == tab))
         .map(|i| i as i32)
 }
 
@@ -101,12 +105,21 @@ impl Component for ServerShell {
         let files = settled_or_loading(&use_server_files(server_id.clone()));
         let hub = use_server_hub();
         let live = hub.get(&server_id);
+        let plugins = list
+            .iter()
+            .find(|s| s.id == server_id)
+            .is_some_and(LocalServer::plugins);
 
         let seed_icon = list
             .iter()
             .find(|s| s.id == server_id)
             .filter(|_| files.as_ref().is_some_and(|f| f.icon.is_none()))
-            .map(|server| IconSeeder { server: server.clone() }.into_element());
+            .map(|server| {
+                IconSeeder {
+                    server: server.clone(),
+                }
+                .into_element()
+            });
 
         let header = list.iter().find(|s| s.id == server_id).map(|server| {
             let port = files
@@ -131,6 +144,7 @@ impl Component for ServerShell {
                 server_icon(server, files.as_ref().and_then(|f| f.icon.clone()), 56.),
                 server.dir().ok(),
                 port,
+                server.installed(),
             )
         });
 
@@ -146,7 +160,7 @@ impl Component for ServerShell {
                     .padding(Gaps::new(16., SIDE_PADDING, 16., SIDE_PADDING))
                     .spacing(16.)
                     .maybe_child(header)
-                    .child(tabs(active, server_id)),
+                    .child(tabs(active, server_id, plugins)),
             )
             .child(
                 rect()
@@ -170,11 +184,13 @@ fn header(
     icon: Element,
     folder: Option<std::path::PathBuf>,
     port: String,
+    installed: bool,
 ) -> Element {
     let dispatch = use_dispatch();
     let station = dispatch.station();
     let live = state.is_live();
     let (start_label, enabled) = match state {
+        ServerStatus::Stopped if !installed => (t("oneclient.servers.install"), true),
         ServerStatus::Stopped => (t("oneclient.servers.start"), true),
         ServerStatus::Installing => (t("oneclient.servers.status.installing"), false),
         ServerStatus::Starting => (t("oneclient.servers.status.starting"), false),
@@ -271,7 +287,7 @@ fn header(
                         .width(Size::px(ACTION_SIZE))
                         .height(Size::px(ACTION_SIZE))
                         .tooltip(t("oneclient.servers.restart"))
-                        .enabled(state != ServerStatus::Installing)
+                        .enabled(state != ServerStatus::Installing && installed)
                         .on_press(move |_| servers::restart(station, restart_id.clone()))
                         .child(Icon::new(IconType::RefreshCw01).size(ICON_SIZE)),
                 )
@@ -294,10 +310,10 @@ fn header(
                         .width(Size::px(180.))
                         .height(Size::px(ACTION_SIZE))
                         .enabled(enabled)
-                        .on_press(move |_| {
-                            if enabled {
-                                servers::start(station, start_id.clone());
-                            }
+                        .on_press(move |_| match (enabled, installed) {
+                            (false, _) => {}
+                            (true, true) => servers::start(station, start_id.clone()),
+                            (true, false) => servers::retry_install(station, start_id.clone()),
                         })
                         .text(start_label),
                 ),
@@ -305,10 +321,10 @@ fn header(
         .into_element()
 }
 
-fn tabs(active: Tab, server_id: String) -> impl IntoElement {
+fn tabs(active: Tab, server_id: String, plugins: bool) -> impl IntoElement {
     let items = Tab::ALL.into_iter().map(|tab| {
         let route = tab.route(server_id.clone());
-        let mut item = TabItem::new(tab.label(), tab == active).on_press(move |_| {
+        let mut item = TabItem::new(tab.label(plugins), tab == active).on_press(move |_| {
             let _ = RouterContext::get().push(route.clone());
         });
         if tab == Tab::Live {

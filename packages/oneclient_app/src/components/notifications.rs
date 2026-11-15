@@ -485,6 +485,14 @@ pub(crate) fn run_action(
             dispatch.close_notification_center();
             dispatch.show_chat(*group_id);
         }
+        NotificationActionKind::DisableServerMod {
+            server_id,
+            file_name,
+        } => crate::servers::disable_mod_and_restart(
+            dispatch.station(),
+            server_id.clone(),
+            file_name.clone(),
+        ),
     }
 }
 

@@ -22,6 +22,14 @@ pub enum ServerKind {
     Import,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Platform {
+    #[default]
+    Loader,
+    Paper,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LocalServer {
     /// The folder name under the servers dir
@@ -31,6 +39,8 @@ pub struct LocalServer {
     pub kind: ServerKind,
     pub mc_version: String,
     pub loader: GameLoader,
+    #[serde(default)]
+    pub platform: Platform,
     #[serde(default)]
     pub loader_version: Option<String>,
     pub memory_mb: u32,
@@ -51,6 +61,10 @@ pub struct LocalServer {
     pub eula: bool,
     #[serde(default)]
     pub source_cluster: Option<i64>,
+    #[serde(default)]
+    pub source_path: Option<PathBuf>,
+    #[serde(default)]
+    pub prepared: bool,
     /// What follows the JVM flags on the command line, set once the server is installed
     #[serde(default)]
     pub launch: Vec<String>,
@@ -70,6 +84,7 @@ impl LocalServer {
             kind,
             mc_version,
             loader,
+            platform: Platform::Loader,
             loader_version: None,
             memory_mb: DEFAULT_MEMORY_MB,
             jvm_args: String::new(),
@@ -80,6 +95,8 @@ impl LocalServer {
             backups_kept: default_kept(),
             eula: false,
             source_cluster: None,
+            source_path: None,
+            prepared: false,
             launch: Vec::new(),
             created_at: Utc::now(),
         }
@@ -92,6 +109,29 @@ impl LocalServer {
     #[must_use]
     pub fn installed(&self) -> bool {
         !self.launch.is_empty()
+    }
+
+    #[must_use]
+    pub fn plugins(&self) -> bool {
+        self.platform != Platform::Loader
+    }
+
+    #[must_use]
+    pub fn takes_content(&self) -> bool {
+        self.plugins() || self.loader.is_modded()
+    }
+
+    #[must_use]
+    pub fn content_folder(&self) -> &'static str {
+        if self.plugins() { "plugins" } else { "mods" }
+    }
+
+    #[must_use]
+    pub fn software_name(&self) -> String {
+        match self.platform {
+            Platform::Loader => self.loader.to_string(),
+            Platform::Paper => "Paper".to_string(),
+        }
     }
 }
 
@@ -163,7 +203,7 @@ pub async fn allocate_id(name: &str) -> LauncherResult<String> {
     Ok(id)
 }
 
-fn slug(name: &str) -> String {
+fn raw_slug(name: &str) -> String {
     let mut out = String::new();
     for ch in name.trim().to_lowercase().chars() {
         if ch.is_ascii_alphanumeric() {
@@ -180,15 +220,68 @@ fn slug(name: &str) -> String {
     }
 }
 
-pub async fn delete_server(id: &str) -> LauncherResult<()> {
-    let dir = server_dir(id)?;
-    if tokio::fs::try_exists(&dir).await? {
-        tokio::fs::remove_dir_all(&dir).await?;
+fn slug(name: &str) -> String {
+    let out = raw_slug(name);
+    let device = |prefix: &str| {
+        out.strip_prefix(prefix)
+            .is_some_and(|n| n.len() == 1 && n.as_bytes()[0].is_ascii_digit() && n != "0")
+    };
+    if matches!(out.as_str(), "con" | "prn" | "aux" | "nul") || device("com") || device("lpt") {
+        format!("{out}-server")
+    } else {
+        out
     }
-    Ok(())
 }
 
-const PID_FILE: &str = ".oneclient-server.pid";
+pub async fn free_port() -> u16 {
+    let mut taken = std::collections::HashSet::new();
+    for server in list_servers().await.unwrap_or_default() {
+        if let Ok(dir) = server.dir() {
+            taken.insert(
+                super::Properties::read(&dir)
+                    .await
+                    .get("server-port")
+                    .and_then(|port| port.trim().parse().ok())
+                    .unwrap_or(DEFAULT_PORT),
+            );
+        }
+    }
+    next_free_port(DEFAULT_PORT, &taken, |port| {
+        std::net::TcpListener::bind(("0.0.0.0", port)).is_ok()
+    })
+}
+
+fn next_free_port(
+    start: u16,
+    taken: &std::collections::HashSet<u16>,
+    bindable: impl Fn(u16) -> bool,
+) -> u16 {
+    (start..=u16::MAX)
+        .find(|port| !taken.contains(port) && bindable(*port))
+        .unwrap_or(start)
+}
+
+pub async fn delete_server(id: &str) -> LauncherResult<()> {
+    let dir = server_dir(id)?;
+    if !tokio::fs::try_exists(&dir).await? {
+        return Ok(());
+    }
+    let trashed = tokio::task::spawn_blocking({
+        let dir = dir.clone();
+        move || trash::delete(&dir)
+    })
+    .await;
+    match trashed {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(err)) => {
+            tracing::warn!(%err, "the recycle bin refused server {id}, deleting it for good");
+            Ok(tokio::fs::remove_dir_all(&dir).await?)
+        }
+        Err(err) => Err(LauncherError::Server(err.to_string())),
+    }
+}
+
+pub const PID_FILE: &str = ".oneclient-server.pid";
 
 /// Remembers the running process so a launcher that crashed can find it again
 pub async fn write_pid(dir: &Path, pid: u32) {
@@ -203,32 +296,73 @@ pub async fn clear_pid(dir: &Path) {
 /// Kills a server left running by an earlier launcher session. Nothing can reach its
 /// console any more and it holds the world lock, so a new start would fail otherwise.
 /// Returns whether one was found
-pub async fn kill_orphan(dir: &Path) -> bool {
+pub async fn kill_orphan(dir: &Path) -> LauncherResult<bool> {
     let Ok(text) = tokio::fs::read_to_string(dir.join(PID_FILE)).await else {
-        return false;
+        return Ok(false);
     };
     let mut parts = text
         .split_whitespace()
         .filter_map(|p| p.parse::<u64>().ok());
     let (Some(pid), Some(started)) = (parts.next(), parts.next()) else {
         clear_pid(dir).await;
-        return false;
+        return Ok(false);
     };
     let pid = pid as u32;
     // The start time tells our server apart from an unrelated process that reused the pid
-    if !crate::game::is_process_alive(pid, Some(started)) {
+    let ours = |pid: u32| {
+        if started > 0 {
+            crate::game::is_process_alive(pid, Some(started))
+        } else {
+            java_running_in(pid, dir)
+        }
+    };
+    if !ours(pid) {
         clear_pid(dir).await;
-        return false;
+        return Ok(false);
     }
     crate::game::kill_process(pid);
     for _ in 0..50 {
-        if !crate::game::is_process_alive(pid, Some(started)) {
-            break;
+        if !ours(pid) {
+            clear_pid(dir).await;
+            return Ok(true);
         }
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     }
-    clear_pid(dir).await;
-    true
+    Err(LauncherError::Server(format!(
+        "a server left running by an earlier launcher session (process {pid}) could not be stopped"
+    )))
+}
+
+fn java_running_in(pid: u32, dir: &Path) -> bool {
+    use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
+    let pid = sysinfo::Pid::from_u32(pid);
+    let mut system = System::new();
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::Some(&[pid]),
+        true,
+        ProcessRefreshKind::nothing().with_cwd(UpdateKind::Always),
+    );
+    system.process(pid).is_some_and(|process| {
+        process
+            .name()
+            .to_string_lossy()
+            .to_lowercase()
+            .starts_with("java")
+            && process.cwd().is_some_and(|cwd| same_dir(cwd, dir))
+    })
+}
+
+fn same_dir(a: &Path, b: &Path) -> bool {
+    let norm = |p: &Path| {
+        let text = p.to_string_lossy();
+        let text = text.trim_end_matches(['/', '\\']);
+        if cfg!(windows) {
+            text.replace('/', "\\").to_lowercase()
+        } else {
+            text.to_string()
+        }
+    };
+    norm(a) == norm(b)
 }
 
 pub async fn accept_eula(dir: &Path) -> LauncherResult<()> {
@@ -262,12 +396,23 @@ fn dir_size_blocking(dir: &Path) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::slug;
+    use super::{next_free_port, slug};
+
+    #[test]
+    fn next_free_port_skips_ports_of_other_servers_and_bound_ones() {
+        let taken = [25565, 25566].into_iter().collect();
+        assert_eq!(next_free_port(25565, &taken, |p| p != 25567), 25568);
+        assert_eq!(next_free_port(25565, &Default::default(), |_| true), 25565);
+    }
 
     #[test]
     fn slug_makes_a_safe_folder_name() {
         assert_eq!(slug("ever SMP"), "ever-smp");
         assert_eq!(slug("  --My  Server!! "), "my-server");
         assert_eq!(slug("§§"), "server");
+        assert_eq!(slug("CON"), "con-server");
+        assert_eq!(slug("lpt3"), "lpt3-server");
+        assert_eq!(slug("com10"), "com10");
+        assert_eq!(slug("console"), "console");
     }
 }

@@ -9,7 +9,7 @@ use super::{DASH, fmt_bytes, fmt_uptime, loader_label, server_icon, status_label
 use crate::Route;
 use crate::components::{ART_PREVIEW_EDGE, Avatar, Button, Icon, IconType, ScrollArea};
 use crate::hooks::{
-    settled_or_loading, use_dispatch, use_server_files, use_server_hub, use_servers,
+    settled_or_loading, use_dispatch, use_server_files, use_server_hub, use_server_run, use_servers,
 };
 use crate::i18n::t;
 use crate::servers::{self, ServerLive, ServerStatus};
@@ -131,7 +131,12 @@ impl From<&ServerLive> for CardLive {
             players: live
                 .players
                 .iter()
-                .map(|name| (name.clone(), live.uuids.get(name).cloned().unwrap_or_default()))
+                .map(|name| {
+                    (
+                        name.clone(),
+                        live.uuids.get(name).cloned().unwrap_or_default(),
+                    )
+                })
                 .collect(),
             started: live.started,
             memory_bytes: live.memory_bytes,
@@ -158,6 +163,7 @@ impl Component for ServerCard {
     fn render(&self) -> impl IntoElement {
         let mut hovering = use_state(|| false);
         let files = settled_or_loading(&use_server_files(self.server.id.clone()));
+        let run = settled_or_loading(&use_server_run(self.server.id.clone()));
         let open_id = self.server.id.clone();
         let live = &self.live;
         let running = live.status == ServerStatus::Running;
@@ -166,9 +172,8 @@ impl Component for ServerCard {
         let motd = props.get_or("motd", "A Minecraft Server");
         let port = props.get_or("server-port", "25565");
         let max_players = props.get_or("max-players", "20");
-        let world_size = files
-            .as_ref()
-            .map(|f| f.world_size)
+        let world_size = run
+            .map(|r| r.world_size)
             .filter(|size| *size > 0)
             .map_or_else(|| DASH.to_string(), fmt_bytes);
         let allocated = fmt_bytes(u64::from(self.server.memory_mb) * 1024 * 1024);
@@ -177,7 +182,12 @@ impl Component for ServerCard {
             None => allocated,
         };
 
-        let mut status_text = status_label(live.status).to_string();
+        let mut status_text = if live.status == ServerStatus::Stopped && !self.server.installed() {
+            t("oneclient.servers.status.not_installed")
+        } else {
+            status_label(live.status)
+        }
+        .to_string();
         if let Some(started) = live.started.filter(|_| running) {
             status_text = format!("{status_text} \u{b7} {}", fmt_uptime(started));
         }
@@ -257,7 +267,11 @@ impl Component for ServerCard {
                     )
                     .child(motd_plate(&motd))
                     .child(stats_strip(live, &max_players, memory, world_size))
-                    .child(actions(&self.server.id, live.status)),
+                    .child(actions(
+                        &self.server.id,
+                        live.status,
+                        self.server.installed(),
+                    )),
             )
     }
 
@@ -268,7 +282,12 @@ impl Component for ServerCard {
     }
 }
 
-fn banner(server: &LocalServer, status: ServerStatus, status_text: String, port: String) -> Element {
+fn banner(
+    server: &LocalServer,
+    status: ServerStatus,
+    status_text: String,
+    port: String,
+) -> Element {
     let color = status_color(status);
     rect()
         .width(Size::fill())
@@ -405,7 +424,10 @@ fn stats_strip(live: &CardLive, max_players: &str, memory: String, world: String
             .cross_align(Alignment::Center)
             .spacing(2.)
             .children(live.players.iter().take(HEADS).map(|(_, uuid)| {
-                Avatar::new(uuid.clone()).size(18.).radius(4.).into_element()
+                Avatar::new(uuid.clone())
+                    .size(18.)
+                    .radius(4.)
+                    .into_element()
             }))
             .maybe(extra > 0, |el| {
                 el.child(
@@ -441,11 +463,17 @@ fn stats_strip(live: &CardLive, max_players: &str, memory: String, world: String
         .into_element()
 }
 
-fn actions(id: &str, status: ServerStatus) -> Element {
+fn actions(id: &str, status: ServerStatus, installed: bool) -> Element {
     let station = use_dispatch().station();
     let (run_id, console_id) = (id.to_string(), id.to_string());
 
     let main = match status {
+        ServerStatus::Stopped if !installed => Button::new()
+            .primary()
+            .width(Size::flex(1.0))
+            .on_press(move |_| servers::retry_install(station, run_id.clone()))
+            .child(Icon::new(IconType::Download01).size(14.))
+            .text(t("oneclient.servers.install")),
         ServerStatus::Stopped => Button::new()
             .primary()
             .width(Size::flex(1.0))
@@ -479,8 +507,11 @@ fn actions(id: &str, status: ServerStatus) -> Element {
                 .icon()
                 .tooltip(t("oneclient.servers.tab.console"))
                 .on_press(move |_| {
-                    let _ = RouterContext::get().push(Route::ServerConsole {
-                        server_id: console_id.clone(),
+                    let server_id = console_id.clone();
+                    let _ = RouterContext::get().push(if status.is_live() {
+                        Route::ServerLiveConsole { server_id }
+                    } else {
+                        Route::ServerConsole { server_id }
                     });
                 })
                 .child(Icon::new(IconType::Terminal).size(16.)),

@@ -13,7 +13,8 @@ use crate::packages::dependencies::base_game_version;
 use crate::packages::file_identity::FileIdentity;
 use crate::packages::types::{
     DependencyKind, GalleryImage, InstalledPackage, PackageBody, Page, ProjectDetail,
-    ProjectMember, ProjectSummary, ReleaseType, SearchFilters, VersionDependency, VersionDetail,
+    ProjectMember, ProjectSummary, ReleaseType, SearchFilters, SearchSide, VersionDependency,
+    VersionDetail,
     VersionFile, VersionLookup, VersionSummary,
 };
 use oneclient_common::constants::{CURSEFORGE_API_URL, CURSEFORGE_GAME_ID};
@@ -40,15 +41,35 @@ impl PackageProvider for CurseForgeProvider {
     ) -> ContentResult<Page<ProjectSummary>> {
         tracing::debug!(query = ?filters.query, "searching curseforge");
         let mut url = Url::parse(&api_url("/mods/search"))?;
+        let class_id = if filters.side == Some(SearchSide::BukkitPlugin) {
+            BUKKIT_PLUGIN_CLASS
+        } else {
+            filters
+                .content_type
+                .map(cf_class_id)
+                .unwrap_or(CfClass::Mod as u32)
+        };
+        let category_ids: Vec<u32> = match filters.categories.as_deref() {
+            Some(names) if !names.is_empty() => {
+                let known = class_categories(class_id, ctx).await?;
+                names
+                    .iter()
+                    .filter_map(|name| known.iter().find(|(_, n)| n == name).map(|(id, _)| *id))
+                    .collect()
+            }
+            _ => Vec::new(),
+        };
 
         {
             let mut params = url.query_pairs_mut();
             params.append_pair("gameId", &CURSEFORGE_GAME_ID.to_string());
-            let class_id = filters
-                .content_type
-                .map(cf_class_id)
-                .unwrap_or(CfClass::Mod as u32);
             params.append_pair("classId", &class_id.to_string());
+            if !category_ids.is_empty() {
+                params.append_pair(
+                    "categoryIds",
+                    &serde_json::to_string(&category_ids).unwrap_or_default(),
+                );
+            }
             params.append_pair(
                 "pageSize",
                 &filters
@@ -184,18 +205,11 @@ impl PackageProvider for CurseForgeProvider {
         content_type: ContentType,
         ctx: &ContentCtx,
     ) -> ContentResult<Vec<String>> {
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct CfCategory {
-            name: String,
-        }
-        let mut url = Url::parse(&api_url("/categories"))?;
-        url.query_pairs_mut()
-            .append_pair("gameId", &CURSEFORGE_GAME_ID.to_string())
-            .append_pair("classId", &cf_class_id(content_type).to_string());
-        let response: CfData<Vec<CfCategory>> =
-            fetch_json(&ctx.net, Method::GET, url.as_str(), None).await?;
-        Ok(response.data.into_iter().map(|c| c.name).collect())
+        Ok(class_categories(cf_class_id(content_type), ctx)
+            .await?
+            .into_iter()
+            .map(|(_, name)| name)
+            .collect())
     }
 
     #[tracing::instrument(level = "debug", skip(self, ctx))]
@@ -801,6 +815,31 @@ fn is_same_file(
         Some(file_sha1) => file_sha1 == sha1,
         None => file_fingerprint == fingerprint,
     }
+}
+
+const BUKKIT_PLUGIN_CLASS: u32 = 5;
+
+static CATEGORIES: std::sync::LazyLock<std::sync::Mutex<HashMap<u32, Vec<(u32, String)>>>> =
+    std::sync::LazyLock::new(Default::default);
+
+async fn class_categories(class_id: u32, ctx: &ContentCtx) -> ContentResult<Vec<(u32, String)>> {
+    #[derive(Deserialize)]
+    struct CfCategory {
+        id: u32,
+        name: String,
+    }
+    if let Some(known) = CATEGORIES.lock().unwrap().get(&class_id) {
+        return Ok(known.clone());
+    }
+    let mut url = Url::parse(&api_url("/categories"))?;
+    url.query_pairs_mut()
+        .append_pair("gameId", &CURSEFORGE_GAME_ID.to_string())
+        .append_pair("classId", &class_id.to_string());
+    let response: CfData<Vec<CfCategory>> =
+        fetch_json(&ctx.net, Method::GET, url.as_str(), None).await?;
+    let known: Vec<(u32, String)> = response.data.into_iter().map(|c| (c.id, c.name)).collect();
+    CATEGORIES.lock().unwrap().insert(class_id, known.clone());
+    Ok(known)
 }
 
 fn cf_class_id(t: ContentType) -> u32 {

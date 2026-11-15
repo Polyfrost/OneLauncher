@@ -16,7 +16,7 @@ mod rail;
 mod shell;
 mod steps;
 
-pub(crate) use cards::{CellCard, cell_card, loader_mark, version_row};
+pub(crate) use cards::{CellCard, asset_mark, cell_card, loader_mark, version_row};
 pub(crate) use cards::{WideCard, wide_card};
 pub use create::CreateInstanceModal;
 pub(crate) use details::field;

@@ -6,7 +6,7 @@ use freya::prelude::*;
 use super::{card, card_head};
 use crate::components::{Button, Icon, IconType, LogViewer, TextInput, auto_scroll_toggle};
 use crate::hooks::{
-    settled_or_loading, use_dispatch, use_log_action, use_server_files, use_server_hub,
+    settled_or_loading, use_dispatch, use_log_action, use_server_hub, use_server_run,
     use_upload_log,
 };
 use crate::i18n::t;
@@ -182,7 +182,7 @@ pub struct ServerConsole {
 
 impl Component for ServerConsole {
     fn render(&self) -> impl IntoElement {
-        let files = settled_or_loading(&use_server_files(self.server_id.clone()));
+        let files = settled_or_loading(&use_server_run(self.server_id.clone()));
         let search = use_state(String::new);
         let level = use_state(|| LevelFilter::All);
         let confirm = use_state(|| None::<Confirm>);

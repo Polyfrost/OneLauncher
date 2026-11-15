@@ -7,7 +7,7 @@ use polyio::Checksum;
 use serde::Deserialize;
 
 use super::properties::Properties;
-use super::store::{DEFAULT_PORT, LocalServer, accept_eula, save_server};
+use super::store::{DEFAULT_PORT, LocalServer, Platform, accept_eula, save_server};
 use crate::state::LauncherState;
 use crate::{LauncherError, LauncherResult};
 
@@ -111,7 +111,7 @@ async fn download(
     Ok(())
 }
 
-async fn get_json<T: serde::de::DeserializeOwned>(
+pub(super) async fn get_json<T: serde::de::DeserializeOwned>(
     state: &LauncherState,
     url: &str,
 ) -> LauncherResult<T> {
@@ -141,9 +141,12 @@ async fn loader_version(state: &LauncherState, server: &LocalServer) -> Launcher
 }
 
 /// Downloads the server software into the server folder and records how to start it
+pub type Progress<'a> = &'a (dyn Fn(String) + Send + Sync);
+
 pub async fn install_server(
     state: &Arc<LauncherState>,
     server: &mut LocalServer,
+    progress: Progress<'_>,
 ) -> LauncherResult<()> {
     let dir = server.dir()?;
     tokio::fs::create_dir_all(&dir).await?;
@@ -167,8 +170,22 @@ pub async fn install_server(
         ))
     })?;
 
-    server.launch = match server.loader {
-        GameLoader::Vanilla => {
+    server.launch = match (server.platform, server.loader) {
+        (Platform::Paper, _) => {
+            let jar = paper_jar(state, &server.mc_version).await?;
+            oneclient_net::download_verified(
+                &state.services.requester,
+                &state.services.events,
+                &jar.url,
+                &dir.join(PAPER_JAR),
+                jar.checksums.get("sha256").map(Checksum::sha256).as_ref(),
+                0,
+                None,
+            )
+            .await?;
+            vec!["-jar".into(), PAPER_JAR.into(), "nogui".into()]
+        }
+        (Platform::Loader, GameLoader::Vanilla) => {
             download(
                 state,
                 &vanilla.url,
@@ -178,7 +195,7 @@ pub async fn install_server(
             .await?;
             vec!["-jar".into(), SERVER_JAR.into(), "nogui".into()]
         }
-        GameLoader::Fabric => {
+        (Platform::Loader, GameLoader::Fabric) => {
             #[derive(Deserialize)]
             struct Installer {
                 version: String,
@@ -208,18 +225,19 @@ pub async fn install_server(
             server.loader_version = Some(loader);
             vec!["-jar".into(), FABRIC_JAR.into(), "nogui".into()]
         }
-        GameLoader::Forge | GameLoader::NeoForge => {
+        (Platform::Loader, GameLoader::Forge | GameLoader::NeoForge) => {
             let loader = loader_version(state, server).await?;
             let url = installer_url(server.loader, &server.mc_version, &loader);
             let installer = dir.join(INSTALLER_JAR);
             download(state, &url, &installer, None).await?;
-            run_installer(&java, &dir).await?;
+            run_installer(&java, &dir, progress).await?;
             let _ = tokio::fs::remove_file(&installer).await;
             let _ = tokio::fs::remove_file(dir.join("installer.jar.log")).await;
+            let _ = tokio::fs::remove_file(dir.join("installer-output.log")).await;
             server.loader_version = Some(loader);
-            forge_launch(&dir).await?
+            forge_launch(&dir, server.loader_version.as_deref().unwrap_or_default()).await?
         }
-        GameLoader::Ornithe => {
+        (Platform::Loader, GameLoader::Ornithe) => {
             download(
                 state,
                 &vanilla.url,
@@ -231,11 +249,61 @@ pub async fn install_server(
             server.loader_version = Some(loader);
             launch
         }
-        other => return Err(fail(format!("{other} servers are not supported yet"))),
+        (Platform::Loader, other) => {
+            return Err(fail(format!("{other} servers are not supported yet")));
+        }
     };
 
     write_defaults(server, &dir).await?;
     save_server(server).await
+}
+
+const PAPER_BUILDS: &str = "https://fill.papermc.io/v3/projects/paper/versions";
+const PAPER_JAR: &str = "paper.jar";
+
+#[derive(Clone, Deserialize)]
+struct PaperDownload {
+    url: String,
+    #[serde(default)]
+    checksums: std::collections::HashMap<String, String>,
+}
+
+#[derive(Deserialize)]
+struct PaperBuild {
+    id: u32,
+    channel: String,
+    #[serde(default)]
+    downloads: std::collections::HashMap<String, PaperDownload>,
+}
+
+fn pick_paper_build(builds: Vec<PaperBuild>) -> Option<PaperDownload> {
+    let newest = |stable: bool| {
+        builds
+            .iter()
+            .filter(|b| !stable || b.channel.eq_ignore_ascii_case("stable"))
+            .filter(|b| b.downloads.contains_key("server:default"))
+            .max_by_key(|b| b.id)
+    };
+    newest(true)
+        .or_else(|| newest(false))
+        .and_then(|b| b.downloads.get("server:default").cloned())
+}
+
+async fn paper_jar(state: &LauncherState, mc_version: &str) -> LauncherResult<PaperDownload> {
+    let builds: Vec<PaperBuild> =
+        get_json(state, &format!("{PAPER_BUILDS}/{mc_version}/builds")).await?;
+    pick_paper_build(builds).ok_or_else(|| fail(format!("Paper has no build for {mc_version}")))
+}
+
+pub async fn platform_available(
+    state: &LauncherState,
+    platform: Platform,
+    mc_version: &str,
+) -> bool {
+    match platform {
+        Platform::Loader => true,
+        Platform::Paper => paper_jar(state, mc_version).await.is_ok(),
+    }
 }
 
 const ORNITHE_META: &str = "https://meta.ornithemc.net/v3/versions/gen2/fabric-loader";
@@ -331,7 +399,12 @@ async fn ornithe_launch(
         }
         classpath.push(relative);
     }
-    strip_classes(&dir.join(SERVER_JAR), &dir.join(ORNITHE_SERVER_JAR), &replaced).await?;
+    strip_classes(
+        &dir.join(SERVER_JAR),
+        &dir.join(ORNITHE_SERVER_JAR),
+        &replaced,
+    )
+    .await?;
 
     let separator = if cfg!(windows) { ";" } else { ":" };
     let mut launch = profile.arguments.jvm;
@@ -357,7 +430,9 @@ async fn strip_classes(
     let kept = polyio::read_zip_file_entries(source, |name| {
         name != "META-INF/INDEX.LIST"
             && !(log4j && name == "META-INF/log4j-provider.properties")
-            && !roots.iter().any(|root| name.starts_with(&format!("{root}/")))
+            && !roots
+                .iter()
+                .any(|root| name.starts_with(&format!("{root}/")))
     })
     .await?;
     let tmp = target.with_extension("jar.tmp");
@@ -396,37 +471,89 @@ fn installer_url(loader: GameLoader, mc_version: &str, version: &str) -> String 
     )
 }
 
-async fn run_installer(java: &Path, dir: &Path) -> LauncherResult<()> {
-    let mut command = tokio::process::Command::new(java);
+async fn run_installer(java: &Path, dir: &Path, progress: Progress<'_>) -> LauncherResult<()> {
+    let mut command = tokio::process::Command::new(console_java(java));
     command
         .arg("-jar")
         .arg(INSTALLER_JAR)
         .arg("--installServer")
-        .current_dir(dir)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
-    oneclient_common::process::no_window(command.as_std_mut());
-    let status = command.status().await?;
+        .current_dir(dir);
+    let status = run_logged(command, &dir.join("installer-output.log"), progress).await?;
     if !status.success() {
         return Err(fail(format!("the loader installer exited with {status}")));
     }
     Ok(())
 }
 
+fn console_java(java: &Path) -> PathBuf {
+    let console = java.with_file_name(if cfg!(windows) { "java.exe" } else { "java" });
+    if java.file_stem().is_some_and(|stem| stem == "javaw") && console.exists() {
+        console
+    } else {
+        java.to_path_buf()
+    }
+}
+
+async fn run_logged(
+    mut command: tokio::process::Command,
+    log: &Path,
+    progress: Progress<'_>,
+) -> LauncherResult<std::process::ExitStatus> {
+    use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
+
+    async fn pump(
+        stream: Option<impl AsyncRead + Unpin>,
+        log: &std::sync::Mutex<std::fs::File>,
+        progress: Progress<'_>,
+    ) {
+        let Some(stream) = stream else {
+            return;
+        };
+        let mut reader = BufReader::new(stream);
+        let mut buf = Vec::new();
+        while matches!(reader.read_until(b'\n', &mut buf).await, Ok(n) if n > 0) {
+            let line = String::from_utf8_lossy(&buf)
+                .trim_end_matches(['\r', '\n'])
+                .to_string();
+            buf.clear();
+            let _ = std::io::Write::write_all(
+                &mut *log.lock().unwrap(),
+                format!("{line}\n").as_bytes(),
+            );
+            progress(line);
+        }
+    }
+
+    command
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    oneclient_common::process::no_window(command.as_std_mut());
+    let mut child = command.spawn()?;
+    let log = std::sync::Mutex::new(std::fs::File::create(log)?);
+    tokio::join!(
+        pump(child.stdout.take(), &log, progress),
+        pump(child.stderr.take(), &log, progress),
+    );
+    Ok(child.wait().await?)
+}
+
 /// Modern Forge and NeoForge leave an argument file, older Forge a runnable jar
-async fn forge_launch(dir: &Path) -> LauncherResult<Vec<String>> {
+async fn forge_launch(dir: &Path, loader_version: &str) -> LauncherResult<Vec<String>> {
     let wanted = if cfg!(windows) {
         "win_args.txt"
     } else {
         "unix_args.txt"
     };
     let dir_owned = dir.to_path_buf();
-    let args_file =
-        tokio::task::spawn_blocking(move || find_file(&dir_owned.join("libraries"), wanted))
-            .await
-            .ok()
-            .flatten();
+    let found = tokio::task::spawn_blocking(move || {
+        let mut found = Vec::new();
+        find_files(&dir_owned.join("libraries"), wanted, &mut found);
+        found
+    })
+    .await
+    .unwrap_or_default();
+    let args_file = pick_for_version(found, loader_version);
     if let Some(args) = args_file {
         let relative = args
             .strip_prefix(dir)
@@ -436,6 +563,7 @@ async fn forge_launch(dir: &Path) -> LauncherResult<Vec<String>> {
         return Ok(vec![format!("@{relative}"), "nogui".into()]);
     }
 
+    let mut jars = Vec::new();
     let mut entries = tokio::fs::read_dir(dir).await?;
     while let Some(entry) = entries.next_entry().await? {
         let name = entry.file_name().to_string_lossy().to_string();
@@ -443,26 +571,46 @@ async fn forge_launch(dir: &Path) -> LauncherResult<Vec<String>> {
             && name.ends_with(".jar")
             && !name.contains("installer")
         {
-            return Ok(vec!["-jar".into(), name, "nogui".into()]);
+            jars.push(PathBuf::from(name));
         }
+    }
+    if let Some(jar) = pick_for_version(jars, loader_version) {
+        return Ok(vec![
+            "-jar".into(),
+            jar.to_string_lossy().to_string(),
+            "nogui".into(),
+        ]);
     }
     Err(fail(
         "the loader installer finished but left nothing to start",
     ))
 }
 
-fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
-    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+fn find_files(dir: &Path, name: &str, found: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            if let Some(found) = find_file(&path, name) {
-                return Some(found);
-            }
+            find_files(&path, name, found);
         } else if entry.file_name() == name {
-            return Some(path);
+            found.push(path);
         }
     }
-    None
+}
+
+fn pick_for_version(mut found: Vec<PathBuf>, loader_version: &str) -> Option<PathBuf> {
+    found.sort();
+    let matching = (!loader_version.is_empty())
+        .then(|| {
+            found
+                .iter()
+                .find(|p| p.to_string_lossy().contains(loader_version))
+                .cloned()
+        })
+        .flatten();
+    matching.or_else(|| found.pop())
 }
 
 async fn write_defaults(server: &LocalServer, dir: &Path) -> LauncherResult<()> {
@@ -474,6 +622,7 @@ async fn write_defaults(server: &LocalServer, dir: &Path) -> LauncherResult<()> 
         props.set("motd", &server.name);
     }
     props.write(dir).await?;
+    super::ensure_lists(dir, &server.mc_version).await?;
     if server.eula {
         accept_eula(dir).await?;
     }
@@ -525,7 +674,21 @@ pub async fn copy_from_instance(
         candidates.push((source, name.to_owned(), meta, origin));
     }
 
-    let metas: Vec<ModMeta> = candidates.iter().map(|(_, _, m, _)| m.clone()).collect();
+    let listed = listed_client_only(
+        state,
+        candidates.iter().filter_map(|(_, _, _, o)| o.as_ref()),
+    )
+    .await;
+    let metas: Vec<ModMeta> = candidates
+        .iter()
+        .map(|(_, _, meta, origin)| {
+            let mut meta = meta.clone();
+            meta.client_only |= origin
+                .as_ref()
+                .is_some_and(|o| listed.contains(&(o.provider, o.project_id.clone())));
+            meta
+        })
+        .collect();
     let keep = server_side(&metas);
     let mut copied = 0;
     let mut origins = Vec::new();
@@ -538,7 +701,7 @@ pub async fn copy_from_instance(
             }
         }
     }
-    super::record_sources(dir, origins).await?;
+    super::record_sources(dir, "mods", origins).await?;
 
     let config = game_dir.join("config");
     if tokio::fs::try_exists(&config).await.unwrap_or(false) {
@@ -606,20 +769,118 @@ fn parse_mod_meta(file: &str, bytes: &[u8]) -> ModMeta {
     }
 }
 
-/// shortcut: only Fabric and Quilt mods declare their side in the jar, Forge mods are always copied
+fn parse_forge_meta(text: &str) -> ModMeta {
+    let Ok(doc) = text.parse::<toml::Table>() else {
+        return ModMeta::default();
+    };
+    let ids = doc
+        .get("mods")
+        .and_then(toml::Value::as_array)
+        .map(|mods| {
+            mods.iter()
+                .filter_map(|m| m.get("modId")?.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    let depends = doc
+        .get("dependencies")
+        .and_then(toml::Value::as_table)
+        .map(|deps| {
+            deps.values()
+                .filter_map(toml::Value::as_array)
+                .flatten()
+                .filter(|dep| {
+                    let text = |key: &str| dep.get(key).and_then(toml::Value::as_str);
+                    let required = dep
+                        .get("mandatory")
+                        .and_then(toml::Value::as_bool)
+                        .unwrap_or(false)
+                        || text("type").is_some_and(|t| t.eq_ignore_ascii_case("required"));
+                    required && !text("side").is_some_and(|s| s.eq_ignore_ascii_case("client"))
+                })
+                .filter_map(|dep| dep.get("modId")?.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    ModMeta {
+        ids,
+        client_only: doc
+            .get("clientSideOnly")
+            .and_then(toml::Value::as_bool)
+            .unwrap_or(false),
+        depends,
+    }
+}
+
+const META_FILES: [&str; 4] = [
+    "fabric.mod.json",
+    "quilt.mod.json",
+    "META-INF/mods.toml",
+    "META-INF/neoforge.mods.toml",
+];
+
 async fn mod_meta(jar: &Path) -> ModMeta {
-    let Ok(entries) = polyio::read_zip_file_entries(jar, |name| {
-        name == "fabric.mod.json" || name == "quilt.mod.json"
-    })
-    .await
+    let Ok(entries) = polyio::read_zip_file_entries(jar, |name| META_FILES.contains(&name)).await
     else {
         return ModMeta::default();
     };
     entries
         .iter()
-        .map(|(name, bytes)| parse_mod_meta(name, bytes))
-        .next()
-        .unwrap_or_default()
+        .map(|(name, bytes)| {
+            if name.ends_with(".toml") {
+                parse_forge_meta(&String::from_utf8_lossy(bytes))
+            } else {
+                parse_mod_meta(name, bytes)
+            }
+        })
+        .fold(ModMeta::default(), |mut all, meta| {
+            all.ids.extend(meta.ids);
+            all.depends.extend(meta.depends);
+            all.client_only |= meta.client_only;
+            all
+        })
+}
+
+pub(super) fn cf_client_only(game_versions: &[String]) -> bool {
+    let tagged = |tag: &str| game_versions.iter().any(|v| v.eq_ignore_ascii_case(tag));
+    tagged("client") && !tagged("server")
+}
+
+async fn listed_client_only(
+    state: &LauncherState,
+    origins: impl Iterator<Item = &super::ModSource>,
+) -> std::collections::HashSet<(oneclient_common::domain::ProviderId, String)> {
+    use oneclient_common::domain::ProviderId;
+    let ctx = state.services.content();
+    let (mut modrinth, mut curseforge) = (Vec::new(), Vec::new());
+    for origin in origins {
+        match origin.provider {
+            ProviderId::Modrinth => modrinth.push(origin.project_id.clone()),
+            ProviderId::CurseForge => curseforge.push(origin.version_id.clone()),
+            ProviderId::Local => {}
+        }
+    }
+    let mut out = std::collections::HashSet::new();
+    match oneclient_content::packages::modrinth_client_only(&modrinth, &ctx).await {
+        Ok(ids) => out.extend(ids.into_iter().map(|id| (ProviderId::Modrinth, id))),
+        Err(err) => tracing::warn!(%err, "could not ask Modrinth which mods are client-only"),
+    }
+    if !curseforge.is_empty() {
+        let versions = match state.services.packages.get(ProviderId::CurseForge) {
+            Ok(provider) => provider.get_versions(&curseforge, &ctx).await,
+            Err(err) => Err(err),
+        };
+        match versions {
+            Ok(versions) => out.extend(
+                versions
+                    .into_iter()
+                    .filter(|v| cf_client_only(&v.game_versions))
+                    .map(|v| (ProviderId::CurseForge, v.project_id)),
+            ),
+            Err(err) => tracing::warn!(%err, "could not ask CurseForge which mods are client-only"),
+        }
+    }
+    out
 }
 
 /// Which mods belong on a server: not client-only, and not needing a mod that was left out
@@ -720,6 +981,145 @@ fn pack_loader(deps: &std::collections::HashMap<String, String>) -> (GameLoader,
 }
 
 /// Unpacks a .mrpack as a server: server overrides, and every file the server can use
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ImportGuess {
+    pub mc_version: Option<String>,
+    pub loader: Option<GameLoader>,
+    pub loader_version: Option<String>,
+    pub platform: Platform,
+    pub port: Option<u16>,
+}
+
+pub async fn detect_import(dir: &Path) -> ImportGuess {
+    let dir = dir.to_path_buf();
+    tokio::task::spawn_blocking(move || guess_import(&dir))
+        .await
+        .unwrap_or_default()
+}
+
+fn names_in(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+    names.sort();
+    names
+}
+
+fn neoforge_mc(version: &str) -> Option<String> {
+    let mut parts = version.split('.');
+    let (major, minor) = (
+        parts.next()?.parse::<u32>().ok()?,
+        parts.next()?.parse::<u32>().ok()?,
+    );
+    Some(match (major, minor) {
+        (major, 0) if major < 25 => format!("1.{major}"),
+        (major, minor) if major < 25 => format!("1.{major}.{minor}"),
+        (major, minor) => format!("{major}.{minor}"),
+    })
+}
+
+fn guess_import(dir: &Path) -> ImportGuess {
+    let root = names_in(dir);
+    let has = |name: &str| root.iter().any(|n| n == name);
+    let mut guess = ImportGuess {
+        port: std::fs::read(dir.join(super::properties::FILE))
+            .ok()
+            .and_then(|bytes| {
+                Properties::parse(&String::from_utf8_lossy(&bytes))
+                    .get("server-port")
+                    .and_then(|port| port.trim().parse().ok())
+            }),
+        ..ImportGuess::default()
+    };
+
+    let logged = std::fs::read_to_string(dir.join("logs").join("latest.log"))
+        .ok()
+        .and_then(|log| {
+            log.lines().find_map(|line| {
+                line.split_once("Starting minecraft server version ")
+                    .map(|(_, version)| version.trim().to_string())
+            })
+        });
+    let unpacked = names_in(&dir.join("versions"))
+        .into_iter()
+        .filter(|v| v.starts_with(|c: char| c.is_ascii_digit()))
+        .next_back()
+        .or_else(|| {
+            names_in(&dir.join("cache")).into_iter().find_map(|n| {
+                n.strip_prefix("mojang_")?
+                    .strip_suffix(".jar")
+                    .map(str::to_string)
+            })
+        })
+        .or_else(|| {
+            names_in(&dir.join("libraries/net/minecraft/server"))
+                .into_iter()
+                .next_back()
+                .map(|v| v.split('-').next().unwrap_or(&v).to_string())
+        });
+
+    let forge = names_in(&dir.join("libraries/net/minecraftforge/forge"));
+    let neoforge = names_in(&dir.join("libraries/net/neoforged/neoforge"));
+    let old_neoforge = names_in(&dir.join("libraries/net/neoforged/forge"));
+    let fabric = names_in(&dir.join("libraries/net/fabricmc/fabric-loader"));
+    let paper = root
+        .iter()
+        .any(|n| n.starts_with("paper") && n.ends_with(".jar"))
+        || names_in(&dir.join("cache"))
+            .iter()
+            .any(|n| n.starts_with("mojang_"));
+
+    let mut from_loader = None;
+    if paper {
+        guess.platform = Platform::Paper;
+        guess.loader = Some(GameLoader::Vanilla);
+    } else if let Some(version) = neoforge.last() {
+        guess.loader = Some(GameLoader::NeoForge);
+        guess.loader_version = Some(version.clone());
+        from_loader = neoforge_mc(version);
+    } else if let Some((mc, version)) = old_neoforge
+        .last()
+        .or(forge.last())
+        .and_then(|v| v.split_once('-'))
+    {
+        guess.loader = Some(if old_neoforge.is_empty() {
+            GameLoader::Forge
+        } else {
+            GameLoader::NeoForge
+        });
+        guess.loader_version = Some(version.to_string());
+        from_loader = Some(mc.to_string());
+    } else if has("fabric-server-launch.jar") || has(".fabric") {
+        guess.loader = Some(GameLoader::Fabric);
+        guess.loader_version = fabric.last().cloned();
+    } else if has("server.jar") {
+        guess.loader = Some(GameLoader::Vanilla);
+    }
+    guess.mc_version = logged.or(from_loader).or(unpacked);
+    guess
+}
+
+const PACK_HOSTS: [&str; 4] = [
+    "cdn.modrinth.com",
+    "github.com",
+    "raw.githubusercontent.com",
+    "gitlab.com",
+];
+
+fn allowed_pack_download(url: &str) -> bool {
+    url::Url::parse(url).is_ok_and(|url| {
+        url.scheme() == "https"
+            && url
+                .host_str()
+                .is_some_and(|host| PACK_HOSTS.contains(&host))
+    })
+}
+
 pub async fn unpack_mrpack(state: &LauncherState, pack: &Path, dir: &Path) -> LauncherResult<()> {
     let index = mrpack_index(pack).await?;
     for file in &index.files {
@@ -741,8 +1141,14 @@ pub async fn unpack_mrpack(state: &LauncherState, pack: &Path, dir: &Path) -> La
         }
         let url = file
             .downloads
-            .first()
-            .ok_or_else(|| fail(format!("{} has no download", file.path)))?;
+            .iter()
+            .find(|url| allowed_pack_download(url))
+            .ok_or_else(|| {
+                fail(format!(
+                    "{} has no download from a host Modrinth packs may use",
+                    file.path
+                ))
+            })?;
         download(
             state,
             url,
@@ -795,7 +1201,9 @@ mod tests {
     fn maven_coordinates_become_repository_paths() {
         assert_eq!(
             maven_path("net.ornithemc:calamus-intermediary-gen2:1.8.9").as_deref(),
-            Some("net/ornithemc/calamus-intermediary-gen2/1.8.9/calamus-intermediary-gen2-1.8.9.jar")
+            Some(
+                "net/ornithemc/calamus-intermediary-gen2/1.8.9/calamus-intermediary-gen2-1.8.9.jar"
+            )
         );
         assert_eq!(maven_path("net.fabricmc:../evil:1.0"), None);
         assert_eq!(maven_path("a:b:c:natives"), None);
@@ -804,7 +1212,10 @@ mod tests {
     #[test]
     fn neoforge_1_20_1_lives_under_the_old_forge_artifact() {
         let want = "https://maven.neoforged.net/releases/net/neoforged/forge/1.20.1-47.1.106/forge-1.20.1-47.1.106-installer.jar";
-        assert_eq!(installer_url(GameLoader::NeoForge, "1.20.1", "47.1.106"), want);
+        assert_eq!(
+            installer_url(GameLoader::NeoForge, "1.20.1", "47.1.106"),
+            want
+        );
         assert_eq!(
             installer_url(GameLoader::NeoForge, "1.20.1", "1.20.1-47.1.106"),
             want
@@ -837,6 +1248,149 @@ mod tests {
         assert_eq!(
             server_side(&[oneconfig, hud, addon, lithium, forge]),
             vec![false, false, false, true, true]
+        );
+    }
+
+    #[test]
+    fn forge_mods_toml_marks_client_mods_and_their_dependents() {
+        let minimap = parse_forge_meta(
+            "modLoader=\"javafml\"\nclientSideOnly=true\n[[mods]]\nmodId=\"minimap\"\nversion=\"${file.jarVersion}\"\n",
+        );
+        let addon = parse_forge_meta(
+            "[[mods]]\nmodId=\"minimapaddon\"\n[[dependencies.minimapaddon]]\nmodId=\"minimap\"\nmandatory=true\nside=\"BOTH\"\n[[dependencies.minimapaddon]]\nmodId=\"jei\"\ntype=\"required\"\nside=\"CLIENT\"\n",
+        );
+        let jei = parse_forge_meta("[[mods]]\nmodId=\"jei\"\n");
+        assert!(minimap.client_only);
+        assert_eq!(addon.depends, ["minimap"]);
+        assert_eq!(
+            server_side(&[minimap, addon, jei]),
+            vec![false, false, true]
+        );
+    }
+
+    #[test]
+    fn curseforge_client_tag_without_server_tag_means_client_only() {
+        let tags = |t: &[&str]| t.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(cf_client_only(&tags(&["1.20.1", "Client"])));
+        assert!(!cf_client_only(&tags(&["1.20.1", "Client", "Server"])));
+        assert!(!cf_client_only(&tags(&["1.20.1"])));
+    }
+
+    #[tokio::test]
+    async fn installers_run_on_the_console_java_next_to_javaw() {
+        let tmp = polyio::tempdir().await.expect("dir");
+        let bin = tmp.dir_path();
+        let (javaw, java) = if cfg!(windows) {
+            (bin.join("javaw.exe"), bin.join("java.exe"))
+        } else {
+            (bin.join("javaw"), bin.join("java"))
+        };
+        polyio::write(&javaw, b"").await.unwrap();
+        assert_eq!(console_java(&javaw), javaw);
+        polyio::write(&java, b"").await.unwrap();
+        assert_eq!(console_java(&javaw), java);
+        assert_eq!(console_java(&java), java);
+    }
+
+    #[test]
+    fn forge_args_file_matches_the_installed_loader_version() {
+        let found = vec![
+            PathBuf::from("libraries/net/minecraftforge/forge/1.20.1-47.2.0/win_args.txt"),
+            PathBuf::from("libraries/net/minecraftforge/forge/1.20.1-47.3.0/win_args.txt"),
+        ];
+        assert_eq!(
+            pick_for_version(found.clone(), "47.2.0"),
+            Some(found[0].clone())
+        );
+        assert_eq!(pick_for_version(found.clone(), ""), Some(found[1].clone()));
+        assert_eq!(pick_for_version(Vec::new(), "47.2.0"), None);
+    }
+
+    #[test]
+    fn modpack_files_only_download_from_allowed_hosts() {
+        assert!(allowed_pack_download(
+            "https://cdn.modrinth.com/data/AANobbMI/versions/x/sodium.jar"
+        ));
+        assert!(allowed_pack_download(
+            "https://github.com/a/b/releases/download/1/x.jar"
+        ));
+        assert!(!allowed_pack_download("http://cdn.modrinth.com/data/x.jar"));
+        assert!(!allowed_pack_download(
+            "https://cdn.modrinth.com.evil.io/x.jar"
+        ));
+        assert!(!allowed_pack_download("https://example.com/x.jar"));
+    }
+
+    #[tokio::test]
+    async fn imported_folders_reveal_their_server_software() {
+        let tmp = polyio::tempdir().await.expect("dir");
+        let root = tmp.dir_path();
+
+        let paper = root.join("paper");
+        polyio::create_dir_all(paper.join("cache")).await.unwrap();
+        polyio::write(paper.join("paper-1.21.4-232.jar"), b"")
+            .await
+            .unwrap();
+        polyio::write(paper.join("cache/mojang_1.21.4.jar"), b"")
+            .await
+            .unwrap();
+        polyio::write(paper.join("server.properties"), b"server-port=25570\n")
+            .await
+            .unwrap();
+        let guess = detect_import(&paper).await;
+        assert_eq!(guess.platform, Platform::Paper);
+        assert_eq!(guess.mc_version.as_deref(), Some("1.21.4"));
+        assert_eq!(guess.port, Some(25570));
+
+        let forge = root.join("forge");
+        polyio::create_dir_all(forge.join("libraries/net/minecraftforge/forge/1.20.1-47.2.0"))
+            .await
+            .unwrap();
+        let guess = detect_import(&forge).await;
+        assert_eq!(guess.loader, Some(GameLoader::Forge));
+        assert_eq!(guess.loader_version.as_deref(), Some("47.2.0"));
+        assert_eq!(guess.mc_version.as_deref(), Some("1.20.1"));
+
+        let fabric = root.join("fabric");
+        polyio::create_dir_all(fabric.join("logs")).await.unwrap();
+        polyio::write(fabric.join("fabric-server-launch.jar"), b"")
+            .await
+            .unwrap();
+        polyio::write(
+            fabric.join("logs/latest.log"),
+            b"[12:00:00] [Server thread/INFO]: Starting minecraft server version 1.21.1\n",
+        )
+        .await
+        .unwrap();
+        let guess = detect_import(&fabric).await;
+        assert_eq!(guess.loader, Some(GameLoader::Fabric));
+        assert_eq!(guess.mc_version.as_deref(), Some("1.21.1"));
+
+        assert_eq!(neoforge_mc("21.1.77").as_deref(), Some("1.21.1"));
+        assert_eq!(neoforge_mc("21.0.10").as_deref(), Some("1.21"));
+    }
+
+    #[test]
+    fn paper_prefers_the_newest_stable_build() {
+        let builds: Vec<PaperBuild> = serde_json::from_str(
+            r#"[
+                {"id": 40, "channel": "BETA", "downloads": {"server:default": {"url": "b40"}}},
+                {"id": 38, "channel": "STABLE", "downloads": {"server:default": {"url": "s38", "checksums": {"sha256": "aa"}}}},
+                {"id": 39, "channel": "STABLE", "downloads": {"server:default": {"url": "s39"}}}
+            ]"#,
+        )
+        .unwrap();
+        assert_eq!(
+            pick_paper_build(builds).map(|d| d.url).as_deref(),
+            Some("s39")
+        );
+        let only_beta: Vec<PaperBuild> = serde_json::from_str(
+            r#"[{"id": 2, "channel": "BETA", "downloads": {"server:default": {"url": "b2"}}}]"#,
+        )
+        .unwrap();
+        assert_eq!(
+            pick_paper_build(only_beta).map(|d| d.url).as_deref(),
+            Some("b2")
         );
     }
 

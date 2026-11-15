@@ -44,7 +44,10 @@ pub use dependents::{
     DependentPackage, DisableImpact, DisableRoot, disable_impact, ensure_cluster_dependencies,
 };
 pub use oneclient_common::domain::{ContentType, GameLoader, HashAlgorithm, ProviderId};
-pub use provider::{PackageProvider, PackageProviderRegistry};
+pub use provider::{
+    PLUGIN_LOADERS, PackageProvider, PackageProviderRegistry, modrinth_client_only,
+    modrinth_plugin_versions,
+};
 pub use store::{LiveSync, LocalImportReport, PackageStore};
 pub use types::*;
 pub use updates::{

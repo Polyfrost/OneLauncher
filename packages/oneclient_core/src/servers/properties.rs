@@ -95,7 +95,11 @@ fn escape(value: &str) -> String {
                 out.push('\\');
                 out.push(ch);
             }
-            c if !c.is_ascii() => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c if !c.is_ascii() => {
+                for unit in c.encode_utf16(&mut [0; 2]) {
+                    out.push_str(&format!("\\u{unit:04x}"));
+                }
+            }
             c => out.push(c),
         }
     }
@@ -104,8 +108,18 @@ fn escape(value: &str) -> String {
 
 fn unescape(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
-    let mut chars = value.chars();
+    let mut units: Vec<u16> = Vec::new();
+    let mut chars = value.chars().peekable();
     while let Some(ch) = chars.next() {
+        if ch == '\\' && chars.peek() == Some(&'u') {
+            chars.next();
+            let hex: String = chars.by_ref().take(4).collect();
+            if let Ok(unit) = u16::from_str_radix(&hex, 16) {
+                units.push(unit);
+            }
+            continue;
+        }
+        out.extend(char::decode_utf16(units.drain(..)).filter_map(Result::ok));
         if ch != '\\' {
             out.push(ch);
             continue;
@@ -113,16 +127,11 @@ fn unescape(value: &str) -> String {
         match chars.next() {
             Some('n') => out.push('\n'),
             Some('t') => out.push('\t'),
-            Some('u') => {
-                let hex: String = chars.by_ref().take(4).collect();
-                if let Some(c) = u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32) {
-                    out.push(c);
-                }
-            }
             Some(other) => out.push(other),
             None => {}
         }
     }
+    out.extend(char::decode_utf16(units).filter_map(Result::ok));
     out
 }
 
@@ -147,5 +156,13 @@ mod tests {
                 .starts_with("#Minecraft server properties\n")
         );
         assert_eq!(Properties::parse(&props.to_string()), props);
+    }
+
+    #[test]
+    fn characters_outside_the_bmp_are_written_as_surrogate_pairs() {
+        let mut props = Properties::default();
+        props.set("motd", "hi \u{1f600}!");
+        assert_eq!(props.to_string(), "motd=hi \\ud83d\\ude00!\n");
+        assert_eq!(props.get("motd").as_deref(), Some("hi \u{1f600}!"));
     }
 }

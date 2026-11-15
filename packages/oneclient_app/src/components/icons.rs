@@ -166,6 +166,7 @@ pub enum IconType {
     Rocket02,
     SearchMd,
     Send01,
+    Server01,
     Settings01,
     Settings02,
     Settings04,

@@ -6,6 +6,8 @@ mod motd;
 mod overview;
 mod pages;
 mod settings;
+mod shutdown;
+mod software;
 
 use std::time::Instant;
 
@@ -15,10 +17,11 @@ use oneclient_core::servers::LocalServer;
 
 pub use console::{ServerConsole, ServerLiveConsole};
 pub use list::Servers;
-pub use overview::ServerOverview;
 pub use mods::ServerMods;
+pub use overview::ServerOverview;
 pub use pages::{ServerBackups, ServerPlayers, ServerWorlds};
 pub use settings::ServerSettings;
+pub use shutdown::ServerShutdownOverlay;
 
 use crate::components::{ART_PREVIEW_EDGE, DynamicArt};
 use crate::hooks::ServerIcon;
@@ -63,7 +66,9 @@ pub struct IconSeeder {
 
 impl Component for IconSeeder {
     fn render(&self) -> impl IntoElement {
-        let (key, bytes) = version_art(&self.server).max_edge(ART_PREVIEW_EDGE).use_bytes();
+        let (key, bytes) = version_art(&self.server)
+            .max_edge(ART_PREVIEW_EDGE)
+            .use_bytes();
         // The bundled background stands in while the version art is still loading
         let loaded = (!bytes.is_empty() && !key.ends_with(crate::layout::HOME_BACKGROUND_ASSET))
             .then_some((key, bytes));
@@ -73,16 +78,24 @@ impl Component for IconSeeder {
                 return;
             };
             let id = id.clone();
-            crate::servers::run(t("oneclient.servers.settings.motd.icon_failed"), async move {
-                oneclient_core::servers::set_icon_bytes(&oneclient_core::servers::server_dir(&id)?, bytes.to_vec()).await
-            });
+            crate::servers::run(
+                id.clone(),
+                t("oneclient.servers.settings.motd.icon_failed"),
+                async move {
+                    oneclient_core::servers::set_icon_bytes(
+                        &oneclient_core::servers::server_dir(&id)?,
+                        bytes.to_vec(),
+                    )
+                    .await
+                },
+            );
         });
         rect()
     }
 }
 
 pub fn loader_label(server: &LocalServer) -> String {
-    format!("{} {}", server.loader, server.mc_version)
+    format!("{} {}", server.software_name(), server.mc_version)
 }
 
 pub fn status_label(status: ServerStatus) -> &'static str {
@@ -96,7 +109,12 @@ pub fn status_label(status: ServerStatus) -> &'static str {
 }
 
 pub fn status_line(status: ServerStatus, server: &LocalServer) -> String {
-    format!("{} \u{b7} {}", status_label(status), loader_label(server))
+    let label = if status == ServerStatus::Stopped && !server.installed() {
+        t("oneclient.servers.status.not_installed")
+    } else {
+        status_label(status)
+    };
+    format!("{label} \u{b7} {}", loader_label(server))
 }
 
 pub fn fmt_uptime(started: Instant) -> String {
@@ -301,4 +319,3 @@ pub fn list_preview(
         )
         .into_element()
 }
-

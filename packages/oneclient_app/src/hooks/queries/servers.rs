@@ -1,7 +1,6 @@
-
 use freya::query::{QueriesStorage, Query, QueryCapability, UseQuery, use_query};
 use oneclient_core::LauncherError;
-use oneclient_core::servers::{self, BackupInfo, ListedPlayer, LocalServer, Properties};
+use oneclient_core::servers::{self, BackupInfo, ListedPlayer, LocalServer, Properties, ServerMod};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ListServersQuery;
@@ -35,19 +34,16 @@ pub struct ServerIcon {
     pub bytes: bytes::Bytes,
 }
 
-/// Everything the server pages read from the server folder
+/// The small files the server pages read from the server folder
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct ServerFiles {
     pub props: Properties,
     pub whitelist: Vec<ListedPlayer>,
     pub ops: Vec<ListedPlayer>,
     pub backups: Vec<BackupInfo>,
-    pub mods: Vec<servers::ServerMod>,
     pub world: String,
-    pub world_size: u64,
     pub icon: Option<ServerIcon>,
     pub eula: bool,
-    pub latest_log: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -62,7 +58,10 @@ impl QueryCapability for ServerFilesQuery {
         let id = id.clone();
         crate::launcher::off_ui(async move {
             let dir = servers::server_dir(&id)?;
-            let world = servers::world_name(&dir).await;
+            let mc_version = servers::load_server(&id)
+                .await
+                .map(|s| s.mc_version)
+                .unwrap_or_default();
             let icon = tokio::fs::read(dir.join(servers::ICON_FILE))
                 .await
                 .ok()
@@ -73,21 +72,14 @@ impl QueryCapability for ServerFilesQuery {
             let eula = tokio::fs::read_to_string(dir.join("eula.txt"))
                 .await
                 .is_ok_and(|text| text.lines().any(|l| l.trim() == "eula=true"));
-            let latest_log = tokio::fs::read_to_string(dir.join("logs").join("latest.log"))
-                .await
-                .map(|text| text.lines().map(str::to_string).collect())
-                .unwrap_or_default();
             Ok(ServerFiles {
                 props: Properties::read(&dir).await,
-                whitelist: servers::read_list(&dir, servers::WHITELIST).await,
-                ops: servers::read_list(&dir, servers::OPS).await,
+                whitelist: servers::read_list(&dir, servers::list_file(&mc_version, false)).await,
+                ops: servers::read_list(&dir, servers::list_file(&mc_version, true)).await,
                 backups: servers::list_backups(&dir).await,
-                mods: servers::list_mods(&dir).await,
-                world_size: servers::dir_size(dir.join(&world)).await,
-                world,
+                world: servers::world_name(&dir).await,
                 icon,
                 eula,
-                latest_log,
             })
         })
         .await
@@ -98,7 +90,152 @@ pub fn use_server_files(id: String) -> UseQuery<ServerFilesQuery> {
     use_query(Query::new(id, ServerFilesQuery))
 }
 
-pub async fn invalidate_server_queries() {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ServerModsQuery;
+
+impl QueryCapability for ServerModsQuery {
+    type Ok = Vec<ServerMod>;
+    type Err = LauncherError;
+    type Keys = String;
+
+    async fn run(&self, id: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        let id = id.clone();
+        crate::launcher::off_ui(async move {
+            let server = servers::load_server(&id).await?;
+            Ok(servers::list_mods(&server.dir()?, server.content_folder()).await)
+        })
+        .await
+    }
+}
+
+pub fn use_server_mods(id: String) -> UseQuery<ServerModsQuery> {
+    use_query(Query::new(id, ServerModsQuery))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ServerModUpdatesQuery;
+
+impl QueryCapability for ServerModUpdatesQuery {
+    type Ok = Vec<servers::ModUpdate>;
+    type Err = LauncherError;
+    type Keys = String;
+
+    async fn run(&self, id: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        let id = id.clone();
+        crate::launcher::off_ui(async move {
+            let state = crate::launcher::state()?;
+            let server = servers::load_server(&id).await?;
+            servers::check_mod_updates(&state, &server).await
+        })
+        .await
+    }
+}
+
+pub fn use_server_mod_updates(id: String) -> UseQuery<ServerModUpdatesQuery> {
+    use_query(Query::new(id, ServerModUpdatesQuery))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PluginVersionsQuery;
+
+impl QueryCapability for PluginVersionsQuery {
+    type Ok = Vec<oneclient_content::packages::VersionSummary>;
+    type Err = LauncherError;
+    type Keys = Option<(String, String)>;
+
+    async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        let Some((project_id, mc_version)) = keys.clone() else {
+            return Ok(Vec::new());
+        };
+        crate::launcher::off_ui(async move {
+            let state = crate::launcher::state()?;
+            Ok(oneclient_content::packages::modrinth_plugin_versions(
+                &project_id,
+                &mc_version,
+                &state.services.content(),
+            )
+            .await?)
+        })
+        .await
+    }
+}
+
+pub fn use_plugin_versions(keys: Option<(String, String)>) -> UseQuery<PluginVersionsQuery> {
+    use_query(Query::new(keys, PluginVersionsQuery))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PlatformAvailableQuery;
+
+impl QueryCapability for PlatformAvailableQuery {
+    type Ok = bool;
+    type Err = LauncherError;
+    type Keys = (servers::Platform, String);
+
+    async fn run(&self, (platform, mc_version): &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        let (platform, mc_version) = (*platform, mc_version.clone());
+        crate::launcher::off_ui(async move {
+            let state = crate::launcher::state()?;
+            Ok(servers::platform_available(&state, platform, &mc_version).await)
+        })
+        .await
+    }
+}
+
+pub fn use_platform_available(
+    platform: servers::Platform,
+    mc_version: String,
+) -> UseQuery<PlatformAvailableQuery> {
+    use_query(Query::new((platform, mc_version), PlatformAvailableQuery))
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct ServerRun {
+    pub world_size: u64,
+    pub latest_log: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ServerRunQuery;
+
+impl QueryCapability for ServerRunQuery {
+    type Ok = ServerRun;
+    type Err = LauncherError;
+    type Keys = String;
+
+    async fn run(&self, id: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        let id = id.clone();
+        crate::launcher::off_ui(async move {
+            let dir = servers::server_dir(&id)?;
+            let mut world_size = 0;
+            for folder in servers::world_folders(&dir).await.unwrap_or_default() {
+                world_size += servers::dir_size(dir.join(folder)).await;
+            }
+            let latest_log = tokio::fs::read_to_string(dir.join("logs").join("latest.log"))
+                .await
+                .map(|text| text.lines().map(str::to_string).collect())
+                .unwrap_or_default();
+            Ok(ServerRun {
+                world_size,
+                latest_log,
+            })
+        })
+        .await
+    }
+}
+
+pub fn use_server_run(id: String) -> UseQuery<ServerRunQuery> {
+    use_query(Query::new(id, ServerRunQuery))
+}
+
+pub async fn invalidate_server_settings(id: &str) {
     QueriesStorage::<ListServersQuery>::invalidate_all().await;
-    QueriesStorage::<ServerFilesQuery>::invalidate_all().await;
+    QueriesStorage::<ServerFilesQuery>::invalidate_matching(id.to_string()).await;
+}
+
+pub async fn invalidate_server(id: &str) {
+    invalidate_server_settings(id).await;
+    QueriesStorage::<ServerModsQuery>::invalidate_matching(id.to_string()).await;
+    QueriesStorage::<ServerModUpdatesQuery>::invalidate_matching(id.to_string()).await;
+    QueriesStorage::<ServerRunQuery>::invalidate_matching(id.to_string()).await;
 }

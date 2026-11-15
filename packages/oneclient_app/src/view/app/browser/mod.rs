@@ -86,7 +86,7 @@ use crate::hooks::{
     ClusterAction, SearchOverride, loaded_image, mutation_is_running, settled_or_loading,
     use_browser_compat,
     use_browser_state_store, use_cached_image, use_cluster, use_cluster_mutation, use_server,
-    use_server_files,
+    use_server_mods,
 };
 use crate::i18n::t;
 use crate::install::IncompatibleMode;
@@ -94,7 +94,10 @@ use crate::theme::{colors, rounded, text_size};
 use crate::ui::{ImageFallbackExt, border_all_color};
 
 pub(crate) const NO_CLUSTER: i64 = -1;
-const SERVER_PACKAGE_TYPE: &str = "mod";
+fn server_package_type(server_id: &str) -> String {
+    let plugins = use_server(server_id).is_some_and(|s| s.plugins());
+    if plugins { "plugin" } else { "mod" }.to_string()
+}
 
 #[derive(Clone, PartialEq)]
 pub(crate) struct ServerBrowse {
@@ -102,6 +105,8 @@ pub(crate) struct ServerBrowse {
     pub name: String,
     pub mc_version: String,
     pub loader: GameLoader,
+    pub plugins: bool,
+    pub folder: &'static str,
     pub installed: HashMap<(ProviderId, String), Installed>,
 }
 
@@ -140,13 +145,15 @@ fn use_provide_server_browse(server_id: &str) {
         move || crate::servers::identify_mods(id)
     });
     let server = use_server(server_id);
-    let files = settled_or_loading(&use_server_files(server_id.to_string()));
+    let mods = settled_or_loading(&use_server_mods(server_id.to_string()));
     let next = server.map(|s| ServerBrowse {
+        plugins: s.plugins(),
+        folder: s.content_folder(),
         id: s.id,
         name: s.name,
         mc_version: s.mc_version,
         loader: s.loader,
-        installed: files.map(|f| server_installed(&f.mods)).unwrap_or_default(),
+        installed: mods.map(|m| server_installed(&m)).unwrap_or_default(),
     });
     let mut target = use_state(|| next.clone());
     if *target.peek() != next {
@@ -165,7 +172,7 @@ impl Component for ServerBrowser {
         use_provide_server_browse(&self.server_id);
         Browser {
             cluster_id: NO_CLUSTER,
-            package_type: SERVER_PACKAGE_TYPE.to_string(),
+            package_type: server_package_type(&self.server_id),
             pick_cluster: false,
         }
     }
@@ -182,7 +189,7 @@ impl Component for ServerBrowserPackage {
         use_provide_server_browse(&self.server_id);
         BrowserPackage {
             cluster_id: NO_CLUSTER,
-            package_type: SERVER_PACKAGE_TYPE.to_string(),
+            package_type: server_package_type(&self.server_id),
             package_id: self.package_id.clone(),
             add_to_cluster: false,
         }

@@ -15,7 +15,8 @@ use crate::error::ContentResult;
 use crate::packages::file_identity::FileIdentity;
 use crate::packages::types::{
     DependencyKind, GalleryImage, InstalledPackage, PackageBody, Page, ProjectDetail,
-    ProjectMember, ProjectSummary, ReleaseType, SearchFilters, VersionDependency, VersionDetail,
+    ProjectMember, ProjectSummary, ReleaseType, SearchFilters, SearchSide, VersionDependency,
+    VersionDetail,
     VersionFile, VersionLookup, VersionSummary,
 };
 use oneclient_common::constants::MODRINTH_API_URL;
@@ -75,10 +76,12 @@ impl PackageProvider for ModrinthProvider {
 
             let mut groups: Vec<Vec<String>> = Vec::new();
             if let Some(content_type) = filters.content_type {
-                groups.push(vec![format!(
-                    "project_type:{}",
+                let project_type = if filters.side == Some(SearchSide::BukkitPlugin) {
+                    "plugin"
+                } else {
                     content_type.modrinth_type()
-                )]);
+                };
+                groups.push(vec![format!("project_type:{project_type}")]);
             }
             if let Some(versions) = &filters.game_versions {
                 let group: Vec<String> = versions.iter().map(|v| format!("versions:{v}")).collect();
@@ -497,6 +500,51 @@ async fn latest_version_files(
         .into_iter()
         .map(|(hash, version)| (polyio::normalize_hash(&hash), version.into()))
         .collect())
+}
+
+pub const PLUGIN_LOADERS: [&str; 4] = ["paper", "spigot", "bukkit", "purpur"];
+
+pub async fn modrinth_plugin_versions(
+    project_id: &str,
+    mc_version: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<Vec<VersionSummary>> {
+    let mut url = Url::parse(&v2(&format!("/project/{project_id}/version")))?;
+    url.query_pairs_mut()
+        .append_pair("game_versions", &format!("[\"{mc_version}\"]"))
+        .append_pair("loaders", &ids_param(&PLUGIN_LOADERS.map(String::from)));
+    let versions: Vec<ModrinthVersion> =
+        fetch_json(&ctx.net, Method::GET, url.as_str(), None).await?;
+    Ok(versions.into_iter().map(VersionSummary::from).collect())
+}
+
+pub async fn modrinth_client_only(
+    project_ids: &[String],
+    ctx: &ContentCtx,
+) -> ContentResult<HashSet<String>> {
+    #[derive(Deserialize)]
+    struct Sides {
+        id: String,
+        #[serde(default)]
+        server_side: String,
+    }
+    let mut out = HashSet::new();
+    for chunk in project_ids.chunks(100) {
+        let sides: Vec<Sides> = fetch_json(
+            &ctx.net,
+            Method::GET,
+            &v2(&format!("/projects?ids={}", ids_param(chunk))),
+            None,
+        )
+        .await?;
+        out.extend(
+            sides
+                .into_iter()
+                .filter(|p| p.server_side == "unsupported")
+                .map(|p| p.id),
+        );
+    }
+    Ok(out)
 }
 
 fn ids_param(ids: &[String]) -> String {

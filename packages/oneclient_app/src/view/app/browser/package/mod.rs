@@ -13,7 +13,7 @@ use crate::hooks::{
     cluster_content_items, content_type_for_slug, package_meta_batch, project_detail,
     use_bundle_overrides, use_bundles_with_status, use_cluster_content, use_dispatch,
     use_installs_snapshot, use_link_confirm, use_package_meta_batch, use_package_project,
-    use_package_versions_when, use_server_hub, version_list, versions_total,
+    use_package_versions_when, use_plugin_versions, use_server_hub, version_list, versions_total,
 };
 use crate::hooks::{settled_or_loading, use_cluster, use_clusters};
 use crate::i18n::tf;
@@ -317,14 +317,16 @@ impl Component for BrowserPackage {
         };
 
         let remove_id = project.as_ref().map(|p| p.id.clone());
+        let folder = server.as_ref().map_or("mods", |s| s.folder);
         let remove_dispatch = dispatch.clone();
         let (on_remove, remove_dialog) = use_shared_delete(cluster_id, move |(name, hash)| {
             if let Some(server_id) = server_id.clone() {
                 crate::servers::run(
+                    server_id.clone(),
                     crate::i18n::t("oneclient.servers.mods.remove_failed"),
                     async move {
                         let file = oneclient_core::servers::server_dir(&server_id)?
-                            .join("mods")
+                            .join(folder)
                             .join(hash);
                         tokio::fs::remove_file(file).await?;
                         Ok(())
@@ -354,6 +356,26 @@ impl Component for BrowserPackage {
                 version_list(&versions_query),
                 versions_total(&versions_query),
             )
+        };
+        let plugin_server =
+            server.as_ref().is_some_and(|s| s.plugins) && provider == ProviderId::Modrinth;
+        let plugin_builds = use_plugin_versions(
+            server
+                .as_ref()
+                .filter(|s| s.plugins && provider == ProviderId::Modrinth)
+                .map(|s| (project_id.clone(), s.mc_version.clone())),
+        );
+        let (versions, total_versions) = if plugin_server {
+            let builds = settled_or_loading(&plugin_builds).unwrap_or_default();
+            let page = builds
+                .iter()
+                .skip(versions_page.read().saturating_mul(VERSIONS_PAGE_SIZE))
+                .take(VERSIONS_PAGE_SIZE)
+                .cloned()
+                .collect();
+            (page, builds.len())
+        } else {
+            (versions, total_versions)
         };
         let dependency_ids: Vec<String> = versions
             .iter()

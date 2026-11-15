@@ -27,6 +27,7 @@ pub enum SearchSide {
     Client,
     Server,
     ServerCompatible,
+    BukkitPlugin,
 }
 
 impl SearchSide {
@@ -35,6 +36,12 @@ impl SearchSide {
             Self::Client => &["client_side:required"],
             Self::Server => &["server_side:required"],
             Self::ServerCompatible => &["server_side:required", "server_side:optional"],
+            Self::BukkitPlugin => {
+                return super::provider::PLUGIN_LOADERS
+                    .iter()
+                    .map(|loader| format!("categories:{loader}"))
+                    .collect();
+            }
         };
         facets.iter().map(|f| f.to_string()).collect()
     }

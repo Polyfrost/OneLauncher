@@ -172,18 +172,6 @@ fn navbar_center(is_small: bool) -> impl IntoElement {
             over_art,
         })
         .child(NavLink {
-            active: crate::layout::server_id_of(&route).is_some()
-                || matches!(
-                    route,
-                    Route::Servers {}
-                        | Route::ServerBrowser { .. }
-                        | Route::ServerBrowserPackage { .. }
-                ),
-            target: NavTarget::Route(Route::Servers {}),
-            nav_label: t("oneclient.components.navbar.servers"),
-            over_art,
-        })
-        .child(NavLink {
             active: route == Route::Wardrobe {},
             target: NavTarget::Route(Route::Wardrobe {}),
             nav_label: t("oneclient.components.navbar.wardrobe"),
@@ -335,6 +323,14 @@ impl Component for NavbarRight {
             .main_align(Alignment::End)
             .cross_align(Alignment::Center)
             .spacing(8.)
+            .child(
+                super::navbar_button(foreground)
+                    .tooltip(t("oneclient.components.navbar.servers"))
+                    .child(Icon::new(IconType::Server01).size(20.))
+                    .on_press(|_| {
+                        let _ = RouterContext::get().push(Route::Servers {});
+                    }),
+            )
             .maybe_child(chat_allowed.then(|| {
                 super::navbar_button(foreground)
                     .tooltip(t("oneclient.components.navbar.social"))

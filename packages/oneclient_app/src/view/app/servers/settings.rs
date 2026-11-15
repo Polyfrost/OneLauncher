@@ -16,7 +16,7 @@ use crate::hooks::{
     use_server_hub,
 };
 use crate::i18n::{t, tf};
-use crate::servers;
+use crate::servers::{self, ServerStatus};
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, centered_note};
 use crate::view::app::settings::{resettable, settings_row, settings_row_danger};
@@ -26,6 +26,7 @@ const FIELD_WIDTH: f32 = 90.;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum Section {
+    Software,
     Gameplay,
     World,
     Players,
@@ -35,7 +36,8 @@ enum Section {
 }
 
 impl Section {
-    const ALL: [Section; 6] = [
+    const ALL: [Section; 7] = [
+        Section::Software,
         Section::Gameplay,
         Section::World,
         Section::Players,
@@ -46,6 +48,7 @@ impl Section {
 
     fn label(self) -> &'static str {
         match self {
+            Section::Software => t("oneclient.servers.settings.section.software"),
             Section::Gameplay => t("oneclient.servers.settings.section.gameplay"),
             Section::World => t("oneclient.servers.settings.section.world"),
             Section::Players => t("oneclient.servers.settings.section.players"),
@@ -57,6 +60,7 @@ impl Section {
 
     fn icon(self) -> IconType {
         match self {
+            Section::Software => IconType::Server01,
             Section::Gameplay => IconType::Sliders04,
             Section::World => IconType::Globe01,
             Section::Players => IconType::Users01,
@@ -77,6 +81,26 @@ enum Control {
 }
 
 type Options = Vec<(&'static str, &'static str)>;
+
+fn options(control: &Control) -> Option<&Options> {
+    match control {
+        Control::Choice(options) | Control::Segments(options) => Some(options),
+        _ => None,
+    }
+}
+
+fn shown(control: &Control, raw: String) -> String {
+    options(control)
+        .and_then(|options| options.get(raw.trim().parse::<usize>().ok()?))
+        .map_or(raw, |(name, _)| (*name).to_string())
+}
+
+fn stored(control: &Control, value: String, numeric: bool) -> String {
+    options(control)
+        .filter(|_| numeric)
+        .and_then(|options| options.iter().position(|(name, _)| *name == value))
+        .map_or(value, |index| index.to_string())
+}
 
 fn gamemodes() -> Options {
     vec![
@@ -288,14 +312,21 @@ impl Component for ServerSettings {
         };
 
         let mut by_section: HashMap<Section, Vec<Element>> = HashMap::new();
+        let numeric = !core::named_modes(&server.mc_version);
         for prop in props() {
-            if !shows(prop.title, prop.description) {
+            if !shows(prop.title, prop.description)
+                || (prop.key == "simulation-distance"
+                    && !core::has_simulation_distance(&server.mc_version))
+            {
                 continue;
             }
-            let value = files
-                .props
-                .get(prop.key)
-                .unwrap_or_else(|| prop.default.to_string());
+            let value = shown(
+                &prop.control,
+                files
+                    .props
+                    .get(prop.key)
+                    .unwrap_or_else(|| prop.default.to_string()),
+            );
             by_section.entry(prop.section).or_default().push(
                 PropRow {
                     server_id: self.server_id.clone(),
@@ -303,6 +334,7 @@ impl Component for ServerSettings {
                     default: prop.default,
                     value: value.clone(),
                     control: prop.control,
+                    numeric,
                     icon: prop.icon,
                     title: prop.title,
                     description: prop.description,
@@ -312,6 +344,50 @@ impl Component for ServerSettings {
         }
 
         let id = self.server_id.clone();
+        let stopped = use_server_hub().status(&self.server_id) == ServerStatus::Stopped;
+        let mut software: Vec<(Section, &'static str, &'static str, Element)> = vec![
+            (
+                Section::Software,
+                t("oneclient.servers.settings.name.title"),
+                t("oneclient.servers.settings.name.description"),
+                super::software::NameRow {
+                    server: server.clone(),
+                }
+                .into_element(),
+            ),
+            (
+                Section::Software,
+                t("oneclient.servers.settings.version.title"),
+                t("oneclient.servers.settings.version.description"),
+                super::software::VersionRow {
+                    server: server.clone(),
+                }
+                .into_element(),
+            ),
+        ];
+        if let Some(row) = super::software::update_row(&server, stopped) {
+            software.push((
+                Section::Software,
+                t("oneclient.servers.settings.update.title"),
+                "",
+                row,
+            ));
+        }
+        software.push((
+            Section::Software,
+            t("oneclient.servers.settings.java.title"),
+            "",
+            super::software::java_row(&server),
+        ));
+        software.push((
+            Section::Performance,
+            t("oneclient.servers.settings.backups_kept.title"),
+            t("oneclient.servers.settings.backups_kept.description"),
+            super::software::BackupsKeptRow {
+                server: server.clone(),
+            }
+            .into_element(),
+        ));
         let extra: [(Section, &'static str, &'static str, Element); 8] = [
             (
                 Section::Players,
@@ -380,7 +456,7 @@ impl Component for ServerSettings {
                 .into_element(),
             ),
         ];
-        for (section, title, description, row) in extra {
+        for (section, title, description, row) in software.into_iter().chain(extra) {
             if shows(title, description) {
                 by_section.entry(section).or_default().push(row);
             }
@@ -466,6 +542,12 @@ impl Component for ServerSettings {
                                     ),
                             ),
                     )
+                    .maybe_child((!stopped).then(|| {
+                        crate::ui::note(
+                            t("oneclient.servers.settings.restart_note").to_string(),
+                            colors::brand(),
+                        )
+                    }))
                     .child(
                         ScrollArea::new()
                             .width(Size::fill())
@@ -535,7 +617,11 @@ fn sidebar(
         .java_major
         .map_or_else(|| DASH.to_string(), |j| j.to_string());
     let info = [
-        format!("{} {} \u{b7} Java {java}", server.loader, server.mc_version),
+        format!(
+            "{} {} \u{b7} Java {java}",
+            server.software_name(),
+            server.mc_version
+        ),
         format!("servers/{}", server.id),
         tf(
             "oneclient.servers.settings.port_info",
@@ -548,7 +634,7 @@ fn sidebar(
         .width(Size::px(SIDEBAR_WIDTH))
         .spacing(2.)
         .child(group(t("oneclient.servers.settings.group.server")))
-        .children(Section::ALL[..5].iter().map(|s| link(*s)))
+        .children(Section::ALL[..6].iter().map(|s| link(*s)))
         .child(group(t("oneclient.servers.settings.group.other")))
         .child(link(Section::Danger))
         .child(item(
@@ -629,6 +715,7 @@ struct PropRow {
     default: &'static str,
     value: String,
     control: Control,
+    numeric: bool,
     icon: IconType,
     title: &'static str,
     description: &'static str,
@@ -642,12 +729,23 @@ impl Component for PropRow {
     fn render(&self) -> impl IntoElement {
         let initial = self.value.clone();
         let mut value = use_state(move || initial);
+        let synced_initial = self.value.clone();
+        let mut synced = use_state(move || synced_initial);
+        if *synced.peek() != self.value {
+            if *value.peek() == *synced.peek() {
+                value.set(self.value.clone());
+            }
+            synced.set(self.value.clone());
+        }
         {
             let (id, key) = (self.server_id.clone(), self.key);
+            let (control, numeric) = (self.control.clone(), self.numeric);
             use_debounced_save(
                 value.read().clone(),
                 Duration::from_millis(500),
-                move |next| servers::set_property(id.clone(), key, next),
+                move |next| {
+                    servers::set_property(id.clone(), key, stored(&control, next, numeric));
+                },
             );
         }
 
@@ -972,6 +1070,7 @@ impl Component for MotdRow {
                                     };
                                     let source = file.path().to_path_buf();
                                     servers::run(
+                                        id.clone(),
                                         t("oneclient.servers.settings.motd.icon_failed"),
                                         async move {
                                             core::set_icon(&core::server_dir(&id)?, source).await
@@ -1148,7 +1247,7 @@ pub(super) struct ConfirmRow {
 impl Component for ConfirmRow {
     fn render(&self) -> impl IntoElement {
         let mut armed = use_state(|| false);
-        let running = use_server_hub().status(&self.server.id).is_live();
+        let running = use_server_hub().status(&self.server.id) != ServerStatus::Stopped;
         let (id, delete, keep) = (
             self.server.id.clone(),
             self.delete,
@@ -1170,13 +1269,13 @@ impl Component for ConfirmRow {
                 let id = id.clone();
                 if delete {
                     let _ = RouterContext::get().replace(Route::Servers {});
-                    servers::run(t("oneclient.servers.settings.delete.failed"), async move {
-                        core::delete_server(&id).await
-                    });
+                    servers::delete_server(id);
                 } else {
-                    servers::run(t("oneclient.servers.settings.reset.failed"), async move {
-                        core::reset_world(&core::server_dir(&id)?, keep).await
-                    });
+                    servers::run(
+                        id.clone(),
+                        t("oneclient.servers.settings.reset.failed"),
+                        async move { core::reset_world(&core::server_dir(&id)?, keep).await },
+                    );
                 }
             });
         let button = match (delete, *armed.read()) {

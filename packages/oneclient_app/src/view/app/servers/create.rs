@@ -4,7 +4,9 @@ use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_common::GameLoader;
 use oneclient_core::GameVersionKind;
-use oneclient_core::servers::{self, DEFAULT_MEMORY_MB, DEFAULT_PORT, LocalServer, ServerKind};
+use oneclient_core::servers::{
+    self, DEFAULT_MEMORY_MB, DEFAULT_PORT, LocalServer, Platform, ServerKind,
+};
 
 use crate::Route;
 use crate::components::{
@@ -13,7 +15,7 @@ use crate::components::{
 };
 use crate::hooks::{
     game_versions, java_majors, settled_or_loading, use_clusters, use_dispatch, use_game_versions,
-    use_java_majors, use_version_loaders,
+    use_java_majors, use_platform_available, use_version_loaders,
 };
 use crate::i18n::{t, tf};
 use crate::launcher::off_ui;
@@ -21,8 +23,8 @@ use crate::servers::{self as runtime, Prepare};
 use crate::theme::{colors, text_size};
 use crate::ui::fixed_grid;
 use crate::view::app::clusters::{
-    CellCard, LoaderChoice, Rail, Shell, VersionRow, WideCard, cell_card, facts_card, field,
-    loader_mark, rail, shell, version_row, wide_card,
+    CellCard, LoaderChoice, Rail, Shell, VersionRow, WideCard, asset_mark, cell_card, facts_card,
+    field, loader_mark, rail, shell, version_row, wide_card,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -77,6 +79,7 @@ struct Form {
     name: State<String>,
     version: State<Option<String>>,
     loader: State<LoaderChoice>,
+    platform: State<Platform>,
     cluster: State<Option<i64>>,
     pack: State<Option<PathBuf>>,
     folder: State<Option<PathBuf>>,
@@ -108,6 +111,7 @@ impl Component for CreateServerModal {
             name: use_state(String::new),
             version: use_state(|| None),
             loader: use_state(|| LoaderChoice::Fabric),
+            platform: use_state(|| Platform::Loader),
             cluster: use_state(|| None),
             pack: use_state(|| None),
             folder: use_state(|| None),
@@ -117,6 +121,15 @@ impl Component for CreateServerModal {
             eula: use_state(|| false),
             query: use_state(String::new),
         };
+        let mut port_state = form.port;
+        use_hook(move || {
+            spawn(async move {
+                let free = off_ui(servers::free_port()).await;
+                if *port_state.peek() == DEFAULT_PORT.to_string() {
+                    port_state.set(free.to_string());
+                }
+            })
+        });
         let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
         let station = use_dispatch().station();
         // The create task outlives this modal, so the router has to be taken while it renders
@@ -133,6 +146,17 @@ impl Component for CreateServerModal {
         ))
         .unwrap_or_default();
 
+        let platform = if matches!(kind, ServerKind::Scratch | ServerKind::Import) {
+            *form.platform.read()
+        } else {
+            Platform::Loader
+        };
+        let platform_ok = settled_or_loading(&use_platform_available(
+            platform,
+            form.version.read().clone().unwrap_or_default(),
+        ))
+        .unwrap_or(false);
+
         // A picked instance or pack fixes the version and loader
         let source = form.source.read().clone();
         let (mc_version, loader, loader_version) = match (&source, kind) {
@@ -141,6 +165,9 @@ impl Component for CreateServerModal {
                 Some(src.loader),
                 src.loader_version.clone(),
             ),
+            _ if platform != Platform::Loader => {
+                (form.version.read().clone(), Some(GameLoader::Vanilla), None)
+            }
             _ => {
                 let choice = *form.loader.read();
                 (
@@ -173,7 +200,8 @@ impl Component for CreateServerModal {
             Step::Instance | Step::Pack => source.is_some(),
             Step::Folder => form.folder.read().is_some(),
             Step::Version => form.version.read().is_some(),
-            Step::Loader => true,
+            Step::Loader if platform != Platform::Loader => platform_ok,
+            Step::Loader => form.loader.read().resolve(&available).is_some(),
             Step::Details => {
                 !name.is_empty() && port.is_some() && memory.is_some() && *form.eula.read()
             }
@@ -216,6 +244,8 @@ impl Component for CreateServerModal {
                     t("oneclient.servers.facts.loader"),
                     if step == Step::Type && kind != ServerKind::Scratch {
                         dash.clone()
+                    } else if platform != Platform::Loader {
+                        platform_name(platform).to_string()
                     } else {
                         loader.map(|l| l.to_string()).unwrap_or(dash.clone())
                     },
@@ -339,9 +369,20 @@ impl Component for CreateServerModal {
                 };
                 let mut server = LocalServer::new(name.clone(), kind, mc_version, loader);
                 server.loader_version = loader_version.clone();
+                server.platform = platform;
                 server.memory_mb = memory;
                 server.eula = true;
-                server.source_cluster = *form.cluster.read();
+                server.source_cluster = (kind == ServerKind::FromInstance)
+                    .then(|| *form.cluster.read())
+                    .flatten();
+                server.source_path = match kind {
+                    ServerKind::FromInstance => {
+                        form.source.read().as_ref().and_then(|s| s.game_dir.clone())
+                    }
+                    ServerKind::Modpack => form.pack.read().clone(),
+                    ServerKind::Import => form.folder.read().clone(),
+                    ServerKind::Scratch => None,
+                };
                 let prepare = match kind {
                     ServerKind::FromInstance => form
                         .cluster
@@ -366,7 +407,7 @@ impl Component for CreateServerModal {
                     match off_ui(async move { servers::allocate_id(&name).await }).await {
                         Ok(id) => {
                             server.id = id.clone();
-                            runtime::install(station, server, prepare, port);
+                            runtime::install(station, server, prepare, Some(port));
                             let _ = router.push(Route::ServerOverview { server_id: id });
                         }
                         Err(err) => {
@@ -500,13 +541,30 @@ fn pick_step(form: Form, folder: bool) -> Element {
     };
     let (mut pack, mut folder_state, mut source, mut name) =
         (form.pack, form.folder, form.source, form.name);
+    let (mut version, mut loader, mut platform, mut port) =
+        (form.version, form.loader, form.platform, form.port);
 
     let pick = move |_| {
         spawn(async move {
             let dialog = rfd::AsyncFileDialog::new();
             if folder {
-                if let Some(handle) = dialog.pick_folder().await {
-                    folder_state.set(Some(handle.path().to_path_buf()));
+                let Some(handle) = dialog.pick_folder().await else {
+                    return;
+                };
+                let path = handle.path().to_path_buf();
+                folder_state.set(Some(path.clone()));
+                let guess = off_ui(async move { servers::detect_import(&path).await }).await;
+                if guess.mc_version.is_some() {
+                    version.set(guess.mc_version);
+                }
+                if guess.platform != Platform::Loader {
+                    platform.set(guess.platform);
+                } else if let Some(found) = guess.loader {
+                    platform.set(Platform::Loader);
+                    loader.set(LoaderChoice::of(found));
+                }
+                if let Some(found) = guess.port {
+                    port.set(found.to_string());
                 }
                 return;
             }
@@ -658,13 +716,20 @@ impl Component for LoaderStep {
         let available =
             settled_or_loading(&use_version_loaders(self.version.clone())).unwrap_or_default();
         let chosen = *form.loader.read();
+        let platform = *form.platform.read();
+        let paper_ok = settled_or_loading(&use_platform_available(
+            Platform::Paper,
+            self.version.clone(),
+        ));
 
-        let cards = LoaderChoice::ALL
+        let mut cards: Vec<Element> = LoaderChoice::ALL
             .into_iter()
             .map(|choice| {
                 let usable =
                     choice == LoaderChoice::Vanilla || choice.resolve(&available).is_some();
                 let mut loader = form.loader;
+                let mut platform_state = form.platform;
+                let selected = platform == Platform::Loader && chosen == choice;
                 rect()
                     .width(Size::fill())
                     .height(Size::fill())
@@ -675,12 +740,13 @@ impl Component for LoaderStep {
                         blurb: choice.blurb().to_string(),
                         meta: (!usable)
                             .then(|| t("oneclient.servers.create.loader.unavailable").to_string()),
-                        corner: loader_mark(choice, chosen == choice, 22.),
-                        selected: chosen == choice,
+                        corner: loader_mark(choice, selected, 22.),
+                        selected,
                         checkbox: false,
                         on_press: (move |()| {
                             if usable {
                                 loader.set(choice);
+                                platform_state.set(Platform::Loader);
                             }
                         })
                         .into(),
@@ -689,7 +755,49 @@ impl Component for LoaderStep {
             })
             .collect();
 
+        {
+            let (choice, availability) = (Platform::Paper, paper_ok);
+            let usable = availability == Some(true);
+            let mut platform_state = form.platform;
+            let selected = platform == choice;
+            cards.push(
+                rect()
+                    .width(Size::fill())
+                    .height(Size::fill())
+                    .opacity(if usable { 1. } else { 0.4 })
+                    .child(cell_card(CellCard {
+                        id: platform_name(choice).to_string(),
+                        title: platform_name(choice).to_string(),
+                        blurb: t("oneclient.servers.create.loader.paper").to_string(),
+                        meta: match availability {
+                            None => Some(t("oneclient.servers.create.loader.checking").to_string()),
+                            Some(false) => {
+                                Some(t("oneclient.servers.create.loader.unavailable").to_string())
+                            }
+                            Some(true) => None,
+                        },
+                        corner: asset_mark("icons/paper.png", selected, 22.),
+                        selected,
+                        checkbox: false,
+                        on_press: (move |()| {
+                            if usable {
+                                platform_state.set(choice);
+                            }
+                        })
+                        .into(),
+                    }))
+                    .into_element(),
+            );
+        }
+
         fixed_grid(cards, 2, 124., 10.)
+    }
+}
+
+fn platform_name(platform: Platform) -> &'static str {
+    match platform {
+        Platform::Loader => "",
+        Platform::Paper => "Paper",
     }
 }
 

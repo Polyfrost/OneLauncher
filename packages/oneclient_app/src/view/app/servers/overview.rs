@@ -7,6 +7,7 @@ use crate::Route;
 use crate::components::{Button, Icon, IconType, ScrollArea, copy_button};
 use crate::hooks::{
     ServerFiles, settled_or_loading, use_dispatch, use_server, use_server_files, use_server_hub,
+    use_server_mods, use_server_run,
 };
 use crate::i18n::{t, tf};
 use crate::servers::{self, ServerLive, ServerStatus};
@@ -28,6 +29,10 @@ impl Component for ServerOverview {
         let server = use_server(&self.server_id);
         let files =
             settled_or_loading(&use_server_files(self.server_id.clone())).unwrap_or_default();
+        let world_size = settled_or_loading(&use_server_run(self.server_id.clone()))
+            .map_or(0, |run| run.world_size);
+        let mod_count = settled_or_loading(&use_server_mods(self.server_id.clone()))
+            .map_or(0, |mods| mods.len());
         let live = use_server_hub().get(&self.server_id);
         let dispatch = use_dispatch();
 
@@ -89,7 +94,7 @@ impl Component for ServerOverview {
                             .color(colors::fg_secondary()),
                     ),
             )
-            .child(stats(&live, &files, &max_players))
+            .child(stats(&live, &files, world_size, &max_players))
             .child(preview)
             .child(
                 rect()
@@ -114,7 +119,15 @@ impl Component for ServerOverview {
                             .width(Size::px(SIDE_COLUMN))
                             .spacing(16.)
                             .child(players_card(&live, &files))
-                            .child(requirements_card(&server, &files))
+                            .child(requirements_card(
+                                &server,
+                                &files,
+                                mod_count,
+                                InternetCheck {
+                                    port: port.trim().parse().unwrap_or(25565),
+                                    running: live.status == ServerStatus::Running,
+                                },
+                            ))
                             .child(backups_card(&server, self.server_id.clone())),
                     ),
             )
@@ -175,7 +188,9 @@ fn tile(
                         .color(colors::fg_secondary())
                         .into_element()
                 }))
-                .maybe(extra.is_some(), |el| el.child(rect().width(Size::flex(1.0))))
+                .maybe(extra.is_some(), |el| {
+                    el.child(rect().width(Size::flex(1.0)))
+                })
                 .maybe_child(extra),
         )
         .into_element()
@@ -191,7 +206,7 @@ fn row(children: Vec<Element>) -> Element {
         .into_element()
 }
 
-fn stats(live: &ServerLive, files: &ServerFiles, max_players: &str) -> Element {
+fn stats(live: &ServerLive, files: &ServerFiles, world_size: u64, max_players: &str) -> Element {
     let running = live.status == ServerStatus::Running;
     let last_backup = files.backups.first().map_or_else(
         || DASH.to_string(),
@@ -250,10 +265,10 @@ fn stats(live: &ServerLive, files: &ServerFiles, max_players: &str) -> Element {
             ),
             tile(
                 t("oneclient.servers.stats.world"),
-                if files.world_size == 0 {
+                if world_size == 0 {
                     DASH.to_string()
                 } else {
-                    fmt_bytes(files.world_size)
+                    fmt_bytes(world_size)
                 },
                 None,
                 false,
@@ -478,7 +493,76 @@ fn fact(name: &'static str, value: String, warn: bool) -> Element {
         .into_element()
 }
 
-fn requirements_card(server: &LocalServer, files: &ServerFiles) -> Element {
+#[derive(Clone, PartialEq)]
+enum Reach {
+    Unchecked,
+    Checking,
+    Done(oneclient_core::servers::Reachability),
+    Failed,
+}
+
+#[derive(PartialEq)]
+struct InternetCheck {
+    port: u16,
+    running: bool,
+}
+
+impl Component for InternetCheck {
+    fn render(&self) -> impl IntoElement {
+        let mut reach = use_state(|| Reach::Unchecked);
+        let (port, running) = (self.port, self.running);
+        let current = reach.read().clone();
+        let (value, warn) = match &current {
+            Reach::Unchecked => (t("oneclient.servers.reach.unchecked").to_string(), true),
+            Reach::Checking => (t("oneclient.servers.reach.checking").to_string(), false),
+            Reach::Done(found) if found.online => {
+                (tf("oneclient.servers.reach.open", &[&found.address]), false)
+            }
+            Reach::Done(_) => (tf("oneclient.servers.reach.closed", &[&port]), true),
+            Reach::Failed => (t("oneclient.servers.reach.failed").to_string(), true),
+        };
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(6.)
+            .child(fact(t("oneclient.servers.requirements.internet"), value, warn))
+            .child(
+                Button::new()
+                    .secondary()
+                    .small()
+                    .enabled(running && current != Reach::Checking)
+                    .on_press(move |_| {
+                        reach.set(Reach::Checking);
+                        spawn(async move {
+                            let result = crate::launcher::off_ui(async move {
+                                let state = crate::launcher::state()?;
+                                oneclient_core::servers::check_reachable(&state, port).await
+                            })
+                            .await;
+                            reach.set(match result {
+                                Ok(found) => Reach::Done(found),
+                                Err(err) => {
+                                    tracing::warn!(%err, "could not check if the server is reachable");
+                                    Reach::Failed
+                                }
+                            });
+                        });
+                    })
+                    .text(if running {
+                        t("oneclient.servers.reach.check")
+                    } else {
+                        t("oneclient.servers.reach.start_first")
+                    }),
+            )
+    }
+}
+
+fn requirements_card(
+    server: &LocalServer,
+    files: &ServerFiles,
+    mod_count: usize,
+    internet: InternetCheck,
+) -> Element {
     let total_gb = oneclient_common::memory::total_ram_mb() / 1024;
     let java = server.java_major.map_or_else(
         || DASH.to_string(),
@@ -490,13 +574,17 @@ fn requirements_card(server: &LocalServer, files: &ServerFiles) -> Element {
             }
         },
     );
-    let loader = if server.loader.is_modded() {
+    let loader = if server.takes_content() {
         tf(
-            "oneclient.servers.requirements.mods",
-            &[&server.loader, &files.mods.len()],
+            if server.plugins() {
+                "oneclient.servers.requirements.plugins"
+            } else {
+                "oneclient.servers.requirements.mods"
+            },
+            &[&server.software_name(), &mod_count],
         )
     } else {
-        server.loader.to_string()
+        server.software_name()
     };
 
     card()
@@ -526,12 +614,7 @@ fn requirements_card(server: &LocalServer, files: &ServerFiles) -> Element {
             ),
             false,
         ))
-        // shortcut: no outside probe, so this always asks the user to set up forwarding themselves
-        .child(fact(
-            t("oneclient.servers.requirements.internet"),
-            t("oneclient.servers.requirements.not_set_up").to_string(),
-            true,
-        ))
+        .child(internet)
         .into_element()
 }
 

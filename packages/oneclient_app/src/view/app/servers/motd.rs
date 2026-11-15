@@ -202,13 +202,21 @@ pub fn code_picker(mut motd: State<String>) -> Element {
         ('l', true, t("oneclient.servers.settings.motd.bold")),
         ('o', true, t("oneclient.servers.settings.motd.italic")),
         ('n', true, t("oneclient.servers.settings.motd.underline")),
-        ('m', true, t("oneclient.servers.settings.motd.strikethrough")),
+        (
+            'm',
+            true,
+            t("oneclient.servers.settings.motd.strikethrough"),
+        ),
         ('k', false, t("oneclient.servers.settings.motd.obfuscated")),
         ('r', false, t("oneclient.servers.settings.motd.reset")),
     ]
     .into_iter()
     .map(|(code, styled, name)| {
-        let sample = if styled { format!("{SECTION}{code}{name}") } else { name.to_string() };
+        let sample = if styled {
+            format!("{SECTION}{code}{name}")
+        } else {
+            name.to_string()
+        };
         Button::new()
             .secondary()
             .small()

@@ -6,7 +6,7 @@ use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_common::domain::ProviderId;
 use oneclient_common::search::SearchQuery;
-use oneclient_core::servers::{self as core, ServerMod};
+use oneclient_core::servers::{ModUpdate, ServerMod};
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
@@ -15,7 +15,8 @@ use crate::components::{
     TextInput, grid_card, icon_box, list_card,
 };
 use crate::hooks::{
-    settled_or_loading, use_server, use_server_files, use_server_hub, use_view_state,
+    settled_or_loading, use_dispatch, use_server, use_server_hub, use_server_mod_updates,
+    use_server_mods, use_view_state,
 };
 use crate::i18n::{t, tf};
 use crate::routes::Route;
@@ -30,7 +31,7 @@ const CONTROL_H: f32 = 34.;
 const ROW_SPACING: f32 = 8.;
 const ICON_SIZE: f32 = 44.;
 
-fn entry(m: &ServerMod) -> PackageEntry {
+fn entry(m: &ServerMod, update: Option<&ModUpdate>) -> PackageEntry {
     PackageEntry {
         package_id: m.file_name.clone(),
         bundle_name: None,
@@ -43,7 +44,14 @@ fn entry(m: &ServerMod) -> PackageEntry {
             .unwrap_or_else(|| tidy_file_name(m.file_name.trim_end_matches(".disabled"))),
         file_name: m.file_name.clone(),
         author: m.authors.join(", "),
-        version: m.version.clone(),
+        version: match update {
+            Some(update) => Some(format!(
+                "{} \u{2192} {}",
+                m.version.as_deref().unwrap_or("?"),
+                update.version_number
+            )),
+            None => m.version.clone(),
+        },
         description: m.description.clone().unwrap_or_default(),
         icon_url: None,
         size: m.size,
@@ -95,8 +103,11 @@ pub struct ServerMods {
 impl Component for ServerMods {
     fn render(&self) -> impl IntoElement {
         let server = use_server(&self.server_id);
-        let files = settled_or_loading(&use_server_files(self.server_id.clone()));
-        let running = use_server_hub().status(&self.server_id).is_live();
+        let mods = settled_or_loading(&use_server_mods(self.server_id.clone()));
+        let updates =
+            settled_or_loading(&use_server_mod_updates(self.server_id.clone())).unwrap_or_default();
+        let dispatch = use_dispatch();
+        let running = use_server_hub().status(&self.server_id) != servers::ServerStatus::Stopped;
         let search = use_state(String::new);
         let mut sort = use_state(|| SortMode::NameAsc);
         let mut show = use_state(|| EnabledFilter::All);
@@ -105,22 +116,23 @@ impl Component for ServerMods {
         let mut menu = use_state(|| None::<(f32, f32, PackageEntry)>);
         let mut deleting = use_state(|| None::<PackageEntry>);
 
-        let (Some(server), Some(files)) = (server, files) else {
+        let (Some(server), Some(mods)) = (server, mods) else {
             return centered_note(t("oneclient.servers.loading"));
         };
         let Ok(dir) = server.dir() else {
             return centered_note(t("oneclient.servers.not_found"));
         };
-        let mods_dir = dir.join("mods");
-        let modded = server.loader.is_modded();
+        let mods_dir = dir.join(server.content_folder());
+        let modded = server.takes_content();
+        let plugins = server.plugins();
+        let update_for = |file_name: &str| updates.iter().find(|u| u.file_name == file_name);
 
         let query = SearchQuery::new(&search.read());
         let current_sort = *sort.read();
         let current_show = *show.read();
-        let mut entries: Vec<PackageEntry> = files
-            .mods
+        let mut entries: Vec<PackageEntry> = mods
             .iter()
-            .map(entry)
+            .map(|m| entry(m, update_for(&m.file_name)))
             .filter(|e| current_show.keep(e))
             .filter(|e| {
                 query.is_empty()
@@ -131,7 +143,7 @@ impl Component for ServerMods {
             .collect();
         current_sort.sort(&mut entries);
         let rows = entries.into_iter().filter_map(|e| {
-            let m = files.mods.iter().find(|m| m.file_name == e.file_name)?;
+            let m = mods.iter().find(|m| m.file_name == e.file_name)?;
             Some((e, m))
         });
 
@@ -153,7 +165,7 @@ impl Component for ServerMods {
             }),
         );
 
-        let add_dir = mods_dir.clone();
+        let (add_dir, add_id) = (mods_dir.clone(), self.server_id.clone());
         let toolbar = {
             let mut top = CornerRadius::new_all(0.);
             top.fill_top(rounded_px(12.));
@@ -168,7 +180,14 @@ impl Component for ServerMods {
                 .background(colors::page_elevated())
                 .child(
                     label()
-                        .text(tf("oneclient.servers.mods.count", &[&files.mods.len()]))
+                        .text(tf(
+                            if plugins {
+                                "oneclient.servers.plugins.count"
+                            } else {
+                                "oneclient.servers.mods.count"
+                            },
+                            &[&mods.len()],
+                        ))
                         .width(Size::flex(1.0))
                         .font_size(text_size(13.))
                         .font_weight(FontWeight::MEDIUM)
@@ -185,6 +204,28 @@ impl Component for ServerMods {
                                 .into_element(),
                         ),
                 )
+                .maybe_child((!updates.is_empty()).then(|| {
+                    let (station, id, all) =
+                        (dispatch.station(), self.server_id.clone(), updates.clone());
+                    Button::new()
+                        .secondary()
+                        .height(Size::px(CONTROL_H))
+                        .font_size(text_size(12.))
+                        .on_press(move |_| {
+                            for update in &all {
+                                servers::install_mod(
+                                    station,
+                                    id.clone(),
+                                    update.provider,
+                                    update.project_id.clone(),
+                                    update.version_id.clone(),
+                                );
+                            }
+                        })
+                        .child(Icon::new(IconType::RefreshCw01).size(15.))
+                        .text(tf("oneclient.servers.mods.update_all", &[&updates.len()]))
+                        .into_element()
+                }))
                 .child(filter_menu)
                 .child(
                     SegmentedControl::new(layout)
@@ -222,7 +263,7 @@ impl Component for ServerMods {
                         .height(Size::px(CONTROL_H))
                         .font_size(text_size(12.))
                         .enabled(modded)
-                        .on_press(move |_| add_files(add_dir.clone()))
+                        .on_press(move |_| add_files(add_id.clone(), add_dir.clone()))
                         .child(Icon::new(IconType::FilePlus02).size(15.))
                         .text(t("oneclient.cluster.package_manager.add_from_file")),
                 )
@@ -231,7 +272,6 @@ impl Component for ServerMods {
         let cards: Vec<ServerModCard> = rows
             .map(|(item, m)| ServerModCard {
                 server_id: self.server_id.clone(),
-                dir: dir.clone(),
                 icon: m.icon.clone(),
                 item,
                 layout: card_layout,
@@ -241,8 +281,12 @@ impl Component for ServerMods {
 
         let body: Element = if !modded {
             centered_note(t("oneclient.servers.mods.vanilla"))
-        } else if files.mods.is_empty() {
-            centered_note(t("oneclient.servers.mods.empty"))
+        } else if mods.is_empty() {
+            centered_note(t(if plugins {
+                "oneclient.servers.plugins.empty"
+            } else {
+                "oneclient.servers.mods.empty"
+            }))
         } else if cards.is_empty() {
             centered_note(t("oneclient.servers.mods.no_match"))
         } else {
@@ -277,33 +321,57 @@ impl Component for ServerMods {
         let context = menu.read().clone().map(|(x, y, item)| {
             let folder = mods_dir.clone();
             let target = item.clone();
-            ContextMenu::new(x, y)
-                .title(item.name.clone())
-                .action(
-                    IconType::Folder,
-                    t("oneclient.components.package_row.view_in_folder"),
-                    move |()| crate::platform::open_path(&folder.to_string_lossy()),
-                )
-                .separator()
-                .danger_action(IconType::Trash01, t("oneclient.common.delete"), move |()| {
-                    deleting.set(Some(target.clone()))
-                })
-                .on_close(move |_| menu.set(None))
-                .into_element()
+            let mut context = ContextMenu::new(x, y).title(item.name.clone()).action(
+                IconType::Folder,
+                t("oneclient.components.package_row.view_in_folder"),
+                move |()| crate::platform::open_path(&folder.to_string_lossy()),
+            );
+            if let Some(update) = update_for(&item.file_name).cloned() {
+                let (station, id) = (dispatch.station(), self.server_id.clone());
+                context = context.action(
+                    IconType::RefreshCw01,
+                    tf(
+                        "oneclient.servers.mods.update_to",
+                        &[&update.version_number],
+                    ),
+                    move |()| {
+                        servers::install_mod(
+                            station,
+                            id.clone(),
+                            update.provider,
+                            update.project_id.clone(),
+                            update.version_id.clone(),
+                        );
+                    },
+                );
+            }
+            if !running {
+                context = context.separator().danger_action(
+                    IconType::Trash01,
+                    t("oneclient.common.delete"),
+                    move |()| deleting.set(Some(target.clone())),
+                );
+            }
+            context.on_close(move |_| menu.set(None)).into_element()
         });
 
         let delete_dialog = deleting.read().clone().map(|item| {
             let path = mods_dir.join(&item.file_name);
+            let remove_id = self.server_id.clone();
             confirm_dialog(
                 tf("oneclient.servers.mods.delete.title", &[&item.name]),
                 t("oneclient.servers.mods.delete.body").to_string(),
                 move || deleting.set(None),
                 move || {
                     let path = path.clone();
-                    servers::run(t("oneclient.servers.mods.remove_failed"), async move {
-                        tokio::fs::remove_file(path).await?;
-                        Ok(())
-                    });
+                    servers::run(
+                        remove_id.clone(),
+                        t("oneclient.servers.mods.remove_failed"),
+                        async move {
+                            tokio::fs::remove_file(path).await?;
+                            Ok(())
+                        },
+                    );
                     deleting.set(None);
                 },
             )
@@ -345,7 +413,7 @@ impl Component for ServerMods {
     }
 }
 
-fn add_files(target: PathBuf) {
+fn add_files(id: String, target: PathBuf) {
     spawn(async move {
         let Some(picked) = rfd::AsyncFileDialog::new()
             .set_title(t("oneclient.cluster.package_manager.import.picker_title"))
@@ -356,7 +424,7 @@ fn add_files(target: PathBuf) {
             return;
         };
         let sources: Vec<PathBuf> = picked.iter().map(|f| f.path().to_path_buf()).collect();
-        servers::run(t("oneclient.servers.mods.add_failed"), async move {
+        servers::run(id, t("oneclient.servers.mods.add_failed"), async move {
             tokio::fs::create_dir_all(&target).await?;
             for source in sources {
                 if let Some(name) = source.file_name() {
@@ -372,7 +440,6 @@ fn add_files(target: PathBuf) {
 #[derive(Clone, PartialEq)]
 struct ServerModCard {
     server_id: String,
-    dir: PathBuf,
     icon: Option<Vec<u8>>,
     item: PackageEntry,
     layout: CardLayout,
@@ -383,15 +450,9 @@ impl Component for ServerModCard {
     fn render(&self) -> impl IntoElement {
         let hovered = use_state(|| false);
         let item = self.item.clone();
-        let (dir, file, enabled) = (self.dir.clone(), item.file_name.clone(), item.enabled);
-        let on_toggle: EventHandler<()> = (move |()| {
-            let (dir, file) = (dir.clone(), file.clone());
-            servers::run(t("oneclient.servers.mods.toggle_failed"), async move {
-                core::set_mod_enabled(&dir, &file, !enabled).await?;
-                Ok(())
-            });
-        })
-        .into();
+        let (id, file, enabled) = (self.server_id.clone(), item.file_name.clone(), item.enabled);
+        let on_toggle: EventHandler<()> =
+            (move |()| servers::set_mod_enabled(id.clone(), file.clone(), !enabled)).into();
         let on_context = self.on_context.clone();
         let for_menu = item.clone();
         let on_context: EventHandler<(f32, f32)> =

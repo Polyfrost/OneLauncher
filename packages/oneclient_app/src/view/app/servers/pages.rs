@@ -6,7 +6,9 @@ use oneclient_core::servers as core;
 use super::settings::{ConfirmRow, whitelist_row};
 use super::{DASH, card, card_head, fmt_bytes};
 use crate::components::{Button, Icon, IconType, ScrollArea, open_folder_button};
-use crate::hooks::{settled_or_loading, use_server, use_server_files, use_server_hub};
+use crate::hooks::{
+    settled_or_loading, use_server, use_server_files, use_server_hub, use_server_run,
+};
 use crate::i18n::{t, tf};
 use crate::servers::{self, ServerStatus};
 use crate::theme::{colors, rounded, text_size};
@@ -135,14 +137,16 @@ impl Component for ServerWorlds {
     fn render(&self) -> impl IntoElement {
         let server = use_server(&self.server_id);
         let files = settled_or_loading(&use_server_files(self.server_id.clone()));
+        let world_size = settled_or_loading(&use_server_run(self.server_id.clone()))
+            .map_or(0, |run| run.world_size);
         let (Some(server), Some(files)) = (server, files) else {
             return centered_note(t("oneclient.servers.loading"));
         };
         let folder = server.dir().ok().map(|d| d.join(&files.world));
-        let size = if files.world_size == 0 {
+        let size = if world_size == 0 {
             DASH.to_string()
         } else {
-            fmt_bytes(files.world_size)
+            fmt_bytes(world_size)
         };
 
         page(vec![
@@ -174,7 +178,7 @@ impl Component for ServerBackups {
     fn render(&self) -> impl IntoElement {
         let server = use_server(&self.server_id);
         let files = settled_or_loading(&use_server_files(self.server_id.clone()));
-        let running = use_server_hub().status(&self.server_id).is_live();
+        let running = use_server_hub().status(&self.server_id) != ServerStatus::Stopped;
         let mut armed = use_state(|| None::<PathBuf>);
         let (Some(server), Some(files)) = (server, files) else {
             return centered_note(t("oneclient.servers.loading"));
@@ -224,7 +228,8 @@ impl Component for ServerBackups {
         for backup in &files.backups {
             let path = backup.path.clone();
             let confirming = armed.read().as_ref() == Some(&path);
-            let (restore_path, delete_path, id) = (path.clone(), path.clone(), id.clone());
+            let (restore_path, delete_path, id, delete_id) =
+                (path.clone(), path.clone(), id.clone(), id.clone());
             let actions = rect()
                 .horizontal()
                 .spacing(8.)
@@ -244,6 +249,7 @@ impl Component for ServerBackups {
                             armed.set(None);
                             let (id, backup) = (id.clone(), restore_path.clone());
                             servers::run(
+                                id.clone(),
                                 t("oneclient.servers.backups.restore_failed"),
                                 async move {
                                     core::restore_backup(&core::server_dir(&id)?, &backup).await
@@ -265,6 +271,7 @@ impl Component for ServerBackups {
                         .on_press(move |_| {
                             let path = delete_path.clone();
                             servers::run(
+                                delete_id.clone(),
                                 t("oneclient.servers.backups.delete_failed"),
                                 async move {
                                     tokio::fs::remove_file(path).await?;

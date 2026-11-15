@@ -9,21 +9,25 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub use backups::{
-    BackupInfo, create_backup, list_backups, reset_world, restore_backup, world_name,
+    BackupInfo, create_backup, list_backups, reset_world, restore_backup, world_folders,
+    world_name,
 };
 pub use install::{
-    PackInfo, copy_from_instance, install_server, java_for, read_mrpack, supports_loader,
-    unpack_mrpack,
+    ImportGuess, PackInfo, Progress, copy_from_instance, detect_import, install_server, java_for,
+    platform_available, read_mrpack, supports_loader, unpack_mrpack,
 };
 pub use mods::{
-    ModSource, ServerMod, identify_mods, install_mod, list_mods, record_sources, set_mod_enabled,
+    ModSource, ModUpdate, ServerMod, check_mod_updates, identify_mods, install_mod, list_mods,
+    migrate_mods, record_sources, set_mod_enabled,
 };
-pub use players::{ListedPlayer, OPS, WHITELIST, add_to_list, read_list, remove_from_list};
+pub use players::{
+    ListedPlayer, add_to_list, ensure_lists, list_file, read_list, remove_from_list,
+};
 pub use properties::Properties;
 pub use store::{
-    DEFAULT_MEMORY_MB, DEFAULT_PORT, LocalServer, ServerKind, accept_eula, allocate_id, clear_pid,
-    delete_server, dir_size, kill_orphan, list_servers, load_server, save_server, server_dir,
-    servers_root, write_pid,
+    DEFAULT_MEMORY_MB, DEFAULT_PORT, LocalServer, PID_FILE, Platform, ServerKind, accept_eula,
+    allocate_id, clear_pid, delete_server, dir_size, free_port, kill_orphan, list_servers,
+    load_server, save_server, server_dir, servers_root, write_pid,
 };
 
 use crate::state::LauncherState;
@@ -74,11 +78,100 @@ pub async fn set_icon_bytes(dir: &Path, bytes: Vec<u8>) -> LauncherResult<()> {
     .map_err(|e| LauncherError::Server(e.to_string()))?
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reachability {
+    pub address: String,
+    pub online: bool,
+}
+
+pub async fn check_reachable(state: &LauncherState, port: u16) -> LauncherResult<Reachability> {
+    #[derive(serde::Deserialize)]
+    struct PublicIp {
+        ip: String,
+    }
+    #[derive(serde::Deserialize)]
+    struct PortCheck {
+        #[serde(default)]
+        check: Vec<PortStatus>,
+    }
+    #[derive(serde::Deserialize)]
+    struct PortStatus {
+        port: u16,
+        status: bool,
+    }
+    let ip: PublicIp = install::get_json(state, "https://api.ipify.org?format=json").await?;
+    let mut request = reqwest::Request::new(
+        reqwest::Method::POST,
+        "https://portchecker.io/api/v1/query".parse()?,
+    );
+    request.headers_mut().insert(
+        reqwest::header::CONTENT_TYPE,
+        reqwest::header::HeaderValue::from_static("application/json"),
+    );
+    *request.body_mut() =
+        Some(serde_json::to_vec(&serde_json::json!({ "host": ip.ip, "ports": [port] }))?.into());
+    let result: PortCheck = state.services.requester.send_as(request).await?;
+    Ok(Reachability {
+        address: format!("{}:{port}", ip.ip),
+        online: result.check.iter().any(|c| c.port == port && c.status),
+    })
+}
+
+fn version_at_least(mc_version: &str, major: u32, minor: u32) -> bool {
+    oneclient_common::parse_mc_version(mc_version)
+        .is_none_or(|v| (v.major, v.minor.unwrap_or(0)) >= (major, minor))
+}
+
+#[must_use]
+pub fn json_lists(mc_version: &str) -> bool {
+    version_at_least(mc_version, 7, 6)
+}
+
+#[must_use]
+pub fn named_modes(mc_version: &str) -> bool {
+    version_at_least(mc_version, 14, 0)
+}
+
+#[must_use]
+pub fn has_simulation_distance(mc_version: &str) -> bool {
+    version_at_least(mc_version, 18, 0)
+}
+
 /// The address other machines on the network reach this one by, no packet is sent
 #[must_use]
 pub fn lan_ip() -> Option<std::net::IpAddr> {
+    static CACHE: std::sync::Mutex<Option<(std::time::Instant, Option<std::net::IpAddr>)>> =
+        std::sync::Mutex::new(None);
+    let mut cache = CACHE.lock().unwrap();
+    if let Some((at, ip)) = *cache
+        && at.elapsed() < std::time::Duration::from_secs(30)
+    {
+        return ip;
+    }
+    let ip = probe_lan_ip();
+    *cache = Some((std::time::Instant::now(), ip));
+    ip
+}
+
+fn probe_lan_ip() -> Option<std::net::IpAddr> {
     let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
     socket.connect("192.0.2.1:80").ok()?;
     Some(socket.local_addr().ok()?.ip()).filter(|ip| !ip.is_loopback() && !ip.is_unspecified())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn old_versions_use_legacy_property_and_list_formats() {
+        assert!(!json_lists("1.7.2"));
+        assert!(json_lists("1.7.10"));
+        assert!(!named_modes("1.8.9"));
+        assert!(!named_modes("1.13.2"));
+        assert!(named_modes("1.14"));
+        assert!(named_modes("26.1"));
+        assert!(!has_simulation_distance("1.17.1"));
+        assert!(has_simulation_distance("1.18.2"));
+    }
+}

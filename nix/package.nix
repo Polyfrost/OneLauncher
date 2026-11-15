@@ -7,11 +7,11 @@
 
 let
   pname = "oneclient";
-  version = "2.10.2";
+  version = "2.11.0";
 
   src = fetchurl {
     url = "https://github.com/Polyfrost/OneLauncher/releases/download/oneclient-${version}/OneClient_${version}_linux_x86_64.AppImage";
-    hash = "sha256-fKuHG61AnHaNqDmG2G94Q546aWiNcsaE4bkdy6EJJXE=";
+    hash = "sha256-+VaopHbXl3DknldMV2Zj4tfOucSZk1iFnbnniM5Auzk=";
   };
 
   extracted = appimageTools.extract { inherit pname version src; };

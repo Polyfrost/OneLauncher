@@ -9,7 +9,7 @@ use crate::components::{
 use crate::i18n::t;
 use crate::theme::{colors, rounded, text_size};
 
-pub(super) use crate::components::use_player_name;
+pub(super) use crate::components::{inset_border, use_player_name};
 
 pub(super) const LIST_WIDTH_PX: f32 = 320.;
 pub(super) const ROW_RADIUS_PX: f32 = 8.;
@@ -18,13 +18,6 @@ pub(super) const CHIP_RADIUS_PX: f32 = 6.;
 
 pub(super) fn popup_shadow() -> Shadow {
     Shadow::from((0., 8., 24., 0., Color::from_argb(89, 0, 0, 0)))
-}
-
-pub(super) fn inset_border(color: Color) -> Border {
-    Border::new()
-        .fill(color)
-        .width(1.)
-        .alignment(BorderAlignment::Inner)
 }
 
 pub(super) fn edge_border(color: Color, top: f32, right: f32, bottom: f32) -> Border {

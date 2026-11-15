@@ -2307,7 +2307,14 @@ async fn adopt_file(
     content_type: ContentType,
     discard_stale: bool,
 ) -> Option<oneclient_content::ContentResult<oneclient_db::models::ArtifactRow>> {
-    if discard_stale && !cluster.is_isolated() && is_stale_launcher_content(services, path).await {
+    // Packs are never discarded: a hand-dropped pack can share a hash with a cached
+    // artifact (another instance's copy, or one removed in the launcher) and
+    // deleting it here loses the user's file without relinking it
+    if discard_stale
+        && content_type == ContentType::Mod
+        && !cluster.is_isolated()
+        && is_stale_launcher_content(services, path).await
+    {
         tracing::debug!(
             file = %path.display(),
             "discarding stale launcher content; the cache still holds it"
@@ -2864,17 +2871,18 @@ async fn sync_fabric_dep_overrides(cluster: &Cluster, game_dir: &Path) -> Launch
     let src = cluster.dir()?.join(FABRIC_DEP_OVERRIDES);
     let dest = game_dir.join(FABRIC_DEP_OVERRIDES);
 
-    if src == dest {
-        return Ok(());
-    }
+    let body = polyio::read(&src)
+        .await
+        .ok()
+        .filter(|bytes| bytes.iter().any(|b| !b.is_ascii_whitespace() && *b != 0));
 
-    if polyio::try_exists(&src).await.unwrap_or(false) {
-        if let Some(parent) = dest.parent() {
-            polyio::create_dir_all(parent).await.ok();
+    match body {
+        Some(body) if src != dest => polyio::write_atomic(&dest, body).await?,
+        Some(_) => {}
+        None if polyio::try_exists(&dest).await.unwrap_or(false) => {
+            polyio::remove_file(&dest).await.ok();
         }
-        polyio::copy(&src, &dest).await?;
-    } else if polyio::try_exists(&dest).await.unwrap_or(false) {
-        polyio::remove_file(&dest).await.ok();
+        None => {}
     }
 
     Ok(())

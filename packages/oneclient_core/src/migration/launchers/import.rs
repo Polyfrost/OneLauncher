@@ -272,7 +272,7 @@ pub async fn import_instance(
     match result {
         Ok(mut report) => {
             report.cluster_id = cluster.id;
-            report.mods_left_out = left_out;
+            report.mods_left_out += left_out;
             report.cluster_name = cluster.name.clone();
             report.parts_skipped = instance.skipped_parts.clone();
             tracing::info!(
@@ -438,6 +438,7 @@ async fn populate(
             )
             .await;
         }
+        report.mods_left_out = drop_skipped_nested_mods(source, &game_dir, &choices.skip).await;
     }
 
     status.stage(match scanned.files.len() {
@@ -546,6 +547,36 @@ async fn drop_pack_files_removed_locally(
     }
 
     Ok(())
+}
+
+async fn drop_skipped_nested_mods(source: &Path, game_dir: &Path, skip: &HashSet<String>) -> usize {
+    if skip.is_empty() {
+        return 0;
+    }
+    let mods = source.join(ContentType::Mod.folder_name());
+    let mut dropped = 0;
+    for file in list_mod_files(source).await {
+        let Ok(relative) = file.path.strip_prefix(&mods) else {
+            continue;
+        };
+        if relative.components().count() < 2 {
+            continue;
+        }
+        let Ok(hash) = polyio::sha1_file(&file.path).await else {
+            continue;
+        };
+        if !skip.contains(&polyio::normalize_hash(&hash)) {
+            continue;
+        }
+        let copied = game_dir.join(ContentType::Mod.folder_name()).join(relative);
+        match polyio::remove_file(&copied).await {
+            Ok(()) => dropped += 1,
+            Err(err) => {
+                tracing::warn!(path = %copied.display(), error = %err, "could not leave out a mod in a version folder");
+            }
+        }
+    }
+    dropped
 }
 
 async fn drop_skipped_pack_files(
@@ -939,6 +970,19 @@ pub(super) async fn scan_mod_jars(game_dir: &Path) -> Vec<ModJar> {
     hash_mod_files(list_mod_files(game_dir).await).await
 }
 
+pub(super) fn mod_files_stamp(files: &[ModFile]) -> u64 {
+    use std::hash::{Hash, Hasher};
+
+    let mut listed: Vec<(&str, bool, u64, Option<SystemTime>)> = files
+        .iter()
+        .map(|file| (file.name.as_str(), file.enabled, file.len, file.modified))
+        .collect();
+    listed.sort();
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    listed.hash(&mut hasher);
+    hasher.finish()
+}
+
 pub(super) async fn hash_mod_files(files: Vec<ModFile>) -> Vec<ModJar> {
     let mut seen = HashSet::new();
     let mut jars = Vec::new();
@@ -963,19 +1007,6 @@ pub(super) async fn hash_mod_files(files: Vec<ModFile>) -> Vec<ModJar> {
         }
     }
     jars
-}
-
-pub(super) fn mod_files_stamp(files: &[ModFile]) -> u64 {
-    use std::hash::{Hash, Hasher};
-
-    let mut listed: Vec<(&str, bool, u64, Option<SystemTime>)> = files
-        .iter()
-        .map(|file| (file.name.as_str(), file.enabled, file.len, file.modified))
-        .collect();
-    listed.sort();
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    listed.hash(&mut hasher);
-    hasher.finish()
 }
 
 /// Gives every disabled file a copy under its real name for the store; one
@@ -1185,6 +1216,44 @@ mod tests {
         polyio::write(&path, path.to_string_lossy().as_bytes())
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn mods_screened_as_left_out_are_skipped_at_the_top_and_in_version_folders() {
+        let tmp = polyio::tempdir().await.unwrap();
+        let source = tmp.dir_path().join("source");
+        let dest = tmp.dir_path().join("dest");
+        let files = [
+            "mods/1.20.1/bad.jar",
+            "mods/1.20.1/good.jar",
+            "mods/bad-top.jar",
+            "mods/good-top.jar",
+        ];
+        for file in files {
+            touch(source.join(file)).await;
+            touch(dest.join(file)).await;
+        }
+        let skip: HashSet<String> = scan_mod_jars(&source)
+            .await
+            .into_iter()
+            .filter(|jar| jar.path.to_string_lossy().contains("bad"))
+            .map(|jar| jar.hash)
+            .collect();
+        assert_eq!(skip.len(), 2);
+
+        let mut scanned = scan_content(&source).await;
+        scanned.files.retain(|file| !skip.contains(&file.hash));
+        let dropped = drop_skipped_nested_mods(&source, &dest, &skip).await;
+
+        let kept: Vec<String> = scanned
+            .files
+            .iter()
+            .map(|file| file.path.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(kept, ["good-top.jar"]);
+        assert_eq!(dropped, 1);
+        assert!(!dest.join("mods/1.20.1/bad.jar").exists());
+        assert!(dest.join("mods/1.20.1/good.jar").exists());
     }
 
     #[tokio::test]

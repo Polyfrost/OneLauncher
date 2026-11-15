@@ -73,6 +73,8 @@ pub struct Cluster {
     pub cover_path: Option<String>,
     #[serde(default)]
     pub dir_target: DirTarget,
+    #[serde(default)]
+    pub takes_bundles: bool,
 }
 
 impl PartialEq for Cluster {
@@ -127,6 +129,7 @@ impl Cluster {
             tags: serde_json::from_str(&row.tags).unwrap_or_default(),
             cover_path: row.cover_path,
             dir_target,
+            takes_bundles: row.takes_bundles != 0,
         })
     }
 
@@ -163,7 +166,7 @@ impl Cluster {
     }
 
     pub fn uses_bundles(&self) -> bool {
-        self.kind.uses_bundles()
+        self.kind.uses_bundles() || self.takes_bundles
     }
 
     pub fn lacks_mod_loader(&self) -> bool {

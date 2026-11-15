@@ -1,19 +1,28 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
+use async_zip::tokio::write::ZipFileWriter;
+use async_zip::{Compression, ZipEntryBuilder};
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
-use oneclient_content::ContentCtx;
 use oneclient_content::bundles::{
     BundleFile, BundleFileKind, BundleFileType, BundleManifest, check_bundle_updates,
     get_bundles_with_update_status, install_cluster_bundles, on_user_disable_artifact,
     on_user_remove_artifact, set_bundle_package_enabled, wanted_bundle_files,
 };
+use oneclient_content::modpacks::{ModpackContents, ModpackManifest, install_modpack};
+use oneclient_content::packages::release_migration::retarget_cluster_mods;
+use oneclient_content::packages::{
+    DependencyKind, FileIdentity, InstalledPackage, PackageBody, PackageProvider, PackageStore,
+    Page, ProjectDetail, ProjectSummary, SearchFilters, VersionDependency, VersionDetail,
+    VersionFile, VersionLookup, VersionSummary,
+};
+use oneclient_content::{ContentCtx, ContentResult};
 use oneclient_core::LauncherState;
 use oneclient_core::clusters::CreateClusterOptions;
 use oneclient_db::dao::cluster::ClusterMigration;
 use oneclient_db::dao::{
     artifact as artifact_dao, cluster as cluster_dao, cluster_bisect as bisect_dao,
-    cluster_bundle as bundle_dao,
+    cluster_bundle as bundle_dao, cluster_flag as flag_dao,
 };
 use oneclient_db::models::OverrideType;
 
@@ -2794,11 +2803,183 @@ fn github_mod_served(url: &str, sha1: &str, size: u64) -> BundleFile {
     file
 }
 
+const OLD_VERSION_BUNDLE: &str = "Old Version Bundle";
+
+async fn cluster_with_other_version_copy(
+    state: &LauncherState,
+    old_bundle: &str,
+    current: BundleFile,
+) -> i64 {
+    let old_path = format!("bundles/1.20.1/{old_bundle}.mrpack");
+    oneclient_db::dao::bundle::upsert_bundle(
+        &state.services.db,
+        oneclient_db::models::NewBundle {
+            remote_path: &old_path,
+            mc_version: "1.20.1",
+            mc_loader: GameLoader::Fabric as i64,
+            file_name: &format!("{old_bundle}.mrpack"),
+            name: Some(old_bundle),
+            version_id: Some("1"),
+            category: Some("test"),
+            loader_version: Some("0.16.0"),
+            disk_path: &old_path,
+            hidden: false,
+            etag: None,
+            synced_at: None,
+        },
+    )
+    .await
+    .unwrap();
+    seed_bundle_with_pack(state, manifest(vec![current])).await;
+
+    let global = state.settings.read().global_game_settings.clone();
+    let cluster = state
+        .clusters
+        .create(
+            &global,
+            CreateClusterOptions::new("Moved Cluster", MC_VERSION, GameLoader::Fabric),
+        )
+        .await
+        .unwrap();
+    let db = &state.services.db;
+    artifact_dao::insert_artifact(
+        db,
+        GITHUB_OLD_HASH,
+        ContentType::Mod as i64,
+        "artifacts/github-mod-old.jar",
+        "github-mod.jar",
+        Some(1),
+    )
+    .await
+    .unwrap();
+    artifact_dao::link_cluster_artifact(db, cluster.id, GITHUB_OLD_HASH, "github-mod.jar")
+        .await
+        .unwrap();
+    bundle_dao::track_bundle_artifact(
+        db,
+        cluster.id,
+        GITHUB_OLD_HASH,
+        old_bundle,
+        GITHUB_OLD_HASH,
+        GITHUB_MOD_ID,
+    )
+    .await
+    .unwrap();
+    cluster.id
+}
+
 async fn linked(state: &LauncherState, cluster_id: i64, hash: &str) -> bool {
     artifact_dao::get_cluster_artifact(&state.services.db, cluster_id, hash)
         .await
         .unwrap()
         .is_some()
+}
+
+#[tokio::test]
+async fn another_versions_bundle_copy_gives_way_to_the_current_build() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let body = b"github mod for the current version".to_vec();
+    let sha1 = polyio::sha1_bytes(&body);
+    let size = body.len() as u64;
+    let (url, _) = serve_jar(body, None).await;
+    let cluster_id = cluster_with_other_version_copy(
+        &state,
+        OLD_VERSION_BUNDLE,
+        github_mod_served(&url, &sha1, size),
+    )
+    .await;
+
+    install_cluster_bundles(
+        cluster_id,
+        state.bundles.as_ref(),
+        None,
+        &state.services.content(),
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert!(!linked(&state, cluster_id, GITHUB_OLD_HASH).await);
+    assert!(linked(&state, cluster_id, &sha1).await);
+}
+
+#[tokio::test]
+async fn another_versions_bundle_copy_is_switched_off_while_its_replacement_fails() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let unreachable = github_mod_served(
+        "unsupported://example.invalid/github-mod.jar",
+        "3333333333333333333333333333333333333333",
+        1,
+    );
+    let cluster_id = cluster_with_other_version_copy(&state, OLD_VERSION_BUNDLE, unreachable).await;
+    let ctx = state.services.content();
+
+    install_cluster_bundles(cluster_id, state.bundles.as_ref(), None, &ctx, None)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        enabled(&state, cluster_id, GITHUB_OLD_HASH).await,
+        Some(false)
+    );
+    let overrides = bundle_dao::list_overrides(&state.services.db, cluster_id)
+        .await
+        .unwrap();
+    assert!(overrides.is_empty(), "{overrides:?}");
+
+    let body = b"github mod for the current version, served at last".to_vec();
+    let sha1 = polyio::sha1_bytes(&body);
+    let size = body.len() as u64;
+    let (url, _) = serve_jar(body, None).await;
+    seed_bundle_with_pack(&state, manifest(vec![github_mod_served(&url, &sha1, size)])).await;
+
+    install_cluster_bundles(cluster_id, state.bundles.as_ref(), None, &ctx, None)
+        .await
+        .unwrap();
+
+    assert!(!linked(&state, cluster_id, GITHUB_OLD_HASH).await);
+    assert_eq!(enabled(&state, cluster_id, &sha1).await, Some(true));
+}
+
+#[tokio::test]
+async fn a_switched_off_copy_the_current_bundle_ships_comes_back_on_while_staging_fails() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let mut unreachable = github_mod_served(
+        "unsupported://example.invalid/other-mod.jar",
+        "3333333333333333333333333333333333333333",
+        1,
+    );
+    unreachable.path = "mods/other-mod.jar".to_string();
+    if let BundleFileKind::External { file, id, .. } = &mut unreachable.kind {
+        file.name = "other-mod.jar".to_string();
+        *id = Some("other-mod".to_string());
+    }
+    let same = github_mod_served(
+        "unsupported://example.invalid/github-mod.jar",
+        GITHUB_OLD_HASH,
+        1,
+    );
+    let cluster_id =
+        cluster_with_other_version_copy(&state, OLD_VERSION_BUNDLE, same.clone()).await;
+    seed_bundle_with_pack(&state, manifest(vec![same, unreachable])).await;
+    let ctx = state.services.content();
+    PackageStore::set_artifact_enabled_to(cluster_id, GITHUB_OLD_HASH, false, &ctx)
+        .await
+        .unwrap();
+
+    let deadline = Some(std::time::Instant::now() + std::time::Duration::from_secs(5));
+    install_cluster_bundles(cluster_id, state.bundles.as_ref(), None, &ctx, deadline)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        enabled(&state, cluster_id, GITHUB_OLD_HASH).await,
+        Some(true)
+    );
+    let overrides = bundle_dao::list_overrides(&state.services.db, cluster_id)
+        .await
+        .unwrap();
+    assert!(overrides.is_empty(), "{overrides:?}");
 }
 
 #[tokio::test]
@@ -2808,13 +2989,78 @@ async fn launch_install_stops_waiting_at_the_deadline() {
     let sha1 = polyio::sha1_bytes(&body);
     let size = body.len() as u64;
     let (url, connections) = serve_jar(body, Some(std::time::Duration::from_millis(1500))).await;
-    seed_bundle_with_pack(&state, manifest(vec![github_mod_served(&url, &sha1, size)])).await;
+    let moved = cluster_with_other_version_copy(
+        &state,
+        OLD_VERSION_BUNDLE,
+        github_mod_served(&url, &sha1, size),
+    )
+    .await;
     let fresh = cluster_with_tracked_mod(&state).await;
     let ctx = state.services.content();
 
     let started = std::time::Instant::now();
     let deadline = Some(started + std::time::Duration::from_millis(300));
-    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, deadline)
+    let (a, b) = tokio::join!(
+        install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, deadline),
+        install_cluster_bundles(moved, state.bundles.as_ref(), None, &ctx, deadline),
+    );
+    a.unwrap();
+    b.unwrap();
+
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(1),
+        "took {:?}",
+        started.elapsed()
+    );
+    assert!(!linked(&state, fresh, &sha1).await);
+    assert!(!linked(&state, moved, &sha1).await);
+    assert_eq!(enabled(&state, moved, GITHUB_OLD_HASH).await, Some(false));
+
+    let (a, b) = tokio::join!(
+        install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, None),
+        install_cluster_bundles(moved, state.bundles.as_ref(), None, &ctx, None),
+    );
+    a.unwrap();
+    b.unwrap();
+
+    assert_eq!(connections.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert!(linked(&state, fresh, &sha1).await);
+    assert_eq!(enabled(&state, moved, &sha1).await, Some(true));
+    assert!(!linked(&state, moved, GITHUB_OLD_HASH).await);
+}
+
+#[tokio::test]
+async fn launch_install_keeps_the_deadline_for_a_linked_build_missing_its_file() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let body: Vec<u8> = (0..64 * 1024).map(|i| (i % 233) as u8).collect();
+    let sha1 = polyio::sha1_bytes(&body);
+    let size = body.len() as u64;
+    let (url, _) = serve_jar(body, Some(std::time::Duration::from_millis(1500))).await;
+    let moved = cluster_with_other_version_copy(
+        &state,
+        OLD_VERSION_BUNDLE,
+        github_mod_served(&url, &sha1, size),
+    )
+    .await;
+    let db = &state.services.db;
+    artifact_dao::insert_artifact(
+        db,
+        &sha1,
+        ContentType::Mod as i64,
+        "artifacts/missing-github-mod.jar",
+        "missing-github-mod.jar",
+        Some(size as i64),
+    )
+    .await
+    .unwrap();
+    artifact_dao::link_cluster_artifact(db, moved, &sha1, "missing-github-mod.jar")
+        .await
+        .unwrap();
+    let ctx = state.services.content();
+
+    let started = std::time::Instant::now();
+    let deadline = Some(started + std::time::Duration::from_millis(300));
+    install_cluster_bundles(moved, state.bundles.as_ref(), None, &ctx, deadline)
         .await
         .unwrap();
 
@@ -2823,14 +3069,61 @@ async fn launch_install_stops_waiting_at_the_deadline() {
         "took {:?}",
         started.elapsed()
     );
-    assert!(!linked(&state, fresh, &sha1).await);
+}
 
-    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, None)
+#[tokio::test]
+async fn a_disable_filed_under_another_versions_bundle_carries_over() {
+    disable_carries_over_when_filed_under(OLD_VERSION_BUNDLE).await;
+}
+
+#[tokio::test]
+async fn a_disable_filed_under_an_earlier_bundle_carries_over() {
+    disable_carries_over_when_filed_under("Earlier Bundle").await;
+}
+
+async fn disable_carries_over_when_filed_under(filed_under: &str) {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let body = b"github mod the user switched off".to_vec();
+    let sha1 = polyio::sha1_bytes(&body);
+    let size = body.len() as u64;
+    let (url, connections) = serve_jar(body, None).await;
+    let cluster_id = cluster_with_other_version_copy(
+        &state,
+        OLD_VERSION_BUNDLE,
+        github_mod_served(&url, &sha1, size),
+    )
+    .await;
+    bundle_dao::save_override(
+        &state.services.db,
+        cluster_id,
+        filed_under,
+        GITHUB_MOD_ID,
+        OverrideType::Disabled,
+    )
+    .await
+    .unwrap();
+
+    install_cluster_bundles(
+        cluster_id,
+        state.bundles.as_ref(),
+        None,
+        &state.services.content(),
+        None,
+    )
+    .await
+    .unwrap();
+
+    let overrides = bundle_dao::list_overrides(&state.services.db, cluster_id)
         .await
         .unwrap();
-
-    assert_eq!(connections.load(std::sync::atomic::Ordering::SeqCst), 1);
-    assert!(linked(&state, fresh, &sha1).await);
+    assert!(
+        overrides.iter().any(|o| o.bundle_name == BUNDLE
+            && o.package_id == GITHUB_MOD_ID
+            && OverrideType::parse(&o.override_type) == Some(OverrideType::Disabled)),
+        "{overrides:?}"
+    );
+    assert!(!linked(&state, cluster_id, &sha1).await);
+    assert_eq!(connections.load(std::sync::atomic::Ordering::SeqCst), 0);
 }
 
 #[tokio::test]
@@ -2876,6 +3169,40 @@ async fn launch_install_links_nothing_while_part_of_the_bundle_is_downloading() 
 }
 
 #[tokio::test]
+async fn launch_install_does_not_stage_a_file_an_installed_copy_satisfies() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let body = b"github mod next to a satisfied sodium".to_vec();
+    let sha1 = polyio::sha1_bytes(&body);
+    let size = body.len() as u64;
+    let (url, _) = serve_jar(body, None).await;
+    let mut sodium = managed_file(true);
+    if let BundleFileKind::Managed { sha1, .. } = &mut sodium.kind {
+        *sha1 = "9898989898989898989898989898989898989898".to_string();
+    }
+    seed_bundle_with_pack(
+        &state,
+        manifest(vec![sodium, github_mod_served(&url, &sha1, size)]),
+    )
+    .await;
+    let fresh = cluster_with_tracked_mod(&state).await;
+    let mut ctx = state.services.content();
+    ctx.providers.register(Arc::new(FixtureModrinth {
+        fail_latest_with: Mutex::default(),
+        projects: HashMap::new(),
+        versions: HashMap::new(),
+        latest: HashMap::new(),
+    }));
+
+    let deadline = Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
+    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, deadline)
+        .await
+        .unwrap();
+
+    assert!(linked(&state, fresh, &sha1).await);
+    assert!(linked(&state, fresh, HASH).await);
+}
+
+#[tokio::test]
 async fn launch_install_does_not_retry_a_failed_download() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
     let body: Vec<u8> = (0..64 * 1024).map(|i| (i % 233) as u8).collect();
@@ -2892,6 +3219,36 @@ async fn launch_install_does_not_retry_a_failed_download() {
         .unwrap();
 
     assert_eq!(connections.load(std::sync::atomic::Ordering::SeqCst), 3);
+    assert!(!linked(&state, fresh, &wrong_sha1).await);
+}
+
+#[tokio::test]
+async fn launch_install_links_nothing_when_part_of_the_bundle_fails_to_download() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let good_body: Vec<u8> = (0..64 * 1024).map(|i| (i % 211) as u8).collect();
+    let bad_body: Vec<u8> = (0..64 * 1024).map(|i| (i % 199) as u8).collect();
+    let good_sha1 = polyio::sha1_bytes(&good_body);
+    let wrong_sha1 = polyio::sha1_bytes(b"not what the broken url serves");
+    let size = good_body.len() as u64;
+    let (good_url, _) = serve_jar(good_body, None).await;
+    let (bad_url, _) = serve_jar(bad_body, None).await;
+    let good = github_mod_served(&good_url, &good_sha1, size);
+    let mut bad = github_mod_served(&bad_url, &wrong_sha1, size);
+    bad.path = "mods/broken-mod.jar".to_string();
+    if let BundleFileKind::External { file: ext, id, .. } = &mut bad.kind {
+        ext.name = "broken-mod.jar".to_string();
+        *id = Some("broken-mod".to_string());
+    }
+    seed_bundle_with_pack(&state, manifest(vec![good, bad])).await;
+    let fresh = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    let deadline = Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
+    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, deadline)
+        .await
+        .unwrap();
+
+    assert!(!linked(&state, fresh, &good_sha1).await);
     assert!(!linked(&state, fresh, &wrong_sha1).await);
 }
 
@@ -2922,7 +3279,12 @@ async fn launch_install_joins_a_download_left_running() {
     let size = body.len() as u64;
     let (url, connections) = serve_jar(body, Some(std::time::Duration::from_millis(1500))).await;
     clusters_numbered_from(&state, 9000).await;
-    seed_bundle_with_pack(&state, manifest(vec![github_mod_served(&url, &sha1, size)])).await;
+    let moved = cluster_with_other_version_copy(
+        &state,
+        OLD_VERSION_BUNDLE,
+        github_mod_served(&url, &sha1, size),
+    )
+    .await;
     let fresh = cluster_with_tracked_mod(&state).await;
     let ctx = state.services.content();
 
@@ -2936,12 +3298,72 @@ async fn launch_install_joins_a_download_left_running() {
     .unwrap();
     assert!(result.stopped_early);
 
-    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, None)
-        .await
-        .unwrap();
+    let (a, b) = tokio::join!(
+        install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, None),
+        install_cluster_bundles(moved, state.bundles.as_ref(), None, &ctx, None),
+    );
+    a.unwrap();
+    b.unwrap();
 
     assert_eq!(connections.load(std::sync::atomic::Ordering::SeqCst), 1);
     assert!(linked(&state, fresh, &sha1).await);
+    assert!(linked(&state, moved, &sha1).await);
+    assert!(!linked(&state, moved, GITHUB_OLD_HASH).await);
+}
+
+#[tokio::test]
+async fn another_versions_copy_of_the_same_build_moves_to_the_current_bundle() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let same_build = github_mod_served(
+        "unsupported://example.invalid/github-mod.jar",
+        GITHUB_OLD_HASH,
+        1,
+    );
+    let cluster_id = cluster_with_other_version_copy(&state, OLD_VERSION_BUNDLE, same_build).await;
+
+    install_cluster_bundles(
+        cluster_id,
+        state.bundles.as_ref(),
+        None,
+        &state.services.content(),
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert!(linked(&state, cluster_id, GITHUB_OLD_HASH).await);
+    let tracked = bundle_dao::get_bundle_tracked(&state.services.db, cluster_id, GITHUB_OLD_HASH)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(tracked.bundle_name.as_deref(), Some(BUNDLE));
+}
+
+#[tokio::test]
+async fn a_bundle_name_reused_across_versions_still_replaces_the_old_build() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let body = b"github mod rebuilt for the current version".to_vec();
+    let sha1 = polyio::sha1_bytes(&body);
+    let size = body.len() as u64;
+    let (url, _) = serve_jar(body, None).await;
+    let cluster_id =
+        cluster_with_other_version_copy(&state, BUNDLE, github_mod_served(&url, &sha1, size)).await;
+    let ctx = state.services.content();
+
+    oneclient_content::bundles::apply_bundle_updates(
+        cluster_id,
+        state.bundles.as_ref(),
+        &ctx,
+        None,
+    )
+    .await
+    .unwrap();
+    install_cluster_bundles(cluster_id, state.bundles.as_ref(), None, &ctx, None)
+        .await
+        .unwrap();
+
+    assert!(!linked(&state, cluster_id, GITHUB_OLD_HASH).await);
+    assert!(linked(&state, cluster_id, &sha1).await);
 }
 
 fn pinned_to(version_id: &str) -> BundleFile {
@@ -3234,4 +3656,1559 @@ async fn a_timed_out_sync_publishes_no_archive() {
         root.join("bundles/first-of-two.mrpack.staged").exists(),
         "the next sync resumes from it"
     );
+}
+
+struct FixtureModrinth {
+    projects: HashMap<String, ProjectDetail>,
+    versions: HashMap<String, VersionDetail>,
+    latest: HashMap<String, VersionDetail>,
+    fail_latest_with: Mutex<Option<u16>>,
+}
+
+#[async_trait::async_trait]
+impl PackageProvider for FixtureModrinth {
+    fn id(&self) -> ProviderId {
+        ProviderId::Modrinth
+    }
+
+    async fn search(
+        &self,
+        _filters: &SearchFilters,
+        _ctx: &ContentCtx,
+    ) -> ContentResult<Page<ProjectSummary>> {
+        unimplemented!()
+    }
+
+    async fn get_project(
+        &self,
+        project_id: &str,
+        _ctx: &ContentCtx,
+    ) -> ContentResult<ProjectDetail> {
+        Ok(self.projects[project_id].clone())
+    }
+
+    async fn get_projects(
+        &self,
+        _project_ids: &[String],
+        _ctx: &ContentCtx,
+    ) -> ContentResult<Vec<ProjectDetail>> {
+        unimplemented!()
+    }
+
+    async fn list_versions(
+        &self,
+        _project_id: &str,
+        _game_version: Option<&str>,
+        _loader: Option<GameLoader>,
+        _offset: usize,
+        _limit: usize,
+        _ctx: &ContentCtx,
+    ) -> ContentResult<Page<VersionSummary>> {
+        unimplemented!()
+    }
+
+    async fn get_version(
+        &self,
+        _project_id: &str,
+        version_id: &str,
+        _ctx: &ContentCtx,
+    ) -> ContentResult<VersionDetail> {
+        Ok(self.versions[version_id].clone())
+    }
+
+    async fn get_versions(
+        &self,
+        _version_ids: &[String],
+        _ctx: &ContentCtx,
+    ) -> ContentResult<Vec<VersionDetail>> {
+        unimplemented!()
+    }
+
+    async fn lookup_versions(
+        &self,
+        _identities: &[FileIdentity],
+        _ctx: &ContentCtx,
+    ) -> ContentResult<VersionLookup> {
+        unimplemented!()
+    }
+
+    async fn latest_for_game_version(
+        &self,
+        packages: &[InstalledPackage],
+        _mc_version: &str,
+        _loader: GameLoader,
+        _ctx: &ContentCtx,
+    ) -> ContentResult<HashMap<String, VersionDetail>> {
+        if let Some(status) = self.fail_latest_with.lock().unwrap().take() {
+            return Err(oneclient_net::RequestError::HttpStatus {
+                status,
+                url: String::new(),
+                snippet: String::new(),
+            }
+            .into());
+        }
+        Ok(packages
+            .iter()
+            .filter_map(|package| {
+                Some((
+                    package.hash.clone(),
+                    self.latest.get(&package.hash)?.clone(),
+                ))
+            })
+            .collect())
+    }
+}
+
+fn fixture_project(id: &str) -> ProjectDetail {
+    ProjectDetail {
+        id: id.to_string(),
+        slug: id.to_string(),
+        provider: ProviderId::Modrinth,
+        content_type: ContentType::Mod,
+        name: id.to_string(),
+        summary: String::new(),
+        author: String::new(),
+        members: Vec::new(),
+        gallery: Vec::new(),
+        body: PackageBody::raw(""),
+        license: None,
+        links: Vec::new(),
+        version_ids: Vec::new(),
+        game_versions: vec![MC_VERSION.to_string()],
+        loaders: vec![GameLoader::Fabric],
+        icon_url: None,
+        created: chrono::Utc::now(),
+        updated: chrono::Utc::now(),
+        downloads: 0,
+    }
+}
+
+fn fixture_version(
+    project_id: &str,
+    version_id: &str,
+    url: &str,
+    sha1: &str,
+    dependencies: Vec<VersionDependency>,
+) -> VersionDetail {
+    VersionDetail {
+        version_id: version_id.to_string(),
+        project_id: project_id.to_string(),
+        name: version_id.to_string(),
+        version_number: version_id.to_string(),
+        changelog: None,
+        game_versions: vec![MC_VERSION.to_string()],
+        loaders: vec![GameLoader::Fabric],
+        published: chrono::Utc::now(),
+        downloads: 0,
+        files: vec![VersionFile {
+            sha1: sha1.to_string(),
+            url: url.to_string(),
+            file_name: format!("{version_id}.jar"),
+            primary: true,
+            size: 1,
+            fingerprint: None,
+        }],
+        dependencies,
+    }
+}
+
+async fn link_release(
+    state: &LauncherState,
+    cluster_id: i64,
+    hash: &str,
+    project_id: &str,
+    version_id: &str,
+    mc_version: &str,
+    enabled: bool,
+) {
+    let db = &state.services.db;
+    let file_name = format!("{version_id}.jar");
+    artifact_dao::insert_artifact(
+        db,
+        hash,
+        ContentType::Mod as i64,
+        &format!("artifacts/{file_name}"),
+        &file_name,
+        Some(1),
+    )
+    .await
+    .unwrap();
+    artifact_dao::link_cluster_artifact(db, cluster_id, hash, &file_name)
+        .await
+        .unwrap();
+    artifact_dao::update_cluster_artifact(db, cluster_id, hash, &file_name, i64::from(enabled))
+        .await
+        .unwrap();
+    artifact_dao::upsert_provider_release(
+        db,
+        ProviderId::Modrinth as i64,
+        project_id,
+        version_id,
+        hash,
+        project_id,
+        version_id,
+        None,
+        mc_version,
+        "fabric",
+    )
+    .await
+    .unwrap();
+}
+
+async fn enabled(state: &LauncherState, cluster_id: i64, hash: &str) -> Option<bool> {
+    artifact_dao::get_cluster_artifact(&state.services.db, cluster_id, hash)
+        .await
+        .unwrap()
+        .map(|link| link.enabled != 0)
+}
+
+#[tokio::test]
+async fn retargeting_leaves_new_builds_on_and_the_rest_off() {
+    const TOP_OLD: &str = "4444444444444444444444444444444444444444";
+    const GONE: &str = "5555555555555555555555555555555555555555";
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let top_body = b"top for the new version".to_vec();
+    let lib_body = b"lib for the new version".to_vec();
+    let top_new = polyio::sha1_bytes(&top_body);
+    let lib_new = polyio::sha1_bytes(&lib_body);
+    let (top_url, _) = serve_jar(top_body, None).await;
+    let (lib_url, _) = serve_jar(lib_body, None).await;
+
+    let global = state.settings.read().global_game_settings.clone();
+    let cluster_id = state
+        .clusters
+        .create(
+            &global,
+            CreateClusterOptions::new("Retargeted", MC_VERSION, GameLoader::Fabric),
+        )
+        .await
+        .unwrap()
+        .id;
+    link_release(&state, cluster_id, TOP_OLD, "top", "top-1", "1.20.1", true).await;
+    link_release(&state, cluster_id, GONE, "gone", "gone-1", "1.20.1", true).await;
+    link_release(
+        &state, cluster_id, &lib_new, "lib", "lib-2", MC_VERSION, false,
+    )
+    .await;
+
+    let lib = fixture_version("lib", "lib-2", &lib_url, &lib_new, Vec::new());
+    let top = fixture_version(
+        "top",
+        "top-2",
+        &top_url,
+        &top_new,
+        vec![VersionDependency {
+            project_id: Some("lib".to_string()),
+            version_id: Some("lib-2".to_string()),
+            kind: DependencyKind::Required,
+        }],
+    );
+    let mut ctx = state.services.content();
+    ctx.providers.register(Arc::new(FixtureModrinth {
+        fail_latest_with: Mutex::default(),
+        projects: ["top", "lib"]
+            .into_iter()
+            .map(|id| (id.to_string(), fixture_project(id)))
+            .collect(),
+        versions: HashMap::from([("lib-2".to_string(), lib.clone())]),
+        latest: HashMap::from([(TOP_OLD.to_string(), top), (lib_new.clone(), lib)]),
+    }));
+
+    retarget_cluster_mods(cluster_id, &mut HashSet::new(), &ctx)
+        .await
+        .unwrap();
+
+    assert_eq!(enabled(&state, cluster_id, &top_new).await, Some(true));
+    assert_eq!(
+        enabled(&state, cluster_id, &lib_new).await,
+        Some(true),
+        "the new build of `top` requires it"
+    );
+    assert_eq!(enabled(&state, cluster_id, GONE).await, Some(false));
+    assert_ne!(enabled(&state, cluster_id, TOP_OLD).await, Some(true));
+}
+
+async fn retarget_cluster(state: &LauncherState) -> i64 {
+    let global = state.settings.read().global_game_settings.clone();
+    state
+        .clusters
+        .create(
+            &global,
+            CreateClusterOptions::new("Retargeted", MC_VERSION, GameLoader::Fabric),
+        )
+        .await
+        .unwrap()
+        .id
+}
+
+#[tokio::test]
+async fn retargeting_switches_off_a_mod_it_cannot_look_up() {
+    const UNKNOWN: &str = "6666666666666666666666666666666666666666";
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = retarget_cluster(&state).await;
+    let db = &state.services.db;
+    artifact_dao::insert_artifact(
+        db,
+        UNKNOWN,
+        ContentType::Mod as i64,
+        "artifacts/unknown.jar",
+        "unknown.jar",
+        Some(1),
+    )
+    .await
+    .unwrap();
+    artifact_dao::link_cluster_artifact(db, cluster_id, UNKNOWN, "unknown.jar")
+        .await
+        .unwrap();
+
+    let (disabled, _) =
+        retarget_cluster_mods(cluster_id, &mut HashSet::new(), &state.services.content())
+            .await
+            .unwrap();
+
+    assert_eq!(disabled, 1);
+    assert_eq!(enabled(&state, cluster_id, UNKNOWN).await, Some(false));
+}
+
+#[tokio::test]
+async fn retargeting_switches_off_a_user_copy_of_a_bundle_tracked_project() {
+    const BUNDLED: &str = "5656565656565656565656565656565656565656";
+    const USER_OLD: &str = "3434343434343434343434343434343434343434";
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = retarget_cluster(&state).await;
+    link_release(
+        &state, cluster_id, BUNDLED, "shared", "shared-2", MC_VERSION, true,
+    )
+    .await;
+    bundle_dao::track_bundle_artifact(
+        &state.services.db,
+        cluster_id,
+        BUNDLED,
+        BUNDLE,
+        "shared-2",
+        "shared",
+    )
+    .await
+    .unwrap();
+    link_release(
+        &state, cluster_id, USER_OLD, "shared", "shared-1", "1.20.1", true,
+    )
+    .await;
+
+    retarget_cluster_mods(cluster_id, &mut HashSet::new(), &state.services.content())
+        .await
+        .unwrap();
+
+    assert_eq!(enabled(&state, cluster_id, USER_OLD).await, Some(false));
+    assert_eq!(enabled(&state, cluster_id, BUNDLED).await, Some(true));
+}
+
+#[tokio::test]
+async fn removing_a_modpack_after_retargeting_removes_the_new_builds_of_its_mods() {
+    const PACK_OLD: &str = "8989898989898989898989898989898989898989";
+    const PACK: &str = "modpack:modrinth:retargeted-pack";
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = retarget_cluster(&state).await;
+    let body = b"pack mod for the new version".to_vec();
+    let pack_new = polyio::sha1_bytes(&body);
+    let (url, _) = serve_jar(body, None).await;
+    link_release(
+        &state,
+        cluster_id,
+        PACK_OLD,
+        "packmod",
+        "packmod-1",
+        "1.20.1",
+        true,
+    )
+    .await;
+    bundle_dao::track_bundle_artifact(
+        &state.services.db,
+        cluster_id,
+        PACK_OLD,
+        PACK,
+        "packmod-1",
+        "packmod",
+    )
+    .await
+    .unwrap();
+
+    let mut ctx = state.services.content();
+    ctx.providers.register(Arc::new(FixtureModrinth {
+        fail_latest_with: Mutex::default(),
+        projects: HashMap::from([("packmod".to_string(), fixture_project("packmod"))]),
+        versions: HashMap::new(),
+        latest: HashMap::from([(
+            PACK_OLD.to_string(),
+            fixture_version("packmod", "packmod-2", &url, &pack_new, Vec::new()),
+        )]),
+    }));
+
+    retarget_cluster_mods(cluster_id, &mut HashSet::new(), &ctx)
+        .await
+        .unwrap();
+    assert_eq!(enabled(&state, cluster_id, &pack_new).await, Some(true));
+    assert_eq!(enabled(&state, cluster_id, PACK_OLD).await, Some(false));
+
+    let failed = oneclient_content::modpacks::remove_modpack_files(cluster_id, PACK, None, &ctx)
+        .await
+        .unwrap();
+
+    assert!(failed.is_empty());
+    assert_eq!(enabled(&state, cluster_id, &pack_new).await, None);
+    assert_eq!(enabled(&state, cluster_id, PACK_OLD).await, None);
+}
+
+#[tokio::test]
+async fn removing_a_modpack_after_retargeting_removes_the_new_builds_of_its_libraries() {
+    const TOP_OLD: &str = "8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a";
+    const LIB_OLD: &str = "8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b";
+    const PACK: &str = "modpack:modrinth:retargeted-library-pack";
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = retarget_cluster(&state).await;
+    let top_body = b"pack top mod for the new version".to_vec();
+    let lib_body = b"pack library for the new version".to_vec();
+    let top_new = polyio::sha1_bytes(&top_body);
+    let lib_new = polyio::sha1_bytes(&lib_body);
+    let (top_url, _) = serve_jar(top_body, None).await;
+    let (lib_url, _) = serve_jar(lib_body, None).await;
+    for (hash, project, version) in [
+        (TOP_OLD, "packtop", "packtop-1"),
+        (LIB_OLD, "packlib", "packlib-1"),
+    ] {
+        link_release(&state, cluster_id, hash, project, version, "1.20.1", true).await;
+        bundle_dao::track_bundle_artifact(
+            &state.services.db,
+            cluster_id,
+            hash,
+            PACK,
+            version,
+            project,
+        )
+        .await
+        .unwrap();
+    }
+
+    let lib = fixture_version("packlib", "packlib-2", &lib_url, &lib_new, Vec::new());
+    let top = fixture_version(
+        "packtop",
+        "packtop-2",
+        &top_url,
+        &top_new,
+        vec![VersionDependency {
+            project_id: Some("packlib".to_string()),
+            version_id: Some("packlib-2".to_string()),
+            kind: DependencyKind::Required,
+        }],
+    );
+    let mut ctx = state.services.content();
+    ctx.providers.register(Arc::new(FixtureModrinth {
+        fail_latest_with: Mutex::default(),
+        projects: ["packtop", "packlib"]
+            .into_iter()
+            .map(|id| (id.to_string(), fixture_project(id)))
+            .collect(),
+        versions: HashMap::from([("packlib-2".to_string(), lib.clone())]),
+        latest: HashMap::from([(TOP_OLD.to_string(), top), (LIB_OLD.to_string(), lib)]),
+    }));
+
+    retarget_cluster_mods(cluster_id, &mut HashSet::new(), &ctx)
+        .await
+        .unwrap();
+    assert_eq!(enabled(&state, cluster_id, &lib_new).await, Some(true));
+    assert_eq!(enabled(&state, cluster_id, LIB_OLD).await, Some(false));
+
+    let failed = oneclient_content::modpacks::remove_modpack_files(cluster_id, PACK, None, &ctx)
+        .await
+        .unwrap();
+
+    assert!(failed.is_empty());
+    for hash in [TOP_OLD, LIB_OLD, top_new.as_str(), lib_new.as_str()] {
+        assert_eq!(enabled(&state, cluster_id, hash).await, None);
+    }
+}
+
+#[tokio::test]
+async fn retargeting_keeps_a_dependency_that_was_on() {
+    const TOP_OLD: &str = "7777777777777777777777777777777777777777";
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let top_body = b"switched off top for the new version".to_vec();
+    let lib_body = b"enabled lib for the new version".to_vec();
+    let top_new = polyio::sha1_bytes(&top_body);
+    let lib_new = polyio::sha1_bytes(&lib_body);
+    let (top_url, _) = serve_jar(top_body, None).await;
+    let (lib_url, _) = serve_jar(lib_body, None).await;
+
+    let cluster_id = retarget_cluster(&state).await;
+    link_release(
+        &state,
+        cluster_id,
+        TOP_OLD,
+        "off-top",
+        "off-top-1",
+        "1.20.1",
+        false,
+    )
+    .await;
+    link_release(
+        &state, cluster_id, &lib_new, "on-lib", "on-lib-2", MC_VERSION, true,
+    )
+    .await;
+
+    let lib = fixture_version("on-lib", "on-lib-2", &lib_url, &lib_new, Vec::new());
+    let top = fixture_version(
+        "off-top",
+        "off-top-2",
+        &top_url,
+        &top_new,
+        vec![VersionDependency {
+            project_id: Some("on-lib".to_string()),
+            version_id: Some("on-lib-2".to_string()),
+            kind: DependencyKind::Required,
+        }],
+    );
+    let mut ctx = state.services.content();
+    ctx.providers.register(Arc::new(FixtureModrinth {
+        fail_latest_with: Mutex::default(),
+        projects: ["off-top", "on-lib"]
+            .into_iter()
+            .map(|id| (id.to_string(), fixture_project(id)))
+            .collect(),
+        versions: HashMap::from([("on-lib-2".to_string(), lib.clone())]),
+        latest: HashMap::from([(TOP_OLD.to_string(), top), (lib_new.clone(), lib)]),
+    }));
+
+    retarget_cluster_mods(cluster_id, &mut HashSet::new(), &ctx)
+        .await
+        .unwrap();
+
+    assert_eq!(enabled(&state, cluster_id, &lib_new).await, Some(true));
+    assert_eq!(enabled(&state, cluster_id, &top_new).await, Some(false));
+}
+
+#[tokio::test]
+async fn retargeting_keeps_a_switched_off_dependency_build_off() {
+    const TOP_OLD: &str = "9999999999999999999999999999999999999999";
+    const LIB_OLD: &str = "abababababababababababababababababababab";
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let top_body = b"off top needing an off lib".to_vec();
+    let lib_body = b"lib switched off on the new version".to_vec();
+    let top_new = polyio::sha1_bytes(&top_body);
+    let lib_new = polyio::sha1_bytes(&lib_body);
+    let (top_url, _) = serve_jar(top_body, None).await;
+    let (lib_url, _) = serve_jar(lib_body, None).await;
+
+    let cluster_id = retarget_cluster(&state).await;
+    link_release(
+        &state,
+        cluster_id,
+        TOP_OLD,
+        "off-dep-top",
+        "off-dep-top-1",
+        "1.20.1",
+        false,
+    )
+    .await;
+    link_release(
+        &state,
+        cluster_id,
+        LIB_OLD,
+        "off-dep-lib",
+        "off-dep-lib-1",
+        "1.20.1",
+        true,
+    )
+    .await;
+    link_release(
+        &state,
+        cluster_id,
+        &lib_new,
+        "off-dep-lib",
+        "off-dep-lib-2",
+        MC_VERSION,
+        false,
+    )
+    .await;
+
+    let lib = fixture_version(
+        "off-dep-lib",
+        "off-dep-lib-2",
+        &lib_url,
+        &lib_new,
+        Vec::new(),
+    );
+    let top = fixture_version(
+        "off-dep-top",
+        "off-dep-top-2",
+        &top_url,
+        &top_new,
+        vec![VersionDependency {
+            project_id: Some("off-dep-lib".to_string()),
+            version_id: Some("off-dep-lib-2".to_string()),
+            kind: DependencyKind::Required,
+        }],
+    );
+    let mut ctx = state.services.content();
+    ctx.providers.register(Arc::new(FixtureModrinth {
+        fail_latest_with: Mutex::default(),
+        projects: ["off-dep-top", "off-dep-lib"]
+            .into_iter()
+            .map(|id| (id.to_string(), fixture_project(id)))
+            .collect(),
+        versions: HashMap::from([("off-dep-lib-2".to_string(), lib.clone())]),
+        latest: HashMap::from([
+            (TOP_OLD.to_string(), top),
+            (LIB_OLD.to_string(), lib.clone()),
+            (lib_new.clone(), lib),
+        ]),
+    }));
+
+    retarget_cluster_mods(cluster_id, &mut HashSet::new(), &ctx)
+        .await
+        .unwrap();
+
+    assert_eq!(enabled(&state, cluster_id, &lib_new).await, Some(false));
+    assert_ne!(enabled(&state, cluster_id, LIB_OLD).await, Some(true));
+    assert_eq!(enabled(&state, cluster_id, &top_new).await, Some(false));
+}
+
+#[tokio::test]
+async fn retargeting_keeps_a_switched_off_copy_already_on_the_new_build() {
+    const TOP_OLD: &str = "8888888888888888888888888888888888888888";
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let top_body = b"top already on the new version".to_vec();
+    let top_new = polyio::sha1_bytes(&top_body);
+
+    let cluster_id = retarget_cluster(&state).await;
+    link_release(&state, cluster_id, TOP_OLD, "top", "top-1", "1.20.1", true).await;
+    link_release(
+        &state, cluster_id, &top_new, "top", "top-2", MC_VERSION, false,
+    )
+    .await;
+
+    let top = fixture_version(
+        "top",
+        "top-2",
+        "unsupported://example.invalid/top.jar",
+        &top_new,
+        Vec::new(),
+    );
+    let mut ctx = state.services.content();
+    ctx.providers.register(Arc::new(FixtureModrinth {
+        fail_latest_with: Mutex::default(),
+        projects: HashMap::from([("top".to_string(), fixture_project("top"))]),
+        versions: HashMap::new(),
+        latest: HashMap::from([(TOP_OLD.to_string(), top.clone()), (top_new.clone(), top)]),
+    }));
+
+    retarget_cluster_mods(cluster_id, &mut HashSet::new(), &ctx)
+        .await
+        .unwrap();
+
+    assert_eq!(enabled(&state, cluster_id, &top_new).await, Some(false));
+    assert_eq!(enabled(&state, cluster_id, TOP_OLD).await, Some(false));
+}
+
+#[tokio::test]
+async fn retargeting_puts_back_on_a_mod_that_was_on_before_an_earlier_pass() {
+    const TOP_OLD: &str = "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd";
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let top_body = b"top swapped on a later pass".to_vec();
+    let top_new = polyio::sha1_bytes(&top_body);
+    let (top_url, _) = serve_jar(top_body, None).await;
+
+    let cluster_id = retarget_cluster(&state).await;
+    link_release(
+        &state,
+        cluster_id,
+        TOP_OLD,
+        "resumed-top",
+        "resumed-top-1",
+        "1.20.1",
+        false,
+    )
+    .await;
+
+    let top = fixture_version(
+        "resumed-top",
+        "resumed-top-2",
+        &top_url,
+        &top_new,
+        Vec::new(),
+    );
+    let mut ctx = state.services.content();
+    ctx.providers.register(Arc::new(FixtureModrinth {
+        fail_latest_with: Mutex::default(),
+        projects: HashMap::from([("resumed-top".to_string(), fixture_project("resumed-top"))]),
+        versions: HashMap::new(),
+        latest: HashMap::from([(TOP_OLD.to_string(), top)]),
+    }));
+
+    let (_, reached) =
+        retarget_cluster_mods(cluster_id, &mut HashSet::from([TOP_OLD.to_string()]), &ctx)
+            .await
+            .unwrap();
+
+    assert!(reached);
+    assert_eq!(enabled(&state, cluster_id, &top_new).await, Some(true));
+}
+
+#[tokio::test]
+async fn retargeting_puts_back_on_a_copy_already_on_the_new_build() {
+    const BOTH: &str = "dededededededededededededededededededede";
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = retarget_cluster(&state).await;
+    link_release(
+        &state,
+        cluster_id,
+        BOTH,
+        "both-versions",
+        "both-1",
+        "1.20.1",
+        false,
+    )
+    .await;
+
+    let mut ctx = state.services.content();
+    ctx.providers.register(Arc::new(FixtureModrinth {
+        fail_latest_with: Mutex::default(),
+        projects: HashMap::from([(
+            "both-versions".to_string(),
+            fixture_project("both-versions"),
+        )]),
+        versions: HashMap::new(),
+        latest: HashMap::from([(
+            BOTH.to_string(),
+            fixture_version("both-versions", "both-1", "", BOTH, Vec::new()),
+        )]),
+    }));
+
+    let (_, reached) =
+        retarget_cluster_mods(cluster_id, &mut HashSet::from([BOTH.to_string()]), &ctx)
+            .await
+            .unwrap();
+
+    assert!(reached);
+    assert_eq!(enabled(&state, cluster_id, BOTH).await, Some(true));
+}
+
+#[tokio::test]
+async fn retargeting_is_unfinished_when_a_new_build_fails_to_install() {
+    const TOP_OLD: &str = "edededededededededededededededededededed";
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let wrong_sha1 = polyio::sha1_bytes(b"not what the url serves");
+    let (top_url, _) = serve_jar(b"served body".to_vec(), None).await;
+
+    let cluster_id = retarget_cluster(&state).await;
+    link_release(
+        &state,
+        cluster_id,
+        TOP_OLD,
+        "broken-top",
+        "broken-top-1",
+        "1.20.1",
+        true,
+    )
+    .await;
+
+    let mut ctx = state.services.content();
+    ctx.providers.register(Arc::new(FixtureModrinth {
+        fail_latest_with: Mutex::default(),
+        projects: HashMap::from([("broken-top".to_string(), fixture_project("broken-top"))]),
+        versions: HashMap::new(),
+        latest: HashMap::from([(
+            TOP_OLD.to_string(),
+            fixture_version(
+                "broken-top",
+                "broken-top-2",
+                &top_url,
+                &wrong_sha1,
+                Vec::new(),
+            ),
+        )]),
+    }));
+
+    let (_, reached) = retarget_cluster_mods(cluster_id, &mut HashSet::new(), &ctx)
+        .await
+        .unwrap();
+
+    assert!(!reached);
+    assert_eq!(enabled(&state, cluster_id, TOP_OLD).await, Some(false));
+}
+
+#[tokio::test]
+async fn retargeting_switches_on_what_a_library_left_on_needs() {
+    const APP_OLD: &str = "1212121212121212121212121212121212121212";
+    const LIB_OLD: &str = "2323232323232323232323232323232323232323";
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let app_body = b"off app needing a chained lib".to_vec();
+    let lib_body = b"on lib needing a new core".to_vec();
+    let core_body = b"core new to the lib".to_vec();
+    let app_new = polyio::sha1_bytes(&app_body);
+    let lib_new = polyio::sha1_bytes(&lib_body);
+    let core_new = polyio::sha1_bytes(&core_body);
+    let (app_url, _) = serve_jar(app_body, None).await;
+    let (lib_url, _) = serve_jar(lib_body, None).await;
+    let (core_url, _) = serve_jar(core_body, None).await;
+
+    let cluster_id = retarget_cluster(&state).await;
+    link_release(
+        &state,
+        cluster_id,
+        APP_OLD,
+        "chain-app",
+        "chain-app-1",
+        "1.20.1",
+        false,
+    )
+    .await;
+    link_release(
+        &state,
+        cluster_id,
+        LIB_OLD,
+        "chain-lib",
+        "chain-lib-1",
+        "1.20.1",
+        true,
+    )
+    .await;
+
+    let core = fixture_version(
+        "chain-core",
+        "chain-core-2",
+        &core_url,
+        &core_new,
+        Vec::new(),
+    );
+    let lib = fixture_version(
+        "chain-lib",
+        "chain-lib-2",
+        &lib_url,
+        &lib_new,
+        vec![VersionDependency {
+            project_id: Some("chain-core".to_string()),
+            version_id: Some("chain-core-2".to_string()),
+            kind: DependencyKind::Required,
+        }],
+    );
+    let app = fixture_version(
+        "chain-app",
+        "chain-app-2",
+        &app_url,
+        &app_new,
+        vec![VersionDependency {
+            project_id: Some("chain-lib".to_string()),
+            version_id: Some("chain-lib-2".to_string()),
+            kind: DependencyKind::Required,
+        }],
+    );
+    let mut ctx = state.services.content();
+    ctx.providers.register(Arc::new(FixtureModrinth {
+        fail_latest_with: Mutex::default(),
+        projects: ["chain-app", "chain-lib", "chain-core"]
+            .into_iter()
+            .map(|id| (id.to_string(), fixture_project(id)))
+            .collect(),
+        versions: HashMap::from([
+            ("chain-lib-2".to_string(), lib.clone()),
+            ("chain-core-2".to_string(), core),
+        ]),
+        latest: HashMap::from([(APP_OLD.to_string(), app), (LIB_OLD.to_string(), lib)]),
+    }));
+
+    retarget_cluster_mods(cluster_id, &mut HashSet::new(), &ctx)
+        .await
+        .unwrap();
+
+    assert_eq!(enabled(&state, cluster_id, &app_new).await, Some(false));
+    assert_eq!(enabled(&state, cluster_id, &lib_new).await, Some(true));
+    assert_eq!(enabled(&state, cluster_id, &core_new).await, Some(true));
+}
+
+#[tokio::test]
+async fn an_unfinished_retarget_forgets_the_mods_it_settled() {
+    const SETTLED: &str = "3535353535353535353535353535353535353535";
+    const FAILING_OLD: &str = "4646464646464646464646464646464646464646";
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let wrong_sha1 = polyio::sha1_bytes(b"not what the failing url serves");
+    let (failing_url, _) = serve_jar(b"failing served body".to_vec(), None).await;
+
+    let cluster_id = retarget_cluster(&state).await;
+    link_release(
+        &state,
+        cluster_id,
+        SETTLED,
+        "settled",
+        "settled-1",
+        MC_VERSION,
+        true,
+    )
+    .await;
+    link_release(
+        &state,
+        cluster_id,
+        FAILING_OLD,
+        "failing",
+        "failing-1",
+        "1.20.1",
+        true,
+    )
+    .await;
+
+    let mut ctx = state.services.content();
+    ctx.providers.register(Arc::new(FixtureModrinth {
+        fail_latest_with: Mutex::default(),
+        projects: ["settled", "failing"]
+            .into_iter()
+            .map(|id| (id.to_string(), fixture_project(id)))
+            .collect(),
+        versions: HashMap::new(),
+        latest: HashMap::from([
+            (
+                SETTLED.to_string(),
+                fixture_version("settled", "settled-1", "", SETTLED, Vec::new()),
+            ),
+            (
+                FAILING_OLD.to_string(),
+                fixture_version(
+                    "failing",
+                    "failing-2",
+                    &failing_url,
+                    &wrong_sha1,
+                    Vec::new(),
+                ),
+            ),
+        ]),
+    }));
+
+    let mut pending = HashSet::from([SETTLED.to_string(), FAILING_OLD.to_string()]);
+    let (_, reached) = retarget_cluster_mods(cluster_id, &mut pending, &ctx)
+        .await
+        .unwrap();
+
+    assert!(!reached);
+    assert_eq!(pending, HashSet::from([FAILING_OLD.to_string()]));
+}
+
+#[tokio::test]
+async fn an_unfinished_retarget_forgets_the_old_copies_of_mods_it_replaced() {
+    const MOVED_OLD: &str = "9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c";
+    const FAILING_OLD: &str = "9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d";
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let moved_body = b"moved mod for the new version".to_vec();
+    let moved_new = polyio::sha1_bytes(&moved_body);
+    let (moved_url, _) = serve_jar(moved_body, None).await;
+    let wrong_sha1 = polyio::sha1_bytes(b"not what the stuck url serves");
+    let (failing_url, _) = serve_jar(b"stuck served body".to_vec(), None).await;
+
+    let cluster_id = retarget_cluster(&state).await;
+    for (hash, project, version) in [
+        (MOVED_OLD, "moved", "moved-1"),
+        (FAILING_OLD, "stuck", "stuck-1"),
+    ] {
+        link_release(&state, cluster_id, hash, project, version, "1.20.1", true).await;
+    }
+    bundle_dao::track_bundle_artifact(
+        &state.services.db,
+        cluster_id,
+        MOVED_OLD,
+        "modpack:modrinth:moving-pack",
+        "moved-1",
+        "moved",
+    )
+    .await
+    .unwrap();
+
+    let moved = fixture_version("moved", "moved-2", &moved_url, &moved_new, Vec::new());
+    let mut ctx = state.services.content();
+    ctx.providers.register(Arc::new(FixtureModrinth {
+        fail_latest_with: Mutex::default(),
+        projects: ["moved", "stuck"]
+            .into_iter()
+            .map(|id| (id.to_string(), fixture_project(id)))
+            .collect(),
+        versions: HashMap::new(),
+        latest: HashMap::from([
+            (MOVED_OLD.to_string(), moved.clone()),
+            (moved_new.clone(), moved),
+            (
+                FAILING_OLD.to_string(),
+                fixture_version("stuck", "stuck-2", &failing_url, &wrong_sha1, Vec::new()),
+            ),
+        ]),
+    }));
+
+    let mut pending = HashSet::from([MOVED_OLD.to_string(), FAILING_OLD.to_string()]);
+    let (_, reached) = retarget_cluster_mods(cluster_id, &mut pending, &ctx)
+        .await
+        .unwrap();
+    assert!(!reached);
+    assert_eq!(pending, HashSet::from([FAILING_OLD.to_string()]));
+    assert_eq!(enabled(&state, cluster_id, &moved_new).await, Some(true));
+    assert_eq!(enabled(&state, cluster_id, MOVED_OLD).await, Some(false));
+
+    PackageStore::set_artifact_enabled_to(cluster_id, &moved_new, false, &ctx)
+        .await
+        .unwrap();
+    let next_body = b"moved mod for the next version".to_vec();
+    let moved_next = polyio::sha1_bytes(&next_body);
+    let (next_url, _) = serve_jar(next_body, None).await;
+    let next = fixture_version("moved", "moved-3", &next_url, &moved_next, Vec::new());
+    let mut ctx = state.services.content();
+    ctx.providers.register(Arc::new(FixtureModrinth {
+        fail_latest_with: Mutex::default(),
+        projects: HashMap::from([("moved".to_string(), fixture_project("moved"))]),
+        versions: HashMap::new(),
+        latest: HashMap::from([(MOVED_OLD.to_string(), next.clone()), (moved_new, next)]),
+    }));
+    retarget_cluster_mods(cluster_id, &mut pending, &ctx)
+        .await
+        .unwrap();
+
+    assert_eq!(enabled(&state, cluster_id, &moved_next).await, Some(false));
+}
+
+#[tokio::test]
+async fn a_modpack_update_dropping_a_retargeted_mod_removes_both_copies() {
+    const PACK_OLD: &str = "9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e";
+    const PACK: &str = "modpack:modrinth:dropping-pack";
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = retarget_cluster(&state).await;
+    let body = b"dropped pack mod for the new version".to_vec();
+    let pack_new = polyio::sha1_bytes(&body);
+    let (url, _) = serve_jar(body, None).await;
+    link_release(
+        &state,
+        cluster_id,
+        PACK_OLD,
+        "droppedmod",
+        "droppedmod-1",
+        "1.20.1",
+        true,
+    )
+    .await;
+    bundle_dao::track_bundle_artifact(
+        &state.services.db,
+        cluster_id,
+        PACK_OLD,
+        PACK,
+        "droppedmod-1",
+        "droppedmod",
+    )
+    .await
+    .unwrap();
+
+    let mut ctx = state.services.content();
+    ctx.providers.register(Arc::new(FixtureModrinth {
+        fail_latest_with: Mutex::default(),
+        projects: HashMap::from([("droppedmod".to_string(), fixture_project("droppedmod"))]),
+        versions: HashMap::new(),
+        latest: HashMap::from([(
+            PACK_OLD.to_string(),
+            fixture_version("droppedmod", "droppedmod-2", &url, &pack_new, Vec::new()),
+        )]),
+    }));
+    retarget_cluster_mods(cluster_id, &mut HashSet::new(), &ctx)
+        .await
+        .unwrap();
+    assert_eq!(enabled(&state, cluster_id, &pack_new).await, Some(true));
+
+    let scratch = polyio::testing::ScratchDir::new("dropping-pack");
+    let archive = scratch.path().join("pack.mrpack");
+    let file = tokio::fs::File::create(&archive).await.unwrap();
+    let mut writer = ZipFileWriter::with_tokio(file);
+    let entry = ZipEntryBuilder::new("modrinth.index.json".into(), Compression::Stored);
+    writer.write_entry_whole(entry, b"{}").await.unwrap();
+    writer.close().await.unwrap();
+    let manifest = ModpackManifest {
+        name: "Dropping".to_string(),
+        version: "2".to_string(),
+        summary: None,
+        mc_version: MC_VERSION.to_string(),
+        loader: GameLoader::Fabric,
+        loader_version: None,
+        contents: ModpackContents::default(),
+        override_prefixes: vec!["overrides/".to_string()],
+    };
+
+    install_modpack(&archive, &manifest, cluster_id, PACK, None, &ctx)
+        .await
+        .unwrap();
+
+    assert_eq!(enabled(&state, cluster_id, &pack_new).await, None);
+    assert_eq!(enabled(&state, cluster_id, PACK_OLD).await, None);
+}
+
+#[tokio::test]
+async fn launch_install_extracts_no_overrides_when_the_bundle_fails_to_download() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let body: Vec<u8> = (0..64 * 1024).map(|i| (i % 193) as u8).collect();
+    let wrong_sha1 = polyio::sha1_bytes(b"not the served body");
+    let size = body.len() as u64;
+    let (url, _) = serve_jar(body, None).await;
+    let m = named_manifest(
+        "Override Bundle",
+        vec![github_mod_served(&url, &wrong_sha1, size)],
+    );
+    let name = m.name.clone();
+    oneclient_core::dev::seed_bundle_archive(&state, m)
+        .await
+        .unwrap();
+    let dir = oneclient_common::paths::data_dir().unwrap().join("bundles");
+    tokio::fs::create_dir_all(&dir).await.unwrap();
+    let file = tokio::fs::File::create(dir.join(format!("{name}.mrpack")))
+        .await
+        .unwrap();
+    let mut writer = async_zip::tokio::write::ZipFileWriter::with_tokio(file);
+    let entry = async_zip::ZipEntryBuilder::new(
+        "overrides/config/staged.txt".to_string().into(),
+        async_zip::Compression::Stored,
+    );
+    writer.write_entry_whole(entry, b"staged").await.unwrap();
+    writer.close().await.unwrap();
+
+    let fresh = cluster_with_tracked_mod(&state).await;
+    let marker = oneclient_common::paths::clusters_dir()
+        .unwrap()
+        .join(state.clusters.get(fresh).await.unwrap().folder_name)
+        .join("config/staged.txt");
+    let ctx = state.services.content();
+
+    let deadline = Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
+    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, deadline)
+        .await
+        .unwrap();
+    assert!(!marker.exists());
+
+    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, None)
+        .await
+        .unwrap();
+    assert!(marker.exists());
+}
+
+#[tokio::test]
+async fn a_newer_user_copy_for_another_game_version_gives_way_to_the_bundle() {
+    const OTHER_VERSION: &str = "7777777777777777777777777777777777777777";
+    const SAME_VERSION: &str = "8888888888888888888888888888888888888888";
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    seed_bundle_with_pack(&state, manifest(vec![managed_file(true)])).await;
+
+    let now = chrono::Utc::now();
+    let mut shipped = fixture_version(PROJECT_ID, VERSION_ID, "", HASH, Vec::new());
+    shipped.published = now - chrono::Duration::days(30);
+    let mut other = fixture_version(PROJECT_ID, "other1", "", OTHER_VERSION, Vec::new());
+    other.game_versions = vec!["1.20.1".to_string()];
+    let same = fixture_version(PROJECT_ID, "same1", "", SAME_VERSION, Vec::new());
+
+    let mut ctx = state.services.content();
+    ctx.providers.register(Arc::new(FixtureModrinth {
+        fail_latest_with: Mutex::default(),
+        projects: HashMap::from([(PROJECT_ID.to_string(), fixture_project(PROJECT_ID))]),
+        versions: [&shipped, &other, &same]
+            .into_iter()
+            .map(|version| (version.version_id.clone(), version.clone()))
+            .collect(),
+        latest: HashMap::new(),
+    }));
+    let archives = state
+        .bundles
+        .archives_for(&ctx, MC_VERSION, GameLoader::Fabric)
+        .await
+        .unwrap();
+
+    let published = now.to_rfc3339();
+    let mut clusters = Vec::new();
+    for (hash, version_id, migrating) in [
+        (OTHER_VERSION, "other1", true),
+        (SAME_VERSION, "same1", true),
+        (OTHER_VERSION, "other1", false),
+    ] {
+        let cluster_id = retarget_cluster(&state).await;
+        if migrating {
+            flag_dao::set(
+                &state.services.db,
+                cluster_id,
+                flag_dao::ClusterFlag::RetargetMods,
+                None,
+            )
+            .await
+            .unwrap();
+        }
+        link_release(
+            &state, cluster_id, hash, PROJECT_ID, version_id, MC_VERSION, true,
+        )
+        .await;
+        artifact_dao::upsert_provider_release(
+            &state.services.db,
+            ProviderId::Modrinth as i64,
+            PROJECT_ID,
+            version_id,
+            hash,
+            PROJECT_ID,
+            version_id,
+            Some(&published),
+            MC_VERSION,
+            "fabric",
+        )
+        .await
+        .unwrap();
+        oneclient_content::bundles::heal_bundle_activity(cluster_id, &archives, &ctx)
+            .await
+            .unwrap();
+        clusters.push((cluster_id, hash));
+    }
+
+    let [
+        (other_cluster, other_hash),
+        (same_cluster, same_hash),
+        (chosen_cluster, chosen_hash),
+    ] = clusters[..]
+    else {
+        unreachable!()
+    };
+    assert_eq!(
+        enabled(&state, other_cluster, other_hash).await,
+        Some(false),
+        "a copy built for another game version gives way even to an older release"
+    );
+    assert_eq!(
+        enabled(&state, same_cluster, same_hash).await,
+        Some(true),
+        "a newer copy for the cluster's version stays on"
+    );
+    assert_eq!(
+        enabled(&state, chosen_cluster, chosen_hash).await,
+        Some(true),
+        "a newer copy for another version stays on outside a version migration"
+    );
+}
+
+#[tokio::test]
+async fn retargeting_retries_a_rate_limited_provider() {
+    const TOP_OLD: &str = "5757575757575757575757575757575757575757";
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let top_body = b"top behind a rate limit".to_vec();
+    let top_new = polyio::sha1_bytes(&top_body);
+    let (top_url, _) = serve_jar(top_body, None).await;
+
+    let cluster_id = retarget_cluster(&state).await;
+    link_release(
+        &state,
+        cluster_id,
+        TOP_OLD,
+        "limited-top",
+        "limited-top-1",
+        "1.20.1",
+        true,
+    )
+    .await;
+
+    let top = fixture_version(
+        "limited-top",
+        "limited-top-2",
+        &top_url,
+        &top_new,
+        Vec::new(),
+    );
+    let mut ctx = state.services.content();
+    ctx.providers.register(Arc::new(FixtureModrinth {
+        fail_latest_with: Mutex::new(Some(429)),
+        projects: HashMap::from([("limited-top".to_string(), fixture_project("limited-top"))]),
+        versions: HashMap::new(),
+        latest: HashMap::from([(TOP_OLD.to_string(), top)]),
+    }));
+
+    let mut pending = HashSet::from([TOP_OLD.to_string()]);
+    let (_, reached) = retarget_cluster_mods(cluster_id, &mut pending, &ctx)
+        .await
+        .unwrap();
+    assert!(!reached);
+    assert!(pending.contains(TOP_OLD));
+
+    let (_, reached) = retarget_cluster_mods(cluster_id, &mut pending, &ctx)
+        .await
+        .unwrap();
+    assert!(reached);
+    assert_eq!(enabled(&state, cluster_id, &top_new).await, Some(true));
+}
+
+#[tokio::test]
+async fn retargeting_switches_off_a_dependency_whose_own_dependency_failed() {
+    const APP_OLD: &str = "6868686868686868686868686868686868686868";
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let app_body = b"app needing a lib needing a broken core".to_vec();
+    let lib_body = b"lib needing a broken core".to_vec();
+    let app_new = polyio::sha1_bytes(&app_body);
+    let lib_new = polyio::sha1_bytes(&lib_body);
+    let wrong_sha1 = polyio::sha1_bytes(b"not what the core url serves");
+    let (app_url, _) = serve_jar(app_body, None).await;
+    let (lib_url, _) = serve_jar(lib_body, None).await;
+    let (core_url, _) = serve_jar(b"core served body".to_vec(), None).await;
+
+    let cluster_id = retarget_cluster(&state).await;
+    link_release(
+        &state,
+        cluster_id,
+        APP_OLD,
+        "broken-chain-app",
+        "broken-chain-app-1",
+        "1.20.1",
+        true,
+    )
+    .await;
+
+    let core = fixture_version(
+        "broken-chain-core",
+        "broken-chain-core-2",
+        &core_url,
+        &wrong_sha1,
+        Vec::new(),
+    );
+    let lib = fixture_version(
+        "broken-chain-lib",
+        "broken-chain-lib-2",
+        &lib_url,
+        &lib_new,
+        vec![VersionDependency {
+            project_id: Some("broken-chain-core".to_string()),
+            version_id: Some("broken-chain-core-2".to_string()),
+            kind: DependencyKind::Required,
+        }],
+    );
+    let app = fixture_version(
+        "broken-chain-app",
+        "broken-chain-app-2",
+        &app_url,
+        &app_new,
+        vec![VersionDependency {
+            project_id: Some("broken-chain-lib".to_string()),
+            version_id: Some("broken-chain-lib-2".to_string()),
+            kind: DependencyKind::Required,
+        }],
+    );
+    let mut ctx = state.services.content();
+    ctx.providers.register(Arc::new(FixtureModrinth {
+        fail_latest_with: Mutex::default(),
+        projects: ["broken-chain-app", "broken-chain-lib", "broken-chain-core"]
+            .into_iter()
+            .map(|id| (id.to_string(), fixture_project(id)))
+            .collect(),
+        versions: HashMap::from([
+            ("broken-chain-lib-2".to_string(), lib),
+            ("broken-chain-core-2".to_string(), core),
+        ]),
+        latest: HashMap::from([(APP_OLD.to_string(), app)]),
+    }));
+
+    let (_, reached) = retarget_cluster_mods(cluster_id, &mut HashSet::new(), &ctx)
+        .await
+        .unwrap();
+
+    assert!(!reached);
+    assert_ne!(enabled(&state, cluster_id, &lib_new).await, Some(true));
+    assert_eq!(enabled(&state, cluster_id, &app_new).await, None);
+    assert_eq!(enabled(&state, cluster_id, APP_OLD).await, Some(false));
+}
+
+#[tokio::test]
+async fn retargeting_installs_mods_that_require_each_other() {
+    const LEFT_OLD: &str = "6969696969696969696969696969696969696969";
+    const RIGHT_OLD: &str = "7070707070707070707070707070707070707070";
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let left_body = b"left mod requiring right".to_vec();
+    let right_body = b"right mod requiring left".to_vec();
+    let left_new = polyio::sha1_bytes(&left_body);
+    let right_new = polyio::sha1_bytes(&right_body);
+    let (left_url, _) = serve_jar(left_body, None).await;
+    let (right_url, _) = serve_jar(right_body, None).await;
+
+    let cluster_id = retarget_cluster(&state).await;
+    for (hash, project, version) in [
+        (LEFT_OLD, "cycle-left", "cycle-left-1"),
+        (RIGHT_OLD, "cycle-right", "cycle-right-1"),
+    ] {
+        link_release(&state, cluster_id, hash, project, version, "1.20.1", true).await;
+    }
+
+    let requires = |project: &str, version: &str| {
+        vec![VersionDependency {
+            project_id: Some(project.to_string()),
+            version_id: Some(version.to_string()),
+            kind: DependencyKind::Required,
+        }]
+    };
+    let left = fixture_version(
+        "cycle-left",
+        "cycle-left-2",
+        &left_url,
+        &left_new,
+        requires("cycle-right", "cycle-right-2"),
+    );
+    let right = fixture_version(
+        "cycle-right",
+        "cycle-right-2",
+        &right_url,
+        &right_new,
+        requires("cycle-left", "cycle-left-2"),
+    );
+    let mut ctx = state.services.content();
+    ctx.providers.register(Arc::new(FixtureModrinth {
+        fail_latest_with: Mutex::default(),
+        projects: ["cycle-left", "cycle-right"]
+            .into_iter()
+            .map(|id| (id.to_string(), fixture_project(id)))
+            .collect(),
+        versions: HashMap::from([
+            ("cycle-left-2".to_string(), left.clone()),
+            ("cycle-right-2".to_string(), right.clone()),
+        ]),
+        latest: HashMap::from([(LEFT_OLD.to_string(), left), (RIGHT_OLD.to_string(), right)]),
+    }));
+
+    let (_, reached) = retarget_cluster_mods(cluster_id, &mut HashSet::new(), &ctx)
+        .await
+        .unwrap();
+
+    assert!(reached);
+    assert_eq!(enabled(&state, cluster_id, &left_new).await, Some(true));
+    assert_eq!(enabled(&state, cluster_id, &right_new).await, Some(true));
+}
+
+#[tokio::test]
+async fn a_bundle_name_reused_across_versions_drops_the_old_build_while_its_replacement_fails() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let unreachable = github_mod_served(
+        "unsupported://example.invalid/github-mod.jar",
+        "3333333333333333333333333333333333333333",
+        1,
+    );
+    let cluster_id = cluster_with_other_version_copy(&state, BUNDLE, unreachable).await;
+    let old_build = github_mod_served(
+        "unsupported://example.invalid/github-mod-old.jar",
+        GITHUB_OLD_HASH,
+        1,
+    );
+    state
+        .bundles
+        .cache_archive_manifest(
+            oneclient_common::paths::data_dir()
+                .unwrap()
+                .join(format!("bundles/1.20.1/{BUNDLE}.mrpack")),
+            BundleManifest {
+                mc_version: "1.20.1".to_string(),
+                ..manifest(vec![old_build])
+            },
+        )
+        .await;
+    let ctx = state.services.content();
+
+    install_cluster_bundles(cluster_id, state.bundles.as_ref(), None, &ctx, None)
+        .await
+        .unwrap();
+
+    assert!(!linked(&state, cluster_id, GITHUB_OLD_HASH).await);
+    let overrides = bundle_dao::list_overrides(&state.services.db, cluster_id)
+        .await
+        .unwrap();
+    assert!(overrides.is_empty(), "{overrides:?}");
+}
+
+#[tokio::test]
+async fn a_reused_bundle_name_drops_the_old_build_after_the_catalog_hides_its_bundle() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let unreachable = github_mod_served(
+        "unsupported://example.invalid/github-mod.jar",
+        "3333333333333333333333333333333333333333",
+        1,
+    );
+    let cluster_id = cluster_with_other_version_copy(&state, BUNDLE, unreachable).await;
+    sqlx::query("UPDATE bundles SET hidden = 1 WHERE mc_version = '1.20.1'")
+        .execute(&state.services.db)
+        .await
+        .unwrap();
+    let old_build = github_mod_served(
+        "unsupported://example.invalid/github-mod-old.jar",
+        GITHUB_OLD_HASH,
+        1,
+    );
+    state
+        .bundles
+        .cache_archive_manifest(
+            oneclient_common::paths::data_dir()
+                .unwrap()
+                .join(format!("bundles/1.20.1/{BUNDLE}.mrpack")),
+            BundleManifest {
+                mc_version: "1.20.1".to_string(),
+                ..manifest(vec![old_build])
+            },
+        )
+        .await;
+    let ctx = state.services.content();
+
+    install_cluster_bundles(cluster_id, state.bundles.as_ref(), None, &ctx, None)
+        .await
+        .unwrap();
+
+    assert!(!linked(&state, cluster_id, GITHUB_OLD_HASH).await);
+}
+
+#[tokio::test]
+async fn launch_install_keeps_the_deadline_for_a_reused_bundle_names_replacement() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let body: Vec<u8> = (0..64 * 1024).map(|i| (i % 229) as u8).collect();
+    let sha1 = polyio::sha1_bytes(&body);
+    let size = body.len() as u64;
+    let (url, _) = serve_jar(body, Some(std::time::Duration::from_millis(1500))).await;
+    let cluster_id =
+        cluster_with_other_version_copy(&state, BUNDLE, github_mod_served(&url, &sha1, size)).await;
+    let old_build = github_mod_served(
+        "unsupported://example.invalid/github-mod-old.jar",
+        GITHUB_OLD_HASH,
+        1,
+    );
+    state
+        .bundles
+        .cache_archive_manifest(
+            oneclient_common::paths::data_dir()
+                .unwrap()
+                .join(format!("bundles/1.20.1/{BUNDLE}.mrpack")),
+            BundleManifest {
+                mc_version: "1.20.1".to_string(),
+                ..manifest(vec![old_build])
+            },
+        )
+        .await;
+    let ctx = state.services.content();
+
+    let started = std::time::Instant::now();
+    let deadline = Some(started + std::time::Duration::from_millis(300));
+    install_cluster_bundles(cluster_id, state.bundles.as_ref(), None, &ctx, deadline)
+        .await
+        .unwrap();
+
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(1),
+        "took {:?}",
+        started.elapsed()
+    );
+    assert!(!linked(&state, cluster_id, &sha1).await);
 }

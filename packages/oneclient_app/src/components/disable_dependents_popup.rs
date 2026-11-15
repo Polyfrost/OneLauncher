@@ -53,7 +53,7 @@ impl Component for DisableDependentsOverlay {
                 Button::new()
                     .secondary()
                     .on_press(move |_| {
-                        apply(alone.clone(), true, dispatch.clone());
+                        apply(alone.clone(), true, pending, dispatch.clone());
                         pending.set(None);
                     })
                     .text(t(
@@ -66,7 +66,7 @@ impl Component for DisableDependentsOverlay {
             Button::new()
                 .danger()
                 .on_press(move |_| {
-                    apply(confirmed.clone(), false, dispatch.clone());
+                    apply(confirmed.clone(), false, pending, dispatch.clone());
                     pending.set(None);
                 })
                 .text(disable::confirm_label(&current)),
@@ -127,12 +127,24 @@ impl Component for DisableDependentsOverlay {
 
 /// Applied off the event handler: the write is a database round trip, and the
 /// modal has already closed on the user's answer.
-fn apply(pending: PendingDisable, alone: bool, dispatch: Actions) {
+fn apply(
+    pending: PendingDisable,
+    alone: bool,
+    mut confirm: State<Option<PendingDisable>>,
+    dispatch: Actions,
+) {
     spawn_in_window(async move {
         let result = if alone {
             disable::apply_alone(&pending).await
         } else {
-            disable::apply(&pending).await
+            match disable::apply(&pending).await {
+                Ok(Some(fresh)) => {
+                    confirm.set(Some(fresh));
+                    return;
+                }
+                Ok(None) => Ok(()),
+                Err(err) => Err(err),
+            }
         };
         if let Err(err) = result {
             tracing::warn!(%err, "failed to disable a package and its dependents");

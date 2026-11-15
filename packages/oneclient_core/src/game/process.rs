@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Instant;
 
 use sysinfo::{Pid, ProcessesToUpdate, Signal, System};
@@ -99,6 +99,7 @@ pub struct GameProcessManager {
     syncs: Mutex<HashMap<i64, [PathBuf; 2]>>,
     natives: Mutex<HashMap<i64, PathBuf>>,
     launching: tokio::sync::Mutex<()>,
+    content_locks: Mutex<HashMap<i64, Arc<tokio::sync::Mutex<()>>>>,
 }
 
 impl GameProcessManager {
@@ -111,6 +112,15 @@ impl GameProcessManager {
     /// Held from the checks until the process spawns not for the whole session
     pub async fn launch_slot(&self) -> tokio::sync::MutexGuard<'_, ()> {
         self.launching.lock().await
+    }
+
+    pub fn content_lock(&self, cluster_id: i64) -> Arc<tokio::sync::Mutex<()>> {
+        self.content_locks
+            .lock()
+            .unwrap()
+            .entry(cluster_id)
+            .or_default()
+            .clone()
     }
 
     /// `None` while another launch holds the slot

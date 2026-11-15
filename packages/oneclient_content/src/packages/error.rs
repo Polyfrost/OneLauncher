@@ -33,6 +33,8 @@ pub enum PackageError {
     InvalidLocalFile(String),
     #[error("Stop mod diagnostics before adding, removing or updating mods in this cluster")]
     DiagnosticsRunning,
+    #[error("the cluster moved to another game version while the package downloaded")]
+    ClusterChanged,
 }
 
 pub type PackageResult<T> = Result<T, PackageError>;

@@ -389,6 +389,18 @@ impl MutationCapability for ClusterMutation {
                     .send();
             }
         };
+        let _content_guard = match keys {
+            ClusterAction::SetArtifactEnabled { cluster_id, .. }
+            | ClusterAction::RemoveArtifact { cluster_id, .. }
+            | ClusterAction::RemoveBundlePackageFromDisk { cluster_id, .. }
+            | ClusterAction::SetFolderPackEnabled { cluster_id, .. }
+            | ClusterAction::RemoveFolderPack { cluster_id, .. }
+            | ClusterAction::DeleteBundledArtifact { cluster_id, .. }
+            | ClusterAction::SetBundlePackageEnabled { cluster_id, .. } => {
+                Some(state.games.content_lock(*cluster_id).lock_owned().await)
+            }
+            _ => None,
+        };
         let mut created = None;
         let result = match keys {
             ClusterAction::SetArtifactEnabled { cluster_id, .. }

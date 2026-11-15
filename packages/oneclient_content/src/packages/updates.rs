@@ -16,10 +16,15 @@ use oneclient_db::dao::browser_package_update as update_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
 use oneclient_db::models::{BrowserPackageUpdateRow, ClusterRow, SeenStatus};
 use oneclient_events::GroupedProgressChild;
+use tokio::sync::Mutex as AsyncMutex;
 
+use crate::bundles::bundle_write_lock;
 use crate::ctx::ContentCtx;
 use crate::error::{ContentError, ContentResult};
-use crate::packages::dependencies::{pick_version, resolve_required, resolves_dependencies};
+use crate::packages::dependencies::{
+    ResolvedDependency, pick_version, resolve_required, resolves_dependencies,
+};
+use crate::packages::error::PackageError;
 use crate::packages::store::PackageStore;
 use crate::packages::types::LinkedArtifactInfo;
 
@@ -318,8 +323,11 @@ async fn refresh(
     only: Option<&HashSet<String>>,
     ctx: &ContentCtx,
 ) -> ContentResult<BrowserUpdateCheck> {
+    let before = PackageStore::get_cluster(cluster_id, ctx).await?;
     let cached = update_dao::list_for_cluster(&ctx.db, cluster_id).await?;
     let check = check_updates(cluster_id, only, &cached, ctx).await?;
+    let lock = bundle_write_lock(ctx, cluster_id);
+    let _write = PackageStore::lock_writes(Some(&lock), &before, ctx).await?;
 
     let mut keep: Vec<String> = check.unchecked.clone();
     if let Some(only) = only {
@@ -382,10 +390,11 @@ pub async fn skip_browser_package_update(
 }
 
 /// Download first unlink second so a failed download leaves the cluster as it was
-#[tracing::instrument(level = "debug", skip(update, child, ctx), fields(cluster_id = update.cluster_id, project_id = %update.project_id))]
+#[tracing::instrument(level = "debug", skip(update, child, write_lock, ctx), fields(cluster_id = update.cluster_id, project_id = %update.project_id))]
 pub async fn apply_browser_package_update(
     update: &BrowserPackageUpdate,
     child: Option<&GroupedProgressChild>,
+    write_lock: Option<&AsyncMutex<()>>,
     ctx: &ContentCtx,
 ) -> ContentResult<String> {
     // Never touch anything a bundle owns however this was called
@@ -407,12 +416,27 @@ pub async fn apply_browser_package_update(
         .get_version(&update.project_id, &update.latest_version_id, ctx)
         .await?;
 
+    let cluster = PackageStore::get_cluster(update.cluster_id, ctx).await?;
+
+    let dependencies =
+        fetch_new_dependencies(update.provider, update.cluster_id, &project, &version, ctx).await;
+
+    PackageStore::download_and_cache(update.provider, &project, &version, false, child, ctx)
+        .await?;
+    let _write = PackageStore::lock_writes(write_lock, &cluster, ctx).await?;
+    if !update_dao::list_for_cluster(&ctx.db, update.cluster_id)
+        .await?
+        .iter()
+        .any(|row| row.hash == update.hash && row.latest_version_id == update.latest_version_id)
+    {
+        return Err(PackageError::ClusterChanged.into());
+    }
+    link_new_dependencies(update.provider, update.cluster_id, &dependencies, ctx).await;
+
     let enabled_before =
         artifact_dao::get_cluster_artifact(&ctx.db, update.cluster_id, &update.hash)
             .await?
             .map(|link| link.enabled != 0);
-
-    install_new_dependencies(update.provider, update.cluster_id, &project, &version, ctx).await;
 
     // Compatibility is not re-checked
     // a provider disagreeing at install time would strand the user on a build
@@ -425,6 +449,7 @@ pub async fn apply_browser_package_update(
         true,
         false,
         child,
+        None,
         ctx,
     )
     .await?;
@@ -455,23 +480,22 @@ pub async fn apply_browser_package_update(
     Ok(installed.hash)
 }
 
-#[tracing::instrument(level = "debug", skip(project, version, ctx))]
-pub(crate) async fn install_new_dependencies(
+async fn fetch_new_dependencies(
     provider: ProviderId,
     cluster_id: i64,
     project: &crate::packages::types::ProjectDetail,
     version: &crate::packages::types::VersionDetail,
     ctx: &ContentCtx,
-) {
+) -> Vec<ResolvedDependency> {
     if !resolves_dependencies(project.content_type) {
-        return;
+        return Vec::new();
     }
 
     let resolution = match resolve_required(provider, version, cluster_id, ctx).await {
         Ok(resolution) => resolution,
         Err(err) => {
             tracing::warn!(%err, "dependency resolution failed, updating the package alone");
-            return;
+            return Vec::new();
         }
     };
 
@@ -479,7 +503,36 @@ pub(crate) async fn install_new_dependencies(
         tracing::warn!(dependency = %missing, "no compatible version for a new dependency");
     }
 
-    for dependency in &resolution.install {
+    let mut fetched = Vec::with_capacity(resolution.install.len());
+    for dependency in resolution.install {
+        match PackageStore::download_and_cache(
+            provider,
+            &dependency.project,
+            &dependency.version,
+            false,
+            None,
+            ctx,
+        )
+        .await
+        {
+            Ok(_) => fetched.push(dependency),
+            Err(err) => tracing::warn!(
+                dependency = %dependency.project.name,
+                %err,
+                "failed to install a dependency the newer version needs"
+            ),
+        }
+    }
+    fetched
+}
+
+async fn link_new_dependencies(
+    provider: ProviderId,
+    cluster_id: i64,
+    dependencies: &[ResolvedDependency],
+    ctx: &ContentCtx,
+) {
+    for dependency in dependencies {
         match PackageStore::install_to_cluster(
             provider,
             &dependency.project,
@@ -487,6 +540,7 @@ pub(crate) async fn install_new_dependencies(
             cluster_id,
             true,
             false,
+            None,
             None,
             ctx,
         )

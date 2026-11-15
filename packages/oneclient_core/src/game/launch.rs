@@ -8,6 +8,7 @@ use chrono::{DateTime, Utc};
 use interfrost::api::minecraft::ArgumentType;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
+use tokio::sync::OwnedMutexGuard;
 
 use crate::ClusterStage;
 use crate::LauncherResult;
@@ -49,16 +50,26 @@ pub async fn launch_cluster(
     account: &MinecraftAccount,
     search_for_java: bool,
 ) -> LauncherResult<LaunchedGame> {
-    launch_cluster_with(state, cluster_id, account, search_for_java, None, None).await
+    launch_cluster_with(
+        state,
+        cluster_id,
+        account,
+        search_for_java,
+        None,
+        None,
+        None,
+    )
+    .await
 }
 
-#[tracing::instrument(skip(state, account))]
+#[tracing::instrument(skip(state, account, content_guard))]
 pub async fn launch_cluster_with(
     state: &Arc<LauncherState>,
     cluster_id: i64,
     account: &MinecraftAccount,
     search_for_java: bool,
     extra_jvm_arg: Option<&str>,
+    content_guard: Option<OwnedMutexGuard<()>>,
     bundle_budget: Option<Duration>,
 ) -> LauncherResult<LaunchedGame> {
     tracing::info!(cluster_id, search_for_java, "launching cluster");
@@ -79,6 +90,7 @@ pub async fn launch_cluster_with(
         account,
         search_for_java,
         extra_jvm_arg,
+        content_guard,
         bundle_budget,
     )
     .await;
@@ -108,6 +120,7 @@ async fn start(
     account: &MinecraftAccount,
     search_for_java: bool,
     extra_jvm_arg: Option<&str>,
+    content_guard: Option<OwnedMutexGuard<()>>,
     bundle_budget: Option<Duration>,
 ) -> LauncherResult<LaunchedGame> {
     let events = state.services.events.clone();
@@ -119,6 +132,7 @@ async fn start(
     // The stage goes first so a click while this waits is refused as already
     // active rather than queued behind it
     stage(LaunchStage::Checking);
+    drop(content_guard);
     let launch_slot = match state.games.try_launch_slot() {
         Some(slot) => slot,
         None => {
@@ -127,6 +141,20 @@ async fn start(
             let slot = state.games.launch_slot().await;
             stage(LaunchStage::Checking);
             slot
+        }
+    };
+    let content_lock = state.games.content_lock(cluster_id);
+    let content_guard = match content_lock.try_lock() {
+        Ok(guard) => guard,
+        Err(_) => {
+            tracing::debug!(
+                cluster_id,
+                "the cluster's content is being rewritten; waiting for it"
+            );
+            stage(LaunchStage::Waiting);
+            let guard = content_lock.lock().await;
+            stage(LaunchStage::Checking);
+            guard
         }
     };
 
@@ -235,6 +263,7 @@ async fn start(
     {
         tracing::warn!(cluster_id, error = %err, "failed to install bundle content");
     }
+    drop(content_guard);
     let cluster = match crate::clusters::auto_update_loader(state, &cluster).await {
         Ok(updated) => updated.unwrap_or(cluster),
         Err(err) => {

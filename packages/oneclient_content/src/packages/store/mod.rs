@@ -36,6 +36,7 @@ use oneclient_common::paths as common_paths;
 use oneclient_events::GroupedProgressChild;
 use polyio::{normalize_hash, sha1_file};
 use std::path::{Path, PathBuf};
+use tokio::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
 
 pub struct PackageStore;
 
@@ -103,7 +104,7 @@ impl PackageStore {
     }
 
     #[allow(clippy::too_many_arguments)]
-    #[tracing::instrument(skip(project, version, child, ctx), fields(project_id = %project.id, version_id = %version.version_id))]
+    #[tracing::instrument(skip(project, version, child, write_lock, ctx), fields(project_id = %project.id, version_id = %version.version_id))]
     pub async fn install_to_cluster(
         provider_id: ProviderId,
         project: &ProjectDetail,
@@ -112,6 +113,7 @@ impl PackageStore {
         skip_compatibility: bool,
         force_download: bool,
         child: Option<&GroupedProgressChild>,
+        write_lock: Option<&AsyncMutex<()>>,
         ctx: &ContentCtx,
     ) -> ContentResult<(ArtifactRow, LiveSync)> {
         tracing::info!("installing package to cluster");
@@ -125,6 +127,7 @@ impl PackageStore {
             Self::download_and_cache(provider_id, project, version, force_download, child, ctx)
                 .await?;
 
+        let _write = Self::lock_writes(write_lock, &cluster, ctx).await?;
         let enabled = Self::link_artifact(&artifact, &cluster, None, ctx).await?;
 
         Self::replace_other_versions(cluster_id, provider_id, &project.id, &artifact.hash, ctx)
@@ -137,6 +140,22 @@ impl PackageStore {
         };
 
         Ok((artifact, live))
+    }
+
+    pub async fn lock_writes<'a>(
+        write_lock: Option<&'a AsyncMutex<()>>,
+        before: &ClusterRow,
+        ctx: &ContentCtx,
+    ) -> ContentResult<Option<AsyncMutexGuard<'a, ()>>> {
+        let Some(lock) = write_lock else {
+            return Ok(None);
+        };
+        let guard = lock.lock().await;
+        let now = Self::get_cluster(before.id, ctx).await?;
+        if now.mc_version != before.mc_version || now.mc_loader != before.mc_loader {
+            return Err(PackageError::ClusterChanged.into());
+        }
+        Ok(Some(guard))
     }
 
     /// Bundle-owned copies are stepped over
@@ -517,6 +536,17 @@ impl PackageStore {
         cluster_id: i64,
         ctx: &ContentCtx,
     ) -> ContentResult<LocalImportReport> {
+        let (report, stored) = Self::store_local_files(files, cluster_id, ctx).await?;
+        describe_imports(&stored, ctx).await;
+        Ok(report)
+    }
+
+    #[tracing::instrument(level = "debug", skip(files, ctx), fields(files = files.len()))]
+    pub async fn store_local_files(
+        files: &[(PathBuf, ContentType)],
+        cluster_id: i64,
+        ctx: &ContentCtx,
+    ) -> ContentResult<(LocalImportReport, Vec<(ArtifactRow, ContentType)>)> {
         let cluster = Self::get_cluster(cluster_id, ctx).await?;
 
         let mut report = LocalImportReport::default();
@@ -535,8 +565,7 @@ impl PackageStore {
             }
         }
 
-        describe_imports(&stored, ctx).await;
-        Ok(report)
+        Ok((report, stored))
     }
 
     #[tracing::instrument(level = "debug", skip(artifacts, ctx), fields(files = artifacts.len()))]

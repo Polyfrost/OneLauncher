@@ -33,14 +33,15 @@ use oneclient_cluster::{
     Cluster, ClusterStage, ClusterUpdate, GameSettingsProfile, PackageUpdateMode, ProfileUpdate,
 };
 use oneclient_common::domain::{ContentType, GraphicsBackend, ProviderId};
-use oneclient_content::packages::{LiveSync, LocalImportReport};
+use oneclient_content::packages::{LiveSync, LocalImportReport, PackageStore};
 use oneclient_core::BUNDLE_APPLY_BUDGET;
 use oneclient_core::relocate::RelocationPlan;
 use oneclient_core::settings::LauncherSettings;
 use oneclient_core::settings::store::{save_global_profile, save_settings_and_apply};
 use oneclient_db::models::ClusterId;
-use oneclient_events::{Answer, Level};
-use tokio::sync::mpsc;
+use oneclient_db::dao::cluster as cluster_dao;
+use oneclient_events::{Answer, LaunchStage, Level};
+use tokio::sync::{OwnedMutexGuard, mpsc};
 
 use crate::components::IconType;
 use crate::hooks::{GraphicsBackendQuery, PackageUpdatesQuery};
@@ -1255,7 +1256,11 @@ impl Actions {
                 Some((title, body)) => actions.notify(title).body(body).send(),
                 None => {
                     let check = match launcher::state() {
-                        Ok(state) => actions.run_update_checks(&state, cluster_id, true).await,
+                        Ok(state) => {
+                            actions
+                                .run_update_checks(&state, cluster_id, true, None)
+                                .await
+                        }
                         Err(_) => None,
                     };
                     match check {
@@ -1369,9 +1374,9 @@ impl Actions {
         else {
             return;
         };
-        let chosen = self.prompt_package_updates(group).await;
+        let chosen = self.prompt_package_updates(group, None).await;
         if !chosen.is_empty() {
-            self.apply_updates_for_launch(&state, &chosen).await;
+            self.apply_updates_for_launch(&state, &chosen, false).await;
         }
     }
 
@@ -1537,25 +1542,22 @@ impl Actions {
             let imported = off_ui({
                 let state = state.clone();
                 async move {
-                    let report = oneclient_content::packages::PackageStore::import_local_files(
-                        &files,
-                        cluster_id,
-                        &state.services.content(),
-                    )
-                    .await?;
+                    let content = state.services.content();
+                    let write_lock = state.games.content_lock(cluster_id);
+                    let write = write_lock.lock().await;
+                    let (report, stored) =
+                        PackageStore::store_local_files(&files, cluster_id, &content).await?;
 
                     let mut deferred = false;
                     for row in &report.imported {
-                        let live = oneclient_content::packages::PackageStore::sync_live_content(
-                            cluster_id,
-                            row,
-                            &state.services.content(),
-                        )
-                        .await
-                        .unwrap_or(LiveSync::Skipped);
+                        let live = PackageStore::sync_live_content(cluster_id, row, &content)
+                            .await
+                            .unwrap_or(LiveSync::Skipped);
 
                         deferred |= live == LiveSync::Deferred;
                     }
+                    drop(write);
+                    PackageStore::describe_artifacts(&stored, &content).await;
                     Ok::<_, oneclient_content::ContentError>((report, deferred))
                 }
             })
@@ -2303,6 +2305,7 @@ impl Actions {
         state: &Arc<oneclient_core::LauncherState>,
         cluster_id: ClusterId,
         manual: bool,
+        hold: Option<&ContentHold>,
     ) -> Option<bool> {
         let content = state.services.content();
 
@@ -2345,15 +2348,18 @@ impl Actions {
         match plan_launch_updates(mode, pending) {
             LaunchUpdatePlan::Nothing => Some(false),
             LaunchUpdatePlan::Apply(updates) => self
-                .apply_updates_for_launch(state, &updates)
+                .apply_updates_for_launch(state, &updates, hold.is_some())
                 .await
                 .then_some(true),
             LaunchUpdatePlan::Prompt(updates) => {
                 let group =
                     crate::install::package_update_group(cluster_id, &updates, &state.services)
                         .await?;
-                let chosen = self.prompt_package_updates(group).await;
-                (chosen.is_empty() || self.apply_updates_for_launch(state, &chosen).await)
+                let chosen = self.prompt_package_updates(group, hold).await;
+                (chosen.is_empty()
+                    || self
+                        .apply_updates_for_launch(state, &chosen, hold.is_some())
+                        .await)
                     .then_some(true)
             }
         }
@@ -2364,15 +2370,17 @@ impl Actions {
         state: &Arc<oneclient_core::LauncherState>,
         cluster_id: ClusterId,
         manual: bool,
+        hold: Option<&ContentHold>,
     ) -> Option<UpdateCheck> {
-        let loader = crate::loader_update::offer_before_launch(self, cluster_id, manual).await;
-        self.resolve_bundle_choices_before_launch(state, cluster_id)
+        let loader =
+            crate::loader_update::offer_before_launch(self, cluster_id, manual, hold).await;
+        self.resolve_bundle_choices_before_launch(state, cluster_id, hold)
             .await;
         let bundles = self
             .resolve_bundle_updates_before_launch(state, cluster_id, manual)
             .await?;
         let packages = self
-            .resolve_package_updates_before_launch(state, cluster_id, manual)
+            .resolve_package_updates_before_launch(state, cluster_id, manual, hold)
             .await;
         Some(UpdateCheck {
             found: loader == Some(true) || bundles.found || packages == Some(true),
@@ -2408,6 +2416,7 @@ impl Actions {
         &self,
         state: &Arc<oneclient_core::LauncherState>,
         updates: &[oneclient_core::BrowserPackageUpdate],
+        locked: bool,
     ) -> bool {
         let state = state.clone();
         let updates = updates.to_vec();
@@ -2431,8 +2440,14 @@ impl Actions {
                     1,
                     oneclient_events::TaskCategory::Packages,
                 );
-                match oneclient_core::apply_browser_package_update(update, Some(&child), &content)
-                    .await
+                let write_lock = (!locked).then(|| state.games.content_lock(update.cluster_id));
+                match oneclient_core::apply_browser_package_update(
+                    update,
+                    Some(&child),
+                    write_lock.as_deref(),
+                    &content,
+                )
+                .await
                 {
                     Ok(_) => applied += 1,
                     // Not a reason to hold the game back the cache row survives
@@ -2487,6 +2502,7 @@ impl Actions {
         &self,
         state: &Arc<oneclient_core::LauncherState>,
         cluster_id: ClusterId,
+        hold: Option<&ContentHold>,
     ) {
         let bundles = match off_ui({
             let state = state.clone();
@@ -2543,7 +2559,9 @@ impl Actions {
             state.notifications.open_bundle_choices(choices, done);
             state.center_open = false;
         });
-        let Ok(Some(chosen)) = wait.await else { return };
+        let Some(Ok(Some(chosen))) = unlocked(hold, wait).await else {
+            return;
+        };
 
         let choices: Vec<_> = choices_for
             .iter()
@@ -2570,6 +2588,7 @@ impl Actions {
         &self,
         state: &Arc<oneclient_core::LauncherState>,
         cluster_id: ClusterId,
+        hold: &ContentHold,
     ) -> OptionalModsOutcome {
         let pending = match off_ui({
             let state = state.clone();
@@ -2611,12 +2630,14 @@ impl Actions {
             state.center_open = false;
         });
 
-        wait.await.unwrap_or(OptionalModsOutcome::Launch)
+        let (outcome, _) = hold.release_during(wait).await;
+        outcome.unwrap_or(OptionalModsOutcome::Launch)
     }
 
     async fn prompt_package_updates(
         &self,
         group: PackageUpdateGroup,
+        hold: Option<&ContentHold>,
     ) -> Vec<oneclient_core::BrowserPackageUpdate> {
         let (done, wait) = tokio::sync::oneshot::channel();
 
@@ -2627,7 +2648,10 @@ impl Actions {
             state.center_open = false;
         });
 
-        wait.await.unwrap_or_default()
+        unlocked(hold, wait)
+            .await
+            .and_then(Result::ok)
+            .unwrap_or_default()
     }
 
     pub fn apply_package_update(&self, update: oneclient_core::BrowserPackageUpdate) {
@@ -2656,9 +2680,11 @@ impl Actions {
                         oneclient_events::TaskCategory::Packages,
                     );
 
+                    let write_lock = state.games.content_lock(update.cluster_id);
                     let result = oneclient_core::apply_browser_package_update(
                         &update,
                         Some(&child),
+                        Some(&write_lock),
                         &state.services.content(),
                     )
                     .await;
@@ -2845,6 +2871,72 @@ pub fn update_check_running(cluster_id: ClusterId) -> bool {
     UPDATE_CHECKS.lock().unwrap().contains(&cluster_id)
 }
 
+pub(crate) struct ContentHold {
+    state: Arc<oneclient_core::LauncherState>,
+    cluster_id: ClusterId,
+    guard: Mutex<Option<OwnedMutexGuard<()>>>,
+}
+
+impl ContentHold {
+    async fn take(state: &Arc<oneclient_core::LauncherState>, cluster_id: ClusterId) -> Self {
+        let hold = Self {
+            state: state.clone(),
+            cluster_id,
+            guard: Mutex::new(None),
+        };
+        hold.lock().await;
+        hold
+    }
+
+    async fn lock(&self) {
+        let events = &self.state.services.events;
+        let lock = self.state.games.content_lock(self.cluster_id);
+        let guard = match lock.clone().try_lock_owned() {
+            Ok(guard) => guard,
+            Err(_) => {
+                events.game_stage(self.cluster_id, LaunchStage::Waiting);
+                let guard = lock.lock_owned().await;
+                events.game_stage(self.cluster_id, LaunchStage::Checking);
+                guard
+            }
+        };
+        *self.guard.lock().unwrap() = Some(guard);
+    }
+
+    pub(crate) async fn release_during<T>(&self, wait: impl Future<Output = T>) -> (T, bool) {
+        let before = self.version().await;
+        self.guard.lock().unwrap().take();
+        let answer = wait.await;
+        self.lock().await;
+        let same = before.is_some() && self.version().await == before;
+        (answer, same)
+    }
+
+    async fn version(&self) -> Option<(String, i64)> {
+        let row = cluster_dao::get_by_id(&self.state.services.db, self.cluster_id)
+            .await
+            .ok()??;
+        Some((row.mc_version, row.mc_loader))
+    }
+
+    fn into_guard(self) -> Option<OwnedMutexGuard<()>> {
+        self.guard.into_inner().unwrap()
+    }
+}
+
+pub(crate) async fn unlocked<T>(
+    hold: Option<&ContentHold>,
+    wait: impl Future<Output = T>,
+) -> Option<T> {
+    match hold {
+        Some(hold) => {
+            let (answer, same) = hold.release_during(wait).await;
+            same.then_some(answer)
+        }
+        None => Some(wait.await),
+    }
+}
+
 async fn launch(actions: &Actions, cluster_id: ClusterId, extra_jvm_arg: Option<String>) {
     let Ok(state) = launcher::state() else { return };
     let events = state.services.events.clone();
@@ -2883,8 +2975,12 @@ async fn launch(actions: &Actions, cluster_id: ClusterId, extra_jvm_arg: Option<
 
     crate::microsoft_java::offer_for_pinned_cluster(actions, cluster_id).await;
 
+    let hold = ContentHold::take(&state, cluster_id).await;
+
     let _cloud_hold = actions.sync_before_launch(&state, cluster_id).await;
-    actions.share_update_before_launch(&state, cluster_id).await;
+    actions
+        .share_update_before_launch(&state, cluster_id, &hold)
+        .await;
 
     let content = state.services.content();
     tokio::spawn(async move {
@@ -2898,20 +2994,24 @@ async fn launch(actions: &Actions, cluster_id: ClusterId, extra_jvm_arg: Option<
 
     // Before the game process never after Minecraft reads its mods once at
     // startup
-    let Some(check) = actions.run_update_checks(&state, cluster_id, false).await else {
-        events.game_stage(cluster_id, oneclient_events::LaunchStage::Exited);
+    let Some(check) = actions
+        .run_update_checks(&state, cluster_id, false, Some(&hold))
+        .await
+    else {
+        events.game_stage(cluster_id, LaunchStage::Exited);
         return;
     };
 
     // After the updates so the player never faces two modals at once
     if actions
-        .resolve_optional_mods_before_launch(&state, cluster_id)
+        .resolve_optional_mods_before_launch(&state, cluster_id, &hold)
         .await
         == OptionalModsOutcome::Cancel
     {
-        events.game_stage(cluster_id, oneclient_events::LaunchStage::Exited);
+        events.game_stage(cluster_id, LaunchStage::Exited);
         return;
     }
+    let content_guard = hold.into_guard();
 
     off_ui(async move {
         let extra = extra_jvm_arg.as_deref();
@@ -2921,6 +3021,7 @@ async fn launch(actions: &Actions, cluster_id: ClusterId, extra_jvm_arg: Option<
             &account,
             true,
             extra,
+            content_guard,
             check.bundle_budget,
         )
         .await
@@ -2980,9 +3081,16 @@ async fn repair_and_relaunch(
         .body(report.summary())
         .send();
 
-    if let Err(err) =
-        oneclient_core::launch_cluster_with(state, cluster_id, account, true, extra_jvm_arg, None)
-            .await
+    if let Err(err) = oneclient_core::launch_cluster_with(
+        state,
+        cluster_id,
+        account,
+        true,
+        extra_jvm_arg,
+        None,
+        None,
+    )
+    .await
     {
         tracing::error!(cluster_id, "launch failed again after repair: {err:#}");
         events.game_failed(cluster_id, format!("{err:#}"));

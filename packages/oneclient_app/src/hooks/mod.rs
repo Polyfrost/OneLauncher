@@ -36,11 +36,11 @@ pub use active_cluster::{
     use_provide_start_maximized, use_splash, use_start_maximized,
 };
 
-pub(crate) use actions::listed;
 pub use actions::{
     Actions, AlternativePick, ExternalImportJob, NotificationBuilder, PumpSignal, exporting,
     modpack_job_running, update_check_running,
 };
+pub(crate) use actions::{ContentHold, listed, unlocked};
 pub use actions::{
     CloudSignal, add_collaborator, cloud_engine, cloud_sync_signal, forget_deleted_cluster,
     load_collaborators, load_embedded_files, load_is_shared, load_owner_check, load_setting_files,

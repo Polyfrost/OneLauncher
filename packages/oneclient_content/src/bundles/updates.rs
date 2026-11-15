@@ -44,7 +44,7 @@ static CLUSTER_UPDATE_LOCKS: OnceLock<Mutex<HashMap<i64, Arc<AsyncMutex<()>>>>> 
 type SharedPrefetch = Shared<BoxFuture<'static, Result<(), String>>>;
 
 pub struct Prefetches {
-    running: Mutex<HashMap<String, (SharedPrefetch, Option<GroupedProgressChild>)>>,
+    running: Mutex<HashMap<String, (SharedPrefetch, GroupedProgressChild)>>,
     permits: Semaphore,
 }
 
@@ -59,33 +59,44 @@ impl Default for Prefetches {
 
 pub const BUNDLE_APPLY_BUDGET: Duration = Duration::from_secs(60);
 
+fn prefetch_key(file: &BundleFile) -> String {
+    let sha1 = match &file.kind {
+        BundleFileKind::Managed { sha1, .. } => sha1,
+        BundleFileKind::External { file, .. } => &file.sha1,
+    };
+    format!(
+        "{}@{}@{sha1}",
+        file.kind.bundle_key(),
+        file.kind.bundle_version_id()
+    )
+}
+
 fn shared_prefetch(
     file: &BundleFile,
     child: Option<&GroupedProgressChild>,
     ctx: &ContentCtx,
 ) -> SharedPrefetch {
-    let key = format!(
-        "{}@{}",
-        file.kind.bundle_key(),
-        file.kind.bundle_version_id()
-    );
+    let key = prefetch_key(file);
     let mut running = ctx.prefetches.running.lock().unwrap();
     if let Some((task, source)) = running.get(&key) {
-        if let (Some(source), Some(child)) = (source, child) {
+        if let Some(child) = child {
             source.mirror_into(child.clone());
         }
         return task.clone();
     }
 
-    let source = child.cloned();
+    let source = GroupedProgressChild::source(file.display_name(), file.size);
+    if let Some(child) = child {
+        source.mirror_into(child.clone());
+    }
     let task = tokio::spawn({
         let file = file.clone();
-        let child = source.clone();
+        let source = source.clone();
         let ctx = ctx.clone();
         let key = key.clone();
         async move {
             let _permit = ctx.prefetches.permits.acquire().await;
-            let fetched = prefetch_bundle_file(&file, child.as_ref(), &ctx).await;
+            let fetched = prefetch_bundle_file(&file, Some(&source), &ctx).await;
             ctx.prefetches.running.lock().unwrap().remove(&key);
             fetched.map_err(|err| format!("{err:#}"))
         }
@@ -103,11 +114,23 @@ pub(crate) async fn prefetch_until(
     deadline: Option<Instant>,
     ctx: &ContentCtx,
 ) -> Option<Result<(), String>> {
+    let skip = || {
+        if let Some(child) = child {
+            child.finish();
+        }
+        None
+    };
+    if past(deadline) {
+        return skip();
+    }
     let task = shared_prefetch(file, child, ctx);
     match deadline {
-        Some(deadline) => tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), task)
-            .await
-            .ok(),
+        Some(deadline) => {
+            match tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), task).await {
+                Ok(fetched) => Some(fetched),
+                Err(_) => skip(),
+            }
+        }
         None => Some(task.await),
     }
 }
@@ -632,10 +655,6 @@ pub async fn apply_bundle_updates_with(
     // and it also gets in before `deadline` stops new fetches from starting.
     to_fetch.sort_by_key(|file| std::cmp::Reverse(file.size));
     let fetched = futures_util::stream::iter(to_fetch.into_iter().map(|file| async move {
-        if past(deadline) {
-            return (file, None);
-        }
-
         let child = session.map(|s| {
             let c = s.child(
                 file.display_name(),
@@ -1672,16 +1691,88 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_failed_download_can_be_tried_again() {
+        let dir = polyio::tempdir().await.unwrap();
+        let (ctx, _events, _rx) = test_ctx(dir.dir_path()).await;
+        let file = unreachable_file();
+
+        assert!(shared_prefetch(&file, None, &ctx).await.is_err());
+        assert!(ctx.prefetches.running.lock().unwrap().is_empty());
+
+        let retry = shared_prefetch(&file, None, &ctx);
+        assert_eq!(ctx.prefetches.running.lock().unwrap().len(), 1);
+        assert!(retry.await.is_err());
+    }
+
+    fn managed_file(version_id: &str, sha1: &str) -> BundleFile {
+        BundleFile {
+            enabled: true,
+            hidden: false,
+            path: "mods/managed.jar".to_string(),
+            size: 1,
+            file_type: BundleFileType::Normal,
+            kind: BundleFileKind::Managed {
+                provider: ProviderId::Modrinth,
+                project_id: "project".to_string(),
+                version_id: version_id.to_string(),
+                sha1: sha1.to_string(),
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn each_distinct_file_gets_its_own_download() {
+        let dir = polyio::tempdir().await.unwrap();
+        let (ctx, _events, _rx) = test_ctx(dir.dir_path()).await;
+        let _held = ctx
+            .prefetches
+            .permits
+            .acquire_many(BUNDLE_INSTALL_CONCURRENCY as u32)
+            .await
+            .unwrap();
+
+        let mut other_project = managed_file("v1", "aaaa");
+        let mut other_provider = managed_file("v1", "aaaa");
+        if let BundleFileKind::Managed { project_id, .. } = &mut other_project.kind {
+            *project_id = "other".to_string();
+        }
+        if let BundleFileKind::Managed { provider, .. } = &mut other_provider.kind {
+            *provider = ProviderId::CurseForge;
+        }
+        let mut external_revision = unreachable_file();
+        if let BundleFileKind::External { file, .. } = &mut external_revision.kind {
+            file.sha1 = "another hash".to_string();
+        }
+
+        for file in [
+            managed_file("v1", "aaaa"),
+            managed_file("v1", "bbbb"),
+            managed_file("v2", "aaaa"),
+            managed_file("v1", "aaaa"),
+            other_project,
+            other_provider,
+            unreachable_file(),
+            external_revision,
+        ] {
+            let _ = shared_prefetch(&file, None, &ctx);
+        }
+
+        assert_eq!(ctx.prefetches.running.lock().unwrap().len(), 7);
+    }
+
+    #[tokio::test]
     async fn a_session_joining_a_running_download_sees_its_progress() {
         let dir = polyio::tempdir().await.unwrap();
         let (ctx, events, mut rx) = test_ctx(dir.dir_path()).await;
         let file = unreachable_file();
         let session = GroupedProgressSession::start(&events, "test");
-        let source = session.child("source", 10, TaskCategory::Packages);
         let joiner = session.child("joiner", 10, TaskCategory::Packages);
 
-        let _started = shared_prefetch(&file, Some(&source), &ctx);
+        let _started = shared_prefetch(&file, None, &ctx);
         let _joined = shared_prefetch(&file, Some(&joiner), &ctx);
+        let source = ctx.prefetches.running.lock().unwrap()[&prefetch_key(&file)]
+            .1
+            .clone();
         source.set_progress(5, Some(10));
 
         let mut joiner_id = None;
@@ -1707,7 +1798,8 @@ mod tests {
     #[tokio::test]
     async fn no_download_starts_once_the_deadline_has_passed() {
         let dir = polyio::tempdir().await.unwrap();
-        let (ctx, _events, _rx) = test_ctx(dir.dir_path()).await;
+        let (ctx, events, mut rx) = test_ctx(dir.dir_path()).await;
+        let session = GroupedProgressSession::start(&events, "test");
         let _held = ctx
             .prefetches
             .permits
@@ -1720,7 +1812,7 @@ mod tests {
             1,
             "Bundle",
             true,
-            None,
+            Some(&session),
             &ctx,
             Some(Instant::now()),
         )
@@ -1728,5 +1820,16 @@ mod tests {
 
         assert!(results.is_empty());
         assert!(ctx.prefetches.running.lock().unwrap().is_empty());
+        let finished = std::iter::from_fn(|| rx.try_recv().ok())
+            .filter(|event| {
+                matches!(
+                    event,
+                    Event::Progress(ProgressEvent::Grouped(
+                        GroupedProgressEvent::FinishChild { .. }
+                    ))
+                )
+            })
+            .count();
+        assert_eq!(finished, 1, "a skipped file must not hold its reservation");
     }
 }

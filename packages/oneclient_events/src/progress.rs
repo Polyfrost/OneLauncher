@@ -138,7 +138,7 @@ impl Drop for SessionInner {
 struct ChildInner {
     session_id: Uuid,
     child_id: Uuid,
-    events: EventBus,
+    events: Option<EventBus>,
     label: String,
     total: AtomicU64,
     finished: Arc<std::sync::atomic::AtomicBool>,
@@ -217,7 +217,7 @@ impl GroupedProgressSession {
             inner: Arc::new(ChildInner {
                 session_id: self.inner.session_id,
                 child_id,
-                events: self.inner.events.clone(),
+                events: Some(self.inner.events.clone()),
                 label,
                 total: AtomicU64::new(total),
                 finished: Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -267,6 +267,26 @@ impl GroupedProgressSession {
 }
 
 impl GroupedProgressChild {
+    pub fn source(label: impl Into<String>, total: u64) -> Self {
+        Self {
+            inner: Arc::new(ChildInner {
+                session_id: Uuid::nil(),
+                child_id: Uuid::new_v4(),
+                events: None,
+                label: label.into(),
+                total: AtomicU64::new(total.max(1)),
+                finished: Arc::new(AtomicBool::new(false)),
+                mirrored: Mutex::default(),
+            }),
+        }
+    }
+
+    fn emit(&self, event: GroupedProgressEvent) {
+        if let Some(events) = &self.inner.events {
+            events.emit(event);
+        }
+    }
+
     pub fn label(&self) -> &str {
         &self.inner.label
     }
@@ -279,7 +299,7 @@ impl GroupedProgressChild {
         {
             return;
         }
-        self.inner.events.emit(GroupedProgressEvent::SetChildPhase {
+        self.emit(GroupedProgressEvent::SetChildPhase {
             session_id: self.inner.session_id,
             child_id: self.inner.child_id,
             phase,
@@ -307,7 +327,7 @@ impl GroupedProgressChild {
         if total > stored {
             self.inner.total.store(total, Ordering::Relaxed);
         }
-        self.inner.events.emit(GroupedProgressEvent::UpdateChild {
+        self.emit(GroupedProgressEvent::UpdateChild {
             session_id: self.inner.session_id,
             child_id: self.inner.child_id,
             current,
@@ -329,7 +349,7 @@ impl GroupedProgressChild {
             return;
         }
 
-        self.inner.events.emit(GroupedProgressEvent::FinishChild {
+        self.emit(GroupedProgressEvent::FinishChild {
             session_id: self.inner.session_id,
             child_id: self.inner.child_id,
         });

@@ -22,6 +22,12 @@ const MAX_DOWNLOAD_ATTEMPTS: u32 = 3;
 
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_hours(1);
 
+const SINGLE_STREAM_TIMEOUT: Duration = if cfg!(test) {
+    Duration::from_secs(3)
+} else {
+    Duration::from_mins(10)
+};
+
 const RANGED_MIN_SIZE: u64 = 16 * 1024 * 1024;
 const RANGED_PARTS: u64 = 4;
 const RANGED_PROGRESS_INTERVAL: Duration = Duration::from_millis(200);
@@ -199,9 +205,17 @@ async fn download_attempt(
 
     let mut hasher = expected.map(|expected| ChecksumStream::new(expected.algorithm));
     let mut received = 0u64;
+    let deadline = started + SINGLE_STREAM_TIMEOUT;
     {
         let stream = futures_lite::StreamExt::map(stream, |item| {
             if let Ok(chunk) = &item {
+                if Instant::now() >= deadline {
+                    return Err(RequestError::IncompleteBody {
+                        source_desc: format!("{url} (timed out)"),
+                        expected: declared.unwrap_or(0),
+                        actual: received,
+                    });
+                }
                 received += chunk.len() as u64;
                 if let Some(hasher) = hasher.as_mut() {
                     hasher.update(chunk);
@@ -917,6 +931,45 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         created.unwrap();
         assert!(!left, "the scratch file outlived its download");
+    }
+
+    #[tokio::test]
+    async fn a_single_stream_cannot_outlast_the_overall_limit() {
+        let body = Arc::new(vec![7u8; 4000]);
+        let url = serve(
+            body.clone(),
+            Arc::default(),
+            false,
+            Some(SINGLE_STREAM_TIMEOUT + Duration::from_millis(300)),
+        )
+        .await;
+
+        let client = RequestClient::new(crate::config::NetConfig::default()).unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let events = EventBus::new(tx);
+        let dest =
+            std::env::temp_dir().join(format!("oneclient-single-limit-{}.jar", std::process::id()));
+        let expected = Checksum::sha1(polyio::sha1_bytes(&body));
+
+        let result = download_attempt(
+            &client,
+            &events,
+            &url,
+            &dest,
+            Some(&expected),
+            0,
+            None,
+            true,
+        )
+        .await;
+
+        let written = dest.exists();
+        let _ = tokio::fs::remove_file(&dest).await;
+        assert!(
+            matches!(result, Err(RequestError::IncompleteBody { .. })),
+            "{result:?}"
+        );
+        assert!(!written);
     }
 
     async fn serve_ignoring_ranges(body: Arc<Vec<u8>>) -> String {

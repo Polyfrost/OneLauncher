@@ -1464,6 +1464,7 @@ async fn the_bundle_launch_heals_first_takes_a_shared_switched_off_mod() {
             state.bundles.as_ref(),
             None,
             &state.services.content(),
+            None,
         )
         .await
         .unwrap();
@@ -2830,6 +2831,87 @@ async fn launch_install_stops_waiting_at_the_deadline() {
 
     assert_eq!(connections.load(std::sync::atomic::Ordering::SeqCst), 1);
     assert!(linked(&state, fresh, &sha1).await);
+}
+
+#[tokio::test]
+async fn launch_install_links_nothing_while_part_of_the_bundle_is_downloading() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let fast_body: Vec<u8> = (0..64 * 1024).map(|i| (i % 227) as u8).collect();
+    let slow_body: Vec<u8> = (0..64 * 1024).map(|i| (i % 229) as u8).collect();
+    let fast_sha1 = polyio::sha1_bytes(&fast_body);
+    let slow_sha1 = polyio::sha1_bytes(&slow_body);
+    let size = fast_body.len() as u64;
+    let (fast_url, _) = serve_jar(fast_body, None).await;
+    let (slow_url, slow_connections) =
+        serve_jar(slow_body, Some(std::time::Duration::from_millis(1500))).await;
+    let fast = github_mod_served(&fast_url, &fast_sha1, size);
+    let mut slow = github_mod_served(&slow_url, &slow_sha1, size);
+    slow.path = "mods/slow-mod.jar".to_string();
+    if let BundleFileKind::External { file: ext, id, .. } = &mut slow.kind {
+        ext.name = "slow-mod.jar".to_string();
+        *id = Some("slow-mod".to_string());
+    }
+    seed_bundle_with_pack(&state, manifest(vec![fast, slow])).await;
+    let fresh = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    let deadline = Some(std::time::Instant::now() + std::time::Duration::from_millis(300));
+    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, deadline)
+        .await
+        .unwrap();
+
+    assert!(!linked(&state, fresh, &fast_sha1).await);
+    assert!(!linked(&state, fresh, &slow_sha1).await);
+
+    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, None)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        slow_connections.load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
+    assert!(linked(&state, fresh, &fast_sha1).await);
+    assert!(linked(&state, fresh, &slow_sha1).await);
+}
+
+#[tokio::test]
+async fn launch_install_does_not_retry_a_failed_download() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let body: Vec<u8> = (0..64 * 1024).map(|i| (i % 233) as u8).collect();
+    let wrong_sha1 = polyio::sha1_bytes(b"not the served body");
+    let size = body.len() as u64;
+    let (url, connections) = serve_jar(body, None).await;
+    seed_bundle_with_pack(&state, manifest(vec![github_mod_served(&url, &wrong_sha1, size)])).await;
+    let fresh = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    let deadline = Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
+    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, deadline)
+        .await
+        .unwrap();
+
+    assert_eq!(connections.load(std::sync::atomic::Ordering::SeqCst), 3);
+    assert!(!linked(&state, fresh, &wrong_sha1).await);
+}
+
+#[tokio::test]
+async fn install_without_a_deadline_retries_a_failed_download() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let body: Vec<u8> = (0..64 * 1024).map(|i| (i % 239) as u8).collect();
+    let wrong_sha1 = polyio::sha1_bytes(b"not the served body either");
+    let size = body.len() as u64;
+    let (url, connections) = serve_jar(body, None).await;
+    seed_bundle_with_pack(&state, manifest(vec![github_mod_served(&url, &wrong_sha1, size)])).await;
+    let fresh = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, None)
+        .await
+        .unwrap();
+
+    assert_eq!(connections.load(std::sync::atomic::Ordering::SeqCst), 6);
+    assert!(!linked(&state, fresh, &wrong_sha1).await);
 }
 
 #[tokio::test]

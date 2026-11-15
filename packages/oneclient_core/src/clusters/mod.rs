@@ -37,7 +37,7 @@ pub use release_migration::{
 pub use reset::{ResetClaim, ResetReport, is_resetting, reset_cluster, reset_unfinished};
 pub use share::{
     ExportMode, ExportOptions, SettingsChoice, SharedCluster, collect_chosen_settings,
-    export_cluster, export_cluster_with, list_setting_files,
+    export_cluster, export_cluster_with, list_embedded_files, list_setting_files,
 };
 pub use unlink_legacy::{SweepReport, unlink_legacy_cluster_content};
 

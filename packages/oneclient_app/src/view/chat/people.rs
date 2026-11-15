@@ -5,7 +5,9 @@ use uuid::Uuid;
 
 use oneclient_polyplus::Friend;
 
-use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea, TextInput};
+use crate::components::{
+    Button, Icon, IconType, OVERLAY_MAX_LEVEL, OverlayPopup, ScrollArea, TextInput,
+};
 use crate::hooks::{use_chat_roster, use_dispatch};
 use crate::i18n::t;
 use crate::theme::{colors, rounded, text_size};
@@ -84,6 +86,7 @@ impl Component for NewGroupDialog {
 
         dialog(
             self.on_close.clone(),
+            Size::px(DIALOG_HEIGHT_PX),
             rect()
                 .vertical()
                 .width(Size::fill())
@@ -154,6 +157,7 @@ impl Component for AddMembersDialog {
 
         dialog(
             self.on_close.clone(),
+            Size::px(DIALOG_HEIGHT_PX),
             rect()
                 .vertical()
                 .width(Size::fill())
@@ -181,6 +185,70 @@ impl Component for AddMembersDialog {
                                 .on_press(move |_| {
                                     dispatch.add_group_members(group_id, additions.clone());
                                     adding.call(());
+                                }),
+                        ),
+                )
+                .into_element(),
+        )
+    }
+}
+
+#[derive(PartialEq)]
+pub(super) struct RenameGroupDialog {
+    pub group_id: i32,
+    pub name: Option<String>,
+    pub on_close: EventHandler<()>,
+}
+
+impl Component for RenameGroupDialog {
+    fn render(&self) -> impl IntoElement {
+        let dispatch = use_dispatch();
+        let initial = self.name.clone().unwrap_or_default();
+        let name = use_state(move || initial);
+
+        let group_id = self.group_id;
+        let close = self.on_close.clone();
+        let saving = self.on_close.clone();
+        let submitting = self.on_close.clone();
+        let submit = dispatch.clone();
+
+        let title = name.read().clone();
+        let can_save = !title.trim().is_empty() && Some(title.trim()) != self.name.as_deref();
+
+        dialog(
+            self.on_close.clone(),
+            Size::auto(),
+            rect()
+                .vertical()
+                .width(Size::fill())
+                .spacing(14.)
+                .child(dialog_title(t("oneclient.chat.groups.rename"), close))
+                .child(
+                    TextInput::new(name)
+                        .width(Size::fill())
+                        .auto_focus(true)
+                        .placeholder(t("oneclient.chat.new_group.name_placeholder"))
+                        .on_submit(move |_| {
+                            if can_save {
+                                submit.rename_group(group_id, name.peek().clone());
+                                submitting.call(());
+                            }
+                        }),
+                )
+                .child(
+                    rect()
+                        .horizontal()
+                        .width(Size::fill())
+                        .main_align(Alignment::End)
+                        .child(
+                            Button::new()
+                                .primary()
+                                .medium()
+                                .text(t("oneclient.chat.groups.rename_save"))
+                                .enabled(can_save)
+                                .on_press(move |_| {
+                                    dispatch.rename_group(group_id, title.clone());
+                                    saving.call(());
                                 }),
                         ),
                 )
@@ -249,8 +317,9 @@ fn dialog_title(text: &str, on_close: EventHandler<()>) -> impl IntoElement {
         )
 }
 
-fn dialog(on_close: EventHandler<()>, body: Element) -> Element {
+fn dialog(on_close: EventHandler<()>, height: Size, body: Element) -> Element {
     OverlayPopup::new()
+        .overlay_level(OVERLAY_MAX_LEVEL)
         .on_close(on_close)
         .child(
             rect()
@@ -261,7 +330,7 @@ fn dialog(on_close: EventHandler<()>, body: Element) -> Element {
                     rect()
                         .vertical()
                         .width(Size::px(DIALOG_WIDTH_PX))
-                        .height(Size::px(DIALOG_HEIGHT_PX))
+                        .height(height)
                         .max_width(Size::window_percent(92.))
                         .max_height(Size::window_percent(92.))
                         .padding(Gaps::new_all(20.))

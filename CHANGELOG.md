@@ -1,3 +1,18 @@
+## 2.10.2 (2026-11-12)
+
+### Fixes
+
+- Fixed dismissing a context menu also selecting the right-clicked item by [LynithDev](https://github.com/LynithDev)
+- The selection outline no longer cuts through the badges on grid view cards by [center2055](https://github.com/center2055)
+- Added migrating from a cluster to a new instance by [rozwader](https://github.com/rozwader)
+- Fixed notifications staying open behind the social panel after clicking Open chat by [junapur](https://github.com/junapur)
+- Added overrides option in browser by [rozwader](https://github.com/rozwader)
+- Fixed wardrobe view not scaling up on maximized window by [rozwader](https://github.com/rozwader)
+- Groups can be renamed, Special Chat recipients get a separate Special tab, and context menus have a drop shadow by [LynithDev](https://github.com/LynithDev)
+- Fixed right click menus and dialogs in the social panel being drawn behind its contents by [junapur](https://github.com/junapur)
+- Social menu now uses the paginated v1 friends, requests, blocked and groups endpoints by [LynithDev](https://github.com/LynithDev)
+- Modpacks with partial ZIP64 extra fields no longer fail with "failed to parse a binary header" by [LynithDev](https://github.com/LynithDev)
+
 ## 2.10.1 (2026-11-11)
 
 ### Fixes

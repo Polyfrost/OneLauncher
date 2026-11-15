@@ -14,7 +14,7 @@ use oneclient_polyplus::api::{
 use uuid::Uuid;
 
 use super::parts::{
-    AnchorChip, BACK_YAW, Badge, BadgeStyle, CAPE_ZOOM, CARD_CHROME, COLUMNS, CapeSource,
+    AnchorChip, BACK_YAW, Badge, BadgeStyle, CAPE_ZOOM, CARD_CHROME, CARD_WIDTH, CapeSource,
     CoverThumb, FRONT_YAW, GRID_GAP, InfoHeading, LookThumb, MenuAction, Rename, SectionChip,
     Swatch, WardrobeCard, detail_text, divider, library_intro, notice, price_label,
 };
@@ -37,8 +37,7 @@ use crate::theme::{colors, text_size};
 use crate::ui::centered_note;
 use crate::view::app::cluster::confirm_dialog;
 
-const MAX_WIDTH: f32 = 1480.;
-const RIGHT_COLUMN_WIDTH: f32 = 320.;
+const RIGHT_COLUMN_MIN_WIDTH: f32 = 320.;
 
 pub(super) fn categories() -> [(CosmeticType, &'static str); 10] {
     [
@@ -1012,7 +1011,7 @@ impl Component for WardrobeBody {
                 Block::notice(tf("oneclient.wardrobe.plus_refresh_failed", &[error])),
             );
         }
-        let layout = Rc::new(layout(blocks, card_height(data.grid_width)));
+        let layout = Rc::new(layout(blocks, data.grid_width));
         let labels = layout.anchors.clone();
 
         let mut anchors_state = anchors;
@@ -1109,7 +1108,6 @@ impl Component for WardrobeBody {
                 rect()
                     .vertical()
                     .width(Size::fill())
-                    .max_width(Size::px(MAX_WIDTH))
                     .height(Size::fill())
                     .content(Content::Flex)
                     .spacing(16.)
@@ -1159,7 +1157,8 @@ impl Component for WardrobeBody {
                             )
                             .child(
                                 rect()
-                                    .width(Size::px(RIGHT_COLUMN_WIDTH))
+                                    .width(Size::percent(22.))
+                                    .min_width(Size::px(RIGHT_COLUMN_MIN_WIDTH))
                                     .height(Size::fill())
                                     .child(RightColumn {
                                         data: data.clone(),
@@ -1445,6 +1444,8 @@ const HEADING_HEIGHT: f32 = 28.;
 const NOTICE_HEIGHT: f32 = 57.;
 const INTRO_HEIGHT: f32 = 33.;
 const OVERSCAN: f32 = 480.;
+const MIN_COLUMNS: usize = 4;
+const MAX_COLUMNS: usize = 6;
 
 #[derive(Clone, Hash)]
 pub(super) enum Card {
@@ -1510,15 +1511,17 @@ struct Layout {
     slots: Vec<Slot>,
     anchors: Vec<(String, f32)>,
     total: f32,
+    card_width: f32,
 }
 
-fn card_height(grid_width: f32) -> f32 {
-    let card_width = if grid_width > 0. {
-        (grid_width - GRID_GAP * (COLUMNS as f32 - 1.)) / COLUMNS as f32
-    } else {
-        180.
-    };
-    card_width + CARD_CHROME
+fn grid_columns(grid_width: f32) -> (usize, f32) {
+    if grid_width <= 0. {
+        return (MIN_COLUMNS, CARD_WIDTH);
+    }
+    let columns = (((grid_width + GRID_GAP) / (CARD_WIDTH + GRID_GAP)) as usize)
+        .clamp(MIN_COLUMNS, MAX_COLUMNS);
+    let width = (grid_width - GRID_GAP * (columns as f32 - 1.)) / columns as f32;
+    (columns, width)
 }
 
 fn card_element(ctx: &GridCtx, card: &Card) -> Option<Element> {
@@ -1538,12 +1541,11 @@ fn card_element(ctx: &GridCtx, card: &Card) -> Option<Element> {
     }
 }
 
-fn card_row(ctx: &GridCtx, cards: &[Card]) -> Element {
+fn card_row(ctx: &GridCtx, cards: &[Card], card_width: f32) -> Element {
     let mut row = rect()
         .horizontal()
         .width(Size::fill())
         .height(Size::fill())
-        .content(Content::Flex)
         .spacing(GRID_GAP);
     for card in cards {
         let mut hasher = DefaultHasher::new();
@@ -1551,18 +1553,16 @@ fn card_row(ctx: &GridCtx, cards: &[Card]) -> Element {
         row = row.child(
             rect()
                 .key(hasher.finish())
-                .width(Size::flex(1.0))
+                .width(Size::px(card_width))
                 .height(Size::fill())
                 .maybe_child(card_element(ctx, card)),
         );
     }
-    for _ in cards.len()..COLUMNS {
-        row = row.child(rect().width(Size::flex(1.0)).height(Size::fill()));
-    }
     row.into_element()
 }
 
-fn layout(blocks: Vec<Block>, card_height: f32) -> Layout {
+fn layout(blocks: Vec<Block>, grid_width: f32) -> Layout {
+    let (columns, card_width) = grid_columns(grid_width);
     let mut slots = Vec::new();
     let mut anchors = Vec::new();
     let mut y = 0.;
@@ -1584,13 +1584,13 @@ fn layout(blocks: Vec<Block>, card_height: f32) -> Layout {
                 y += height + GRID_GAP;
             }
             Block::Cards(cards) => {
-                for chunk in cards.chunks(COLUMNS) {
+                for chunk in cards.chunks(columns) {
                     slots.push(Slot {
                         y,
-                        height: card_height,
+                        height: card_width + CARD_CHROME,
                         content: SlotContent::Row(chunk.to_vec()),
                     });
-                    y += card_height + GRID_GAP;
+                    y += card_width + CARD_CHROME + GRID_GAP;
                 }
             }
         }
@@ -1599,6 +1599,7 @@ fn layout(blocks: Vec<Block>, card_height: f32) -> Layout {
         slots,
         anchors,
         total: y,
+        card_width,
     }
 }
 
@@ -1632,7 +1633,7 @@ fn visible_slots(ctx: &GridCtx, layout: &Layout, view: &ScrollAreaCtx) -> Elemen
                         .height(Size::px(slot.height))
                         .child(match &slot.content {
                             SlotContent::Fixed(element) => element.clone(),
-                            SlotContent::Row(cards) => card_row(ctx, cards),
+                            SlotContent::Row(cards) => card_row(ctx, cards, layout.card_width),
                         }),
                 ),
         );
@@ -2752,4 +2753,19 @@ fn skin_card(ctx: &GridCtx, skin: &SkinInfo) -> Element {
         on_action: wear,
     }
     .into_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn grid_columns_stay_between_min_and_max() {
+        assert_eq!(grid_columns(0.), (MIN_COLUMNS, CARD_WIDTH));
+        assert_eq!(grid_columns(300.).0, MIN_COLUMNS);
+        let (columns, width) = grid_columns(5000.);
+        assert_eq!(columns, MAX_COLUMNS);
+        let used = width * columns as f32 + GRID_GAP * (columns as f32 - 1.);
+        assert!((used - 5000.).abs() < 0.01);
+    }
 }

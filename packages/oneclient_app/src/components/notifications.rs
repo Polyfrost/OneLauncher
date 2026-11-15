@@ -481,7 +481,10 @@ pub(crate) fn run_action(
             dispatch.open_cluster_update(summaries.clone());
         }
         NotificationActionKind::OpenUrl(url) => confirm_link.set(Some(url.clone())),
-        NotificationActionKind::OpenChat(group_id) => dispatch.show_chat(*group_id),
+        NotificationActionKind::OpenChat(group_id) => {
+            dispatch.close_notification_center();
+            dispatch.show_chat(*group_id);
+        }
     }
 }
 

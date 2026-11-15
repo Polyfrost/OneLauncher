@@ -258,11 +258,11 @@ pub enum ClusterAction {
 }
 
 impl MutationCapability for ClusterMutation {
-    type Ok = ();
+    type Ok = Option<ClusterId>;
     type Err = String;
     type Keys = ClusterAction;
 
-    async fn run(&self, keys: &ClusterAction) -> Result<(), String> {
+    async fn run(&self, keys: &ClusterAction) -> Result<Option<ClusterId>, String> {
         if let ClusterAction::Batch(actions) = keys {
             let mut errors = Vec::new();
             for action in actions {
@@ -271,7 +271,7 @@ impl MutationCapability for ClusterMutation {
                 }
             }
             return if errors.is_empty() {
-                Ok(())
+                Ok(None)
             } else {
                 Err(errors.join("\n"))
             };
@@ -289,6 +289,7 @@ impl MutationCapability for ClusterMutation {
                     .send();
             }
         };
+        let mut created = None;
         let result = match keys {
             ClusterAction::SetArtifactEnabled { cluster_id, .. }
             | ClusterAction::RemoveArtifact { cluster_id, .. }
@@ -653,7 +654,10 @@ impl MutationCapability for ClusterMutation {
                                 }
                                 Err(oneclient_content::ContentError::InvalidData { reason })
                             }
-                            None => Ok(()),
+                            None => {
+                                created = Some(cluster.id);
+                                Ok(())
+                            }
                         }
                     }
                     Err(err) => Err(oneclient_content::ContentError::InvalidData {
@@ -811,10 +815,10 @@ impl MutationCapability for ClusterMutation {
             ok = result.is_ok(),
             "cluster action ran"
         );
-        result.map_err(|e| e.to_string())
+        result.map(|()| created).map_err(|e| e.to_string())
     }
 
-    async fn on_settled(&self, keys: &ClusterAction, result: &Result<(), String>) {
+    async fn on_settled(&self, keys: &ClusterAction, result: &Result<Option<ClusterId>, String>) {
         if let Err(err) = result
             && let Ok(state) = crate::launcher::state()
         {

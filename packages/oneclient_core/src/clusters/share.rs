@@ -10,13 +10,15 @@ use oneclient_common::domain::ContentType;
 use oneclient_common::patch::Patch;
 use oneclient_content::modpacks::{
     self, ClusterShare, ModpackInstallReport, ModpackManifest, ModpackSummary, SHARE_FORMAT,
-    SettingFile, SettingsScan, ShareExportReport, ShareExtras, ShareIcon, ShareScope, SharedJava,
-    SharedModpack,
+    SettingFile, SettingsScan, ShareExportReport, ShareExtras, ShareIcon, ShareScope,
+    SharedFileSource, SharedJava, SharedModpack, SharedPlaytime, SharedSession,
 };
 use oneclient_content::packages::PackageStore;
 use oneclient_content::{ContentCtx, ContentError};
+use oneclient_db::dao::cluster as cluster_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
-use oneclient_db::models::{ArtifactRow, OverrideType};
+use oneclient_db::dao::game_session as session_dao;
+use oneclient_db::models::{ArtifactRow, NewGameSession, OverrideType};
 use oneclient_events::{GroupedProgressSession, TaskCategory, TaskPhase};
 use oneclient_java::JavaVendor;
 use serde::{Deserialize, Serialize};
@@ -227,6 +229,10 @@ pub struct ExportOptions {
     pub settings: SettingsChoice,
     #[serde(default)]
     pub skip_types: Vec<ContentType>,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub left_out_files: BTreeSet<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub playtime: bool,
 }
 
 impl ExportOptions {
@@ -236,6 +242,8 @@ impl ExportOptions {
             mode,
             settings: SettingsChoice::None,
             skip_types: Vec::new(),
+            left_out_files: BTreeSet::new(),
+            playtime: false,
         }
     }
 
@@ -258,6 +266,18 @@ impl ExportOptions {
     #[must_use]
     pub fn with_setting_choice(mut self, settings: SettingsChoice) -> Self {
         self.settings = settings;
+        self
+    }
+
+    #[must_use]
+    pub fn with_left_out_files(mut self, paths: BTreeSet<String>) -> Self {
+        self.left_out_files = paths;
+        self
+    }
+
+    #[must_use]
+    pub fn with_playtime(mut self, include: bool) -> Self {
+        self.playtime = include;
         self
     }
 }
@@ -293,6 +313,65 @@ pub async fn list_setting_files(
         .files)
 }
 
+pub async fn list_embedded_files(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+    mode: ExportMode,
+) -> LauncherResult<Vec<SettingFile>> {
+    let content = state.services.content();
+    let cluster = state.clusters.get(cluster_id).await?;
+    let (_, scope) = share_scope(
+        &cluster,
+        mode == ExportMode::Compatibility,
+        Vec::new(),
+        &content,
+    )
+    .await;
+    let shared = modpacks::collect_share_content(cluster_id, scope, None, &content).await?;
+    Ok(shared
+        .files
+        .into_iter()
+        .filter_map(|file| match file.source {
+            SharedFileSource::Embed(source) => Some(SettingFile {
+                path: file.path,
+                source,
+                size: file.size,
+            }),
+            SharedFileSource::Download { .. } => None,
+        })
+        .collect())
+}
+
+async fn share_scope(
+    cluster: &Cluster,
+    compatible: bool,
+    skip_types: Vec<ContentType>,
+    content: &ContentCtx,
+) -> (Option<SharedModpack>, ShareScope) {
+    let modpack = match cluster.linked_modpack_hash {
+        Some(_) if compatible => None,
+        Some(_) => modpacks::cluster_modpack(cluster.id, content)
+            .await
+            .inspect_err(|err| {
+                tracing::debug!(cluster_id = cluster.id, error = %err, "could not identify the linked modpack; exporting every file");
+            })
+            .ok()
+            .flatten()
+            .map(|release| SharedModpack {
+                provider: release.provider,
+                project_id: release.project_id,
+                version_id: release.version_id,
+            }),
+        None => None,
+    };
+    let scope = ShareScope {
+        skip_bundles: cluster.uses_bundles() && !compatible,
+        skip_modpack: modpack.is_some(),
+        skip_types,
+    };
+    (modpack, scope)
+}
+
 pub async fn export_cluster(
     state: &Arc<LauncherState>,
     cluster_id: i64,
@@ -322,28 +401,8 @@ pub async fn export_cluster_with(
 
     let compatible =
         mode == ExportMode::Compatibility || options.skip_types.contains(&ContentType::Mod);
-    let modpack = match cluster.linked_modpack_hash {
-        Some(_) if compatible => None,
-        Some(_) => modpacks::cluster_modpack(cluster_id, &content)
-            .await
-            .inspect_err(|err| {
-                tracing::debug!(cluster_id, error = %err, "could not identify the linked modpack; exporting every file");
-            })
-            .ok()
-            .flatten()
-            .map(|release| SharedModpack {
-                provider: release.provider,
-                project_id: release.project_id,
-                version_id: release.version_id,
-            }),
-        None => None,
-    };
-
-    let scope = ShareScope {
-        skip_bundles: cluster.uses_bundles() && !compatible,
-        skip_modpack: modpack.is_some(),
-        skip_types: options.skip_types.clone(),
-    };
+    let (modpack, scope) =
+        share_scope(&cluster, compatible, options.skip_types.clone(), &content).await;
     let kind = if compatible && cluster.kind == ClusterKind::OneClient {
         kind_for(cluster.mc_loader)
     } else {
@@ -351,6 +410,9 @@ pub async fn export_cluster_with(
     };
     let mut shared =
         modpacks::collect_share_content(cluster_id, scope, child.as_ref(), &content).await?;
+    shared
+        .files
+        .retain(|file| !options.left_out_files.contains(&file.path));
     shared.settings = collect_chosen_settings(&cluster.game_dir()?, &options.settings).await?;
     let with_settings = !shared.settings.files.is_empty();
 
@@ -376,6 +438,11 @@ pub async fn export_cluster_with(
             SettingsChoice::AllExcept(paths) => paths.iter().cloned().collect(),
             _ => Vec::new(),
         },
+        playtime: if options.playtime && !compatible {
+            Some(exported_playtime(state, &cluster).await?)
+        } else {
+            None
+        },
     };
     let icon = exported_icon(&cluster).await;
 
@@ -385,6 +452,100 @@ pub async fn export_cluster_with(
         child.finish();
     }
     Ok(report)
+}
+
+async fn exported_playtime(
+    state: &Arc<LauncherState>,
+    cluster: &Cluster,
+) -> LauncherResult<SharedPlaytime> {
+    let sessions = session_dao::list_sessions_for_cluster(&state.services.db, cluster.id)
+        .await?
+        .into_iter()
+        .filter_map(|row| {
+            Some(SharedSession {
+                ended_at: row.ended_at?,
+                started_at: row.started_at,
+                exit_code: row.exit_code,
+                ram_allocated_mb: row.ram_allocated_mb,
+                mods_enabled: row.mods_enabled,
+                java_vendor: row.java_vendor,
+                java_version: row.java_version,
+            })
+        })
+        .collect();
+    Ok(SharedPlaytime {
+        played_secs: cluster.overall_played.as_secs(),
+        last_played: cluster.last_played.map(|at| at.to_rfc3339()),
+        sessions,
+    })
+}
+
+const MAX_IMPORTED_PLAYED_SECS: u64 = 100 * 365 * 24 * 60 * 60;
+const MAX_IMPORTED_SESSIONS: usize = 10_000;
+
+async fn import_playtime(
+    db: &oneclient_db::DbPool,
+    cluster_id: i64,
+    playtime: &SharedPlaytime,
+) -> Result<(), sqlx::Error> {
+    let mut tx = db.begin().await?;
+    if playtime.played_secs > 0 {
+        let secs = i64::try_from(playtime.played_secs.min(MAX_IMPORTED_PLAYED_SECS))
+            .unwrap_or(i64::MAX);
+        cluster_dao::add_playtime(&mut *tx, cluster_id, secs).await?;
+    }
+    let last_played = playtime
+        .last_played
+        .as_deref()
+        .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+        .map(|at| at.to_rfc3339());
+    cluster_dao::set_last_played(&mut *tx, cluster_id, last_played.as_deref()).await?;
+    for session in playtime.sessions.iter().take(MAX_IMPORTED_SESSIONS) {
+        if let Some((started_at, ended_at)) =
+            insert_imported_session(&mut tx, cluster_id, session).await?
+        {
+            session_dao::finish_session_at(&mut *tx, &started_at, &ended_at, session.exit_code)
+                .await?;
+        }
+    }
+    tx.commit().await
+}
+
+async fn insert_imported_session(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    cluster_id: i64,
+    session: &SharedSession,
+) -> Result<Option<(String, String)>, sqlx::Error> {
+    let (Ok(started), Ok(ended)) = (
+        chrono::DateTime::parse_from_rfc3339(&session.started_at),
+        chrono::DateTime::parse_from_rfc3339(&session.ended_at),
+    ) else {
+        return Ok(None);
+    };
+    if ended <= started || ended - started > chrono::Duration::days(31) {
+        return Ok(None);
+    }
+    for step in 0..5 {
+        let shift = chrono::Duration::milliseconds(step);
+        let started_at = (started + shift).to_rfc3339();
+        let new = NewGameSession {
+            cluster_id,
+            started_at: &started_at,
+            ram_allocated_mb: session.ram_allocated_mb,
+            mods_enabled: session.mods_enabled,
+            java_vendor: session.java_vendor.as_deref(),
+            java_version: session.java_version.as_deref(),
+        };
+        match session_dao::insert_session(&mut **tx, &new).await {
+            Ok(_) => return Ok(Some((started_at, (ended + shift).to_rfc3339()))),
+            Err(err)
+                if err
+                    .as_database_error()
+                    .is_some_and(|err| err.is_unique_violation()) => {}
+            Err(err) => return Err(err),
+        }
+    }
+    Ok(None)
 }
 
 async fn exported_loader_version(
@@ -588,6 +749,12 @@ pub(super) async fn install_shared_instance(
     report
         .failed
         .extend(apply_shared_settings(state, &cluster, shared, progress).await);
+
+    if let Some(playtime) = &share.playtime
+        && let Err(err) = import_playtime(&state.services.db, cluster_id, playtime).await
+    {
+        tracing::warn!(cluster_id, error = %err, "could not carry over play stats");
+    }
 
     let cluster = state.clusters.get(cluster_id).await?;
     Ok(ModpackCluster { cluster, report })

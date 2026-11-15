@@ -4,7 +4,9 @@ use uuid::Uuid;
 use oneclient_polyplus::{GroupKind, MAX_MESSAGE_LENGTH};
 
 use crate::chat::{ChatConversation, ChatMessage, MessageInvite, PendingMessage, ThreadStatus};
-use crate::components::{Avatar, Button, ContextMenu, Icon, IconType, ScrollArea, TextInput};
+use crate::components::{
+    Avatar, Button, ContextMenu, Icon, IconType, OVERLAY_MAX_LEVEL, ScrollArea, TextInput,
+};
 use crate::hooks::{
     Actions, chat_draft, save_chat_draft, use_chat_invite_game, use_chat_online_count,
     use_chat_roster, use_chat_thread, use_dispatch, use_player_online,
@@ -18,7 +20,7 @@ use super::common::{
     presence_color, use_player_name,
 };
 use super::list::{accent_button, conversation_title};
-use super::people::AddMembersDialog;
+use super::people::{AddMembersDialog, RenameGroupDialog};
 
 const PAGE_TRIGGER_PX: f32 = 240.;
 
@@ -70,6 +72,7 @@ impl Component for ThreadView {
         let mut shown = use_state(|| group_id);
         let mut editing = use_state(|| None::<(i64, String)>);
         let mut adding = use_state(|| false);
+        let mut renaming = use_state(|| false);
         let mut first_shown = use_state(|| None::<i64>);
 
         if *shown.peek() != group_id {
@@ -79,6 +82,7 @@ impl Component for ThreadView {
             may_page.set(false);
             editing.set(None);
             adding.set(false);
+            renaming.set(false);
         }
 
         let edit_gone = editing.peek().as_ref().is_some_and(|(id, _)| {
@@ -154,6 +158,7 @@ impl Component for ThreadView {
 
         let title_hint = self.conversation.clone();
         let members = self.conversation.members.clone();
+        let group_name = self.conversation.name.clone();
         let leave = dispatch.clone();
         let back = self.on_back.clone();
 
@@ -168,6 +173,7 @@ impl Component for ThreadView {
                 show_back: !self.expanded,
                 on_back: self.on_back.clone(),
                 on_add_members: EventHandler::new(move |_| adding.set(true)),
+                on_rename: EventHandler::new(move |_| renaming.set(true)),
                 on_leave: EventHandler::new(move |_| {
                     leave.leave_group(group_id);
                     back.call(());
@@ -255,6 +261,14 @@ impl Component for ThreadView {
                 }
                 .into_element()
             }))
+            .maybe_child(renaming().then(|| {
+                RenameGroupDialog {
+                    group_id,
+                    name: group_name,
+                    on_close: EventHandler::new(move |_| renaming.set(false)),
+                }
+                .into_element()
+            }))
     }
 }
 
@@ -335,6 +349,7 @@ struct ThreadHeader {
     show_back: bool,
     on_back: EventHandler<()>,
     on_add_members: EventHandler<()>,
+    on_rename: EventHandler<()>,
     on_leave: EventHandler<()>,
 }
 
@@ -342,12 +357,14 @@ impl Component for ThreadHeader {
     fn render(&self) -> impl IntoElement {
         let mut menu = use_state(|| None::<(f32, f32)>);
         let is_group = self.conversation.kind == GroupKind::Group;
-        let can_leave = !self.conversation.special;
+        let special = self.conversation.special;
 
         let context = (*menu.read()).map(|(x, y)| {
             let add = self.on_add_members.clone();
+            let rename = self.on_rename.clone();
             let leave = self.on_leave.clone();
             let options = ContextMenu::new(x, y)
+                .overlay_level(OVERLAY_MAX_LEVEL)
                 .on_close(move |_| menu.set(None))
                 .action(
                     IconType::Plus,
@@ -355,8 +372,15 @@ impl Component for ThreadHeader {
                     move |()| add.call(()),
                 );
 
-            if can_leave {
+            if special {
+                options.into_element()
+            } else {
                 options
+                    .action(
+                        IconType::Pencil01,
+                        t("oneclient.chat.groups.rename"),
+                        move |()| rename.call(()),
+                    )
                     .separator()
                     .danger_action(
                         IconType::LogOut01,
@@ -364,8 +388,6 @@ impl Component for ThreadHeader {
                         move |()| leave.call(()),
                     )
                     .into_element()
-            } else {
-                options.into_element()
             }
         });
         let counterpart = self.conversation.counterpart(self.own_id);
@@ -526,6 +548,7 @@ impl Component for MessageRow {
             let message_id = self.message.id;
             let content = self.message.content.clone();
             ContextMenu::new(x, y)
+                .overlay_level(OVERLAY_MAX_LEVEL)
                 .on_close(move |_| menu.set(None))
                 .action(
                     IconType::Pencil01,

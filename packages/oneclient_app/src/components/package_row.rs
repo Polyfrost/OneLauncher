@@ -26,6 +26,14 @@ pub(crate) const GRID_MIN_W: f32 = 290.;
 const GRID_CARD_PADDING: f32 = 14.;
 const BADGE_STRIP_H: f32 = 20.;
 const BADGE_STRIP_LIFT: f32 = 2.;
+/// Tint and outline of a selected card
+const SELECTION_LAYER: i16 = 16;
+/// The grid card's floating badges straddle its bottom edge, so they paint over
+/// the selection outline and cover it the way they cover the card's own border
+const BADGE_STRIP_LAYER: i16 = SELECTION_LAYER + 1;
+/// Catches clicks while selecting, above the badges and everything nested in them,
+/// so clicking a badge still selects the card instead of toggling it
+const SELECTION_INPUT_LAYER: i16 = BADGE_STRIP_LAYER + 16;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum CardLayout {
@@ -310,18 +318,24 @@ impl Component for PackageRow {
         };
 
         let on_select = self.on_select.clone();
+        let highlight = (self.selecting && self.selected).then(|| {
+            rect()
+                .position(Position::new_absolute().top(0.).left(0.))
+                .width(Size::percent(100.))
+                .height(Size::percent(100.))
+                .layer(Layer::Relative(SELECTION_LAYER))
+                .corner_radius(rounded(radius))
+                .background(colors::brand().with_a(28))
+                .border(border_all_color(2., colors::brand()).alignment(BorderAlignment::Inner))
+                .into_element()
+        });
         let overlay = self.selecting.then(|| {
             rect()
                 .position(Position::new_absolute().top(0.).left(0.))
                 .width(Size::percent(100.))
                 .height(Size::percent(100.))
-                .layer(Layer::Relative(16))
+                .layer(Layer::Relative(SELECTION_INPUT_LAYER))
                 .corner_radius(rounded(radius))
-                .maybe(self.selected, |el| {
-                    el.background(colors::brand().with_a(28)).border(
-                        border_all_color(2., colors::brand()).alignment(BorderAlignment::Inner),
-                    )
-                })
                 .cursor(CursorIcon::Pointer)
                 .on_press(move |_| on_select.call(()))
                 .on_secondary_down(on_secondary(on_context))
@@ -332,6 +346,7 @@ impl Component for PackageRow {
             .width(Size::fill())
             .height(Size::fill())
             .child(card)
+            .maybe_child(highlight)
             .maybe_child(overlay)
     }
 }
@@ -738,6 +753,7 @@ pub(crate) fn grid_card(
                 Position::new_absolute()
                     .bottom(-(GRID_CARD_PADDING + BADGE_STRIP_H / 2.) + BADGE_STRIP_LIFT),
             )
+            .layer(Layer::Relative(BADGE_STRIP_LAYER))
             .main_align(Alignment::End)
             .cross_align(Alignment::Center)
             .spacing(4.)
@@ -1260,3 +1276,4 @@ pub(crate) fn pill(icon: Option<Element>, text: String, accent: Color) -> Elemen
         )
         .into_element()
 }
+

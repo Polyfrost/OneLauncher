@@ -540,7 +540,8 @@ impl Component for PreviewPanel {
             .child(
                 rect()
                     .width(Size::fill())
-                    .height(Size::px(330.))
+                    .height(Size::percent(80.))
+                    .min_height(Size::px(330.))
                     .child(LookThumb {
                         uuid: data.uuid.clone(),
                         skin,
@@ -1031,7 +1032,8 @@ impl Component for StoreDetailPanel {
             .child(
                 panel_box()
                     .width(Size::fill())
-                    .height(Size::px(330.))
+                    .height(Size::percent(55.))
+                    .min_height(Size::px(330.))
                     .child(shop_thumbnail(data, &item, &variant, true))
                     .maybe_child(badge.map(|(text, color)| {
                         rect()

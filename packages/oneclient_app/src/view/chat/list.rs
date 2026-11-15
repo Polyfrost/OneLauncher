@@ -9,7 +9,8 @@ use oneclient_polyplus::{BlockedPlayer, Friend, FriendRequest, PlayerStatus};
 
 use crate::chat::{ChatConversation, ChatInvite, ChatRoster, FriendRequestStatus};
 use crate::components::{
-    Avatar, ContextMenu, Icon, IconType, LazySection, ScrollArea, TextInput, window_controls_with,
+    Avatar, ContextMenu, Icon, IconType, LazySection, OVERLAY_MAX_LEVEL, ScrollArea, Segment,
+    SegmentedControl, TextInput, window_controls_with,
 };
 use crate::hooks::{
     Actions, use_chat_friend_request, use_chat_invites, use_chat_self_status, use_dispatch,
@@ -41,6 +42,7 @@ pub(super) struct ListPane {
     pub own_id: Uuid,
     pub conversations: Vec<ChatConversation>,
     pub names: Arc<HashMap<Uuid, String>>,
+    pub special_target: bool,
     pub loading: bool,
     pub error: Option<String>,
     pub active: Option<i32>,
@@ -53,16 +55,26 @@ impl Component for ListPane {
     fn render(&self) -> impl IntoElement {
         let query = use_state(String::new);
         let mut group_open = use_state(|| false);
+        let special_filter = use_state(|| SpecialFilter::All);
 
         let tab = self.tab;
-        let active_tab = *tab.read();
+        let active_tab = match *tab.read() {
+            PanelTab::Special if !self.special_target => PanelTab::Chats,
+            tab => tab,
+        };
         let q = query.read().trim().to_lowercase();
 
         let unread = self
             .conversations
             .iter()
-            .filter(|conversation| conversation.unread)
+            .filter(|conversation| conversation.unread && !self.is_special(conversation))
             .count();
+        let special_unread = self.special_target.then(|| {
+            self.conversations
+                .iter()
+                .filter(|conversation| conversation.unread && conversation.special)
+                .count()
+        });
         let incoming = self.roster.requests.incoming.len();
 
         let searching = !q.is_empty();
@@ -85,6 +97,7 @@ impl Component for ListPane {
             PanelTab::Groups => {
                 groups_tab(self, &q, EventHandler::new(move |_| group_open.set(true)))
             }
+            PanelTab::Special => special_tab(self, &q, special_filter),
         };
 
         let group_friends = self.roster.friends.clone();
@@ -120,7 +133,7 @@ impl Component for ListPane {
                     ),
             )
             .child(InvitesCard { view: self.view })
-            .child(tab_strip(active_tab, unread, incoming, move |next| {
+            .child(tab_strip(active_tab, unread, incoming, special_unread, move |next| {
                 let mut tab = tab;
                 tab.set(next);
             }))
@@ -641,6 +654,7 @@ fn tab_strip(
     active: PanelTab,
     unread: usize,
     incoming: usize,
+    special: Option<usize>,
     on_pick: impl Fn(PanelTab) + Clone + 'static,
 ) -> impl IntoElement {
     let tab = |kind: PanelTab, text: &'static str, count: usize| {
@@ -704,7 +718,10 @@ fn tab_strip(
                     t("oneclient.chat.tabs.friends"),
                     incoming,
                 ))
-                .child(tab(PanelTab::Groups, t("oneclient.chat.tabs.groups"), 0)),
+                .child(tab(PanelTab::Groups, t("oneclient.chat.tabs.groups"), 0))
+                .maybe_child(special.map(|unread| {
+                    tab(PanelTab::Special, t("oneclient.chat.tabs.special"), unread)
+                })),
         )
 }
 
@@ -766,6 +783,7 @@ fn chats_tab(pane: &ListPane, query: &str) -> Element {
     let conversations: Vec<ChatConversation> = pane
         .conversations
         .iter()
+        .filter(|conversation| !pane.is_special(conversation))
         .filter(|conversation| chat_matches(conversation, own_id, &pane.names, query))
         .cloned()
         .collect();
@@ -1350,6 +1368,7 @@ impl Component for FriendRow {
             let remove = dispatch.clone();
             let block = dispatch.clone();
             ContextMenu::new(x, y)
+                .overlay_level(OVERLAY_MAX_LEVEL)
                 .title(name.clone())
                 .on_close(move |_| menu.set(None))
                 .action(
@@ -1472,7 +1491,7 @@ fn groups_tab(pane: &ListPane, query: &str, on_create: EventHandler<()>) -> Elem
     let groups: Vec<ChatConversation> = pane
         .conversations
         .iter()
-        .filter(|conversation| conversation.kind.is_shared())
+        .filter(|conversation| conversation.kind.is_shared() && !pane.is_special(conversation))
         .filter(|conversation| {
             query.is_empty()
                 || conversation_title(conversation, None)
@@ -1512,6 +1531,90 @@ fn groups_tab(pane: &ListPane, query: &str, on_create: EventHandler<()>) -> Elem
                     t("oneclient.chat.groups.create"),
                     move |_| on_create.call(()),
                 )),
+        )
+        .child(list)
+        .into_element()
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SpecialFilter {
+    All,
+    Awaiting,
+    Responded,
+}
+
+impl ListPane {
+    fn is_special(&self, conversation: &ChatConversation) -> bool {
+        self.special_target && conversation.special
+    }
+}
+
+fn special_tab(pane: &ListPane, query: &str, filter: State<SpecialFilter>) -> Element {
+    let own_id = pane.own_id;
+    let shown = *filter.read();
+    let chats: Vec<ChatConversation> = pane
+        .conversations
+        .iter()
+        .filter(|conversation| conversation.special)
+        .filter(|conversation| match shown {
+            SpecialFilter::All => true,
+            SpecialFilter::Awaiting => conversation.awaiting_reply,
+            SpecialFilter::Responded => !conversation.awaiting_reply,
+        })
+        .filter(|conversation| chat_matches(conversation, own_id, &pane.names, query))
+        .cloned()
+        .collect();
+    let count = chats.len();
+    let expanded = pane.expanded;
+    let active = pane.active;
+    let view = pane.view;
+
+    let list = if chats.is_empty() {
+        hint(t("oneclient.chat.special.empty")).into_element()
+    } else {
+        ScrollArea::new()
+            .width(Size::fill())
+            .height(Size::flex(1.0))
+            .padding(BELOW_PINNED_PADDING)
+            .lazy(count, CHAT_ROW_HEIGHT_PX, LIST_ROW_GAP_PX, move |index| {
+                let conversation = chats[index].clone();
+                keyed_row(
+                    conversation.id,
+                    ChatRow {
+                        selected: expanded
+                            && *view.read() == PanelView::Chat
+                            && active == Some(conversation.id),
+                        conversation,
+                        own_id,
+                        view,
+                    },
+                )
+            })
+            .into_element()
+    };
+
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .height(Size::fill())
+        .content(Content::Flex)
+        .child(
+            rect()
+                .width(Size::fill())
+                .padding(PINNED_PADDING)
+                .main_align(Alignment::Center)
+                .child(
+                    SegmentedControl::new(filter)
+                        .height(32.)
+                        .equal_width(88.)
+                        .segments([
+                            Segment::new(SpecialFilter::All).label(t("oneclient.chat.special.all")),
+                            Segment::new(SpecialFilter::Awaiting)
+                                .label(t("oneclient.chat.special.awaiting")),
+                            Segment::new(SpecialFilter::Responded)
+                                .label(t("oneclient.chat.special.responded")),
+                        ]),
+                ),
         )
         .child(list)
         .into_element()
@@ -1718,6 +1821,7 @@ mod tests {
             preview_sender: None,
             last_activity: None,
             special: false,
+            awaiting_reply: false,
         }
     }
 
@@ -1748,6 +1852,7 @@ mod tests {
                 own_id: Uuid::nil(),
                 conversations: (0..200).map(group).collect(),
                 names: Arc::default(),
+                special_target: false,
                 loading: false,
                 error: None,
                 active: None,

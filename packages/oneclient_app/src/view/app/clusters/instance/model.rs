@@ -276,6 +276,7 @@ pub struct VersionRow {
     pub meta: String,
     pub badge: Option<String>,
     pub date: String,
+    pub loader: Option<GameLoader>,
 }
 
 #[derive(Clone)]
@@ -309,15 +310,26 @@ impl VersionList {
                     meta: String::new(),
                     badge: (!entry.kind.is_release()).then(|| entry.kind.label().to_string()),
                     date: entry.released.clone(),
+                    loader: None,
                 })
             }
         }
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum VersionCheck {
+    Running,
+    Done(usize, usize),
+    Failed,
+}
+
 #[derive(Clone, Copy)]
 pub struct Wizard {
     pub exact_loader: Option<GameLoader>,
+    pub migrate_loader: Option<GameLoader>,
+    pub migrate_source: Option<i64>,
+    pub checks: State<HashMap<(String, GameLoader), VersionCheck>>,
     pub step: State<usize>,
     pub choice: State<TypeChoice>,
     pub version: State<Option<String>>,

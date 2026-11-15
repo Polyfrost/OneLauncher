@@ -68,6 +68,8 @@ struct AnchorState {
     owner: u64,
     area: Rc<Cell<AnchorRect>>,
     generation: Rc<Cell<u64>>,
+    /// Set by a press until the pointer leaves, so a dialog the press opened isn't covered by the tooltip
+    pressed: Rc<Cell<bool>>,
     text: Box<str>,
     placement: TooltipPlacement,
 }
@@ -85,6 +87,7 @@ pub fn use_tooltip_anchor(text: Option<Box<str>>, placement: TooltipPlacement) -
     });
     let area = use_hook(|| Rc::new(Cell::new(AnchorRect::default())));
     let generation = use_hook(|| Rc::new(Cell::new(0u64)));
+    let pressed = use_hook(|| Rc::new(Cell::new(false)));
 
     let abandoned = generation.clone();
     use_drop(move || abandoned.set(abandoned.get() + 1));
@@ -94,6 +97,7 @@ pub fn use_tooltip_anchor(text: Option<Box<str>>, placement: TooltipPlacement) -
         owner,
         area,
         generation,
+        pressed,
         text,
         placement,
     }))
@@ -121,6 +125,9 @@ impl TooltipAnchor {
             });
         })
         .on_pointer_enter(move |e: Event<PointerEventData>| {
+            if enter.pressed.get() {
+                return;
+            }
             let global = e.global_location();
             let element = e.element_location();
 
@@ -147,8 +154,14 @@ impl TooltipAnchor {
                 }
             });
         })
-        .on_pointer_leave(move |_| hide(&leave))
-        .on_mouse_down(move |_| hide(&pressed))
+        .on_pointer_leave(move |_| {
+            leave.pressed.set(false);
+            hide(&leave);
+        })
+        .on_mouse_down(move |_| {
+            pressed.pressed.set(true);
+            hide(&pressed);
+        })
         .on_wheel(move |_| hide(&scrolled))
     }
 }

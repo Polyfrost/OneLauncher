@@ -47,6 +47,7 @@ pub use actions::{
     load_sync_left_out, measure_share, remove_collaborator,
 };
 pub use queries::ALL_VERSIONS;
+pub use queries::PackageUpdatesQuery;
 pub(crate) use queries::use_folder_watch;
 pub use queries::wardrobe;
 pub use queries::{

@@ -71,3 +71,23 @@ pub fn use_graphics_backend(game_dir: PathBuf) -> Option<GraphicsBackend> {
     let query = use_query(Query::new(game_dir, GraphicsBackendQuery));
     super::state::settled_or_loading(&query).flatten()
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct HasGameOptionsQuery;
+
+impl QueryCapability for HasGameOptionsQuery {
+    type Ok = bool;
+    type Err = LauncherError;
+    type Keys = PathBuf;
+
+    async fn run(&self, game_dir: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        Ok(polyio::try_exists(game_dir.join("options.txt"))
+            .await
+            .unwrap_or(false))
+    }
+}
+
+pub fn use_has_game_options(game_dir: PathBuf) -> bool {
+    let query = use_query(Query::new(game_dir, HasGameOptionsQuery));
+    super::state::settled_or_loading(&query).unwrap_or(false)
+}

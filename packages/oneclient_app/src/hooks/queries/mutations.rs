@@ -619,6 +619,7 @@ impl MutationCapability for ClusterMutation {
                                 state.bundles.as_ref(),
                                 Some(&session),
                                 content,
+                                None,
                             )
                             .await
                             {

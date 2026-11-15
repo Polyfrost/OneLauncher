@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use chrono::DateTime;
 use futures_util::StreamExt;
 use oneclient_db::dao::applied_migration as migration_dao;
@@ -11,6 +13,7 @@ use crate::bundles::error::BundleError;
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
 use crate::bundles::types::{BundleArchive, BundleFile, BundleFileKind, BundleManifest};
+use crate::bundles::updates::{past, prefetch_until};
 use crate::ctx::ContentCtx;
 use crate::error::ContentError;
 use crate::error::ContentResult;
@@ -432,7 +435,16 @@ pub async fn install_bundle(
         .find(|a| a.manifest.name == bundle_name)
         .ok_or(BundleError::NotFound(bundle_name.to_string()))?;
 
-    install_enabled_bundle_files(&archive, cluster_id, true, skip_compatibility, None, ctx).await
+    install_enabled_bundle_files(
+        &archive,
+        cluster_id,
+        true,
+        skip_compatibility,
+        None,
+        ctx,
+        None,
+    )
+    .await
 }
 
 /// `suppression` comes from [`find_user_suppression`] so a choice filed under a
@@ -797,6 +809,7 @@ pub(crate) fn heal_restores<'a>(
     ))
 }
 
+/// Files `deadline` cuts short are left out, and go in at a later call
 #[tracing::instrument(level = "debug", skip(archive, progress, ctx), fields(bundle = %archive.manifest.name))]
 pub async fn install_enabled_bundle_files(
     archive: &BundleArchive,
@@ -805,6 +818,7 @@ pub async fn install_enabled_bundle_files(
     skip_compatibility: bool,
     progress: Option<&GroupedProgressSession>,
     ctx: &ContentCtx,
+    deadline: Option<Instant>,
 ) -> ContentResult<Vec<String>> {
     if taken {
         extract_bundle_overrides_for_cluster(archive, cluster_id, ctx).await?;
@@ -849,6 +863,7 @@ pub async fn install_enabled_bundle_files(
         skip_compatibility,
         progress,
         ctx,
+        deadline,
     )
     .await;
 
@@ -864,6 +879,7 @@ pub async fn install_enabled_bundle_files(
     Ok(installed)
 }
 
+/// Files `deadline` cuts short are left out of the results
 pub(crate) async fn install_bundle_files(
     to_install: Vec<BundleFile>,
     cluster_id: i64,
@@ -871,6 +887,7 @@ pub(crate) async fn install_bundle_files(
     skip_compatibility: bool,
     progress: Option<&GroupedProgressSession>,
     ctx: &ContentCtx,
+    deadline: Option<Instant>,
 ) -> Vec<(BundleFile, ContentResult<String>)> {
     if let Some(p) = progress {
         let reserved_bytes: u64 = to_install.iter().map(|f| f.size.max(1)).sum();
@@ -882,35 +899,83 @@ pub(crate) async fn install_bundle_files(
     }
 
     futures_util::stream::iter(to_install.into_iter().map(|file| async move {
-        let child = progress.map(|p| {
-            let c = p.child(
-                format!("Mod {}", file.display_name()),
-                file.size.max(1),
-                oneclient_events::TaskCategory::Packages,
-            );
-            c.set_phase(TaskPhase::Downloading);
-            c
-        });
-
-        let result = install_package_from_bundle(
+        let result = fetch_and_install(
             &file,
             cluster_id,
             bundle_name,
             skip_compatibility,
-            child.as_ref(),
+            progress,
             ctx,
+            deadline,
         )
         .await;
-
-        if let Some(child) = child {
-            child.set_phase(TaskPhase::Installing);
-            child.finish();
-        }
-        (file, result)
+        result.map(|result| (file, result))
     }))
     .buffer_unordered(BUNDLE_INSTALL_CONCURRENCY)
+    .filter_map(std::future::ready)
     .collect::<Vec<_>>()
     .await
+}
+
+/// `None` when a `deadline` leaves the file for a later call: it was still
+/// downloading then, and that download carries on, or its download failed.
+async fn fetch_and_install(
+    file: &BundleFile,
+    cluster_id: i64,
+    bundle_name: &str,
+    skip_compatibility: bool,
+    progress: Option<&GroupedProgressSession>,
+    ctx: &ContentCtx,
+    deadline: Option<Instant>,
+) -> Option<ContentResult<String>> {
+    if past(deadline) {
+        return None;
+    }
+
+    let child = progress.map(|p| {
+        let c = p.child(
+            format!("Mod {}", file.display_name()),
+            file.size.max(1),
+            TaskCategory::Packages,
+        );
+        c.set_phase(TaskPhase::Downloading);
+        c
+    });
+
+    // Joins a download a timed-out update left running
+    let Some(fetched) = prefetch_until(file, child.as_ref(), deadline, ctx).await else {
+        tracing::info!(
+            file = %file.display_name(),
+            "bundle file still downloading at the deadline, leaving it for later"
+        );
+        return None;
+    };
+    // Without a deadline a failed fetch falls through so the install reports
+    // its own error. With one, that install would retry the download past it.
+    if let Err(err) = fetched
+        && deadline.is_some()
+    {
+        tracing::warn!(file = %file.display_name(), error = %err, "bundle download failed, leaving it for later");
+        if let Some(child) = child {
+            child.finish();
+        }
+        return None;
+    }
+
+    let result = install_package_from_bundle(
+        file,
+        cluster_id,
+        bundle_name,
+        skip_compatibility,
+        child.as_ref(),
+        ctx,
+    )
+    .await;
+    if let Some(child) = child {
+        child.set_phase(TaskPhase::Installing);
+        child.finish();
+    }
+    Some(result)
 }
 
 pub(crate) struct PresentContent {
@@ -1145,12 +1210,15 @@ pub(crate) async fn bundle_cluster(
     Ok(cluster.uses_bundles().then_some(cluster))
 }
 
+/// Downloads are not waited on past `deadline`, what is not in by then goes in
+/// at a later call
 #[tracing::instrument(skip(bundles, progress, ctx))]
 pub async fn install_cluster_bundles(
     cluster_id: i64,
     bundles: &BundlesManager,
     progress: Option<&GroupedProgressSession>,
     ctx: &ContentCtx,
+    deadline: Option<Instant>,
 ) -> ContentResult<()> {
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
     if !cluster.uses_bundles() {
@@ -1177,7 +1245,8 @@ pub async fn install_cluster_bundles(
     for archive in &archives {
         let taken = takes_bundle(archive, &accepted);
         let installed =
-            install_enabled_bundle_files(archive, cluster_id, taken, true, progress, ctx).await?;
+            install_enabled_bundle_files(archive, cluster_id, taken, true, progress, ctx, deadline)
+                .await?;
         tracing::info!(
             cluster_id,
             bundle = %archive.manifest.name,

@@ -490,6 +490,7 @@ async fn add_polyplus(actions: &Actions, invite_id: i32) -> bool {
                 state.bundles.as_ref(),
                 Some(&session),
                 &content,
+                None,
             )
             .await
             {

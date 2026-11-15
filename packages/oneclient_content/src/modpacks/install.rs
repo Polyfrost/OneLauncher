@@ -157,8 +157,16 @@ pub async fn install_modpack(
         ctx,
     };
 
-    let results =
-        install_bundle_files(to_install, cluster_id, bundle_name, true, progress, ctx).await;
+    let results = install_bundle_files(
+        to_install,
+        cluster_id,
+        bundle_name,
+        true,
+        progress,
+        ctx,
+        None,
+    )
+    .await;
     for (file, installed) in results {
         let replaced = replaced.remove(&file.kind.package_id());
         let status = if replaced.is_some() {

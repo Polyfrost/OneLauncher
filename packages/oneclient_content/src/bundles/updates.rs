@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::bundle as bundle_catalog_dao;
@@ -13,9 +13,11 @@ use oneclient_db::models::ClusterPatch;
 use oneclient_db::models::{
     BundleTrackedArtifactRow, ClusterBundleOverrideRow, OptionalModStatus, OverrideType, SeenStatus,
 };
-use tokio::sync::Mutex as AsyncMutex;
+use oneclient_events::GroupedProgressChild;
+use tokio::sync::{Mutex as AsyncMutex, Semaphore};
 
-use futures_util::StreamExt;
+use futures_util::future::{BoxFuture, Shared};
+use futures_util::{FutureExt, StreamExt};
 
 use crate::bundles::install::{
     BUNDLE_INSTALL_CONCURRENCY, accepted_bundles, bundle_cluster, decline_unasked_skyblock,
@@ -38,6 +40,90 @@ use crate::packages::types::LinkedArtifactInfo;
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 
 static CLUSTER_UPDATE_LOCKS: OnceLock<Mutex<HashMap<i64, Arc<AsyncMutex<()>>>>> = OnceLock::new();
+
+type SharedPrefetch = Shared<BoxFuture<'static, Result<(), String>>>;
+
+/// Downloads that outlive a launch's deadline keep running, so a later launch
+/// joins the one already fetching a file instead of starting a second. Each
+/// keeps the progress child it reports to, for joiners to mirror.
+pub struct Prefetches {
+    running: Mutex<HashMap<String, (SharedPrefetch, Option<GroupedProgressChild>)>>,
+    /// Bounds downloads across launches, since ones left running past a
+    /// deadline no longer hold a slot in their caller's stream
+    permits: Semaphore,
+}
+
+impl Default for Prefetches {
+    fn default() -> Self {
+        Self {
+            running: Mutex::default(),
+            permits: Semaphore::new(BUNDLE_INSTALL_CONCURRENCY),
+        }
+    }
+}
+
+/// Deadline for a launch's bundle downloads, from when they start. The net
+/// stack alone retries for minutes and the launch button is already claimed by
+/// then.
+pub const BUNDLE_APPLY_BUDGET: Duration = Duration::from_secs(60);
+
+/// `child` reports the download this starts, or mirrors the one already
+/// running. The caller still owns it and finishes it once its own work is done.
+fn shared_prefetch(
+    file: &BundleFile,
+    child: Option<&GroupedProgressChild>,
+    ctx: &ContentCtx,
+) -> SharedPrefetch {
+    let key = format!(
+        "{}@{}",
+        file.kind.bundle_key(),
+        file.kind.bundle_version_id()
+    );
+    let mut running = ctx.prefetches.running.lock().unwrap();
+    if let Some((task, source)) = running.get(&key) {
+        if let (Some(source), Some(child)) = (source, child) {
+            source.mirror_into(child.clone());
+        }
+        return task.clone();
+    }
+
+    let source = child.cloned();
+    let task = tokio::spawn({
+        let file = file.clone();
+        let child = source.clone();
+        let ctx = ctx.clone();
+        let key = key.clone();
+        async move {
+            let _permit = ctx.prefetches.permits.acquire().await;
+            let fetched = prefetch_bundle_file(&file, child.as_ref(), &ctx).await;
+            ctx.prefetches.running.lock().unwrap().remove(&key);
+            fetched.map_err(|err| format!("{err:#}"))
+        }
+    });
+    let task = async move { task.await.map_err(|err| err.to_string())? }
+        .boxed()
+        .shared();
+    running.insert(key, (task.clone(), source));
+    task
+}
+
+/// Waits on `file`'s download, or `None` once `deadline` passes first. The
+/// download is spawned, so one cut short keeps filling the artifact cache for
+/// the next launch instead of holding this one until it finishes.
+pub(crate) async fn prefetch_until(
+    file: &BundleFile,
+    child: Option<&GroupedProgressChild>,
+    deadline: Option<Instant>,
+    ctx: &ContentCtx,
+) -> Option<Result<(), String>> {
+    let task = shared_prefetch(file, child, ctx);
+    match deadline {
+        Some(deadline) => tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), task)
+            .await
+            .ok(),
+        None => Some(task.await),
+    }
+}
 
 fn cluster_lock(cluster_id: i64) -> Arc<AsyncMutex<()>> {
     let locks = CLUSTER_UPDATE_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
@@ -469,7 +555,7 @@ pub async fn apply_bundle_updates(
     result
 }
 
-fn past(deadline: Option<Instant>) -> bool {
+pub(crate) fn past(deadline: Option<Instant>) -> bool {
     deadline.is_some_and(|deadline| Instant::now() >= deadline)
 }
 
@@ -572,7 +658,9 @@ pub async fn apply_bundle_updates_with(
             c.set_phase(oneclient_events::TaskPhase::Downloading);
             c
         });
-        let fetched = prefetch_bundle_file(&file, child.as_ref(), ctx).await;
+        let Some(fetched) = prefetch_until(&file, child.as_ref(), deadline, ctx).await else {
+            return (file, None);
+        };
         if let Some(child) = child {
             child.finish();
         }
@@ -589,12 +677,12 @@ pub async fn apply_bundle_updates_with(
                 tracing::warn!(
                     cluster_id,
                     package_id = %file.kind.package_id(),
-                    error = %format!("{err:#}"),
+                    error = %err,
                     "bundle download failed"
                 );
                 result
                     .downloads_failed
-                    .push(format!("{}: {err:#}", file.display_name()));
+                    .push(format!("{}: {err}", file.display_name()));
                 result.stopped_early = true;
             }
             None => {
@@ -1523,4 +1611,138 @@ fn select_highest_loader_version<'a>(
         .filter(|value| !value.is_empty())
         .max_by(|left, right| compare_version_like(left, right))
         .map(str::to_string)
+}
+
+#[cfg(test)]
+mod tests {
+    use oneclient_events::{
+        Event, EventBus, GroupedProgressEvent, GroupedProgressSession, ProgressEvent, TaskCategory,
+    };
+    use oneclient_net::{NetConfig, RequestClient};
+    use std::path::Path;
+    use tokio::sync::mpsc::UnboundedReceiver;
+
+    use super::*;
+    use crate::bundles::types::BundleFileType;
+    use crate::packages::provider::PackageProviderRegistry;
+    use crate::packages::types::ExternalFile;
+
+    async fn test_ctx(dir: &Path) -> (ContentCtx, EventBus, UnboundedReceiver<Event>) {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let events = EventBus::new(tx);
+        let ctx = ContentCtx::new(
+            oneclient_db::connect(dir.join("test.db")).await.unwrap(),
+            RequestClient::new(NetConfig::default()).unwrap(),
+            events.clone(),
+            PackageProviderRegistry::new(),
+            Default::default(),
+        );
+        (ctx, events, rx)
+    }
+
+    fn unreachable_file() -> BundleFile {
+        BundleFile {
+            enabled: true,
+            hidden: false,
+            path: "mods/unreachable.jar".to_string(),
+            size: 1,
+            file_type: BundleFileType::Normal,
+            kind: BundleFileKind::External {
+                file: ExternalFile {
+                    name: "unreachable.jar".to_string(),
+                    url: "unsupported://example.invalid/unreachable.jar".to_string(),
+                    // Rejected before any path or request, so the test touches no disk
+                    sha1: "not a hash".to_string(),
+                    size: 1,
+                    content_type: ContentType::Mod,
+                },
+                id: Some("unreachable".to_string()),
+                meta: None,
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn a_download_leaves_finishing_its_progress_to_the_caller() {
+        let dir = polyio::tempdir().await.unwrap();
+        let (ctx, events, mut rx) = test_ctx(dir.dir_path()).await;
+        let file = unreachable_file();
+        let session = GroupedProgressSession::start(&events, "test");
+        let child = session.child("unreachable.jar", 1, TaskCategory::Packages);
+
+        assert!(shared_prefetch(&file, Some(&child), &ctx).await.is_err());
+
+        while let Ok(event) = rx.try_recv() {
+            assert!(
+                !matches!(
+                    event,
+                    Event::Progress(ProgressEvent::Grouped(
+                        GroupedProgressEvent::FinishChild { .. }
+                    ))
+                ),
+                "the caller still has its install to report on"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_session_joining_a_running_download_sees_its_progress() {
+        let dir = polyio::tempdir().await.unwrap();
+        let (ctx, events, mut rx) = test_ctx(dir.dir_path()).await;
+        let file = unreachable_file();
+        let session = GroupedProgressSession::start(&events, "test");
+        let source = session.child("source", 10, TaskCategory::Packages);
+        let joiner = session.child("joiner", 10, TaskCategory::Packages);
+
+        // Not awaited, so the spawned download has not run and is still registered
+        let _started = shared_prefetch(&file, Some(&source), &ctx);
+        let _joined = shared_prefetch(&file, Some(&joiner), &ctx);
+        source.set_progress(5, Some(10));
+
+        let mut joiner_id = None;
+        let mut joiner_progress = None;
+        while let Ok(event) = rx.try_recv() {
+            match event {
+                Event::Progress(ProgressEvent::Grouped(GroupedProgressEvent::AddChild {
+                    child_id,
+                    label,
+                    ..
+                })) if label == "joiner" => joiner_id = Some(child_id),
+                Event::Progress(ProgressEvent::Grouped(GroupedProgressEvent::UpdateChild {
+                    child_id,
+                    current,
+                    ..
+                })) if Some(child_id) == joiner_id => joiner_progress = Some(current),
+                _ => {}
+            }
+        }
+        assert_eq!(joiner_progress, Some(5));
+    }
+
+    #[tokio::test]
+    async fn no_download_starts_once_the_deadline_has_passed() {
+        let dir = polyio::tempdir().await.unwrap();
+        let (ctx, _events, _rx) = test_ctx(dir.dir_path()).await;
+        // A download started anyway waits on these and stays registered
+        let _held = ctx
+            .prefetches
+            .permits
+            .acquire_many(BUNDLE_INSTALL_CONCURRENCY as u32)
+            .await
+            .unwrap();
+
+        let results = crate::bundles::install::install_bundle_files(
+            vec![unreachable_file()],
+            1,
+            "Bundle",
+            true,
+            None,
+            &ctx,
+            Some(Instant::now()),
+        )
+        .await;
+
+        assert!(results.is_empty());
+        assert!(ctx.prefetches.running.lock().unwrap().is_empty());
+    }
 }

@@ -53,6 +53,20 @@ impl ResponseNotifyOptions {
         self.child.as_ref()
     }
 
+    /// Absolute byte counts, for bodies not read through [`ResponseExt::stream`]
+    pub(crate) fn report(&self, events: &EventBus, current: u64, total: u64) {
+        if let Some(child) = &self.child {
+            child.set_progress(current, Some(total));
+        } else if let (Some(id), Some(label)) = (self.standalone_id, &self.standalone_label) {
+            let label = if current >= total {
+                self.done_label.as_deref().unwrap_or(label)
+            } else {
+                label
+            };
+            events.progress(id, label, current, total);
+        }
+    }
+
     /// Pins the standalone notification id so a retried request keeps updating
     /// one notification instead of opening a fresh UI entry per attempt
     #[must_use]

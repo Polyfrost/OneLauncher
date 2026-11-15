@@ -2864,17 +2864,18 @@ async fn sync_fabric_dep_overrides(cluster: &Cluster, game_dir: &Path) -> Launch
     let src = cluster.dir()?.join(FABRIC_DEP_OVERRIDES);
     let dest = game_dir.join(FABRIC_DEP_OVERRIDES);
 
-    if src == dest {
-        return Ok(());
-    }
+    let body = polyio::read(&src)
+        .await
+        .ok()
+        .filter(|bytes| bytes.iter().any(|b| !b.is_ascii_whitespace() && *b != 0));
 
-    if polyio::try_exists(&src).await.unwrap_or(false) {
-        if let Some(parent) = dest.parent() {
-            polyio::create_dir_all(parent).await.ok();
+    match body {
+        Some(body) if src != dest => polyio::write_atomic(&dest, body).await?,
+        Some(_) => {}
+        None if polyio::try_exists(&dest).await.unwrap_or(false) => {
+            polyio::remove_file(&dest).await.ok();
         }
-        polyio::copy(&src, &dest).await?;
-    } else if polyio::try_exists(&dest).await.unwrap_or(false) {
-        polyio::remove_file(&dest).await.ok();
+        None => {}
     }
 
     Ok(())

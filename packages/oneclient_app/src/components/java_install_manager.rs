@@ -14,11 +14,14 @@ fn providers() -> Vec<(JavaVendor, &'static str)> {
             JavaVendor::Microsoft,
             t("oneclient.components.java_install_manager.microsoft"),
         ),
+        (
+            JavaVendor::GraalVm,
+            t("oneclient.components.java_install_manager.graalvm"),
+        ),
         (JavaVendor::Zulu, "Azul Zulu"),
         (JavaVendor::Adoptium, "Eclipse Temurin"),
         (JavaVendor::Corretto, "Amazon Corretto"),
         (JavaVendor::Liberica, "BellSoft Liberica"),
-        (JavaVendor::GraalVm, "Oracle GraalVM"),
         (JavaVendor::Mojang, "Mojang"),
     ];
     providers.sort_by_key(|(vendor, _)| *vendor != default);

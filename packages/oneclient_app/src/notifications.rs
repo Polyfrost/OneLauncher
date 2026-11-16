@@ -935,7 +935,7 @@ impl NotificationState {
                 body,
                 level,
                 icon,
-                progress: progress.map(|(current, total)| (current, total.max(1))),
+                progress,
                 is_loading,
                 read: false,
                 created_at: Instant::now(),
@@ -1007,7 +1007,7 @@ impl NotificationState {
     ) {
         let done = total > 0 && current >= total;
         let body = progress_body(&label, current, total);
-        let progress = Some((current, total.max(1)));
+        let progress = Some((current, total));
 
         let entry_id = if let Some(&entry_id) = self.progress_entries.get(&id) {
             entry_id

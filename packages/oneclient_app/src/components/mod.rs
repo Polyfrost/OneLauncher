@@ -83,7 +83,7 @@ pub use button::{
 };
 pub use charts::{BarChart, PieChart, ValueUnit, slice_color};
 pub use checkbox::checkbox_labeled;
-pub use cluster_menu::{ClusterContextMenu, ClusterMenuTarget};
+pub use cluster_menu::{ClusterContextMenu, ClusterMenuTarget, open_menu_at};
 pub use cluster_update_popup::ClusterUpdatePopup;
 pub use code_block::CodeBlock;
 pub use color_picker::ColorPicker;
@@ -138,7 +138,7 @@ pub use package_row::{
 pub use package_update_popup::PackageUpdatePopup;
 pub use pagination::Pagination;
 pub use player_model::PlayerModel;
-pub use progress_track::progress_track;
+pub use progress_track::{meter, progress_track};
 pub use recents_row::RecentsRow;
 pub use release_migration_popup::ReleaseMigrationPopup;
 pub use screenshot_viewer::{ScreenshotViewer, screenshot_context_menu};

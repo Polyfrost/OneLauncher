@@ -556,11 +556,15 @@ impl Component for InstallButton {
                                     choices.set(picks);
                                     modpack_prompt.set(true);
                                 } else {
-                                    dispatch.install_modpack(ModpackSource::Provider {
-                                        provider,
-                                        project_id: project_id.clone(),
-                                        version_id,
-                                    });
+                                    crate::view::app::browser::install_modpack(
+                                        &dispatch,
+                                        cluster_id,
+                                        ModpackSource::Provider {
+                                            provider,
+                                            project_id: project_id.clone(),
+                                            version_id,
+                                        },
+                                    );
                                 }
                             } else {
                                 dispatch.install_package(
@@ -608,6 +612,7 @@ impl Component for InstallButton {
                 incompatible: incompatible_mode,
             }))
             .maybe_child(modpack_prompt.read().then(|| ModpackVersionPrompt {
+                cluster_id,
                 provider,
                 project_id,
                 choices: choices.read().clone(),

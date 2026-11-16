@@ -7,7 +7,9 @@ use oneclient_core::servers::LocalServer;
 use super::create::CreateServerModal;
 use super::{DASH, fmt_bytes, fmt_uptime, loader_label, server_icon, status_label, version_art};
 use crate::Route;
-use crate::components::{ART_PREVIEW_EDGE, Avatar, Button, Icon, IconType, ScrollArea};
+use crate::components::{
+    ART_PREVIEW_EDGE, Avatar, Button, ContextMenu, Icon, IconType, ScrollArea, open_menu_at,
+};
 use crate::hooks::{
     settled_or_loading, use_dispatch, use_server_files, use_server_hub, use_server_run, use_servers,
 };
@@ -30,7 +32,8 @@ pub struct Servers;
 
 impl Component for Servers {
     fn render(&self) -> impl IntoElement {
-        let mut creating = use_state(|| false);
+        let picked = use_hook(crate::servers::take_picked_pack);
+        let mut creating = use_state(|| picked.is_some());
         let list = settled_or_loading(&use_servers()).unwrap_or_default();
         let hub = use_server_hub();
         let mut width = use_state(|| 0f32);
@@ -108,11 +111,11 @@ impl Component for Servers {
                     )
                     .into_element()
             })
-            .maybe_child(
-                creating
-                    .read()
-                    .then(|| CreateServerModal::new(move |()| creating.set(false)).into_element()),
-            )
+            .maybe_child(creating.read().then(|| {
+                CreateServerModal::new(move |()| creating.set(false))
+                    .picked(picked.clone())
+                    .into_element()
+            }))
     }
 }
 
@@ -162,6 +165,7 @@ struct ServerCard {
 impl Component for ServerCard {
     fn render(&self) -> impl IntoElement {
         let mut hovering = use_state(|| false);
+        let menu_at = use_state(|| None::<(f32, f32)>);
         let files = settled_or_loading(&use_server_files(self.server.id.clone()));
         let run = settled_or_loading(&use_server_run(self.server.id.clone()));
         let open_id = self.server.id.clone();
@@ -221,6 +225,16 @@ impl Component for ServerCard {
                     server_id: open_id.clone(),
                 });
             })
+            .on_secondary_down(open_menu_at(menu_at))
+            .child(
+                rect()
+                    .on_press(|e: Event<PressEventData>| e.stop_propagation())
+                    .child(ServerMenu {
+                        server: self.server.clone(),
+                        status: live.status,
+                        position: menu_at,
+                    }),
+            )
             .child(banner(&self.server, live.status, status_text, port))
             .child(
                 rect()
@@ -517,4 +531,163 @@ fn actions(id: &str, status: ServerStatus, installed: bool) -> Element {
                 .child(Icon::new(IconType::Terminal).size(16.)),
         )
         .into_element()
+}
+
+type PowerAction = fn(servers::Station, String);
+
+#[derive(PartialEq)]
+struct ServerMenu {
+    server: LocalServer,
+    status: ServerStatus,
+    position: State<Option<(f32, f32)>>,
+}
+
+impl Component for ServerMenu {
+    fn render(&self) -> impl IntoElement {
+        let station = use_dispatch().station();
+        let mut position = self.position;
+        let mut deleting = use_state(|| false);
+        let status = self.status;
+        let id = self.server.id.clone();
+        let installed = self.server.installed();
+        let content_label = if self.server.plugins() {
+            t("oneclient.servers.tab.plugins")
+        } else {
+            t("oneclient.servers.tab.mods")
+        };
+
+        let menu = (*position.read()).map(|(x, y)| {
+            let mut menu = ContextMenu::new(x, y)
+                .title(self.server.name.clone())
+                .on_close(move |_| position.set(None));
+
+            let power: Vec<(IconType, &str, PowerAction)> = match status {
+                ServerStatus::Stopped if !installed => vec![(
+                    IconType::Download01,
+                    t("oneclient.servers.install"),
+                    servers::retry_install,
+                )],
+                ServerStatus::Stopped => {
+                    vec![(IconType::Play, t("oneclient.servers.start"), servers::start)]
+                }
+                ServerStatus::Running => vec![
+                    (
+                        IconType::RefreshCw01,
+                        t("oneclient.servers.restart"),
+                        servers::restart,
+                    ),
+                    (IconType::Square, t("oneclient.servers.stop"), servers::stop),
+                ],
+                ServerStatus::Starting => {
+                    vec![(IconType::Square, t("oneclient.servers.stop"), servers::stop)]
+                }
+                ServerStatus::Installing | ServerStatus::Stopping => Vec::new(),
+            };
+            let had_power = !power.is_empty();
+            for (icon, label, act) in power {
+                let id = id.clone();
+                menu = menu.action(icon, label, move |()| {
+                    position.set(None);
+                    act(station, id.clone());
+                });
+            }
+            if had_power {
+                menu = menu.separator();
+            }
+
+            let server_id = id.clone();
+            let routes = [
+                (
+                    IconType::InfoCircle,
+                    t("oneclient.servers.tab.overview"),
+                    Route::ServerOverview {
+                        server_id: server_id.clone(),
+                    },
+                ),
+                (
+                    IconType::Terminal,
+                    t("oneclient.servers.tab.console"),
+                    if status.is_live() {
+                        Route::ServerLiveConsole {
+                            server_id: server_id.clone(),
+                        }
+                    } else {
+                        Route::ServerConsole {
+                            server_id: server_id.clone(),
+                        }
+                    },
+                ),
+                (
+                    IconType::CodeSnippet02,
+                    content_label,
+                    Route::ServerMods {
+                        server_id: server_id.clone(),
+                    },
+                ),
+                (
+                    IconType::Settings01,
+                    t("oneclient.servers.tab.settings"),
+                    Route::ServerSettings { server_id },
+                ),
+            ];
+            for (icon, label, route) in routes {
+                menu = menu.action(icon, label, move |()| {
+                    position.set(None);
+                    let _ = RouterContext::get().push(route.clone());
+                });
+            }
+
+            let folder_id = id.clone();
+            menu = menu.action(
+                IconType::Folder,
+                t("oneclient.components.button.open_folder"),
+                move |()| {
+                    position.set(None);
+                    if let Ok(dir) = oneclient_core::servers::server_dir(&folder_id) {
+                        crate::platform::open_path(&dir.to_string_lossy());
+                    }
+                },
+            );
+
+            if status == ServerStatus::Stopped {
+                menu = menu.separator().danger_action(
+                    IconType::Trash01,
+                    t("oneclient.common.delete"),
+                    move |()| {
+                        position.set(None);
+                        deleting.set(true);
+                    },
+                );
+            }
+            menu.into_element()
+        });
+
+        let confirm = deleting.read().then(|| {
+            let id = id.clone();
+            crate::view::app::cluster::dialog(
+                t("oneclient.servers.settings.delete.title").to_string(),
+                t("oneclient.servers.settings.delete.description").to_string(),
+                None,
+                move || deleting.set(false),
+                [
+                    Button::new()
+                        .secondary()
+                        .on_press(move |_| deleting.set(false))
+                        .text(t("oneclient.common.cancel"))
+                        .into_element(),
+                    Button::new()
+                        .danger()
+                        .on_press(move |_| {
+                            deleting.set(false);
+                            servers::delete_server(id.clone());
+                        })
+                        .child(Icon::new(IconType::Trash01).size(14.))
+                        .text(t("oneclient.servers.settings.delete.button"))
+                        .into_element(),
+                ],
+            )
+        });
+
+        rect().maybe_child(menu).maybe_child(confirm)
+    }
 }

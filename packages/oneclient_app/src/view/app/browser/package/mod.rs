@@ -114,11 +114,15 @@ impl Installer {
             return;
         }
         if self.modpack {
-            self.dispatch.install_modpack(ModpackSource::Provider {
-                provider: self.provider,
-                project_id,
-                version_id,
-            });
+            super::install_modpack(
+                &self.dispatch,
+                self.cluster_id,
+                ModpackSource::Provider {
+                    provider: self.provider,
+                    project_id,
+                    version_id,
+                },
+            );
             return;
         }
 
@@ -308,7 +312,9 @@ impl Component for BrowserPackage {
             bundled_warning,
             modpack_prompt: None,
             loader_prompt: None,
-            import_prompt: (content_type == ContentType::Modpack && !add_to_cluster)
+            import_prompt: (content_type == ContentType::Modpack
+                && !add_to_cluster
+                && cluster_id != super::SERVER_PACKS)
                 .then_some(import_prompt),
             add_to_cluster,
             cluster_name: cluster.as_ref().map(|c| c.name.clone()),
@@ -505,6 +511,7 @@ impl Component for BrowserPackage {
                 pending: bundled_warning,
             })
             .maybe_child(modpack_prompt.read().then(|| ModpackVersionPrompt {
+                cluster_id,
                 provider,
                 project_id: project_id.clone(),
                 choices,

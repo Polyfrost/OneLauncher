@@ -27,7 +27,18 @@ const SAVE_WAIT: Duration = Duration::from_secs(120);
 const CRASH_TRACE_LINES: usize = 150;
 const LINE_BATCH: Duration = Duration::from_millis(50);
 
-type Station = RadioStation<AppState, AppChannel>;
+pub(crate) type Station = RadioStation<AppState, AppChannel>;
+
+static PICKED_PACK: Mutex<Option<oneclient_core::clusters::ModpackSource>> = Mutex::new(None);
+
+pub fn pick_pack(source: oneclient_core::clusters::ModpackSource) {
+    *PICKED_PACK.lock().unwrap_or_else(|e| e.into_inner()) = Some(source);
+    let _ = freya::router::RouterContext::get().push(crate::Route::Servers {});
+}
+
+pub fn take_picked_pack() -> Option<oneclient_core::clusters::ModpackSource> {
+    PICKED_PACK.lock().unwrap_or_else(|e| e.into_inner()).take()
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ServerStatus {
@@ -511,6 +522,7 @@ pub fn start(station: Station, id: String) {
 
         let mut last_backup = Instant::now();
         let mut held = None;
+        let mut boot_failed = false;
         loop {
             let output = match held.take() {
                 Some(output) => output,
@@ -535,6 +547,13 @@ pub fn start(station: Station, id: String) {
                     }
                     if batch.iter().any(|line| is_saved_line(line)) {
                         saved_signal(&id).notify_waiters();
+                    }
+                    // A failed boot can leave mod threads holding the JVM open, so it would never exit
+                    if !boot_failed && batch.iter().any(|line| is_boot_failure(line)) {
+                        boot_failed = true;
+                        if let Some(pid) = pid {
+                            oneclient_core::game::kill_process(pid);
+                        }
                     }
                     write(station, &id, |live| push_lines(live, batch));
                 }
@@ -569,7 +588,7 @@ pub fn start(station: Station, id: String) {
                         live.memory_bytes = None;
                         live.cpu_percent = None;
                     });
-                    if !asked && code.is_some_and(|c| c != 0) {
+                    if !asked && (boot_failed || code.is_some_and(|c| c != 0)) {
                         report_crash(&server, &lines, code.unwrap_or_default()).await;
                     }
                     invalidate_server(&id).await;
@@ -577,6 +596,10 @@ pub fn start(station: Station, id: String) {
             }
         }
     });
+}
+
+fn is_boot_failure(line: &str) -> bool {
+    line.contains("Failed to start the minecraft server")
 }
 
 fn is_wrong_side_line(line: &str) -> bool {
@@ -917,23 +940,36 @@ pub fn install(station: Station, mut server: LocalServer, prepare: Prepare, port
         })
         .await;
         invalidate_server(&id).await;
+        let failed_tx = log_tx.clone();
         let result = off_ui(async move {
             let _files = files;
+            let progress = move |line: String| {
+                let _ = log_tx.send(line);
+            };
+            let step = |message: String| progress(servers::step_line("INFO", message));
             listed?;
             let state = launcher::state()?;
             let dir = server.dir()?;
             match prepare {
                 Prepare::None => {}
                 Prepare::Instance(cluster_id, game_dir) => {
-                    servers::copy_from_instance(&state, cluster_id, &game_dir, &dir).await?;
+                    step(format!("Copying mods from {}", game_dir.display()));
+                    let (copied, skipped) =
+                        servers::copy_from_instance(&state, cluster_id, &game_dir, &dir).await?;
+                    step(format!(
+                        "Copied {copied} mods, left out {skipped} client-only mods"
+                    ));
                 }
-                Prepare::Modpack(pack) => servers::unpack_mrpack(&state, &pack, &dir).await?,
+                Prepare::Modpack(pack) => {
+                    servers::unpack_mrpack(&state, &pack, &dir, &progress).await?;
+                }
                 Prepare::Import(source) => {
                     if dir.starts_with(&source) {
                         return Err(oneclient_core::LauncherError::Server(
                             "the imported folder contains the OneClient servers folder".into(),
                         ));
                     }
+                    step(format!("Copying {}", source.display()));
                     polyio::copy_dir(&source, &dir, &[servers::PID_FILE]).await?;
                 }
             }
@@ -946,14 +982,15 @@ pub fn install(station: Station, mut server: LocalServer, prepare: Prepare, port
                 props.set("server-port", &port.to_string());
                 props.write(&dir).await?;
             }
-            let progress = move |line: String| {
-                let _ = log_tx.send(line);
-            };
             servers::install_server(&state, &mut server, &progress).await
         })
         .await;
         write(station, &id, |live| live.status = ServerStatus::Stopped);
         if let Err(err) = result {
+            let _ = failed_tx.send(servers::step_line(
+                "ERROR",
+                format!("Install failed: {err}"),
+            ));
             notify_error(t("oneclient.servers.install_failed"), err);
         }
         invalidate_server(&id).await;
@@ -1052,8 +1089,33 @@ pub fn delete_server(id: String) {
         let result = off_ui({
             let id = id.clone();
             async move {
+                let state = launcher::state()?;
+                let name = servers::load_server(&id)
+                    .await
+                    .map_or_else(|_| id.clone(), |server| server.name);
+                let events = &state.services.events;
+                let progress_id = uuid::Uuid::new_v4();
+                events.progress(
+                    progress_id,
+                    tf("oneclient.servers.delete.progress", &[&name]),
+                    0,
+                    0,
+                );
                 let _files = hold(&FILES, &id).await;
-                servers::delete_server(&id).await
+                let deleted = servers::delete_server(&id).await;
+                match &deleted {
+                    Ok(()) => events.finish_progress(
+                        progress_id,
+                        t("oneclient.servers.delete.done"),
+                        name,
+                    ),
+                    Err(err) => events.fail_progress(
+                        progress_id,
+                        t("oneclient.servers.settings.delete.failed"),
+                        err.to_string(),
+                    ),
+                }
+                deleted
             }
         })
         .await;
@@ -1068,7 +1130,7 @@ pub fn delete_server(id: String) {
                 }
                 LAST_OUTPUT.lock().unwrap().remove(&id);
             }
-            Err(err) => notify_error(t("oneclient.servers.settings.delete.failed"), err),
+            Err(err) => tracing::warn!(%err, "could not delete server {id}"),
         }
         invalidate_server(&id).await;
     });
@@ -1282,7 +1344,17 @@ pub fn remove_player(id: String, name: String, op: bool) {
 
 #[cfg(test)]
 mod tests {
-    use super::{client_mod_culprit, player_event, player_uuid};
+    use super::{client_mod_culprit, is_boot_failure, player_event, player_uuid};
+
+    #[test]
+    fn spots_the_line_vanilla_logs_when_boot_fails() {
+        assert!(is_boot_failure(
+            "[10:12:51] [main/ERROR]: Failed to start the minecraft server"
+        ));
+        assert!(!is_boot_failure(
+            "[10:12:51] [Server thread/INFO]: Starting minecraft server version 1.20.1"
+        ));
+    }
 
     #[test]
     fn finds_the_client_only_mod_in_a_wrong_side_crash() {

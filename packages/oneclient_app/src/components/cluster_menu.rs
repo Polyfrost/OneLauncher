@@ -83,9 +83,7 @@ pub(crate) fn shows_entry(route: &Route, mod_tabs: bool) -> bool {
         )
 }
 
-pub(crate) fn open_menu_at(
-    mut position: State<Option<(f32, f32)>>,
-) -> impl FnMut(Event<PressEventData>) {
+pub fn open_menu_at(mut position: State<Option<(f32, f32)>>) -> impl FnMut(Event<PressEventData>) {
     move |e: Event<PressEventData>| {
         if let PressEventData::Mouse(m) = e.data() {
             position.set(Some((

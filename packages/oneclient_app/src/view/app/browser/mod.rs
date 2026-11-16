@@ -94,6 +94,20 @@ use crate::theme::{colors, rounded, text_size};
 use crate::ui::{ImageFallbackExt, border_all_color};
 
 pub(crate) const NO_CLUSTER: i64 = -1;
+/// Browsing modpacks to create a server from, picking one hands it back to the server creator
+pub(crate) const SERVER_PACKS: i64 = -2;
+
+pub(crate) fn install_modpack(
+    dispatch: &crate::Actions,
+    cluster_id: i64,
+    source: oneclient_core::clusters::ModpackSource,
+) {
+    if cluster_id == SERVER_PACKS {
+        crate::servers::pick_pack(source);
+    } else {
+        dispatch.install_modpack(source);
+    }
+}
 fn server_package_type(server_id: &str) -> String {
     let plugins = use_server(server_id).is_some_and(|s| s.plugins());
     if plugins { "plugin" } else { "mod" }.to_string()

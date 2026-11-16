@@ -21,7 +21,7 @@ pub(crate) use cards::{WideCard, wide_card};
 pub use create::CreateInstanceModal;
 pub(crate) use details::field;
 pub use edit::{EditInstanceModal, InstanceFacts};
-pub(crate) use model::{LoaderChoice, VersionRow};
+pub(crate) use model::{LoaderChoice, ModpackOrigin, VersionRow};
 pub(crate) use rail::{Rail, facts_card, rail};
 pub(crate) use shell::{Shell, shell};
 

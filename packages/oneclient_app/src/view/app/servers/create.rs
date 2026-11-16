@@ -4,6 +4,7 @@ use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_common::GameLoader;
 use oneclient_core::GameVersionKind;
+use oneclient_core::clusters::ModpackSource;
 use oneclient_core::servers::{
     self, DEFAULT_MEMORY_MB, DEFAULT_PORT, LocalServer, Platform, ServerKind,
 };
@@ -23,8 +24,8 @@ use crate::servers::{self as runtime, Prepare};
 use crate::theme::{colors, text_size};
 use crate::ui::fixed_grid;
 use crate::view::app::clusters::{
-    CellCard, LoaderChoice, Rail, Shell, VersionRow, WideCard, asset_mark, cell_card, facts_card,
-    field, loader_mark, rail, shell, version_row, wide_card,
+    CellCard, LoaderChoice, ModpackOrigin, Rail, Shell, VersionRow, WideCard, asset_mark,
+    cell_card, facts_card, field, loader_mark, rail, shell, version_row, wide_card,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -82,6 +83,9 @@ struct Form {
     platform: State<Platform>,
     cluster: State<Option<i64>>,
     pack: State<Option<PathBuf>>,
+    origin: State<ModpackOrigin>,
+    loading: State<bool>,
+    icon: State<Option<PathBuf>>,
     folder: State<Option<PathBuf>>,
     source: State<Option<Source>>,
     memory: State<String>,
@@ -93,27 +97,44 @@ struct Form {
 #[derive(PartialEq)]
 pub struct CreateServerModal {
     on_close: EventHandler<()>,
+    picked: Option<ModpackSource>,
 }
 
 impl CreateServerModal {
     pub fn new(on_close: impl Into<EventHandler<()>>) -> Self {
         Self {
             on_close: on_close.into(),
+            picked: None,
         }
+    }
+
+    pub fn picked(mut self, picked: Option<ModpackSource>) -> Self {
+        self.picked = picked;
+        self
     }
 }
 
 impl Component for CreateServerModal {
     fn render(&self) -> impl IntoElement {
+        let picked = self.picked.is_some();
         let form = Form {
-            step: use_state(|| 0),
-            kind: use_state(|| ServerKind::FromInstance),
+            step: use_state(|| usize::from(picked)),
+            kind: use_state(|| {
+                if picked {
+                    ServerKind::Modpack
+                } else {
+                    ServerKind::FromInstance
+                }
+            }),
             name: use_state(String::new),
             version: use_state(|| None),
             loader: use_state(|| LoaderChoice::Fabric),
             platform: use_state(|| Platform::Loader),
             cluster: use_state(|| None),
             pack: use_state(|| None),
+            origin: use_state(|| ModpackOrigin::Browse),
+            loading: use_state(|| false),
+            icon: use_state(|| None),
             folder: use_state(|| None),
             source: use_state(|| None),
             memory: use_state(|| DEFAULT_MEMORY_MB.to_string()),
@@ -121,6 +142,14 @@ impl Component for CreateServerModal {
             eula: use_state(|| false),
             query: use_state(String::new),
         };
+        use_hook({
+            let picked = self.picked.clone();
+            move || {
+                if let Some(source) = picked {
+                    load_pack(form, source);
+                }
+            }
+        });
         let mut port_state = form.port;
         use_hook(move || {
             spawn(async move {
@@ -197,7 +226,8 @@ impl Component for CreateServerModal {
 
         let ready = match step {
             Step::Type => true,
-            Step::Instance | Step::Pack => source.is_some(),
+            Step::Instance => source.is_some(),
+            Step::Pack => !*form.loading.read(),
             Step::Folder => form.folder.read().is_some(),
             Step::Version => form.version.read().is_some(),
             Step::Loader if platform != Platform::Loader => platform_ok,
@@ -311,8 +341,8 @@ impl Component for CreateServerModal {
         let body = match step {
             Step::Type => type_step(form),
             Step::Instance => instance_step(form, &clusters),
-            Step::Pack => pick_step(form, false),
-            Step::Folder => pick_step(form, true),
+            Step::Pack => pack_step(form),
+            Step::Folder => folder_step(form),
             Step::Version => VersionStep { form }.into_element(),
             Step::Loader => LoaderStep {
                 form,
@@ -325,6 +355,8 @@ impl Component for CreateServerModal {
         let close_x = self.on_close.clone();
         let close_back = self.on_close.clone();
         let close_done = self.on_close.clone();
+        let close_browse = self.on_close.clone();
+        let pack_action = (step == Step::Pack && source.is_none()).then(|| *form.origin.read());
         let mut step_state = form.step;
 
         shell(Shell {
@@ -341,10 +373,13 @@ impl Component for CreateServerModal {
                 t("oneclient.common.back")
             }
             .to_string(),
-            primary_label: if last {
-                t("oneclient.servers.create.create")
-            } else {
-                t("oneclient.common.next")
+            primary_label: match pack_action {
+                Some(ModpackOrigin::Browse) => {
+                    t("oneclient.clusters.instance.create.browse_modpacks")
+                }
+                Some(ModpackOrigin::File) => t("oneclient.servers.create.pack.choose"),
+                None if last => t("oneclient.servers.create.create"),
+                None => t("oneclient.common.next"),
             }
             .to_string(),
             primary_enabled: ready,
@@ -358,6 +393,30 @@ impl Component for CreateServerModal {
             })
             .into(),
             on_primary: (move |()| {
+                match pack_action {
+                    Some(ModpackOrigin::Browse) => {
+                        close_browse.call(());
+                        let _ = router.push(Route::Browser {
+                            cluster_id: crate::view::app::browser::SERVER_PACKS,
+                            package_type: "modpack".to_string(),
+                            pick_cluster: false,
+                        });
+                        return;
+                    }
+                    Some(ModpackOrigin::File) => {
+                        spawn(async move {
+                            if let Some(handle) = rfd::AsyncFileDialog::new()
+                                .add_filter(t("oneclient.servers.create.pack.filter"), &["mrpack"])
+                                .pick_file()
+                                .await
+                            {
+                                load_pack(form, ModpackSource::File(handle.path().to_path_buf()));
+                            }
+                        });
+                        return;
+                    }
+                    None => {}
+                }
                 if !last {
                     step_state.set(index + 1);
                     return;
@@ -401,12 +460,23 @@ impl Component for CreateServerModal {
                         .map_or(Prepare::None, Prepare::Import),
                     ServerKind::Scratch => Prepare::None,
                 };
+                let icon = (kind == ServerKind::Modpack)
+                    .then(|| form.icon.read().clone())
+                    .flatten();
                 close_done.call(());
                 spawn_in_window(async move {
                     let name = server.name.clone();
                     match off_ui(async move { servers::allocate_id(&name).await }).await {
                         Ok(id) => {
                             server.id = id.clone();
+                            if let Some(icon) = icon {
+                                let dir = servers::server_dir(&id);
+                                let saved = off_ui(async move { servers::set_icon(&dir?, icon).await })
+                                    .await;
+                                if let Err(err) = saved {
+                                    tracing::warn!(%err, "could not use the modpack icon for the server");
+                                }
+                            }
                             runtime::install(station, server, prepare, Some(port));
                             let _ = router.push(Route::ServerOverview { server_id: id });
                         }
@@ -533,76 +603,31 @@ fn instance_step(form: Form, clusters: &[oneclient_core::clusters::Cluster]) -> 
         .into_element()
 }
 
-fn pick_step(form: Form, folder: bool) -> Element {
-    let chosen = if folder {
-        form.folder.read().clone()
-    } else {
-        form.pack.read().clone()
-    };
-    let (mut pack, mut folder_state, mut source, mut name) =
-        (form.pack, form.folder, form.source, form.name);
+fn folder_step(form: Form) -> Element {
+    let chosen = form.folder.read().clone();
+    let mut folder_state = form.folder;
     let (mut version, mut loader, mut platform, mut port) =
         (form.version, form.loader, form.platform, form.port);
 
     let pick = move |_| {
         spawn(async move {
-            let dialog = rfd::AsyncFileDialog::new();
-            if folder {
-                let Some(handle) = dialog.pick_folder().await else {
-                    return;
-                };
-                let path = handle.path().to_path_buf();
-                folder_state.set(Some(path.clone()));
-                let guess = off_ui(async move { servers::detect_import(&path).await }).await;
-                if guess.mc_version.is_some() {
-                    version.set(guess.mc_version);
-                }
-                if guess.platform != Platform::Loader {
-                    platform.set(guess.platform);
-                } else if let Some(found) = guess.loader {
-                    platform.set(Platform::Loader);
-                    loader.set(LoaderChoice::of(found));
-                }
-                if let Some(found) = guess.port {
-                    port.set(found.to_string());
-                }
-                return;
-            }
-            let Some(handle) = dialog
-                .add_filter(t("oneclient.servers.create.pack.filter"), &["mrpack"])
-                .pick_file()
-                .await
-            else {
+            let Some(handle) = rfd::AsyncFileDialog::new().pick_folder().await else {
                 return;
             };
             let path = handle.path().to_path_buf();
-            pack.set(Some(path.clone()));
-            let read = path.clone();
-            match off_ui(async move { servers::read_mrpack(&read).await }).await {
-                Ok(info) => {
-                    if name.peek().trim().is_empty() {
-                        name.set(info.name.clone());
-                    }
-                    source.set(Some(Source {
-                        mc_version: info.mc_version,
-                        loader: info.loader,
-                        loader_version: info.loader_version,
-                        name: info.name,
-                        game_dir: None,
-                    }));
-                }
-                Err(err) => {
-                    source.set(None);
-                    if let Ok(state) = crate::launcher::state() {
-                        state
-                            .services
-                            .events
-                            .notify(t("oneclient.servers.create.pack.invalid"))
-                            .body(err.to_string())
-                            .error()
-                            .send();
-                    }
-                }
+            folder_state.set(Some(path.clone()));
+            let guess = off_ui(async move { servers::detect_import(&path).await }).await;
+            if guess.mc_version.is_some() {
+                version.set(guess.mc_version);
+            }
+            if guess.platform != Platform::Loader {
+                platform.set(guess.platform);
+            } else if let Some(found) = guess.loader {
+                platform.set(Platform::Loader);
+                loader.set(LoaderChoice::of(found));
+            }
+            if let Some(found) = guess.port {
+                port.set(found.to_string());
             }
         });
     };
@@ -615,19 +640,8 @@ fn pick_step(form: Form, folder: bool) -> Element {
             Button::new()
                 .secondary()
                 .on_press(pick)
-                .child(
-                    Icon::new(if folder {
-                        IconType::Folder
-                    } else {
-                        IconType::File02
-                    })
-                    .size(16.),
-                )
-                .text(if folder {
-                    t("oneclient.servers.create.folder.choose")
-                } else {
-                    t("oneclient.servers.create.pack.choose")
-                }),
+                .child(Icon::new(IconType::Folder).size(16.))
+                .text(t("oneclient.servers.create.folder.choose")),
         )
         .maybe_child(chosen.map(|path| {
             label()
@@ -637,6 +651,130 @@ fn pick_step(form: Form, folder: bool) -> Element {
                 .into_element()
         }))
         .into_element()
+}
+
+fn pack_step(form: Form) -> Element {
+    let cards = [
+        (
+            ModpackOrigin::Browse,
+            IconType::Globe01,
+            t("oneclient.clusters.instance.steps.modpack.browse.title"),
+            t("oneclient.servers.create.pack.browse.blurb"),
+            t("oneclient.clusters.instance.steps.modpack.browse.meta"),
+        ),
+        (
+            ModpackOrigin::File,
+            IconType::File02,
+            t("oneclient.clusters.instance.steps.modpack.file.title"),
+            t("oneclient.servers.create.pack.file.blurb"),
+            t("oneclient.servers.create.pack.file.meta"),
+        ),
+    ];
+    let selected = *form.origin.read();
+    let status = if *form.loading.read() {
+        Some(t("oneclient.servers.create.pack.loading").to_string())
+    } else {
+        form.source
+            .read()
+            .as_ref()
+            .map(|s| tf("oneclient.servers.create.pack.selected", &[&s.name]))
+    };
+
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(10.)
+        .children(cards.into_iter().map(|(origin, icon, title, blurb, meta)| {
+            let (mut origin_state, mut pack, mut source) = (form.origin, form.pack, form.source);
+            let loading = form.loading;
+            wide_card(WideCard {
+                icon,
+                title: title.to_string(),
+                badge: None,
+                blurb: blurb.to_string(),
+                meta: meta.to_string(),
+                selected: selected == origin,
+                on_press: (move |()| {
+                    if *origin_state.peek() != origin && !*loading.peek() {
+                        origin_state.set(origin);
+                        pack.set(None);
+                        source.set(None);
+                    }
+                })
+                .into(),
+                trailing: None,
+            })
+        }))
+        .maybe_child(status.map(|text| {
+            label()
+                .text(text)
+                .font_size(text_size(13.))
+                .color(colors::fg_secondary())
+                .into_element()
+        }))
+        .into_element()
+}
+
+fn load_pack(form: Form, picked: ModpackSource) {
+    let (mut pack, mut source, mut name, mut loading, mut icon) =
+        (form.pack, form.source, form.name, form.loading, form.icon);
+    loading.set(true);
+    icon.set(None);
+    spawn(async move {
+        let result = off_ui(async move {
+            let (path, icon) = match picked {
+                ModpackSource::File(path) => (path, None),
+                ModpackSource::Provider {
+                    provider,
+                    project_id,
+                    version_id,
+                } => {
+                    let state = crate::launcher::state()?;
+                    let path =
+                        servers::download_pack(&state, provider, &project_id, &version_id).await?;
+                    let icon = servers::pack_icon(&state, provider, &project_id)
+                        .await
+                        .inspect_err(|err| tracing::debug!(%err, "no icon for the modpack"))
+                        .ok()
+                        .flatten();
+                    (path, icon)
+                }
+            };
+            let info = servers::read_mrpack(&path).await?;
+            Ok::<_, oneclient_core::LauncherError>((path, info, icon))
+        })
+        .await;
+        loading.set(false);
+        match result {
+            Ok((path, info, found)) => {
+                pack.set(Some(path));
+                icon.set(found);
+                if name.peek().trim().is_empty() {
+                    name.set(info.name.clone());
+                }
+                source.set(Some(Source {
+                    mc_version: info.mc_version,
+                    loader: info.loader,
+                    loader_version: info.loader_version,
+                    name: info.name,
+                    game_dir: None,
+                }));
+            }
+            Err(err) => {
+                pack.set(None);
+                source.set(None);
+                if let Ok(state) = crate::launcher::state() {
+                    state
+                        .services
+                        .events
+                        .notify(t("oneclient.servers.create.pack.invalid"))
+                        .body(err.to_string())
+                        .error()
+                        .send();
+                }
+            }
+        }
+    });
 }
 
 #[derive(PartialEq)]

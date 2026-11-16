@@ -227,7 +227,9 @@ impl Component for BrowserBody {
         let cluster_id = self.cluster_id;
         let package_type = self.package_type.clone();
         let content_type = content_type_for_slug(&package_type);
-        let cluster_modpacks = content_type == ContentType::Modpack && !self.pick_cluster;
+        let server_packs = cluster_id == super::SERVER_PACKS;
+        let cluster_modpacks =
+            content_type == ContentType::Modpack && !self.pick_cluster && !server_packs;
 
         let store = use_browser_state_store();
         let state_key = state_key(cluster_id, &package_type, self.pick_cluster);
@@ -314,8 +316,8 @@ impl Component for BrowserBody {
             }
         };
         let plugin_server = server.as_ref().is_some_and(|s| s.plugins);
-        let curseforge_blocked =
-            !plugin_server && loader_fixed && loaders.contains(&GameLoader::Ornithe);
+        let curseforge_blocked = server_packs
+            || (!plugin_server && loader_fixed && loaders.contains(&GameLoader::Ornithe));
         if curseforge_blocked && *provider.peek() == ProviderId::CurseForge {
             provider.set(ProviderId::Modrinth);
         }
@@ -511,7 +513,7 @@ impl Component for BrowserBody {
                 query,
                 controls_width,
             ))
-            .maybe_child(server.is_none().then(|| TypePicker {
+            .maybe_child((server.is_none() && !server_packs).then(|| TypePicker {
                 cluster_id,
                 package_type: package_type.clone(),
                 pick_cluster: self.pick_cluster,

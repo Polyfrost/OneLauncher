@@ -14,6 +14,7 @@ use crate::{LauncherError, LauncherResult};
 const SERVER_JAR: &str = "server.jar";
 const FABRIC_JAR: &str = "fabric-server-launch.jar";
 const INSTALLER_JAR: &str = "installer.jar";
+const PACK_ICON_EDGE: u32 = 256;
 
 fn fail(message: impl Into<String>) -> LauncherError {
     LauncherError::Server(message.into())
@@ -143,6 +144,18 @@ async fn loader_version(state: &LauncherState, server: &LocalServer) -> Launcher
 /// Downloads the server software into the server folder and records how to start it
 pub type Progress<'a> = &'a (dyn Fn(String) + Send + Sync);
 
+/// Formats a step like a server log line so the console's level filter and colours apply
+pub fn step_line(level: &str, message: impl std::fmt::Display) -> String {
+    format!(
+        "[{}] [OneClient/{level}]: {message}",
+        chrono::Local::now().format("%H:%M:%S")
+    )
+}
+
+fn step(progress: Progress<'_>, message: impl std::fmt::Display) {
+    progress(step_line("INFO", message));
+}
+
 pub async fn install_server(
     state: &Arc<LauncherState>,
     server: &mut LocalServer,
@@ -151,6 +164,10 @@ pub async fn install_server(
     let dir = server.dir()?;
     tokio::fs::create_dir_all(&dir).await?;
 
+    step(
+        progress,
+        format_args!("Resolving Minecraft {}", server.mc_version),
+    );
     let info = version_info(state, &server.mc_version).await?;
     let major = match loader_java(state, server).await {
         Some(major) => major,
@@ -161,7 +178,9 @@ pub async fn install_server(
             .ok_or_else(|| fail("this version does not say which Java it needs"))?,
     };
     server.java_major = Some(major);
+    step(progress, format_args!("Preparing Java {major}"));
     let java = java_for(state, server).await?;
+    step(progress, format_args!("Using Java at {}", java.display()));
 
     let vanilla = info.downloads.get(&DownloadType::Server).ok_or_else(|| {
         fail(format!(
@@ -172,7 +191,9 @@ pub async fn install_server(
 
     server.launch = match (server.platform, server.loader) {
         (Platform::Paper, _) => {
+            step(progress, "Finding the newest Paper build");
             let jar = paper_jar(state, &server.mc_version).await?;
+            step(progress, format_args!("Downloading {PAPER_JAR}"));
             oneclient_net::download_verified(
                 &state.services.requester,
                 &state.services.events,
@@ -186,6 +207,7 @@ pub async fn install_server(
             vec!["-jar".into(), PAPER_JAR.into(), "nogui".into()]
         }
         (Platform::Loader, GameLoader::Vanilla) => {
+            step(progress, format_args!("Downloading {SERVER_JAR}"));
             download(
                 state,
                 &vanilla.url,
@@ -209,7 +231,9 @@ pub async fn install_server(
                 .find(|i| i.stable)
                 .or(installers.first())
                 .ok_or_else(|| fail("Fabric lists no installer"))?;
+            step(progress, format_args!("Using Fabric loader {loader}"));
             // The launcher reads server.jar from the folder instead of fetching it again
+            step(progress, format_args!("Downloading {SERVER_JAR}"));
             download(
                 state,
                 &vanilla.url,
@@ -221,6 +245,7 @@ pub async fn install_server(
                 "https://meta.fabricmc.net/v2/versions/loader/{}/{loader}/{}/server/jar",
                 server.mc_version, installer.version
             );
+            step(progress, "Downloading the Fabric server launcher");
             download(state, &url, &dir.join(FABRIC_JAR), None).await?;
             server.loader_version = Some(loader);
             vec!["-jar".into(), FABRIC_JAR.into(), "nogui".into()]
@@ -229,7 +254,15 @@ pub async fn install_server(
             let loader = loader_version(state, server).await?;
             let url = installer_url(server.loader, &server.mc_version, &loader);
             let installer = dir.join(INSTALLER_JAR);
+            step(
+                progress,
+                format_args!("Downloading the {} {loader} installer", server.loader),
+            );
             download(state, &url, &installer, None).await?;
+            step(
+                progress,
+                "Running the installer, this can take a few minutes",
+            );
             run_installer(&java, &dir, progress).await?;
             let _ = tokio::fs::remove_file(&installer).await;
             let _ = tokio::fs::remove_file(dir.join("installer.jar.log")).await;
@@ -238,6 +271,7 @@ pub async fn install_server(
             forge_launch(&dir, server.loader_version.as_deref().unwrap_or_default()).await?
         }
         (Platform::Loader, GameLoader::Ornithe) => {
+            step(progress, format_args!("Downloading {SERVER_JAR}"));
             download(
                 state,
                 &vanilla.url,
@@ -245,6 +279,7 @@ pub async fn install_server(
                 Some(&vanilla.sha1),
             )
             .await?;
+            step(progress, "Setting up Ornithe");
             let (loader, launch) = ornithe_launch(state, server, &dir).await?;
             server.loader_version = Some(loader);
             launch
@@ -254,8 +289,11 @@ pub async fn install_server(
         }
     };
 
+    step(progress, "Writing default server settings");
     write_defaults(server, &dir).await?;
-    save_server(server).await
+    save_server(server).await?;
+    step(progress, "Install finished, the server is ready to start");
+    Ok(())
 }
 
 const PAPER_BUILDS: &str = "https://fill.papermc.io/v3/projects/paper/versions";
@@ -941,6 +979,45 @@ pub fn supports_loader(loader: GameLoader) -> bool {
     )
 }
 
+pub async fn download_pack(
+    state: &LauncherState,
+    provider: oneclient_common::domain::ProviderId,
+    project_id: &str,
+    version_id: &str,
+) -> LauncherResult<PathBuf> {
+    let ctx = state.services.content();
+    let row = oneclient_content::packages::PackageStore::resolve_or_download(
+        provider, project_id, version_id, None, &ctx,
+    )
+    .await?;
+    Ok(oneclient_content::packages::store::artifact_absolute_path(
+        &row.path,
+    )?)
+}
+
+pub async fn pack_icon(
+    state: &LauncherState,
+    provider: oneclient_common::domain::ProviderId,
+    project_id: &str,
+) -> LauncherResult<Option<PathBuf>> {
+    let ctx = state.services.content();
+    let project = state
+        .services
+        .packages
+        .get(provider)?
+        .get_project(project_id, &ctx)
+        .await?;
+    let Some(url) = project.icon_url.filter(|url| !url.is_empty()) else {
+        return Ok(None);
+    };
+    Ok(Some(
+        state
+            .images
+            .ensure_on_disk(&state.services.requester, &url, PACK_ICON_EDGE)
+            .await?,
+    ))
+}
+
 pub async fn read_mrpack(path: &Path) -> LauncherResult<PackInfo> {
     let index = mrpack_index(path).await?;
     let (loader, loader_version) = pack_loader(&index.dependencies);
@@ -1120,17 +1197,34 @@ fn allowed_pack_download(url: &str) -> bool {
     })
 }
 
-pub async fn unpack_mrpack(state: &LauncherState, pack: &Path, dir: &Path) -> LauncherResult<()> {
+pub async fn unpack_mrpack(
+    state: &LauncherState,
+    pack: &Path,
+    dir: &Path,
+    progress: Progress<'_>,
+) -> LauncherResult<()> {
     let index = mrpack_index(pack).await?;
-    for file in &index.files {
-        if file
-            .env
-            .as_ref()
-            .and_then(|env| env.get("server"))
-            .is_some_and(|s| s == "unsupported")
-        {
-            continue;
-        }
+    let wanted: Vec<_> = index
+        .files
+        .iter()
+        .filter(|file| {
+            !file
+                .env
+                .as_ref()
+                .and_then(|env| env.get("server"))
+                .is_some_and(|s| s == "unsupported")
+        })
+        .collect();
+    step(
+        progress,
+        format_args!(
+            "Unpacking {}: {} server files, {} client-only left out",
+            index.name,
+            wanted.len(),
+            index.files.len() - wanted.len()
+        ),
+    );
+    for (i, file) in wanted.iter().enumerate() {
         let relative = Path::new(&file.path);
         if relative.is_absolute()
             || relative
@@ -1149,6 +1243,10 @@ pub async fn unpack_mrpack(state: &LauncherState, pack: &Path, dir: &Path) -> La
                     file.path
                 ))
             })?;
+        step(
+            progress,
+            format_args!("Downloading {} ({}/{})", file.path, i + 1, wanted.len()),
+        );
         download(
             state,
             url,
@@ -1157,6 +1255,7 @@ pub async fn unpack_mrpack(state: &LauncherState, pack: &Path, dir: &Path) -> La
         )
         .await?;
     }
+    step(progress, "Extracting the pack's overrides");
     for prefix in ["overrides/", "server-overrides/"] {
         polyio::extract_zip_filtered(
             pack,

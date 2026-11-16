@@ -6,8 +6,8 @@ use oneclient_events::Level;
 
 use crate::{
     components::{
-        Button, ButtonVariant, Icon, IconType, OverlayPopup, ScrollArea, popup_surface,
-        progress_track, use_popup_intro,
+        Button, ButtonVariant, Icon, IconType, OverlayPopup, ScrollArea, meter, popup_surface,
+        use_popup_intro,
     },
     hooks::{use_dispatch, use_link_confirm, use_notifications_snapshot},
     i18n::{t, tf},
@@ -378,14 +378,8 @@ fn row_extra(
     dispatch: crate::Actions,
     confirm_link: State<Option<String>>,
 ) -> impl IntoElement {
-    if let Some((current, total)) = entry.progress.filter(|_| entry.is_loading) {
-        let frac = (current as f32 / total.max(1) as f32).clamp(0.0, 1.0);
-        let bar = progress_track(
-            frac * 100.0,
-            6.,
-            colors::brand(),
-            colors::brand().with_a(128),
-        );
+    if let Some(progress) = entry.progress.filter(|_| entry.is_loading) {
+        let bar = meter(progress, 6., colors::brand(), colors::brand().with_a(128));
 
         return rect()
             .vertical()

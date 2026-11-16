@@ -93,6 +93,14 @@ pub async fn list_backups(dir: &Path) -> Vec<BackupInfo> {
 
 /// Zips the world folder, then drops the oldest backups past `keep`
 pub async fn create_backup(dir: &Path, keep: u32) -> LauncherResult<PathBuf> {
+    backup_keeping(dir, keep, None).await
+}
+
+async fn backup_keeping(
+    dir: &Path,
+    keep: u32,
+    protect: Option<&Path>,
+) -> LauncherResult<PathBuf> {
     let folders = world_folders(dir).await?;
     if !tokio::fs::try_exists(dir.join(&folders[0]))
         .await
@@ -130,6 +138,7 @@ pub async fn create_backup(dir: &Path, keep: u32) -> LauncherResult<PathBuf> {
         .await
         .into_iter()
         .skip(keep.max(1) as usize)
+        .filter(|old| Some(old.path.as_path()) != protect)
     {
         let _ = tokio::fs::remove_file(old.path).await;
     }
@@ -223,7 +232,7 @@ pub async fn restore_backup(dir: &Path, backup: &Path, keep: u32) -> LauncherRes
         polyio::extract_zip(backup, &staging).await?;
         let current = dir.join(&world_folders(dir).await?[0]);
         if tokio::fs::try_exists(&current).await? {
-            create_backup(dir, keep).await?;
+            backup_keeping(dir, keep, Some(backup)).await?;
         }
         swap_in_backup(dir, &staging).await
     }
@@ -255,9 +264,11 @@ async fn swap_in_backup(dir: &Path, staging: &Path) -> LauncherResult<()> {
     let mut moves = Vec::new();
     for (suffix, target) in DIMENSION_SUFFIXES.iter().zip(world_folders(dir).await?) {
         let from = staging.join(format!("{base}{suffix}"));
-        if tokio::fs::try_exists(&from).await.unwrap_or(false) {
-            moves.push((from, dir.join(&target), dir.join(format!(".{target}-replaced"))));
-        }
+        let from = tokio::fs::try_exists(&from)
+            .await
+            .unwrap_or(false)
+            .then_some(from);
+        moves.push((from, dir.join(&target), dir.join(format!(".{target}-replaced"))));
     }
 
     let mut set_aside = Vec::new();
@@ -271,6 +282,7 @@ async fn swap_in_backup(dir: &Path, staging: &Path) -> LauncherResult<()> {
             }
         }
         for (from, to, _) in &moves {
+            let Some(from) = from else { continue };
             tokio::fs::rename(from, to).await?;
             moved_in.push(to.clone());
         }
@@ -359,6 +371,24 @@ mod tests {
                 .unwrap(),
             b"modified"
         );
+    }
+
+    #[tokio::test]
+    async fn restore_keeps_its_backup_and_drops_dimensions_the_backup_lacks() {
+        let tmp = polyio::tempdir().await.expect("dir");
+        let dir = tmp.dir_path();
+        tokio::fs::create_dir_all(dir.join("world")).await.unwrap();
+        tokio::fs::write(dir.join("world").join("level.dat"), b"original")
+            .await
+            .unwrap();
+        let backup = create_backup(dir, 1).await.unwrap();
+
+        tokio::fs::create_dir_all(dir.join("world_nether")).await.unwrap();
+        restore_backup(dir, &backup, 1).await.unwrap();
+
+        assert!(backup.is_file());
+        assert!(!dir.join("world_nether").exists());
+        assert!(!dir.join(".world_nether-replaced").exists());
     }
 
     #[test]

@@ -358,6 +358,26 @@ impl Component for ServerMods {
                 t("oneclient.components.package_row.view_in_folder"),
                 move |()| crate::platform::open_path(&folder.to_string_lossy()),
             );
+            if let Some(source) = mods
+                .iter()
+                .find(|m| m.file_name == item.file_name)
+                .and_then(|m| m.source.clone())
+            {
+                let server_id = self.server_id.clone();
+                context = context.action(
+                    IconType::LinkExternal01,
+                    t("oneclient.components.package_row.view_in_browser"),
+                    move |()| {
+                        let _ = RouterContext::get().push(Route::ServerBrowserPackage {
+                            server_id: server_id.clone(),
+                            package_id: crate::view::app::browser::encode_package_id(
+                                source.provider,
+                                &source.project_id,
+                            ),
+                        });
+                    },
+                );
+            }
             if let Some(update) = update_for(&item.file_name).cloned() {
                 let (station, id) = (dispatch.station(), self.server_id.clone());
                 context = context.action(

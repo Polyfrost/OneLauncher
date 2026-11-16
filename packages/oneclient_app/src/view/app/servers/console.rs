@@ -18,11 +18,14 @@ use crate::view::app::cluster::logs::{
     Confirm, LevelFilter, confirm_overlay, viewer_header, viewer_header_inset,
 };
 
-fn latest_log(server_id: &str) -> Option<PathBuf> {
+fn log_file(server_id: &str) -> Option<PathBuf> {
     oneclient_core::servers::server_dir(server_id)
         .ok()
         .map(|dir| dir.join("logs").join("latest.log"))
-        .filter(|path| path.exists())
+}
+
+fn latest_log(server_id: &str) -> Option<PathBuf> {
+    log_file(server_id).filter(|path| path.exists())
 }
 
 /// Live output with the same filters as the cluster log viewer and a command box,
@@ -51,7 +54,7 @@ impl Component for ConsolePanel {
         let all = use_server_console(&self.server_id);
         let has_log = !all.is_empty();
         let lines = filter_lines(&all, &search.read(), *level.read());
-        let log_path = latest_log(&self.server_id);
+        let log_path = has_log.then(|| log_file(&self.server_id)).flatten();
 
         let subtitle = match live.status {
             ServerStatus::Stopped => t("oneclient.servers.console.stopped"),

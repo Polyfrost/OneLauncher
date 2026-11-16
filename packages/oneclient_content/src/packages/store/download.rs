@@ -75,14 +75,19 @@ pub async fn download_version_file(
     )?;
 
     let (hash, size) = if let Some(sha256) = file.sha256.as_deref().filter(|_| hash.is_empty()) {
-        if force || !dest.is_file() {
-            let expected = Some(polyio::Checksum::sha256(sha256));
+        let expected = polyio::Checksum::sha256(sha256);
+        let cached = !force
+            && dest.is_file()
+            && polyio::sha256_file(&dest)
+                .await
+                .is_ok_and(|disk| expected.matches(&disk));
+        if !cached {
             oneclient_net::download_verified(
                 &ctx.net,
                 &ctx.events,
                 &file.url,
                 &dest,
-                expected.as_ref(),
+                Some(&expected),
                 0,
                 child
                     .cloned()

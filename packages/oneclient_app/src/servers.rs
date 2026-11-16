@@ -108,6 +108,7 @@ static STDIN: LazyLock<Mutex<HashMap<String, mpsc::UnboundedSender<String>>>> =
     LazyLock::new(Default::default);
 static STOPPING: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
 static PIDS: LazyLock<Mutex<HashMap<String, u32>>> = LazyLock::new(Default::default);
+static BACKUP_HOURS: LazyLock<Mutex<HashMap<String, u32>>> = LazyLock::new(Default::default);
 static RESTARTING: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
 static SAVED: LazyLock<Mutex<HashMap<String, Arc<tokio::sync::Notify>>>> =
     LazyLock::new(Default::default);
@@ -167,6 +168,11 @@ fn should_kill(id: &str, pid: u32, asked: Instant) -> bool {
         .flatten()
         .fold(asked, Instant::max);
     since.elapsed() >= STOP_IDLE || asked.elapsed() >= STOP_CAP
+}
+
+async fn kill_due(id: &str, pid: u32, asked: Instant) -> bool {
+    let id = id.to_string();
+    crate::launcher::off_ui_blocking(move || should_kill(&id, pid, asked)).await
 }
 
 fn force_kill(pid: u32) {
@@ -309,9 +315,11 @@ pub async fn stop_all() {
         }
         for (id, pid) in left {
             match killed.get(&id) {
-                Some(at) if at.elapsed() >= FORCE_AFTER => force_kill(pid),
+                Some(at) if at.elapsed() >= FORCE_AFTER => {
+                    crate::launcher::off_ui_blocking(move || force_kill(pid)).await;
+                }
                 Some(_) => {}
-                None if should_kill(&id, pid, asked) => {
+                None if kill_due(&id, pid, asked).await => {
                     oneclient_core::game::kill_process(pid);
                     killed.insert(id, Instant::now());
                 }
@@ -494,6 +502,16 @@ pub fn start(station: Station, id: String) {
                     );
                 }
                 servers::ensure_lists(&dir, &server.mc_version).await?;
+                let port = servers::Properties::read(&dir)
+                    .await
+                    .get("server-port")
+                    .and_then(|port| port.trim().parse().ok())
+                    .unwrap_or(servers::DEFAULT_PORT);
+                if std::net::TcpListener::bind(("0.0.0.0", port)).is_err() {
+                    return Err(oneclient_core::LauncherError::Server(format!(
+                        "port {port} is already in use, change it in the server's settings"
+                    )));
+                }
                 let mut command = servers::server_command(&state, &server).await?;
                 let mut child = command.spawn()?;
                 if QUITTING.load(std::sync::atomic::Ordering::SeqCst) {
@@ -535,6 +553,10 @@ pub fn start(station: Station, id: String) {
         write(station, &id, |live| live.pid = pid);
         tokio::spawn(drive(id.clone(), child, tx, cmd_rx));
 
+        BACKUP_HOURS
+            .lock()
+            .unwrap()
+            .insert(id.clone(), server.backup_hours);
         let mut last_backup = Instant::now();
         let mut held = None;
         let mut boot_failed = false;
@@ -577,8 +599,9 @@ pub fn start(station: Station, id: String) {
                         live.memory_bytes = memory;
                         live.cpu_percent = cpu;
                     });
-                    let every = Duration::from_secs(u64::from(server.backup_hours) * 3600);
-                    if server.backup_hours > 0 && last_backup.elapsed() >= every {
+                    let hours = BACKUP_HOURS.lock().unwrap().get(&id).copied().unwrap_or(0);
+                    let every = Duration::from_secs(u64::from(hours) * 3600);
+                    if hours > 0 && last_backup.elapsed() >= every {
                         last_backup = Instant::now();
                         backup(id.clone(), true);
                     }
@@ -588,6 +611,7 @@ pub fn start(station: Station, id: String) {
                     let lines = station.peek().servers.get(&id).lines.clone();
                     STDIN.lock().unwrap().remove(&id);
                     PIDS.lock().unwrap().remove(&id);
+                    BACKUP_HOURS.lock().unwrap().remove(&id);
                     if let Some(pid) = pid {
                         LAST_WRITE.lock().unwrap().remove(&pid);
                     }
@@ -676,15 +700,22 @@ async fn report_crash(server: &LocalServer, lines: &[Arc<str>], code: i32) {
     }
 }
 
-pub fn set_mod_enabled(id: String, file_name: String, enabled: bool) {
+fn stopped_or_warn(id: &str) -> bool {
     let Some(actions) = actions() else {
-        return;
+        return false;
     };
-    if actions.station().peek().servers.status(&id) != ServerStatus::Stopped {
+    if actions.station().peek().servers.status(id) != ServerStatus::Stopped {
         actions
             .notify(t("oneclient.servers.settings.stop_first"))
             .toast_only()
             .send();
+        return false;
+    }
+    true
+}
+
+pub fn set_mod_enabled(id: String, file_name: String, enabled: bool) {
+    if !stopped_or_warn(&id) {
         return;
     }
     run(
@@ -855,7 +886,7 @@ pub fn stop(station: Station, id: String) {
                 if !still_stopping() {
                     return;
                 }
-                if should_kill(&id, armed, asked) {
+                if kill_due(&id, armed, asked).await {
                     break;
                 }
             }
@@ -868,7 +899,7 @@ pub fn stop(station: Station, id: String) {
                 return;
             }
             if killed.elapsed() >= FORCE_AFTER {
-                force_kill(armed);
+                crate::launcher::off_ui_blocking(move || force_kill(armed)).await;
                 return;
             }
         }
@@ -1109,6 +1140,9 @@ pub fn update_software(station: Station, id: String, mc_version: Option<String>)
 }
 
 pub fn delete_server(id: String) {
+    if !stopped_or_warn(&id) {
+        return;
+    }
     spawn_in_window(async move {
         let result = off_ui({
             let id = id.clone();
@@ -1208,14 +1242,20 @@ pub fn spawn_autostart(station: Station) {
 
 /// Saves a change to the server's own settings
 pub fn update(id: String, change: impl FnOnce(&mut LocalServer) + Send + 'static) {
+    let saving = crate::hooks::SaveGuard::new();
     spawn_in_window(async move {
+        let _saving = saving;
         let result = off_ui({
             let id = id.clone();
             async move {
                 let _files = hold(&FILES, &id).await;
                 let mut server = servers::load_server(&id).await?;
                 change(&mut server);
-                servers::save_server(&server).await
+                servers::save_server(&server).await?;
+                if let Some(hours) = BACKUP_HOURS.lock().unwrap().get_mut(&id) {
+                    *hours = server.backup_hours;
+                }
+                Ok::<_, oneclient_core::LauncherError>(())
             }
         })
         .await;
@@ -1227,7 +1267,9 @@ pub fn update(id: String, change: impl FnOnce(&mut LocalServer) + Send + 'static
 }
 
 pub fn set_property(id: String, key: &'static str, value: String) {
+    let saving = crate::hooks::SaveGuard::new();
     spawn_in_window(async move {
+        let _saving = saving;
         let result = off_ui({
             let id = id.clone();
             async move {
@@ -1312,6 +1354,9 @@ pub fn install_mod(
     project_id: String,
     version_id: String,
 ) {
+    if !stopped_or_warn(&id) {
+        return;
+    }
     write(station, &id, |live| {
         live.installing.push(project_id.clone())
     });

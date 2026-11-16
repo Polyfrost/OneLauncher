@@ -34,6 +34,8 @@ const CATEGORIES: &[&str] = &[
 
 pub struct HangarProvider;
 
+const MAX_PAGE: usize = 25;
+
 fn api(path: &str) -> String {
     format!("{HANGAR_API_URL}{path}")
 }
@@ -363,7 +365,8 @@ impl PackageProvider for HangarProvider {
             let mut params = url.query_pairs_mut();
             let limit = filters
                 .limit
-                .unwrap_or(super::super::types::DEFAULT_PAGE_SIZE);
+                .unwrap_or(super::super::types::DEFAULT_PAGE_SIZE)
+                .min(MAX_PAGE);
             params.append_pair("limit", &limit.to_string());
             params.append_pair("offset", &filters.offset.unwrap_or(0).to_string());
             params.append_pair("platform", PLATFORM);
@@ -442,7 +445,7 @@ impl PackageProvider for HangarProvider {
         let mut url = Url::parse(&api(&format!("/projects/{project_id}/versions")))?;
         {
             let mut params = url.query_pairs_mut();
-            params.append_pair("limit", &limit.to_string());
+            params.append_pair("limit", &limit.min(MAX_PAGE).to_string());
             params.append_pair("offset", &offset.to_string());
             params.append_pair("platform", PLATFORM);
             if let Some(version) = game_version {

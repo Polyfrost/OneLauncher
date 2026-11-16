@@ -220,7 +220,9 @@ pub async fn install_server(
                 &state.services.events,
                 &jar.url,
                 &dir.join(PAPER_JAR),
-                jar.checksums.get("sha256").map(Checksum::sha256).as_ref(),
+                Some(&Checksum::sha256(jar.checksums.get("sha256").ok_or_else(
+                    || fail("Paper lists no sha256 for this build"),
+                )?)),
                 0,
                 None,
             )
@@ -505,7 +507,14 @@ async fn strip_classes(
             .await
             .map_err(|e| fail(e.to_string()))?;
     }
-    writer.close().await.map_err(|e| fail(e.to_string()))?;
+    let mut file = writer
+        .close()
+        .await
+        .map_err(|e| fail(e.to_string()))?
+        .into_inner();
+    tokio::io::AsyncWriteExt::flush(&mut file).await?;
+    file.sync_all().await?;
+    drop(file);
     tokio::fs::rename(&tmp, target).await?;
     Ok(())
 }
@@ -589,8 +598,9 @@ async fn run_logged(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     oneclient_common::process::no_window(command.as_std_mut());
-    let mut child = command.spawn()?;
+    command.kill_on_drop(true);
     let log = std::sync::Mutex::new(std::fs::File::create(log)?);
+    let mut child = command.spawn()?;
     tokio::join!(
         pump(child.stdout.take(), &log, progress),
         pump(child.stderr.take(), &log, progress),
@@ -1188,7 +1198,12 @@ pub async fn unpack_mrpack(
             state,
             url,
             &dir.join(relative),
-            file.hashes.get("sha1").map(String::as_str),
+            Some(
+                file.hashes
+                    .get("sha1")
+                    .ok_or_else(|| fail(format!("the pack lists no sha1 for {}", file.path)))?
+                    .as_str(),
+            ),
         )
         .await?;
     }

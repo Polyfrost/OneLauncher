@@ -46,6 +46,13 @@ pub fn sha1_file_sync(path: &Path) -> PolyIOResult<String> {
     digest_file_sync::<sha1::Sha1>(path)
 }
 
+pub async fn sha256_file(path: impl AsRef<Path>) -> PolyIOResult<String> {
+    let path = path.as_ref().to_path_buf();
+    tokio::task::spawn_blocking(move || digest_file_sync::<sha2::Sha256>(&path))
+        .await
+        .map_err(std::io::Error::other)?
+}
+
 pub async fn sha512_file(path: impl AsRef<Path>) -> PolyIOResult<String> {
     let path = path.as_ref().to_path_buf();
     tokio::task::spawn_blocking(move || digest_file_sync::<sha2::Sha512>(&path))

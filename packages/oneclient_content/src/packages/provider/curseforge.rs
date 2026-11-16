@@ -46,13 +46,17 @@ impl PackageProvider for CurseForgeProvider {
             .map(cf_class_id)
             .unwrap_or(CfClass::Mod as u32);
         let category_ids: Vec<u32> = match filters.categories.as_deref() {
-            Some(names) if !names.is_empty() => {
-                let known = class_categories(class_id, ctx).await?;
-                names
+            Some(names) if !names.is_empty() => match class_categories(class_id, ctx).await {
+                Ok(known) => names
                     .iter()
                     .filter_map(|name| known.iter().find(|(_, n)| n == name).map(|(id, _)| *id))
-                    .collect()
-            }
+                    .take(10)
+                    .collect(),
+                Err(err) => {
+                    tracing::warn!(%err, "could not load curseforge categories, searching without them");
+                    Vec::new()
+                }
+            },
             _ => Vec::new(),
         };
 

@@ -436,7 +436,10 @@ pub async fn record_sources(
         }
     }
     sources.retain(|file, _| present.contains(file));
-    tokio::fs::write(dir.join(SOURCES_FILE), serde_json::to_vec_pretty(&sources)?).await?;
+    let target = dir.join(SOURCES_FILE);
+    let tmp = target.with_extension("json.tmp");
+    tokio::fs::write(&tmp, serde_json::to_vec_pretty(&sources)?).await?;
+    tokio::fs::rename(&tmp, &target).await?;
     Ok(())
 }
 
@@ -579,7 +582,7 @@ pub async fn install_mod(
         .collect();
     if !server.plugins()
         && client_only(state, provider_id, [&version])
-            .await
+            .await?
             .contains(&version.project_id)
     {
         return Err(LauncherError::Server(format!(
@@ -611,7 +614,7 @@ pub async fn install_mod(
             provider_id,
             resolution.install.iter().map(|dep| &dep.version),
         )
-        .await;
+        .await?;
         resolution
             .install
             .retain(|dep| !blocked.contains(&dep.version.project_id));
@@ -635,10 +638,16 @@ pub async fn install_mod(
         tokio::fs::copy(artifact_absolute_path(&row.path)?, mods.join(&file_name)).await?;
         for (file, old) in &sources {
             if old.provider == provider_id && old.project_id == project.id {
+                let mut stale = vec![mods.join(format!("{file}{DISABLED}"))];
                 if *file != file_name {
-                    remove_if_present(&mods.join(file)).await?;
+                    stale.push(mods.join(file));
                 }
-                remove_if_present(&mods.join(format!("{file}{DISABLED}"))).await?;
+                for path in stale {
+                    if let Err(err) = remove_if_present(&path).await {
+                        let _ = remove_if_present(&mods.join(&file_name)).await;
+                        return Err(err.into());
+                    }
+                }
             }
         }
         let source = ModSource {
@@ -656,26 +665,21 @@ async fn client_only<'a>(
     state: &LauncherState,
     provider_id: ProviderId,
     versions: impl IntoIterator<Item = &'a VersionDetail>,
-) -> HashSet<String> {
+) -> LauncherResult<HashSet<String>> {
     match provider_id {
-        ProviderId::CurseForge => versions
+        ProviderId::CurseForge => Ok(versions
             .into_iter()
             .filter(|v| super::install::cf_client_only(&v.game_versions))
             .map(|v| v.project_id.clone())
-            .collect(),
+            .collect()),
         ProviderId::Modrinth => {
             let ids: Vec<String> = versions.into_iter().map(|v| v.project_id.clone()).collect();
             if ids.is_empty() {
-                return HashSet::new();
+                return Ok(HashSet::new());
             }
-            modrinth_client_only(&ids, &state.services.content())
-                .await
-                .unwrap_or_else(|err| {
-                    tracing::warn!(%err, "could not ask Modrinth which mods are client-only");
-                    HashSet::new()
-                })
+            Ok(modrinth_client_only(&ids, &state.services.content()).await?)
         }
-        ProviderId::Local | ProviderId::Hangar => HashSet::new(),
+        ProviderId::Local | ProviderId::Hangar => Ok(HashSet::new()),
     }
 }
 

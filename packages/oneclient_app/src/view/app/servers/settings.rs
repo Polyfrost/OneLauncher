@@ -75,6 +75,7 @@ impl Section {
 enum Control {
     Toggle,
     Number,
+    Port,
     Text(f32),
     Choice(Options),
     Segments(Options),
@@ -93,6 +94,18 @@ fn shown(control: &Control, raw: String) -> String {
     options(control)
         .and_then(|options| options.get(raw.trim().parse::<usize>().ok()?))
         .map_or(raw, |(name, _)| (*name).to_string())
+}
+
+fn valid_port(text: &str) -> bool {
+    text.trim().parse::<u16>().is_ok_and(|port| port > 0)
+}
+
+fn validate_port(validator: InputValidator) {
+    let valid = {
+        let text = validator.text();
+        text.is_empty() || valid_port(&text)
+    };
+    validator.set_valid(valid);
 }
 
 fn stored(control: &Control, value: String, numeric: bool) -> String {
@@ -278,7 +291,7 @@ fn props() -> Vec<Prop> {
             Section::Network,
             "server-port",
             "25565",
-            Control::Number,
+            Control::Port,
             IconType::Link03,
             t("oneclient.servers.settings.port.title"),
             t("oneclient.servers.settings.port.description"),
@@ -743,7 +756,10 @@ impl Component for PropRow {
             use_debounced_save(
                 value.read().clone(),
                 Duration::from_millis(500),
-                move |next| {
+                move |next: String| {
+                    if control == Control::Port && !valid_port(&next) {
+                        return;
+                    }
                     servers::set_property(id.clone(), key, stored(&control, next, numeric));
                 },
             );
@@ -759,6 +775,10 @@ impl Component for PropRow {
             Control::Number => TextInput::new(value)
                 .width(Size::px(FIELD_WIDTH))
                 .on_validate(validate_number)
+                .into_element(),
+            Control::Port => TextInput::new(value)
+                .width(Size::px(FIELD_WIDTH))
+                .on_validate(validate_port)
                 .into_element(),
             Control::Text(width) => TextInput::new(value)
                 .width(Size::px(*width))
@@ -1123,9 +1143,11 @@ impl Component for MemoryRow {
             memory.read().clone(),
             Duration::from_millis(600),
             move |next: String| {
-                if let Ok(mb) = next.trim().parse::<u32>()
-                    && mb >= 512
-                {
+                let mb = match next.trim() {
+                    "" => Some(core::DEFAULT_MEMORY_MB),
+                    raw => raw.parse::<u32>().ok().filter(|mb| *mb >= 512),
+                };
+                if let Some(mb) = mb {
                     servers::update(id.clone(), move |s| s.memory_mb = mb);
                 }
             },
@@ -1271,11 +1293,7 @@ impl Component for ConfirmRow {
                     let _ = RouterContext::get().replace(Route::Servers {});
                     servers::delete_server(id);
                 } else {
-                    servers::run(
-                        id.clone(),
-                        t("oneclient.servers.settings.reset.failed"),
-                        async move { core::reset_world(&core::server_dir(&id)?, keep).await },
-                    );
+                    servers::reset_world(id, keep);
                 }
             });
         let button = match (delete, *armed.read()) {

@@ -149,6 +149,7 @@ async fn cached_version_detail(
             version_id: (!row.dependency_version_id.is_empty())
                 .then_some(row.dependency_version_id),
             kind: DependencyKind::parse(&row.kind)?,
+            name: None,
         })
     })
     .collect();
@@ -179,6 +180,7 @@ async fn cached_version_detail(
             primary: true,
             size: artifact.size_bytes.unwrap_or(0) as u64,
             fingerprint: None,
+            sha256: None,
         }],
         // Recorded alongside the release since the reverse lookup needed them
         // offline, so a cached version is no longer a version without a

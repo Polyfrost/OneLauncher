@@ -6,6 +6,7 @@ use oneclient_common::GameLoader;
 use polyio::Checksum;
 use serde::Deserialize;
 
+use super::mods::{ModMeta, mod_meta};
 use super::properties::Properties;
 use super::store::{DEFAULT_PORT, LocalServer, Platform, accept_eula, save_server};
 use crate::state::LauncherState;
@@ -122,6 +123,26 @@ pub(super) async fn get_json<T: serde::de::DeserializeOwned>(
         .requester
         .send_as::<T>(reqwest::Request::new(reqwest::Method::GET, url))
         .await?)
+}
+
+async fn maven_sha1(state: &LauncherState, url: &str) -> LauncherResult<String> {
+    let checksum: url::Url = format!("{url}.sha1").parse()?;
+    let response = state
+        .services
+        .requester
+        .send(reqwest::Request::new(reqwest::Method::GET, checksum))
+        .await?;
+    let text = response
+        .error_for_status()
+        .map_err(oneclient_net::RequestError::from)?
+        .text()
+        .await
+        .map_err(oneclient_net::RequestError::from)?;
+    let sha1 = text.split_whitespace().next().unwrap_or_default();
+    if sha1.len() != 40 || !sha1.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(fail(format!("{url} has no usable checksum")));
+    }
+    Ok(sha1.to_ascii_lowercase())
 }
 
 async fn loader_version(state: &LauncherState, server: &LocalServer) -> LauncherResult<String> {
@@ -258,7 +279,8 @@ pub async fn install_server(
                 progress,
                 format_args!("Downloading the {} {loader} installer", server.loader),
             );
-            download(state, &url, &installer, None).await?;
+            let sha1 = maven_sha1(state, &url).await?;
+            download(state, &url, &installer, Some(&sha1)).await?;
             step(
                 progress,
                 "Running the installer, this can take a few minutes",
@@ -682,6 +704,7 @@ pub async fn copy_from_instance(
         oneclient_content::packages::PackageStore::list_linked_artifacts(cluster_id, &ctx).await?;
 
     let mut candidates = Vec::new();
+    let mut found = Vec::new();
     for link in linked
         .iter()
         .filter(|l| l.enabled && l.content_type == oneclient_common::domain::ContentType::Mod)
@@ -709,28 +732,14 @@ pub async fn copy_from_instance(
             }),
             _ => None,
         };
-        candidates.push((source, name.to_owned(), meta, origin));
+        candidates.push((source, name.to_owned()));
+        found.push((meta, origin));
     }
 
-    let listed = listed_client_only(
-        state,
-        candidates.iter().filter_map(|(_, _, _, o)| o.as_ref()),
-    )
-    .await;
-    let metas: Vec<ModMeta> = candidates
-        .iter()
-        .map(|(_, _, meta, origin)| {
-            let mut meta = meta.clone();
-            meta.client_only |= origin
-                .as_ref()
-                .is_some_and(|o| listed.contains(&(o.provider, o.project_id.clone())));
-            meta
-        })
-        .collect();
-    let keep = server_side(&metas);
+    let keep = keep_on_server(state, &found).await;
     let mut copied = 0;
     let mut origins = Vec::new();
-    for ((source, name, _, origin), keep) in candidates.iter().zip(&keep) {
+    for (((source, name), (_, origin)), keep) in candidates.iter().zip(&found).zip(&keep) {
         if *keep {
             tokio::fs::copy(source, mods.join(name)).await?;
             copied += 1;
@@ -746,137 +755,6 @@ pub async fn copy_from_instance(
         polyio::copy_dir(&config, &dir.join("config"), &[]).await?;
     }
     Ok((copied, candidates.len() - copied))
-}
-
-/// What a Fabric or Quilt jar says about itself. Other jars come back empty and are kept
-#[derive(Debug, Clone, Default, PartialEq)]
-struct ModMeta {
-    /// The mod id plus every id it provides
-    ids: Vec<String>,
-    client_only: bool,
-    depends: Vec<String>,
-}
-
-fn parse_mod_meta(file: &str, bytes: &[u8]) -> ModMeta {
-    let Ok(json) = serde_json::from_slice::<serde_json::Value>(bytes) else {
-        return ModMeta::default();
-    };
-    let strings = |value: Option<&serde_json::Value>| -> Vec<String> {
-        match value {
-            Some(serde_json::Value::Array(items)) => items
-                .iter()
-                .filter_map(|item| {
-                    item.as_str()
-                        .or_else(|| item.get("id").and_then(|id| id.as_str()))
-                        .map(str::to_string)
-                })
-                .collect(),
-            Some(serde_json::Value::Object(map)) => map.keys().cloned().collect(),
-            _ => Vec::new(),
-        }
-    };
-    if file == "quilt.mod.json" {
-        let loader = json.get("quilt_loader");
-        let mut ids: Vec<String> = loader
-            .and_then(|l| l.get("id"))
-            .and_then(|id| id.as_str())
-            .map(str::to_string)
-            .into_iter()
-            .collect();
-        ids.extend(strings(loader.and_then(|l| l.get("provides"))));
-        return ModMeta {
-            ids,
-            client_only: json
-                .pointer("/minecraft/environment")
-                .and_then(|e| e.as_str())
-                == Some("client"),
-            depends: strings(loader.and_then(|l| l.get("depends"))),
-        };
-    }
-    let mut ids: Vec<String> = json
-        .get("id")
-        .and_then(|id| id.as_str())
-        .map(str::to_string)
-        .into_iter()
-        .collect();
-    ids.extend(strings(json.get("provides")));
-    ModMeta {
-        ids,
-        client_only: json.get("environment").and_then(|e| e.as_str()) == Some("client"),
-        depends: strings(json.get("depends")),
-    }
-}
-
-fn parse_forge_meta(text: &str) -> ModMeta {
-    let Ok(doc) = text.parse::<toml::Table>() else {
-        return ModMeta::default();
-    };
-    let ids = doc
-        .get("mods")
-        .and_then(toml::Value::as_array)
-        .map(|mods| {
-            mods.iter()
-                .filter_map(|m| m.get("modId")?.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default();
-    let depends = doc
-        .get("dependencies")
-        .and_then(toml::Value::as_table)
-        .map(|deps| {
-            deps.values()
-                .filter_map(toml::Value::as_array)
-                .flatten()
-                .filter(|dep| {
-                    let text = |key: &str| dep.get(key).and_then(toml::Value::as_str);
-                    let required = dep
-                        .get("mandatory")
-                        .and_then(toml::Value::as_bool)
-                        .unwrap_or(false)
-                        || text("type").is_some_and(|t| t.eq_ignore_ascii_case("required"));
-                    required && !text("side").is_some_and(|s| s.eq_ignore_ascii_case("client"))
-                })
-                .filter_map(|dep| dep.get("modId")?.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default();
-    ModMeta {
-        ids,
-        client_only: doc
-            .get("clientSideOnly")
-            .and_then(toml::Value::as_bool)
-            .unwrap_or(false),
-        depends,
-    }
-}
-
-const META_FILES: [&str; 4] = [
-    "fabric.mod.json",
-    "quilt.mod.json",
-    "META-INF/mods.toml",
-    "META-INF/neoforge.mods.toml",
-];
-
-async fn mod_meta(jar: &Path) -> ModMeta {
-    let Ok(entries) = polyio::read_zip_file_entries(jar, |name| META_FILES.contains(&name)).await
-    else {
-        return ModMeta::default();
-    };
-    entries
-        .iter()
-        .map(|(name, bytes)| {
-            if name.ends_with(".toml") {
-                parse_forge_meta(&String::from_utf8_lossy(bytes))
-            } else {
-                parse_mod_meta(name, bytes)
-            }
-        })
-        .fold(ModMeta::default(), |mut all, meta| {
-            all.ids.extend(meta.ids);
-            all.depends.extend(meta.depends);
-            all.client_only |= meta.client_only;
-            all
-        })
 }
 
 pub(super) fn cf_client_only(game_versions: &[String]) -> bool {
@@ -895,7 +773,7 @@ async fn listed_client_only(
         match origin.provider {
             ProviderId::Modrinth => modrinth.push(origin.project_id.clone()),
             ProviderId::CurseForge => curseforge.push(origin.version_id.clone()),
-            ProviderId::Local => {}
+            ProviderId::Local | ProviderId::Hangar => {}
         }
     }
     let mut out = std::collections::HashSet::new();
@@ -919,6 +797,47 @@ async fn listed_client_only(
         }
     }
     out
+}
+
+async fn keep_on_server(
+    state: &LauncherState,
+    mods: &[(ModMeta, Option<super::ModSource>)],
+) -> Vec<bool> {
+    let listed = listed_client_only(state, mods.iter().filter_map(|(_, o)| o.as_ref())).await;
+    let metas: Vec<ModMeta> = mods
+        .iter()
+        .map(|(meta, origin)| {
+            let mut meta = meta.clone();
+            meta.client_only |= origin
+                .as_ref()
+                .is_some_and(|o| listed.contains(&(o.provider, o.project_id.clone())));
+            meta
+        })
+        .collect();
+    server_side(&metas)
+}
+
+async fn disable_client_mods(state: &LauncherState, dir: &Path) -> LauncherResult<usize> {
+    let mut jars = Vec::new();
+    let mut found = Vec::new();
+    if let Ok(mut entries) = tokio::fs::read_dir(dir.join("mods")).await {
+        while let Some(entry) = entries.next_entry().await? {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.ends_with(".jar") {
+                found.push((mod_meta(&entry.path()).await, None));
+                jars.push(name);
+            }
+        }
+    }
+    let keep = keep_on_server(state, &found).await;
+    let mut disabled = 0;
+    for (name, keep) in jars.iter().zip(keep) {
+        if !keep {
+            super::set_mod_enabled(dir, "mods", name, false).await?;
+            disabled += 1;
+        }
+    }
+    Ok(disabled)
 }
 
 /// Which mods belong on a server: not client-only, and not needing a mod that was left out
@@ -1083,8 +1002,26 @@ fn names_in(dir: &Path) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default();
-    names.sort();
+    names.sort_by(|a, b| version_cmp(a, b));
     names
+}
+
+fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    let (mut a, mut b) = (a.split(['.', '-', '+']), b.split(['.', '-', '+']));
+    loop {
+        let order = match (a.next(), b.next()) {
+            (None, None) => return std::cmp::Ordering::Equal,
+            (None, Some(_)) => std::cmp::Ordering::Less,
+            (Some(_), None) => std::cmp::Ordering::Greater,
+            (Some(x), Some(y)) => match (x.parse::<u64>(), y.parse::<u64>()) {
+                (Ok(x), Ok(y)) => x.cmp(&y),
+                _ => x.cmp(y),
+            },
+        };
+        if order.is_ne() {
+            return order;
+        }
+    }
 }
 
 fn neoforge_mc(version: &str) -> Option<String> {
@@ -1265,6 +1202,13 @@ pub async fn unpack_mrpack(
         )
         .await?;
     }
+    let disabled = disable_client_mods(state, dir).await?;
+    if disabled > 0 {
+        step(
+            progress,
+            format_args!("Disabled {disabled} client-only mods the server cannot load"),
+        );
+    }
     Ok(())
 }
 
@@ -1323,6 +1267,21 @@ mod tests {
             installer_url(GameLoader::NeoForge, "1.21.1", "21.1.77"),
             "https://maven.neoforged.net/releases/net/neoforged/neoforge/21.1.77/neoforge-21.1.77-installer.jar"
         );
+    }
+
+    fn parse_mod_meta(file: &str, bytes: &[u8]) -> ModMeta {
+        super::super::mods::parse_meta(file, bytes).meta
+    }
+
+    fn parse_forge_meta(text: &str) -> ModMeta {
+        parse_mod_meta("META-INF/mods.toml", text.as_bytes())
+    }
+
+    #[test]
+    fn version_folders_sort_numerically() {
+        assert!(version_cmp("21.1.100", "21.1.77").is_gt());
+        assert!(version_cmp("0.16.10", "0.16.9").is_gt());
+        assert!(version_cmp("1.20.1-47.2.0", "1.20.1-47.10.0").is_lt());
     }
 
     #[test]

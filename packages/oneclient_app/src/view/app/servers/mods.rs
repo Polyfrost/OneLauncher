@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::PathBuf;
 
@@ -12,11 +13,11 @@ use oneclient_core::settings::ViewLayout;
 use crate::components::{
     Button, CARD_GRID_H, CARD_H, CardLayout, ContextMenu, FilterMenu, FilterOption, GRID_GAP,
     GRID_MIN_W, Icon, IconType, LazySection, PackageEntry, ScrollArea, Segment, SegmentedControl,
-    TextInput, grid_card, icon_box, list_card,
+    TextInput, grid_card, icon_box, list_card, remote_icon,
 };
 use crate::hooks::{
-    settled_or_loading, use_dispatch, use_server, use_server_hub, use_server_mod_updates,
-    use_server_mods, use_view_state,
+    package_meta_batch, settled_or_loading, use_cached_image, use_dispatch, use_package_meta_batch,
+    use_server, use_server_hub, use_server_mod_updates, use_server_mods, use_view_state,
 };
 use crate::i18n::{t, tf};
 use crate::routes::Route;
@@ -31,7 +32,7 @@ const CONTROL_H: f32 = 34.;
 const ROW_SPACING: f32 = 8.;
 const ICON_SIZE: f32 = 44.;
 
-fn entry(m: &ServerMod, update: Option<&ModUpdate>) -> PackageEntry {
+fn entry(m: &ServerMod, update: Option<&ModUpdate>, icon_url: Option<String>) -> PackageEntry {
     PackageEntry {
         package_id: m.file_name.clone(),
         bundle_name: None,
@@ -53,7 +54,7 @@ fn entry(m: &ServerMod, update: Option<&ModUpdate>) -> PackageEntry {
             None => m.version.clone(),
         },
         description: m.description.clone().unwrap_or_default(),
-        icon_url: None,
+        icon_url,
         size: m.size,
         categories: Vec::new(),
         enabled: m.enabled,
@@ -77,7 +78,12 @@ fn entry(m: &ServerMod, update: Option<&ModUpdate>) -> PackageEntry {
     }
 }
 
-fn mod_icon(server_id: &str, item: &PackageEntry, icon: Option<&[u8]>) -> Element {
+fn mod_icon(
+    server_id: &str,
+    item: &PackageEntry,
+    icon: Option<&[u8]>,
+    icon_query: &freya::query::UseQuery<crate::hooks::CachedImageQuery>,
+) -> Element {
     match icon {
         Some(bytes) => ImageViewer::new((
             format!("server-mod:{server_id}:{}:{}", item.file_name, item.size),
@@ -89,7 +95,7 @@ fn mod_icon(server_id: &str, item: &PackageEntry, icon: Option<&[u8]>) -> Elemen
         .corner_radius(rounded(8.))
         .fallback(icon_box(IconType::HelpCircle, ICON_SIZE))
         .into_element(),
-        None => icon_box(IconType::HelpCircle, ICON_SIZE),
+        None => remote_icon(item.icon_url.as_deref(), icon_query, ICON_SIZE),
     }
 }
 
@@ -103,7 +109,33 @@ pub struct ServerMods {
 impl Component for ServerMods {
     fn render(&self) -> impl IntoElement {
         let server = use_server(&self.server_id);
+        use_hook({
+            let id = self.server_id.clone();
+            move || servers::identify_mods(id)
+        });
         let mods = settled_or_loading(&use_server_mods(self.server_id.clone()));
+        let mut icon_urls = HashMap::new();
+        for provider in [ProviderId::Modrinth, ProviderId::CurseForge, ProviderId::Hangar] {
+            let ids: Vec<String> = mods
+                .iter()
+                .flatten()
+                .filter(|m| m.icon.is_none())
+                .filter_map(|m| m.source.as_ref())
+                .filter(|s| s.provider == provider)
+                .map(|s| s.project_id.clone())
+                .collect();
+            for (project_id, meta) in package_meta_batch(&use_package_meta_batch(provider, ids)) {
+                icon_urls.insert((provider, project_id), meta.icon_url);
+            }
+        }
+        let icon_for = |m: &ServerMod| {
+            m.icon.is_none().then_some(())?;
+            let source = m.source.as_ref()?;
+            icon_urls
+                .get(&(source.provider, source.project_id.clone()))
+                .cloned()
+                .flatten()
+        };
         let updates =
             settled_or_loading(&use_server_mod_updates(self.server_id.clone())).unwrap_or_default();
         let dispatch = use_dispatch();
@@ -132,7 +164,7 @@ impl Component for ServerMods {
         let current_show = *show.read();
         let mut entries: Vec<PackageEntry> = mods
             .iter()
-            .map(|m| entry(m, update_for(&m.file_name)))
+            .map(|m| entry(m, update_for(&m.file_name), icon_for(m)))
             .filter(|e| current_show.keep(e))
             .filter(|e| {
                 query.is_empty()
@@ -457,7 +489,8 @@ impl Component for ServerModCard {
         let for_menu = item.clone();
         let on_context: EventHandler<(f32, f32)> =
             (move |(x, y)| on_context.call((x, y, for_menu.clone()))).into();
-        let icon = mod_icon(&self.server_id, &item, self.icon.as_deref());
+        let icon_query = use_cached_image(item.icon_url.clone(), 256);
+        let icon = mod_icon(&self.server_id, &item, self.icon.as_deref(), &icon_query);
 
         rect()
             .width(Size::fill())

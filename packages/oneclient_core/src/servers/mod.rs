@@ -19,7 +19,7 @@ pub use install::{
 };
 pub use mods::{
     ModSource, ModUpdate, ServerMod, check_mod_updates, identify_mods, install_mod, list_mods,
-    migrate_mods, record_sources, set_mod_enabled,
+    migrate_mods, plugin_builds, record_sources, set_mod_enabled,
 };
 pub use players::{
     ListedPlayer, add_to_list, ensure_lists, list_file, read_list, remove_from_list,
@@ -27,9 +27,10 @@ pub use players::{
 pub use properties::Properties;
 pub use store::{
     DEFAULT_MEMORY_MB, DEFAULT_PORT, LocalServer, PID_FILE, Platform, ServerKind, accept_eula,
-    allocate_id, clear_pid, delete_server, dir_size, free_port, kill_orphan, list_servers,
-    load_server, save_server, server_dir, servers_root, write_pid,
+    allocate_id, clear_pid, delete_server, free_port, kill_orphan, list_servers, load_server,
+    save_server, server_dir, servers_root, write_pid,
 };
+pub use crate::storage::dir_size;
 
 use crate::state::LauncherState;
 use crate::{LauncherError, LauncherResult};

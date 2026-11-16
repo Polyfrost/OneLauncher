@@ -54,7 +54,7 @@ pub fn package_names(
         let meta = match file.kind.metadata_provider() {
             ProviderId::Modrinth => modrinth.get(&package_id),
             ProviderId::CurseForge => curseforge.get(&package_id),
-            ProviderId::Local => None,
+            ProviderId::Local | ProviderId::Hangar => None,
         };
 
         let name = meta

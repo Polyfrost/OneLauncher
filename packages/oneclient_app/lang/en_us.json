@@ -2816,6 +2816,7 @@
   "oneclient.servers.settings.version.description": "Move the server to a newer version. The world is backed up first and can't be moved back to an older version, and mods must support the new one.",
   "oneclient.servers.settings.version.mods_disabled.body": "No build for the new version, so these were turned off: %s",
   "oneclient.servers.settings.version.mods_disabled.title": "Some mods were disabled",
+  "oneclient.servers.settings.version.mods_failed": "Could not move the mods to the new version",
   "oneclient.servers.settings.version.title": "Minecraft version",
   "oneclient.servers.settings.version.unavailable": "%s has no build for %s yet",
   "oneclient.servers.settings.view_distance.description": "Chunks of terrain sent to players. Lower is lighter on your PC.",

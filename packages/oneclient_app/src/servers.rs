@@ -16,7 +16,7 @@ use crate::launcher::{self, off_ui};
 use crate::notifications::{NotificationAction, NotificationActionKind};
 use crate::state::{AppChannel, AppState};
 
-const MAX_LINES: usize = 5000;
+pub(crate) const MAX_LINES: usize = 5000;
 const STATS_EVERY: Duration = Duration::from_secs(2);
 const STOP_IDLE: Duration = Duration::from_secs(45);
 const STOP_CAP: Duration = Duration::from_secs(600);
@@ -352,7 +352,25 @@ enum Output {
 
 fn write(mut station: Station, id: &str, f: impl FnOnce(&mut ServerLive)) {
     let mut guard = station.write_channel(AppChannel::Servers);
+    let before = guard.servers.live_count();
     f(guard.servers.entry(id));
+    let changed = guard.servers.live_count() != before;
+    drop(guard);
+    if changed {
+        station.write_channel(AppChannel::ServerCount);
+    }
+}
+
+fn write_lines(mut station: Station, id: &str, batch: Vec<String>) {
+    let mut guard = station.write_channel(AppChannel::ServerConsole);
+    let live = guard.servers.entry(id);
+    let before = (live.status, live.booted, live.players.clone(), live.uuids.len());
+    push_lines(live, batch);
+    let changed = (live.status, live.booted, live.players.clone(), live.uuids.len()) != before;
+    drop(guard);
+    if changed {
+        station.write_channel(AppChannel::Servers);
+    }
 }
 
 fn notify_error(title: &'static str, err: impl ToString) {
@@ -433,10 +451,6 @@ fn push_lines(live: &mut ServerLive, batch: Vec<String>) {
     live.lines = lines;
 }
 
-fn push_line(live: &mut ServerLive, line: String) {
-    push_lines(live, vec![line]);
-}
-
 fn note_line(live: &mut ServerLive, line: &str) {
     if line.contains("Done (") && line.contains(")! For help") {
         live.booted = true;
@@ -470,6 +484,7 @@ pub fn start(station: Station, id: String) {
         let spawned = off_ui({
             let id = id.clone();
             async move {
+                let _files = hold(&FILES, &id).await;
                 let state = launcher::state()?;
                 let server = servers::load_server(&id).await?;
                 let dir = server.dir()?;
@@ -555,7 +570,7 @@ pub fn start(station: Station, id: String) {
                             oneclient_core::game::kill_process(pid);
                         }
                     }
-                    write(station, &id, |live| push_lines(live, batch));
+                    write_lines(station, &id, batch);
                 }
                 Output::Stats(memory, cpu) => {
                     write(station, &id, |live| {
@@ -717,6 +732,7 @@ async fn drive(
     tx: mpsc::UnboundedSender<Output>,
     mut cmd_rx: mpsc::UnboundedReceiver<String>,
 ) {
+    let mut readers = Vec::new();
     for reader in [
         child
             .stdout
@@ -731,7 +747,7 @@ async fn drive(
     .flatten()
     {
         let (tx, id) = (tx.clone(), id.clone());
-        tokio::spawn(async move {
+        readers.push(tokio::spawn(async move {
             // Java on Windows writes in the system codepage, so lines are decoded lossily
             // rather than letting one non-UTF-8 byte end the stream
             let mut reader = BufReader::new(reader);
@@ -748,7 +764,7 @@ async fn drive(
                     listening = tx.send(Output::Line(line)).is_ok();
                 }
             }
-        });
+        }));
     }
 
     if let Some(mut stdin) = child.stdin.take() {
@@ -791,6 +807,12 @@ async fn drive(
     if let Some(stats) = stats {
         stats.abort();
     }
+    let _ = tokio::time::timeout(Duration::from_secs(2), async move {
+        for reader in readers {
+            let _ = reader.await;
+        }
+    })
+    .await;
     let _ = tx.send(Output::Exit(code));
 }
 
@@ -928,7 +950,7 @@ pub fn install(station: Station, mut server: LocalServer, prepare: Prepare, port
         let id = id.clone();
         async move {
             while let Some(line) = log_rx.recv().await {
-                write(station, &id, |live| push_line(live, strip_ansi(&line)));
+                write_lines(station, &id, vec![strip_ansi(&line)]);
             }
         }
     });
@@ -941,6 +963,7 @@ pub fn install(station: Station, mut server: LocalServer, prepare: Prepare, port
         .await;
         invalidate_server(&id).await;
         let failed_tx = log_tx.clone();
+        let mods_id = id.clone();
         let result = off_ui(async move {
             let _files = files;
             let progress = move |line: String| {
@@ -953,6 +976,7 @@ pub fn install(station: Station, mut server: LocalServer, prepare: Prepare, port
             match prepare {
                 Prepare::None => {}
                 Prepare::Instance(cluster_id, game_dir) => {
+                    let _mods = hold(&MODS, &mods_id).await;
                     step(format!("Copying mods from {}", game_dir.display()));
                     let (copied, skipped) =
                         servers::copy_from_instance(&state, cluster_id, &game_dir, &dir).await?;
@@ -1037,6 +1061,7 @@ pub fn update_software(station: Station, id: String, mc_version: Option<String>)
                 if let Some(version) = mc_version.filter(|v| *v != server.mc_version) {
                     let world = dir.join(&servers::world_folders(&dir).await?[0]);
                     if tokio::fs::try_exists(&world).await.unwrap_or(false) {
+                        let _backups = hold(&BACKUPS, &id).await;
                         servers::create_backup(&dir, server.backups_kept).await?;
                     }
                     server.mc_version = version;
@@ -1048,14 +1073,9 @@ pub fn update_software(station: Station, id: String, mc_version: Option<String>)
                 servers::save_server(&server).await?;
                 let disabled = if moved {
                     let _mods = hold(&MODS, &id).await;
-                    servers::migrate_mods(&*launcher::state()?, &server)
-                        .await
-                        .unwrap_or_else(|err| {
-                            tracing::warn!(%err, "could not move the mods to the new version");
-                            Vec::new()
-                        })
+                    servers::migrate_mods(&*launcher::state()?, &server).await
                 } else {
-                    Vec::new()
+                    Ok(Vec::new())
                 };
                 Ok::<_, oneclient_core::LauncherError>((server, disabled))
             }
@@ -1063,16 +1083,20 @@ pub fn update_software(station: Station, id: String, mc_version: Option<String>)
         .await;
         match prepared {
             Ok((server, disabled)) => {
-                if !disabled.is_empty()
-                    && let Some(actions) = actions()
-                {
-                    actions
-                        .notify(t("oneclient.servers.settings.version.mods_disabled.title"))
-                        .body(tf(
-                            "oneclient.servers.settings.version.mods_disabled.body",
-                            &[&disabled.join(", ")],
-                        ))
-                        .send();
+                match disabled {
+                    Ok(disabled) if !disabled.is_empty() => {
+                        if let Some(actions) = actions() {
+                            actions
+                                .notify(t("oneclient.servers.settings.version.mods_disabled.title"))
+                                .body(tf(
+                                    "oneclient.servers.settings.version.mods_disabled.body",
+                                    &[&disabled.join(", ")],
+                                ))
+                                .send();
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(err) => notify_error(t("oneclient.servers.settings.version.mods_failed"), err),
                 }
                 install(station, server, Prepare::None, None);
             }
@@ -1161,7 +1185,21 @@ pub enum Prepare {
 
 pub fn spawn_autostart(station: Station) {
     spawn_in_window(async move {
-        let listed = off_ui(servers::list_servers()).await.unwrap_or_default();
+        let listed = off_ui(async {
+            let listed = servers::list_servers().await.unwrap_or_default();
+            for server in &listed {
+                if let Ok(dir) = server.dir()
+                    && let Ok(true) = servers::kill_orphan(&dir).await
+                {
+                    tracing::warn!(
+                        "stopped server {} left running by an earlier launcher session",
+                        server.id
+                    );
+                }
+            }
+            listed
+        })
+        .await;
         for server in listed.into_iter().filter(|s| s.autostart && s.installed()) {
             start(station, server.id);
         }
@@ -1220,6 +1258,31 @@ where
         }
         invalidate_server(&id).await;
     });
+}
+
+pub fn reset_world(id: String, keep: u32) {
+    run(
+        id.clone(),
+        t("oneclient.servers.settings.reset.failed"),
+        async move {
+            let _files = hold(&FILES, &id).await;
+            let _backups = hold(&BACKUPS, &id).await;
+            servers::reset_world(&servers::server_dir(&id)?, keep).await
+        },
+    );
+}
+
+pub fn restore_backup(id: String, backup: std::path::PathBuf) {
+    run(
+        id.clone(),
+        t("oneclient.servers.backups.restore_failed"),
+        async move {
+            let _files = hold(&FILES, &id).await;
+            let _backups = hold(&BACKUPS, &id).await;
+            let server = servers::load_server(&id).await?;
+            servers::restore_backup(&server.dir()?, &backup, server.backups_kept).await
+        },
+    );
 }
 
 pub fn identify_mods(id: String) {

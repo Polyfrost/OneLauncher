@@ -29,13 +29,34 @@ pub async fn world_folders(dir: &Path) -> LauncherResult<Vec<String>> {
         .collect())
 }
 
+const RESERVED_FOLDERS: [&str; 9] = [
+    BACKUPS_DIR,
+    "mods",
+    "plugins",
+    "config",
+    "libraries",
+    "logs",
+    "cache",
+    "versions",
+    "crash-reports",
+];
+
 fn checked_world(name: &str) -> LauncherResult<()> {
     let mut parts = Path::new(name).components();
-    match (parts.next(), parts.next()) {
-        (Some(Component::Normal(_)), None) => Ok(()),
-        _ => Err(LauncherError::Server(format!(
-            "level-name {name:?} must be a plain folder name"
-        ))),
+    let plain = matches!(
+        (parts.next(), parts.next()),
+        (Some(Component::Normal(_)), None)
+    );
+    let reserved = name.starts_with('.')
+        || RESERVED_FOLDERS
+            .iter()
+            .any(|folder| folder.eq_ignore_ascii_case(name));
+    if plain && !reserved {
+        Ok(())
+    } else {
+        Err(LauncherError::Server(format!(
+            "level-name {name:?} must be a plain folder name the server does not use for anything else"
+        )))
     }
 }
 
@@ -81,15 +102,6 @@ pub async fn create_backup(dir: &Path, keep: u32) -> LauncherResult<PathBuf> {
             "there is no world to back up yet".into(),
         ));
     }
-    let backups = dir.join(BACKUPS_DIR);
-    tokio::fs::create_dir_all(&backups).await?;
-    let target = unique_target(
-        &backups,
-        &Local::now().format("%Y-%m-%d_%H-%M-%S").to_string(),
-    )
-    .await;
-    let tmp = target.with_extension("zip.tmp");
-
     let sources: Vec<PathBuf> = folders.iter().map(|f| dir.join(f)).collect();
     let files = tokio::task::spawn_blocking(move || {
         let mut files = Vec::new();
@@ -101,7 +113,14 @@ pub async fn create_backup(dir: &Path, keep: u32) -> LauncherResult<PathBuf> {
     .await
     .map_err(|e| LauncherError::Server(e.to_string()))??;
 
-    if let Err(err) = write_zip(dir, files, &tmp).await {
+    let backups = dir.join(BACKUPS_DIR);
+    tokio::fs::create_dir_all(&backups).await?;
+    let (target, tmp, file) = reserve_target(
+        &backups,
+        &Local::now().format("%Y-%m-%d_%H-%M-%S").to_string(),
+    )
+    .await?;
+    if let Err(err) = write_zip(dir, files, file).await {
         let _ = tokio::fs::remove_file(&tmp).await;
         return Err(err);
     }
@@ -117,18 +136,37 @@ pub async fn create_backup(dir: &Path, keep: u32) -> LauncherResult<PathBuf> {
     Ok(target)
 }
 
-async fn unique_target(backups: &Path, stamp: &str) -> PathBuf {
-    let mut target = backups.join(format!("{stamp}.zip"));
-    let mut n = 2;
-    while tokio::fs::try_exists(&target).await.unwrap_or(false) {
-        target = backups.join(format!("{stamp}-{n}.zip"));
+async fn reserve_target(
+    backups: &Path,
+    stamp: &str,
+) -> std::io::Result<(PathBuf, PathBuf, tokio::fs::File)> {
+    let mut n = 1;
+    loop {
+        let name = if n == 1 {
+            stamp.to_string()
+        } else {
+            format!("{stamp}-{n}")
+        };
         n += 1;
+        let target = backups.join(format!("{name}.zip"));
+        if tokio::fs::try_exists(&target).await? {
+            continue;
+        }
+        let tmp = backups.join(format!("{name}.zip.tmp"));
+        match tokio::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)
+            .await
+        {
+            Ok(file) => return Ok((target, tmp, file)),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(err) => return Err(err),
+        }
     }
-    target
 }
 
-async fn write_zip(dir: &Path, files: Vec<PathBuf>, tmp: &Path) -> LauncherResult<()> {
-    let file = tokio::fs::File::create(tmp).await?;
+async fn write_zip(dir: &Path, files: Vec<PathBuf>, file: tokio::fs::File) -> LauncherResult<()> {
     let mut writer = async_zip::tokio::write::ZipFileWriter::with_tokio(file);
     for path in files {
         // The server holds session.lock open on Windows, and it is meaningless in a copy
@@ -178,10 +216,18 @@ fn collect(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
 }
 
 /// Replaces the world with the one in the backup, only while the server is stopped
-pub async fn restore_backup(dir: &Path, backup: &Path) -> LauncherResult<()> {
+pub async fn restore_backup(dir: &Path, backup: &Path, keep: u32) -> LauncherResult<()> {
     let staging = dir.join(".restore");
     let _ = tokio::fs::remove_dir_all(&staging).await;
-    let result = swap_in_backup(dir, backup, &staging).await;
+    let result = async {
+        polyio::extract_zip(backup, &staging).await?;
+        let current = dir.join(&world_folders(dir).await?[0]);
+        if tokio::fs::try_exists(&current).await? {
+            create_backup(dir, keep).await?;
+        }
+        swap_in_backup(dir, &staging).await
+    }
+    .await;
     let _ = tokio::fs::remove_dir_all(&staging).await;
     result
 }
@@ -195,8 +241,7 @@ fn backup_base(mut folders: Vec<String>) -> Option<String> {
         .cloned()
 }
 
-async fn swap_in_backup(dir: &Path, backup: &Path, staging: &Path) -> LauncherResult<()> {
-    polyio::extract_zip(backup, staging).await?;
+async fn swap_in_backup(dir: &Path, staging: &Path) -> LauncherResult<()> {
     let mut found = Vec::new();
     let mut entries = tokio::fs::read_dir(staging).await?;
     while let Some(entry) = entries.next_entry().await? {
@@ -269,18 +314,50 @@ pub async fn reset_world(dir: &Path, keep: u32) -> LauncherResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{backup_base, checked_world, unique_target};
+    use super::{
+        backup_base, checked_world, create_backup, list_backups, reserve_target, restore_backup,
+    };
 
     #[tokio::test]
     async fn backups_in_the_same_second_get_their_own_file() {
         let tmp = polyio::tempdir().await.expect("dir");
         let dir = tmp.dir_path();
-        let first = unique_target(dir, "2026-11-15_13-00-00").await;
-        assert_eq!(first, dir.join("2026-11-15_13-00-00.zip"));
-        polyio::write(&first, b"zip").await.unwrap();
+        let stamp = "2026-11-15_13-00-00";
+        let (first, first_tmp, _) = reserve_target(dir, stamp).await.unwrap();
+        assert_eq!(first, dir.join(format!("{stamp}.zip")));
+        let (second, second_tmp, _) = reserve_target(dir, stamp).await.unwrap();
+        assert_eq!(second, dir.join(format!("{stamp}-2.zip")));
+        assert_ne!(first_tmp, second_tmp);
+        polyio::write(&dir.join(format!("{stamp}-3.zip")), b"zip")
+            .await
+            .unwrap();
+        let (third, ..) = reserve_target(dir, stamp).await.unwrap();
+        assert_eq!(third, dir.join(format!("{stamp}-4.zip")));
+    }
+
+    #[tokio::test]
+    async fn restore_brings_the_world_back_and_backs_up_the_replaced_one() {
+        let tmp = polyio::tempdir().await.expect("dir");
+        let dir = tmp.dir_path();
+        let level = dir.join("world").join("level.dat");
+        tokio::fs::create_dir_all(dir.join("world")).await.unwrap();
+        tokio::fs::write(&level, b"original").await.unwrap();
+        let backup = create_backup(dir, 10).await.unwrap();
+
+        tokio::fs::write(&level, b"modified").await.unwrap();
+        restore_backup(dir, &backup, 10).await.unwrap();
+        assert_eq!(tokio::fs::read(&level).await.unwrap(), b"original");
+
+        let backups = list_backups(dir).await;
+        assert_eq!(backups.len(), 2);
+        let safety = backups.iter().find(|b| b.path != backup).unwrap();
+        let check = dir.join("check");
+        polyio::extract_zip(&safety.path, &check).await.unwrap();
         assert_eq!(
-            unique_target(dir, "2026-11-15_13-00-00").await,
-            dir.join("2026-11-15_13-00-00-2.zip")
+            tokio::fs::read(check.join("world").join("level.dat"))
+                .await
+                .unwrap(),
+            b"modified"
         );
     }
 
@@ -292,6 +369,12 @@ mod tests {
         assert!(checked_world("a/b").is_err());
         assert!(checked_world("/etc").is_err());
         assert!(checked_world("").is_err());
+        assert!(checked_world("backups").is_err());
+        assert!(checked_world("Mods").is_err());
+        assert!(checked_world("plugins").is_err());
+        assert!(checked_world(".restore").is_err());
+        assert!(checked_world(".hidden").is_err());
+        assert!(checked_world("world_backups").is_ok());
     }
 
     #[test]

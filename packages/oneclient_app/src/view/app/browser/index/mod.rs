@@ -318,7 +318,14 @@ impl Component for BrowserBody {
         let plugin_server = server.as_ref().is_some_and(|s| s.plugins);
         let curseforge_blocked = server_packs
             || (!plugin_server && loader_fixed && loaders.contains(&GameLoader::Ornithe));
-        if curseforge_blocked && *provider.peek() == ProviderId::CurseForge {
+        let providers = if plugin_server {
+            ProviderId::PLUGIN_PROVIDERS
+        } else {
+            ProviderId::REMOTE_PROVIDERS
+        };
+        if (curseforge_blocked && *provider.peek() == ProviderId::CurseForge)
+            || !providers.contains(&*provider.peek())
+        {
             provider.set(ProviderId::Modrinth);
         }
         let provider_id = *provider.read();
@@ -360,11 +367,7 @@ impl Component for BrowserBody {
             *page.read(),
         );
         let categories_query = use_package_categories(provider_id, content_type);
-        let all_categories = if plugin_server && provider_id == ProviderId::CurseForge {
-            Vec::new()
-        } else {
-            category_list(&categories_query)
-        };
+        let all_categories = category_list(&categories_query);
 
         let installed = installed_map(
             cluster_content_items(&use_cluster_content(cluster_id, content_type)),
@@ -509,6 +512,7 @@ impl Component for BrowserBody {
                         .map(|c| (c.mc_loader, c.mc_version.clone())),
                 }),
                 provider,
+                providers,
                 curseforge_blocked,
                 query,
                 controls_width,
@@ -587,6 +591,7 @@ fn header(
     picker: Option<ClusterPicker>,
     override_button: Option<OverrideButton>,
     provider: State<ProviderId>,
+    providers: &'static [ProviderId],
     curseforge_blocked: bool,
     query: State<String>,
     mut header_width: State<f32>,
@@ -644,7 +649,7 @@ fn header(
         .child(
             SegmentedControl::new(provider)
                 .no_tint()
-                .segments(ProviderId::REMOTE_PROVIDERS.iter().map(move |provider| {
+                .segments(providers.iter().map(move |provider| {
                     let mut segment = Segment::new(*provider).icon(IconType::from(*provider));
                     if curseforge_blocked && *provider == ProviderId::CurseForge {
                         segment = segment

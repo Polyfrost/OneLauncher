@@ -8,6 +8,7 @@ use super::{Theme, resolve_theme};
 
 pub const MODRINTH_COLOR: Color = Color::from_rgb(27, 217, 106);
 pub const CURSEFORGE_COLOR: Color = Color::from_rgb(241, 100, 54);
+pub const HANGAR_COLOR: Color = Color::from_rgb(66, 142, 219);
 
 const GHOST_ALPHA: [u8; 3] = [12, 26, 38];
 

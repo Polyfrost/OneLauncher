@@ -37,6 +37,8 @@ pub enum AppChannel {
     CloudSync,
     Share,
     Servers,
+    ServerCount,
+    ServerConsole,
 }
 
 impl RadioChannel<AppState> for AppChannel {}

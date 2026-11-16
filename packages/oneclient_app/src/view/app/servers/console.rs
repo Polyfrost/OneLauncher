@@ -1,13 +1,12 @@
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use freya::prelude::*;
 
 use super::{card, card_head};
 use crate::components::{Button, Icon, IconType, LogViewer, TextInput, auto_scroll_toggle};
 use crate::hooks::{
-    settled_or_loading, use_dispatch, use_log_action, use_server_hub, use_server_run,
-    use_upload_log,
+    settled_or_loading, use_dispatch, use_log_action, use_server_console, use_server_hub,
+    use_server_log, use_upload_log,
 };
 use crate::i18n::t;
 use crate::servers::{self, ServerStatus};
@@ -49,8 +48,9 @@ impl Component for ConsolePanel {
         let dispatch = use_dispatch();
         let running = live.status.is_live();
 
-        let has_log = !live.lines.is_empty();
-        let lines = filter_lines(&live.lines, &search.read(), *level.read());
+        let all = use_server_console(&self.server_id);
+        let has_log = !all.is_empty();
+        let lines = filter_lines(&all, &search.read(), *level.read());
         let log_path = latest_log(&self.server_id);
 
         let subtitle = match live.status {
@@ -74,7 +74,7 @@ impl Component for ConsolePanel {
                     .enabled(has_log)
                     .on_press(move |_| {
                         station
-                            .write_channel(AppChannel::Servers)
+                            .write_channel(AppChannel::ServerConsole)
                             .servers
                             .clear_lines(&clear_id);
                     })
@@ -182,7 +182,7 @@ pub struct ServerConsole {
 
 impl Component for ServerConsole {
     fn render(&self) -> impl IntoElement {
-        let files = settled_or_loading(&use_server_run(self.server_id.clone()));
+        let all = settled_or_loading(&use_server_log(self.server_id.clone()));
         let search = use_state(String::new);
         let level = use_state(|| LevelFilter::All);
         let confirm = use_state(|| None::<Confirm>);
@@ -190,19 +190,12 @@ impl Component for ServerConsole {
         let upload = use_upload_log();
         let action = use_log_action();
 
-        let Some(files) = files else {
+        let Some(all) = all else {
             return centered_note(t("oneclient.servers.loading"));
         };
-        if files.latest_log.is_empty() {
+        if all.is_empty() {
             return centered_note(t("oneclient.servers.console.no_log"));
         }
-        let all: Arc<Vec<Arc<str>>> = Arc::new(
-            files
-                .latest_log
-                .iter()
-                .map(|l| Arc::from(l.as_str()))
-                .collect(),
-        );
         let lines = filter_lines(&all, &search.read(), *level.read());
         let log_path = latest_log(&self.server_id);
 

@@ -29,17 +29,32 @@ impl Properties {
     }
 
     pub async fn write(&self, dir: &Path) -> std::io::Result<()> {
-        let tmp = dir.join(format!("{FILE}.tmp"));
-        tokio::fs::write(&tmp, self.to_string()).await?;
-        tokio::fs::rename(&tmp, dir.join(FILE)).await
+        polyio::write_atomic(dir.join(FILE), self.to_string())
+            .await
+            .map_err(std::io::Error::other)
     }
 
     fn split(line: &str) -> Option<(&str, &str)> {
-        if line.trim_start().starts_with(['#', '!']) {
+        const BLANK: [char; 3] = [' ', '\t', '\x0c'];
+        let line = line.trim_start_matches(BLANK);
+        if line.is_empty() || line.starts_with(['#', '!']) {
             return None;
         }
-        line.split_once('=')
-            .map(|(key, value)| (key.trim(), value.trim_start()))
+        let mut escaped = false;
+        let end = line
+            .char_indices()
+            .find(|&(_, c)| {
+                let hit = !escaped && matches!(c, '=' | ':' | ' ' | '\t' | '\x0c');
+                escaped = !escaped && c == '\\';
+                hit
+            })
+            .map_or(line.len(), |(i, _)| i);
+        let rest = line[end..].trim_start_matches(BLANK);
+        let rest = rest
+            .strip_prefix(['=', ':'])
+            .unwrap_or(rest)
+            .trim_start_matches(BLANK);
+        Some((&line[..end], rest))
     }
 
     #[must_use]
@@ -47,6 +62,7 @@ impl Properties {
         self.lines
             .iter()
             .filter_map(|line| Self::split(line))
+            .rev()
             .find(|(k, _)| *k == key)
             .map(|(_, value)| unescape(value))
     }
@@ -63,7 +79,7 @@ impl Properties {
         match self
             .lines
             .iter()
-            .position(|l| Self::split(l).is_some_and(|(k, _)| k == key))
+            .rposition(|l| Self::split(l).is_some_and(|(k, _)| k == key))
         {
             Some(index) => self.lines[index] = line,
             None => self.lines.push(line),
@@ -87,10 +103,14 @@ fn decode(bytes: Vec<u8>) -> String {
 
 fn escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
-    for ch in value.chars() {
+    for (i, ch) in value.chars().enumerate() {
         match ch {
             '\\' => out.push_str("\\\\"),
             '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\x0c' => out.push_str("\\f"),
+            ' ' if i == 0 => out.push_str("\\ "),
             ':' | '=' => {
                 out.push('\\');
                 out.push(ch);
@@ -127,6 +147,8 @@ fn unescape(value: &str) -> String {
         match chars.next() {
             Some('n') => out.push('\n'),
             Some('t') => out.push('\t'),
+            Some('r') => out.push('\r'),
+            Some('f') => out.push('\x0c'),
             Some(other) => out.push(other),
             None => {}
         }
@@ -164,5 +186,30 @@ mod tests {
         props.set("motd", "hi \u{1f600}!");
         assert_eq!(props.to_string(), "motd=hi \\ud83d\\ude00!\n");
         assert_eq!(props.get("motd").as_deref(), Some("hi \u{1f600}!"));
+    }
+
+    #[test]
+    fn keys_follow_java_separators_and_the_last_one_wins() {
+        let mut props = Properties::parse(
+            "# c\n! c\npvp=true\nmotd : hello\ndifficulty hard\n  level-name\t=  world\npvp = false\nempty\n",
+        );
+        assert_eq!(props.get("pvp").as_deref(), Some("false"));
+        assert_eq!(props.get("motd").as_deref(), Some("hello"));
+        assert_eq!(props.get("difficulty").as_deref(), Some("hard"));
+        assert_eq!(props.get("level-name").as_deref(), Some("world"));
+        assert_eq!(props.get("empty").as_deref(), Some(""));
+        assert_eq!(props.get("# c"), None);
+        props.set("pvp", "true");
+        assert!(props.to_string().starts_with("# c\n! c\npvp=true\n"));
+        assert!(props.to_string().ends_with("pvp=true\nempty\n"));
+        assert_eq!(props.get("pvp").as_deref(), Some("true"));
+    }
+
+    #[test]
+    fn control_characters_and_leading_spaces_are_escaped() {
+        let mut props = Properties::default();
+        props.set("motd", "  a\tb\r\nc");
+        assert_eq!(props.to_string(), "motd=\\  a\\tb\\r\\nc\n");
+        assert_eq!(props.get("motd").as_deref(), Some("  a\tb\r\nc"));
     }
 }

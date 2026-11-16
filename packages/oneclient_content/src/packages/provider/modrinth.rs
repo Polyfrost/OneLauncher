@@ -300,18 +300,10 @@ impl PackageProvider for ModrinthProvider {
         limit: usize,
         ctx: &ContentCtx,
     ) -> ContentResult<Page<VersionSummary>> {
-        let mut url = Url::parse(&v2(&format!("/project/{project_id}/version")))?;
-        if let Some(v) = game_version {
-            url.query_pairs_mut()
-                .append_pair("game_versions", &format!("[\"{v}\"]"));
-        }
-        if let Some(loader) = loader {
-            url.query_pairs_mut()
-                .append_pair("loaders", &format!("[\"{}\"]", loader.modrinth_name()));
-        }
-
-        let versions: Vec<ModrinthVersion> =
-            fetch_json(&ctx.net, Method::GET, url.as_str(), None).await?;
+        let loaders: Vec<String> = loader
+            .map(|loader| vec![loader.modrinth_name().to_string()])
+            .unwrap_or_default();
+        let versions = fetch_versions(project_id, game_version, &loaders, ctx).await?;
 
         let total = versions.len();
         let items = versions
@@ -509,13 +501,26 @@ pub async fn modrinth_plugin_versions(
     mc_version: &str,
     ctx: &ContentCtx,
 ) -> ContentResult<Vec<VersionSummary>> {
-    let mut url = Url::parse(&v2(&format!("/project/{project_id}/version")))?;
-    url.query_pairs_mut()
-        .append_pair("game_versions", &format!("[\"{mc_version}\"]"))
-        .append_pair("loaders", &ids_param(&PLUGIN_LOADERS.map(String::from)));
-    let versions: Vec<ModrinthVersion> =
-        fetch_json(&ctx.net, Method::GET, url.as_str(), None).await?;
+    let versions =
+        fetch_versions(project_id, Some(mc_version), &PLUGIN_LOADERS.map(String::from), ctx).await?;
     Ok(versions.into_iter().map(VersionSummary::from).collect())
+}
+
+async fn fetch_versions(
+    project_id: &str,
+    game_version: Option<&str>,
+    loaders: &[String],
+    ctx: &ContentCtx,
+) -> ContentResult<Vec<ModrinthVersion>> {
+    let mut url = Url::parse(&v2(&format!("/project/{project_id}/version")))?;
+    if let Some(v) = game_version {
+        url.query_pairs_mut()
+            .append_pair("game_versions", &format!("[\"{v}\"]"));
+    }
+    if !loaders.is_empty() {
+        url.query_pairs_mut().append_pair("loaders", &ids_param(loaders));
+    }
+    Ok(fetch_json(&ctx.net, Method::GET, url.as_str(), None).await?)
 }
 
 pub async fn modrinth_client_only(
@@ -844,6 +849,7 @@ impl From<ModrinthDependency> for VersionDependency {
                 "embedded" => DependencyKind::Embedded,
                 _ => DependencyKind::Optional,
             },
+            name: None,
         }
     }
 }
@@ -924,6 +930,7 @@ impl From<ModrinthFile> for VersionFile {
             primary: f.primary,
             size: f.size,
             fingerprint: None,
+            sha256: None,
         }
     }
 }
@@ -985,6 +992,7 @@ mod tests {
                 project_id: Some("fabric-api".into()),
                 version_id: None,
                 kind: DependencyKind::Required,
+                name: None,
             }
         );
         assert_eq!(
@@ -993,6 +1001,7 @@ mod tests {
                 project_id: None,
                 version_id: Some("pinned".into()),
                 kind: DependencyKind::Required,
+                name: None,
             }
         );
         assert_eq!(version.dependencies[2].kind, DependencyKind::Optional);

@@ -176,6 +176,7 @@ fn dependency_label(dep: &VersionDependency) -> String {
     dep.project_id
         .clone()
         .or_else(|| dep.version_id.clone())
+        .or_else(|| dep.name.clone())
         .unwrap_or_else(|| "unknown".to_string())
 }
 

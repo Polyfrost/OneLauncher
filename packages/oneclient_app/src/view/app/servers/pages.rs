@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use freya::prelude::*;
-use oneclient_core::servers as core;
 
 use super::settings::{ConfirmRow, whitelist_row};
 use super::{DASH, card, card_head, fmt_bytes};
@@ -247,14 +246,7 @@ impl Component for ServerBackups {
                                 return;
                             }
                             armed.set(None);
-                            let (id, backup) = (id.clone(), restore_path.clone());
-                            servers::run(
-                                id.clone(),
-                                t("oneclient.servers.backups.restore_failed"),
-                                async move {
-                                    core::restore_backup(&core::server_dir(&id)?, &backup).await
-                                },
-                            );
+                            servers::restore_backup(id.clone(), restore_path.clone());
                         })
                         .text(if confirming {
                             t("oneclient.servers.settings.confirm")

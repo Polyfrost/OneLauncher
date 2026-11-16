@@ -16,9 +16,9 @@ use crate::hooks::{
 use crate::i18n::t;
 use crate::servers::{self, ServerLive, ServerStatus};
 use crate::theme::{colors, rounded, text_size};
-use crate::ui::{border_all_color, centered_note, fixed_grid, grid_columns_for_width};
+use crate::ui::{border_all_color, centered_note};
 
-const CARD_W: f32 = 340.;
+const CARD_MIN_W: f32 = 280.;
 const CARD_H: f32 = 384.;
 const GAP: f32 = 16.;
 const BANNER_H: f32 = 104.;
@@ -36,19 +36,6 @@ impl Component for Servers {
         let mut creating = use_state(|| picked.is_some());
         let list = settled_or_loading(&use_servers()).unwrap_or_default();
         let hub = use_server_hub();
-        let mut width = use_state(|| 0f32);
-
-        let cards: Vec<Element> = list
-            .iter()
-            .map(|server| {
-                ServerCard {
-                    server: server.clone(),
-                    live: CardLive::from(&hub.get(&server.id)),
-                }
-                .into_element()
-            })
-            .collect();
-        let columns = grid_columns_for_width(*width.read(), CARD_W, GAP);
 
         rect()
             .vertical()
@@ -90,25 +77,21 @@ impl Component for Servers {
                             .text(t("oneclient.servers.page.new")),
                     ),
             )
-            .child(if cards.is_empty() {
+            .child(if list.is_empty() {
                 centered_note(t("oneclient.servers.page.empty"))
             } else {
-                rect()
+                ScrollArea::new()
                     .width(Size::fill())
                     .height(Size::flex(1.0))
-                    .on_sized(move |event: Event<SizedEventData>| {
-                        let w = event.data().area.width();
-                        if (w - *width.peek()).abs() > 0.5 {
-                            *width.write() = w;
+                    .scrollbar_gutter(true)
+                    .lazy_grid(list.len(), CARD_H, GAP, CARD_MIN_W, usize::MAX, move |i| {
+                        let server = &list[i];
+                        ServerCard {
+                            server: server.clone(),
+                            live: CardLive::from(&hub.get(&server.id)),
                         }
+                        .into_element()
                     })
-                    .child(
-                        ScrollArea::new()
-                            .width(Size::fill())
-                            .height(Size::fill())
-                            .scrollbar_gutter(true)
-                            .children([fixed_grid(cards, columns, CARD_H, GAP)]),
-                    )
                     .into_element()
             })
             .maybe_child(creating.read().then(|| {

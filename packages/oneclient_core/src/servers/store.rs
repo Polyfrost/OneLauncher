@@ -153,6 +153,9 @@ pub async fn list_servers() -> LauncherResult<Vec<LocalServer>> {
         return Ok(servers);
     };
     while let Some(entry) = entries.next_entry().await? {
+        if !entry.file_type().await.is_ok_and(|kind| kind.is_dir()) {
+            continue;
+        }
         let id = entry.file_name().to_string_lossy().to_string();
         match read_meta(&entry.path(), &id).await {
             Ok(Some(server)) => servers.push(server),
@@ -171,8 +174,10 @@ pub async fn load_server(id: &str) -> LauncherResult<LocalServer> {
 }
 
 async fn read_meta(dir: &Path, id: &str) -> LauncherResult<Option<LocalServer>> {
-    let Ok(text) = tokio::fs::read_to_string(dir.join(META_FILE)).await else {
-        return Ok(None);
+    let text = match tokio::fs::read_to_string(dir.join(META_FILE)).await {
+        Ok(text) => text,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(err) => return Err(err.into()),
     };
     let mut server: LocalServer = serde_json::from_str(&text)?;
     server.id = id.to_string();
@@ -180,11 +185,11 @@ async fn read_meta(dir: &Path, id: &str) -> LauncherResult<Option<LocalServer>> 
 }
 
 pub async fn save_server(server: &LocalServer) -> LauncherResult<()> {
-    let dir = server.dir()?;
-    tokio::fs::create_dir_all(&dir).await?;
-    let tmp = dir.join(format!("{META_FILE}.tmp"));
-    tokio::fs::write(&tmp, serde_json::to_vec_pretty(server)?).await?;
-    tokio::fs::rename(&tmp, dir.join(META_FILE)).await?;
+    polyio::write_atomic(
+        server.dir()?.join(META_FILE),
+        serde_json::to_vec_pretty(server)?,
+    )
+    .await?;
     Ok(())
 }
 
@@ -195,12 +200,16 @@ pub async fn allocate_id(name: &str) -> LauncherResult<String> {
     let base = slug(name);
     let mut id = base.clone();
     let mut n = 2;
-    while tokio::fs::try_exists(root.join(&id)).await? {
-        id = format!("{base}-{n}");
-        n += 1;
+    loop {
+        match tokio::fs::create_dir(root.join(&id)).await {
+            Ok(()) => return Ok(id),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                id = format!("{base}-{n}");
+                n += 1;
+            }
+            Err(err) => return Err(err.into()),
+        }
     }
-    tokio::fs::create_dir_all(root.join(&id)).await?;
-    Ok(id)
 }
 
 fn raw_slug(name: &str) -> String {
@@ -266,19 +275,13 @@ pub async fn delete_server(id: &str) -> LauncherResult<()> {
     if !tokio::fs::try_exists(&dir).await? {
         return Ok(());
     }
-    let trashed = tokio::task::spawn_blocking({
-        let dir = dir.clone();
-        move || trash::delete(&dir)
-    })
-    .await;
-    match trashed {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(err)) => {
-            tracing::warn!(%err, "the recycle bin refused server {id}, deleting it for good");
-            Ok(tokio::fs::remove_dir_all(&dir).await?)
-        }
-        Err(err) => Err(LauncherError::Server(err.to_string())),
-    }
+    kill_orphan(&dir).await?;
+    tokio::task::spawn_blocking(move || trash::delete(&dir))
+        .await
+        .map_err(|e| LauncherError::Server(e.to_string()))?
+        .map_err(|e| {
+            LauncherError::Server(format!("could not move server {id} to the recycle bin: {e}"))
+        })
 }
 
 pub const PID_FILE: &str = ".oneclient-server.pid";
@@ -372,26 +375,6 @@ pub async fn accept_eula(dir: &Path) -> LauncherResult<()> {
     )
     .await?;
     Ok(())
-}
-
-pub async fn dir_size(dir: PathBuf) -> u64 {
-    tokio::task::spawn_blocking(move || dir_size_blocking(&dir))
-        .await
-        .unwrap_or(0)
-}
-
-fn dir_size_blocking(dir: &Path) -> u64 {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return 0;
-    };
-    entries
-        .flatten()
-        .map(|entry| match entry.file_type() {
-            Ok(kind) if kind.is_dir() => dir_size_blocking(&entry.path()),
-            Ok(_) => entry.metadata().map(|m| m.len()).unwrap_or(0),
-            Err(_) => 0,
-        })
-        .sum()
 }
 
 #[cfg(test)]

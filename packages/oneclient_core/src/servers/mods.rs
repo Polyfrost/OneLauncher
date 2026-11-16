@@ -104,17 +104,9 @@ type CachedMeta = (u64, Option<std::time::SystemTime>, ServerMod);
 static META_CACHE: LazyLock<Mutex<HashMap<PathBuf, CachedMeta>>> = LazyLock::new(Default::default);
 
 async fn read_meta(jar: &Path) -> ServerMod {
-    let Ok(entries) = polyio::read_zip_file_entries(jar, |name| META_FILES.contains(&name)).await
-    else {
+    let Some(mut meta) = read_parsed(jar).await else {
         return ServerMod::default();
     };
-    let Some((file, bytes)) = META_FILES
-        .iter()
-        .find_map(|wanted| entries.iter().find(|(name, _)| name == wanted))
-    else {
-        return ServerMod::default();
-    };
-    let mut meta = parse_meta(file, bytes);
     if let Some(icon_path) = meta.icon_path.take() {
         meta.found.icon = polyio::read_zip_file_entries(jar, |name| name == icon_path)
             .await
@@ -125,14 +117,44 @@ async fn read_meta(jar: &Path) -> ServerMod {
     meta.found
 }
 
-struct Parsed {
-    found: ServerMod,
-    icon_path: Option<String>,
+pub(super) async fn mod_meta(jar: &Path) -> ModMeta {
+    read_parsed(jar).await.map(|p| p.meta).unwrap_or_default()
 }
 
-fn parse_meta(file: &str, bytes: &[u8]) -> Parsed {
+async fn read_parsed(jar: &Path) -> Option<Parsed> {
+    let entries = polyio::read_zip_file_entries(jar, |name| META_FILES.contains(&name))
+        .await
+        .ok()?;
+    let mut parsed = META_FILES
+        .iter()
+        .filter_map(|wanted| entries.iter().find(|(name, _)| name == wanted))
+        .map(|(file, bytes)| parse_meta(file, bytes));
+    let mut first = parsed.next()?;
+    for other in parsed {
+        first.meta.ids.extend(other.meta.ids);
+        first.meta.depends.extend(other.meta.depends);
+        first.meta.client_only |= other.meta.client_only;
+    }
+    Some(first)
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(super) struct ModMeta {
+    pub(super) ids: Vec<String>,
+    pub(super) client_only: bool,
+    pub(super) depends: Vec<String>,
+}
+
+#[derive(Default)]
+pub(super) struct Parsed {
+    pub(super) found: ServerMod,
+    pub(super) icon_path: Option<String>,
+    pub(super) meta: ModMeta,
+}
+
+pub(super) fn parse_meta(file: &str, bytes: &[u8]) -> Parsed {
     if file.ends_with(".toml") {
-        return parse_toml(&String::from_utf8_lossy(bytes));
+        return parse_mods_toml(&String::from_utf8_lossy(bytes));
     }
     if file.ends_with(".yml") {
         return parse_plugin_yml(&String::from_utf8_lossy(bytes));
@@ -142,10 +164,13 @@ fn parse_meta(file: &str, bytes: &[u8]) -> Parsed {
     }
     let json: Value = serde_json::from_slice(bytes).unwrap_or_default();
     let quilt = file == "quilt.mod.json";
-    let meta = if quilt {
-        json.pointer("/quilt_loader/metadata")
+    let (meta, loader) = if quilt {
+        (
+            json.pointer("/quilt_loader/metadata"),
+            json.get("quilt_loader"),
+        )
     } else {
-        Some(&json)
+        (Some(&json), Some(&json))
     };
     let text = |v: Option<&Value>| {
         v.and_then(Value::as_str)
@@ -172,7 +197,6 @@ fn parse_meta(file: &str, bytes: &[u8]) -> Parsed {
             })
             .unwrap_or_default()
     };
-    // An icon is either one path or a map of sizes to paths, the largest reads best scaled down
     let icon_path = meta
         .and_then(|m| m.get("icon"))
         .and_then(|icon| match icon {
@@ -183,6 +207,18 @@ fn parse_meta(file: &str, bytes: &[u8]) -> Parsed {
                 .and_then(|(_, path)| path.as_str().map(str::to_string)),
             _ => None,
         });
+    let mut ids: Vec<String> = loader
+        .and_then(|l| l.get("id"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .into_iter()
+        .collect();
+    ids.extend(id_list(loader.and_then(|l| l.get("provides"))));
+    let environment = if quilt {
+        json.pointer("/minecraft/environment")
+    } else {
+        json.get("environment")
+    };
 
     Parsed {
         found: ServerMod {
@@ -197,30 +233,102 @@ fn parse_meta(file: &str, bytes: &[u8]) -> Parsed {
             ..ServerMod::default()
         },
         icon_path: icon_path.map(|p| p.trim_start_matches('/').to_string()),
+        meta: ModMeta {
+            ids,
+            client_only: environment.and_then(Value::as_str) == Some("client"),
+            depends: id_list(loader.and_then(|l| l.get("depends"))),
+        },
     }
 }
 
-/// shortcut: reads single-line `key = "value"` pairs of the first mod, multi-line values are skipped
-fn parse_toml(text: &str) -> Parsed {
-    let value = |key: &str| {
-        text.lines().find_map(|line| {
-            let (k, v) = line.split_once('=')?;
-            if k.trim() != key {
-                return None;
-            }
-            let v = v.trim().trim_matches(|c| c == '"' || c == '\'').trim();
-            (!v.is_empty() && !v.contains("${")).then(|| v.to_string())
-        })
+fn id_list(value: Option<&Value>) -> Vec<String> {
+    match value {
+        Some(Value::Array(items)) => items
+            .iter()
+            .filter_map(|item| {
+                item.as_str()
+                    .or_else(|| item.get("id").and_then(Value::as_str))
+                    .map(str::to_string)
+            })
+            .collect(),
+        Some(Value::Object(map)) => map.keys().cloned().collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn parse_mods_toml(text: &str) -> Parsed {
+    let Ok(doc) = text.parse::<toml::Table>() else {
+        return Parsed::default();
     };
+    let mods = doc.get("mods").and_then(toml::Value::as_array);
+    let first = mods.and_then(|mods| mods.first());
+    let value = |key: &str| {
+        first
+            .and_then(|m| m.get(key))
+            .and_then(toml::Value::as_str)
+            .and_then(usable_text)
+    };
+    let authors = match first.and_then(|m| m.get("authors")) {
+        Some(toml::Value::Array(list)) => list
+            .iter()
+            .filter_map(toml::Value::as_str)
+            .filter_map(usable_text)
+            .collect(),
+        other => other
+            .and_then(toml::Value::as_str)
+            .and_then(usable_text)
+            .into_iter()
+            .collect(),
+    };
+    let icon_path = value("logoFile").or_else(|| {
+        doc.get("logoFile")
+            .and_then(toml::Value::as_str)
+            .and_then(usable_text)
+    });
+    let ids = mods
+        .map(|mods| {
+            mods.iter()
+                .filter_map(|m| m.get("modId")?.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    let depends = doc
+        .get("dependencies")
+        .and_then(toml::Value::as_table)
+        .map(|deps| {
+            deps.values()
+                .filter_map(toml::Value::as_array)
+                .flatten()
+                .filter(|dep| {
+                    let text = |key: &str| dep.get(key).and_then(toml::Value::as_str);
+                    let required = dep
+                        .get("mandatory")
+                        .and_then(toml::Value::as_bool)
+                        .unwrap_or(false)
+                        || text("type").is_some_and(|t| t.eq_ignore_ascii_case("required"));
+                    required && !text("side").is_some_and(|s| s.eq_ignore_ascii_case("client"))
+                })
+                .filter_map(|dep| dep.get("modId")?.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
     Parsed {
         found: ServerMod {
             name: value("displayName"),
             version: value("version"),
-            authors: value("authors").map(|a| vec![a]).unwrap_or_default(),
+            authors,
             description: value("description"),
             ..ServerMod::default()
         },
-        icon_path: value("logoFile"),
+        icon_path: icon_path.map(|p| p.trim_start_matches('/').to_string()),
+        meta: ModMeta {
+            ids,
+            client_only: doc
+                .get("clientSideOnly")
+                .and_then(toml::Value::as_bool)
+                .unwrap_or(false),
+            depends,
+        },
     }
 }
 
@@ -262,6 +370,7 @@ fn parse_mcmod(bytes: &[u8]) -> Parsed {
             ..ServerMod::default()
         },
         icon_path: text("logoFile").map(|p| p.trim_start_matches('/').to_string()),
+        meta: ModMeta::default(),
     }
 }
 
@@ -300,6 +409,7 @@ fn parse_plugin_yml(text: &str) -> Parsed {
             ..ServerMod::default()
         },
         icon_path: None,
+        meta: ModMeta::default(),
     }
 }
 
@@ -330,7 +440,9 @@ pub async fn record_sources(
     Ok(())
 }
 
-static UNKNOWN: LazyLock<Mutex<HashSet<PathBuf>>> = LazyLock::new(Default::default);
+type FileKey = (PathBuf, u64, Option<std::time::SystemTime>);
+
+static UNKNOWN: LazyLock<Mutex<HashSet<FileKey>>> = LazyLock::new(Default::default);
 
 pub async fn identify_mods(
     state: &LauncherState,
@@ -343,12 +455,17 @@ pub async fn identify_mods(
         while let Ok(Some(entry)) = entries.next_entry().await {
             let name = entry.file_name().to_string_lossy().to_string();
             let base = name.trim_end_matches(DISABLED).to_string();
-            let path = entry.path();
+            let meta = entry.metadata().await.ok();
+            let key = (
+                entry.path(),
+                meta.as_ref().map_or(0, std::fs::Metadata::len),
+                meta.and_then(|m| m.modified().ok()),
+            );
             if base.ends_with(".jar")
                 && !sources.contains_key(&base)
-                && !UNKNOWN.lock().unwrap().contains(&path)
+                && !UNKNOWN.lock().unwrap().contains(&key)
             {
-                pending.push((base, path));
+                pending.push((base, key));
             }
         }
     }
@@ -359,8 +476,8 @@ pub async fn identify_mods(
     let ctx = state.services.content();
     let mut found = Vec::new();
     let mut identities = Vec::new();
-    for (base, path) in pending {
-        let read = path.clone();
+    for (base, key) in pending {
+        let read = key.0.clone();
         let identity = tokio::task::spawn_blocking(move || {
             std::fs::read(&read).map(|bytes| FileIdentity {
                 sha1: polyio::normalize_hash(&polyio::sha1_bytes(&bytes)),
@@ -380,7 +497,7 @@ pub async fn identify_mods(
                     version_number: row.display_version,
                 },
             )),
-            None => identities.push((base, path, identity)),
+            None => identities.push((base, key, identity)),
         }
     }
 
@@ -390,7 +507,7 @@ pub async fn identify_mods(
         .packages
         .lookup_versions_checked(&lookup, &ctx)
         .await?;
-    for (base, path, identity) in identities {
+    for (base, key, identity) in identities {
         match matched.get(&identity.sha1) {
             Some((provider, version)) => found.push((
                 base,
@@ -402,7 +519,7 @@ pub async fn identify_mods(
                 },
             )),
             None if complete => {
-                UNKNOWN.lock().unwrap().insert(path);
+                UNKNOWN.lock().unwrap().insert(key);
             }
             None => {}
         }
@@ -426,8 +543,8 @@ pub async fn install_mod(
     let provider = state.services.packages.get(provider_id)?;
     let project = provider.get_project(project_id, &ctx).await?;
     let mut version = provider.get_version(project_id, version_id, &ctx).await?;
-    if server.plugins() && provider_id == ProviderId::Modrinth {
-        let builds = modrinth_plugin_versions(project_id, &server.mc_version, &ctx).await?;
+    if server.plugins() {
+        let builds = plugin_builds(state, provider_id, project_id, &server.mc_version).await?;
         let pick = builds
             .iter()
             .find(|v| v.version_id == version.version_id)
@@ -515,13 +632,15 @@ pub async fn install_mod(
         else {
             continue;
         };
+        tokio::fs::copy(artifact_absolute_path(&row.path)?, mods.join(&file_name)).await?;
         for (file, old) in &sources {
             if old.provider == provider_id && old.project_id == project.id {
-                remove_if_present(&mods.join(file)).await?;
+                if *file != file_name {
+                    remove_if_present(&mods.join(file)).await?;
+                }
                 remove_if_present(&mods.join(format!("{file}{DISABLED}"))).await?;
             }
         }
-        tokio::fs::copy(artifact_absolute_path(&row.path)?, mods.join(&file_name)).await?;
         let source = ModSource {
             provider: provider_id,
             project_id: project.id,
@@ -556,24 +675,25 @@ async fn client_only<'a>(
                     HashSet::new()
                 })
         }
-        ProviderId::Local => HashSet::new(),
+        ProviderId::Local | ProviderId::Hangar => HashSet::new(),
     }
 }
 
-async fn plugin_builds(
+pub async fn plugin_builds(
     state: &LauncherState,
-    source: &ModSource,
+    provider: ProviderId,
+    project_id: &str,
     mc_version: &str,
 ) -> LauncherResult<Vec<VersionSummary>> {
     let ctx = state.services.content();
-    if source.provider == ProviderId::Modrinth {
-        return Ok(modrinth_plugin_versions(&source.project_id, mc_version, &ctx).await?);
+    if provider == ProviderId::Modrinth {
+        return Ok(modrinth_plugin_versions(project_id, mc_version, &ctx).await?);
     }
     Ok(state
         .services
         .packages
-        .get(source.provider)?
-        .list_versions(&source.project_id, Some(mc_version), None, 0, 50, &ctx)
+        .get(provider)?
+        .list_versions(project_id, Some(mc_version), None, 0, 50, &ctx)
         .await?
         .items)
 }
@@ -607,13 +727,7 @@ async fn plugin_dependencies(
         if out.install.len() >= MAX_PLUGIN_DEPENDENCIES || !seen.insert(project_id.clone()) {
             continue;
         }
-        let source = ModSource {
-            provider: provider_id,
-            project_id: project_id.clone(),
-            version_id: String::new(),
-            version_number: String::new(),
-        };
-        let pick = plugin_builds(state, &source, mc_version)
+        let pick = plugin_builds(state, provider_id, &project_id, mc_version)
             .await
             .ok()
             .and_then(|builds| newest_build(&builds).map(|b| b.version_id.clone()));
@@ -661,24 +775,6 @@ pub async fn check_mod_updates(
     state: &LauncherState,
     server: &LocalServer,
 ) -> LauncherResult<Vec<ModUpdate>> {
-    if server.plugins() {
-        let mut out = Vec::new();
-        for (file_name, source) in sourced_mods(server, false).await? {
-            let builds = plugin_builds(state, &source, &server.mc_version).await?;
-            if let Some(newest) = newest_build(&builds)
-                && newest.version_id != source.version_id
-            {
-                out.push(ModUpdate {
-                    file_name,
-                    provider: source.provider,
-                    project_id: source.project_id,
-                    version_id: newest.version_id.clone(),
-                    version_number: newest.version_number.clone(),
-                });
-            }
-        }
-        return Ok(out);
-    }
     Ok(newest_for_version(state, server, false)
         .await?
         .into_iter()
@@ -721,8 +817,12 @@ async fn newest_for_version(
     let mut out = Vec::new();
     if server.plugins() {
         for (file_name, source) in sourced_mods(server, enabled_only).await? {
-            let Ok(builds) = plugin_builds(state, &source, &server.mc_version).await else {
-                continue;
+            let builds = match plugin_builds(state, source.provider, &source.project_id, &server.mc_version).await {
+                Ok(builds) => builds,
+                Err(err) => {
+                    tracing::warn!(%err, "could not look up builds for {file_name}");
+                    continue;
+                }
             };
             let newest = newest_build(&builds)
                 .map(|b| (b.version_id.clone(), b.version_number.clone()));
@@ -751,9 +851,16 @@ async fn newest_for_version(
             continue;
         };
         let packages: Vec<InstalledPackage> = mods.iter().map(|(_, p, _)| p.clone()).collect();
-        let latest = provider
+        let latest = match provider
             .latest_for_game_version(&packages, &server.mc_version, server.loader, &ctx)
-            .await?;
+            .await
+        {
+            Ok(latest) => latest,
+            Err(err) => {
+                tracing::warn!(%err, "could not look up newer versions on {provider_id}");
+                continue;
+            }
+        };
         for (file_name, package, source) in mods {
             let newest = latest
                 .get(&package.hash)
@@ -772,22 +879,28 @@ pub async fn migrate_mods(state: &LauncherState, server: &LocalServer) -> Launch
     let folder = server.content_folder();
     let mut disabled = Vec::new();
     for (file_name, source, newest) in newest_for_version(state, server, true).await? {
-        match newest {
-            Some((version_id, _)) if version_id == source.version_id => {}
+        let keep = match newest {
+            Some((version_id, _)) if version_id == source.version_id => true,
             Some((version_id, _)) => {
-                if let Err(err) =
-                    install_mod(state, server, source.provider, &source.project_id, &version_id)
-                        .await
+                match install_mod(state, server, source.provider, &source.project_id, &version_id)
+                    .await
                 {
-                    tracing::warn!(%err, "could not move {file_name} to the new version");
-                    set_mod_enabled(&dir, folder, &file_name, false).await?;
-                    disabled.push(file_name);
+                    Ok(()) => true,
+                    Err(err) => {
+                        tracing::warn!(%err, "could not move {file_name} to the new version");
+                        false
+                    }
                 }
             }
-            None => {
-                set_mod_enabled(&dir, folder, &file_name, false).await?;
-                disabled.push(file_name);
-            }
+            None => false,
+        };
+        if keep {
+            continue;
+        }
+        match set_mod_enabled(&dir, folder, &file_name, false).await {
+            Ok(()) => disabled.push(file_name),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => return Err(err.into()),
         }
     }
     Ok(disabled)

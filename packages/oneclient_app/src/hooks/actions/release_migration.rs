@@ -106,6 +106,7 @@ fn fake_version(name: &str, project_id: &str, size: u64) -> VersionDetail {
             primary: true,
             size,
             fingerprint: None,
+            sha256: None,
         }],
         dependencies: Vec::new(),
     }

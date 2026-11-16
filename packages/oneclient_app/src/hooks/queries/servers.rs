@@ -1,4 +1,7 @@
+use std::sync::Arc;
+
 use freya::query::{QueriesStorage, Query, QueryCapability, UseQuery, use_query};
+use oneclient_common::domain::ProviderId;
 use oneclient_core::LauncherError;
 use oneclient_core::servers::{self, BackupInfo, ListedPlayer, LocalServer, Properties, ServerMod};
 
@@ -141,26 +144,23 @@ pub struct PluginVersionsQuery;
 impl QueryCapability for PluginVersionsQuery {
     type Ok = Vec<oneclient_content::packages::VersionSummary>;
     type Err = LauncherError;
-    type Keys = Option<(String, String)>;
+    type Keys = Option<(ProviderId, String, String)>;
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        let Some((project_id, mc_version)) = keys.clone() else {
+        let Some((provider, project_id, mc_version)) = keys.clone() else {
             return Ok(Vec::new());
         };
         crate::launcher::off_ui(async move {
             let state = crate::launcher::state()?;
-            Ok(oneclient_content::packages::modrinth_plugin_versions(
-                &project_id,
-                &mc_version,
-                &state.services.content(),
-            )
-            .await?)
+            servers::plugin_builds(&state, provider, &project_id, &mc_version).await
         })
         .await
     }
 }
 
-pub fn use_plugin_versions(keys: Option<(String, String)>) -> UseQuery<PluginVersionsQuery> {
+pub fn use_plugin_versions(
+    keys: Option<(ProviderId, String, String)>,
+) -> UseQuery<PluginVersionsQuery> {
     use_query(Query::new(keys, PluginVersionsQuery))
 }
 
@@ -192,7 +192,6 @@ pub fn use_platform_available(
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct ServerRun {
     pub world_size: u64,
-    pub latest_log: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -211,14 +210,7 @@ impl QueryCapability for ServerRunQuery {
             for folder in servers::world_folders(&dir).await.unwrap_or_default() {
                 world_size += servers::dir_size(dir.join(folder)).await;
             }
-            let latest_log = tokio::fs::read_to_string(dir.join("logs").join("latest.log"))
-                .await
-                .map(|text| text.lines().map(str::to_string).collect())
-                .unwrap_or_default();
-            Ok(ServerRun {
-                world_size,
-                latest_log,
-            })
+            Ok(ServerRun { world_size })
         })
         .await
     }
@@ -226,6 +218,33 @@ impl QueryCapability for ServerRunQuery {
 
 pub fn use_server_run(id: String) -> UseQuery<ServerRunQuery> {
     use_query(Query::new(id, ServerRunQuery))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ServerLogQuery;
+
+impl QueryCapability for ServerLogQuery {
+    type Ok = Arc<Vec<Arc<str>>>;
+    type Err = LauncherError;
+    type Keys = String;
+
+    async fn run(&self, id: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        let id = id.clone();
+        crate::launcher::off_ui(async move {
+            let dir = servers::server_dir(&id)?;
+            let text = tokio::fs::read_to_string(dir.join("logs").join("latest.log"))
+                .await
+                .unwrap_or_default();
+            let lines: Vec<&str> = text.lines().collect();
+            let skip = lines.len().saturating_sub(crate::servers::MAX_LINES);
+            Ok(Arc::new(lines[skip..].iter().map(|l| Arc::from(*l)).collect()))
+        })
+        .await
+    }
+}
+
+pub fn use_server_log(id: String) -> UseQuery<ServerLogQuery> {
+    use_query(Query::new(id, ServerLogQuery))
 }
 
 pub async fn invalidate_server_settings(id: &str) {
@@ -238,4 +257,5 @@ pub async fn invalidate_server(id: &str) {
     QueriesStorage::<ServerModsQuery>::invalidate_matching(id.to_string()).await;
     QueriesStorage::<ServerModUpdatesQuery>::invalidate_matching(id.to_string()).await;
     QueriesStorage::<ServerRunQuery>::invalidate_matching(id.to_string()).await;
+    QueriesStorage::<ServerLogQuery>::invalidate_matching(id.to_string()).await;
 }

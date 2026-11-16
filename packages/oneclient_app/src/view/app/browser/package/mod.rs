@@ -363,13 +363,12 @@ impl Component for BrowserPackage {
                 versions_total(&versions_query),
             )
         };
-        let plugin_server =
-            server.as_ref().is_some_and(|s| s.plugins) && provider == ProviderId::Modrinth;
+        let plugin_server = server.as_ref().is_some_and(|s| s.plugins);
         let plugin_builds = use_plugin_versions(
             server
                 .as_ref()
-                .filter(|s| s.plugins && provider == ProviderId::Modrinth)
-                .map(|s| (project_id.clone(), s.mc_version.clone())),
+                .filter(|s| s.plugins)
+                .map(|s| (provider, project_id.clone(), s.mc_version.clone())),
         );
         let (versions, total_versions) = if plugin_server {
             let builds = settled_or_loading(&plugin_builds).unwrap_or_default();

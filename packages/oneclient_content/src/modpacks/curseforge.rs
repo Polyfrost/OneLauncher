@@ -362,6 +362,7 @@ mod tests {
                 primary: true,
                 size: 5,
                 fingerprint: None,
+                sha256: None,
             }],
             dependencies: Vec::new(),
         }

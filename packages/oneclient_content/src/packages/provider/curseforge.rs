@@ -13,7 +13,7 @@ use crate::packages::dependencies::base_game_version;
 use crate::packages::file_identity::FileIdentity;
 use crate::packages::types::{
     DependencyKind, GalleryImage, InstalledPackage, PackageBody, Page, ProjectDetail,
-    ProjectMember, ProjectSummary, ReleaseType, SearchFilters, SearchSide, VersionDependency,
+    ProjectMember, ProjectSummary, ReleaseType, SearchFilters, VersionDependency,
     VersionDetail,
     VersionFile, VersionLookup, VersionSummary,
 };
@@ -41,14 +41,10 @@ impl PackageProvider for CurseForgeProvider {
     ) -> ContentResult<Page<ProjectSummary>> {
         tracing::debug!(query = ?filters.query, "searching curseforge");
         let mut url = Url::parse(&api_url("/mods/search"))?;
-        let class_id = if filters.side == Some(SearchSide::BukkitPlugin) {
-            BUKKIT_PLUGIN_CLASS
-        } else {
-            filters
-                .content_type
-                .map(cf_class_id)
-                .unwrap_or(CfClass::Mod as u32)
-        };
+        let class_id = filters
+            .content_type
+            .map(cf_class_id)
+            .unwrap_or(CfClass::Mod as u32);
         let category_ids: Vec<u32> = match filters.categories.as_deref() {
             Some(names) if !names.is_empty() => {
                 let known = class_categories(class_id, ctx).await?;
@@ -599,6 +595,7 @@ impl From<CfDependency> for VersionDependency {
                 1 | 6 => DependencyKind::Embedded,
                 _ => DependencyKind::Optional,
             },
+            name: None,
         }
     }
 }
@@ -799,6 +796,7 @@ impl From<CfFile> for VersionDetail {
                 primary: true,
                 size: f.file_length,
                 fingerprint: Some(f.file_fingerprint.to_string()),
+                sha256: None,
             }],
             dependencies: f.dependencies.into_iter().map(Into::into).collect(),
         }
@@ -816,8 +814,6 @@ fn is_same_file(
         None => file_fingerprint == fingerprint,
     }
 }
-
-const BUKKIT_PLUGIN_CLASS: u32 = 5;
 
 static CATEGORIES: std::sync::LazyLock<std::sync::Mutex<HashMap<u32, Vec<(u32, String)>>>> =
     std::sync::LazyLock::new(Default::default);
@@ -997,6 +993,7 @@ mod tests {
                 project_id: Some("10".into()),
                 version_id: None,
                 kind: DependencyKind::Required,
+                name: None,
             }
         );
         assert_eq!(version.dependencies[1].kind, DependencyKind::Optional);

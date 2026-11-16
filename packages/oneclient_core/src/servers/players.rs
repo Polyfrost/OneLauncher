@@ -100,7 +100,6 @@ async fn load_list(dir: &Path, file: &str) -> LauncherResult<Vec<ListedPlayer>> 
 }
 
 pub async fn write_list(dir: &Path, file: &str, players: &[ListedPlayer]) -> LauncherResult<()> {
-    let tmp = dir.join(format!("{file}.tmp"));
     let bytes = if is_txt(file) {
         players
             .iter()
@@ -116,8 +115,7 @@ pub async fn write_list(dir: &Path, file: &str, players: &[ListedPlayer]) -> Lau
     } else {
         serde_json::to_vec_pretty(players)?
     };
-    tokio::fs::write(&tmp, bytes).await?;
-    tokio::fs::rename(&tmp, dir.join(file)).await?;
+    polyio::write_atomic(dir.join(file), bytes).await?;
     Ok(())
 }
 

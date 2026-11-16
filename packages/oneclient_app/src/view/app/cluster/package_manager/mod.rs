@@ -407,7 +407,7 @@ fn package_url(item: &PackageEntry, content_type: ContentType) -> Option<String>
             "https://www.curseforge.com/projects/{}",
             item.package_id
         )),
-        ProviderId::Local => None,
+        ProviderId::Local | ProviderId::Hangar => None,
     }
 }
 

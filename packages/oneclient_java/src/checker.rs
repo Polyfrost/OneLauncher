@@ -93,12 +93,21 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
             .cloned()
             .unwrap_or_else(|| String::from("unknown")),
         version,
-        vendor: info
-            .get("java.vendor")
-            .cloned()
-            .unwrap_or_else(|| String::from("unknown")),
+        vendor: vendor(&info),
         is_jdk: probe_flag(&info, "java.jdk"),
     })
+}
+
+fn vendor(info: &HashMap<String, String>) -> String {
+    if info
+        .get("java.vendor.version")
+        .is_some_and(|version| version.contains("Oracle GraalVM"))
+    {
+        return String::from("Oracle GraalVM");
+    }
+    info.get("java.vendor")
+        .cloned()
+        .unwrap_or_else(|| String::from("unknown"))
 }
 
 fn has_usable_awt(info: &HashMap<String, String>) -> bool {
@@ -141,6 +150,22 @@ mod tests {
             .iter()
             .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
             .collect()
+    }
+
+    #[test]
+    fn oracle_graalvm_is_told_apart_from_oracle_jdk() {
+        let graalvm = info(&[
+            ("java.vendor", "Oracle Corporation"),
+            ("java.vendor.version", "Oracle GraalVM 21.0.5+9.1"),
+        ]);
+        assert_eq!(
+            vendor(&graalvm)
+                .parse::<crate::vendors::JavaVendor>()
+                .unwrap(),
+            crate::vendors::JavaVendor::GraalVm
+        );
+        let jdk = info(&[("java.vendor", "Oracle Corporation")]);
+        assert_eq!(vendor(&jdk), "Oracle Corporation");
     }
 
     #[test]

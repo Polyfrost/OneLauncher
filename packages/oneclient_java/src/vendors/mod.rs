@@ -8,6 +8,7 @@ use crate::error::JavaResult;
 
 mod adoptium;
 mod corretto;
+mod graalvm;
 mod liberica;
 mod microsoft;
 mod mojang;
@@ -15,6 +16,8 @@ mod zulu;
 
 pub use adoptium::AdoptiumRuntimeProvider;
 pub use corretto::CorrettoRuntimeProvider;
+pub use graalvm::GraalVmRuntimeProvider;
+pub(crate) use graalvm::INSTALL_PREFIX as GRAALVM_INSTALL_PREFIX;
 pub use liberica::LibericaRuntimeProvider;
 pub use microsoft::MicrosoftRuntimeProvider;
 pub(crate) use mojang::INSTALL_PREFIX as MOJANG_INSTALL_PREFIX;
@@ -29,6 +32,7 @@ pub fn runtime_providers() -> Vec<Box<dyn JavaRuntimeProvider>> {
         Box::new(AdoptiumRuntimeProvider),
         Box::new(CorrettoRuntimeProvider),
         Box::new(LibericaRuntimeProvider),
+        Box::new(GraalVmRuntimeProvider),
         Box::new(MojangRuntimeProvider),
     ];
     if crate::platform::is_legacy_macos() {
@@ -85,6 +89,7 @@ pub enum JavaVendor {
     Zulu,
     Corretto,
     Oracle,
+    GraalVm,
     Microsoft,
     Adoptium,
     Liberica,
@@ -103,6 +108,7 @@ impl std::fmt::Display for JavaVendor {
             JavaVendor::Microsoft => f.write_str("Microsoft"),
             JavaVendor::Mojang => f.write_str("Mojang"),
             JavaVendor::Oracle => f.write_str("Oracle"),
+            JavaVendor::GraalVm => f.write_str("GraalVM"),
             JavaVendor::OpenJDK => f.write_str("OpenJDK"),
             JavaVendor::Other(other) => f.write_str(other),
         }
@@ -124,6 +130,8 @@ impl FromStr for JavaVendor {
                 Self::Mojang
             } else if v.contains("microsoft") {
                 Self::Microsoft
+            } else if v.contains("graalvm") && !v.contains("community") {
+                Self::GraalVm
             } else if v.contains("openjdk") {
                 Self::OpenJDK
             } else if v.contains("oracle") {

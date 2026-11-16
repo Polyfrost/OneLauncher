@@ -22,7 +22,7 @@ pub const JAVA_VENDOR_HINT: &str = "java-vendor";
 
 pub const INSTALLABLE_MAJORS: &[u32] = &[8, 11, 16, 17, 18, 19, 20, 21, 22, 23];
 
-pub const PROBE_VERSION: u32 = 1;
+pub const PROBE_VERSION: u32 = 2;
 
 const _: () = assert!(PROBE_VERSION > 0);
 
@@ -61,7 +61,15 @@ impl JavaService {
 
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn list_runtimes(&self) -> JavaResult<Vec<JavaRuntime>> {
-        Ok(self.store.list().await?)
+        let mut runtimes = Vec::new();
+        for runtime in self.store.list().await? {
+            if runtime.probe_version == PROBE_VERSION {
+                runtimes.push(runtime);
+            } else if let Some(runtime) = self.revalidate(runtime).await? {
+                runtimes.push(runtime);
+            }
+        }
+        Ok(runtimes)
     }
 
     /// Checks if file wasn't deleted manually

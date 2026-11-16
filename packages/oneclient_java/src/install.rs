@@ -151,10 +151,14 @@ pub fn is_launcher_managed(executable: &Path) -> bool {
 #[must_use]
 pub(crate) fn installed_vendor(executable: &Path) -> Option<crate::vendors::JavaVendor> {
     let root = managed_install_root(executable).ok()??;
-    root.file_name()?
-        .to_str()?
-        .starts_with(crate::vendors::MOJANG_INSTALL_PREFIX)
-        .then_some(crate::vendors::JavaVendor::Mojang)
+    let name = root.file_name()?.to_str()?;
+    if name.starts_with(crate::vendors::MOJANG_INSTALL_PREFIX) {
+        Some(crate::vendors::JavaVendor::Mojang)
+    } else if name.starts_with(crate::vendors::GRAALVM_INSTALL_PREFIX) {
+        Some(crate::vendors::JavaVendor::GraalVm)
+    } else {
+        None
+    }
 }
 
 #[cfg(unix)]
@@ -420,6 +424,18 @@ mod tests {
             Some(crate::vendors::JavaVendor::Mojang)
         );
         assert_eq!(installed_vendor(&zulu), None);
+
+        let bin = java_dir
+            .join("graalvm-jdk-21_linux-x64_bin")
+            .join("graalvm-jdk-21.0.12+8.1")
+            .join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let graalvm = bin.join("java");
+        std::fs::write(&graalvm, b"").unwrap();
+        assert_eq!(
+            installed_vendor(&graalvm),
+            Some(crate::vendors::JavaVendor::GraalVm)
+        );
     }
 
     #[test]

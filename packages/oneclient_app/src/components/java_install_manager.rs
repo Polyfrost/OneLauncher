@@ -18,6 +18,7 @@ fn providers() -> Vec<(JavaVendor, &'static str)> {
         (JavaVendor::Adoptium, "Eclipse Temurin"),
         (JavaVendor::Corretto, "Amazon Corretto"),
         (JavaVendor::Liberica, "BellSoft Liberica"),
+        (JavaVendor::GraalVm, "Oracle GraalVM"),
         (JavaVendor::Mojang, "Mojang"),
     ];
     providers.sort_by_key(|(vendor, _)| *vendor != default);
@@ -78,7 +79,7 @@ impl Component for JavaInstallManager {
         let runtimes = java_runtimes(&runtimes_query);
 
         if let Some(major) = suggested {
-            versions.sort_by_key(|v| v.major != major);
+            versions.retain(|v| v.major == major);
         }
 
         let provider_labels: Vec<String> =

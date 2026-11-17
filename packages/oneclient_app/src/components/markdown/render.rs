@@ -265,6 +265,7 @@ impl Component for MarkdownLink {
             .on_pointer_enter(move |_| hovering.set(true))
             .on_pointer_leave(move |_| hovering.set(false))
             .on_press(move |_| match pending {
+                _ if url == crate::constants::RELEASES_URL => crate::platform::open_url(&url),
                 Some(mut pending) => pending.set(Some(url.clone())),
                 None => tracing::warn!("no link confirmation available, not opening {url}"),
             })

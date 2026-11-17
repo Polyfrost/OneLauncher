@@ -125,6 +125,13 @@ pub fn runs_natively(os_arch: &str) -> bool {
     HostArch::from_os_arch(os_arch).is_none_or(|arch| arch == HostTarget::native().arch)
 }
 
+#[must_use]
+pub fn wrong_arch_for_game(os_arch: &str, native_ok: bool) -> bool {
+    let native = HostTarget::native();
+    native != HostTarget::CURRENT
+        && HostArch::from_os_arch(os_arch).is_some_and(|arch| (arch == native.arch) != native_ok)
+}
+
 fn runtime_arches(native: HostArch, built_for: HostArch) -> Vec<HostArch> {
     if native == built_for {
         vec![native]

@@ -15,6 +15,11 @@ const DISTRIBUTION_URL: &str = "https://translations.r2.polyfrost.org/oneclient/
 const FILE_NAME: &str = "oneclient.json";
 const MANIFEST_TTL: Duration = Duration::from_secs(6 * 60 * 60);
 const RETRY_DELAY: Duration = Duration::from_secs(10 * 60);
+const BUNDLED_LANGUAGE: &str = "zh_TW";
+
+static ZH_TW: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
+    serde_json::from_str(include_str!("../lang/zh_tw.json")).expect("lang/zh_tw.json is valid")
+});
 
 const NAMES: &[(&str, &str, &str)] = &[
     ("ar_SA", "العربية", "Arabic"),
@@ -76,7 +81,14 @@ pub fn subscribe() -> watch::Receiver<u64> {
 }
 
 pub fn available() -> Vec<String> {
-    AVAILABLE.read().unwrap_or_else(|e| e.into_inner()).clone()
+    with_bundled_language(AVAILABLE.read().unwrap_or_else(|e| e.into_inner()).clone())
+}
+
+fn with_bundled_language(mut languages: Vec<String>) -> Vec<String> {
+    languages.retain(|code| !code.eq_ignore_ascii_case(BUNDLED_LANGUAGE));
+    languages.push(BUNDLED_LANGUAGE.to_string());
+    languages.sort();
+    languages
 }
 
 pub fn names(code: Option<&str>) -> (String, String) {
@@ -102,6 +114,9 @@ pub fn coverage(code: Option<&str>) -> Option<u32> {
         None => Some(100),
         Some(code) if WANTED.read().unwrap_or_else(|e| e.into_inner()).as_deref() == Some(code) => {
             i18n::coverage()
+        }
+        Some(code) if code.eq_ignore_ascii_case(BUNDLED_LANGUAGE) => {
+            Some((ZH_TW.len() * 100 / i18n::source().len().max(1)) as u32)
         }
         Some(_) => None,
     }
@@ -222,12 +237,27 @@ fn notify_changed() {
 }
 
 fn install_cached(code: Option<&str>) {
-    let table = code
+    let cached = code
         .and_then(newest_cached)
         .and_then(|path| std::fs::read(path).ok())
         .and_then(|bytes| parse_translations(&bytes));
-    i18n::install(table);
+    i18n::install(translation_table(code, cached));
     notify_changed();
+}
+
+fn translation_table(
+    code: Option<&str>,
+    cached: Option<HashMap<String, String>>,
+) -> Option<HashMap<String, String>> {
+    if code.is_some_and(|code| code.eq_ignore_ascii_case(BUNDLED_LANGUAGE)) {
+        let mut table = ZH_TW.clone();
+        if let Some(cached) = cached {
+            table.extend(cached);
+        }
+        Some(table)
+    } else {
+        cached
+    }
 }
 
 fn valid_code(code: &str) -> bool {
@@ -326,6 +356,77 @@ fn prune_older(dir: &Path, current: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn traditional_chinese_is_available_without_a_manifest() {
+        assert_eq!(with_bundled_language(vec![]), vec!["zh_TW"]);
+        assert_eq!(
+            with_bundled_language(vec!["zh_TW".into(), "de_DE".into(), "zh_tw".into()]),
+            vec!["de_DE", "zh_TW"]
+        );
+    }
+
+    #[test]
+    fn traditional_chinese_covers_source_and_preserves_placeholders() {
+        assert_eq!(ZH_TW.len(), i18n::source().len());
+        for (key, english) in i18n::source() {
+            let translated = ZH_TW.get(key).unwrap_or_else(|| panic!("missing {key}"));
+            assert!(!translated.trim().is_empty(), "empty {key}");
+            assert_eq!(i18n::arity(english), i18n::arity(translated), "{key}");
+        }
+    }
+
+    #[test]
+    fn traditional_chinese_preserves_each_argument_and_literal_percent() {
+        let pattern = regex::Regex::new(r"%%|%s|%(\d+)\$s").unwrap();
+        let signature = |text: &str| {
+            let mut sequential = 0;
+            let mut parameters = BTreeMap::<usize, usize>::new();
+            for capture in pattern.captures_iter(text) {
+                let index = match &capture[0] {
+                    "%%" => 0,
+                    "%s" => {
+                        sequential += 1;
+                        sequential
+                    }
+                    _ => capture[1].parse().unwrap(),
+                };
+                *parameters.entry(index).or_default() += 1;
+            }
+            parameters
+        };
+        for (key, english) in i18n::source() {
+            assert_eq!(signature(english), signature(&ZH_TW[key]), "{key}");
+        }
+        assert_eq!(
+            i18n::format_placeholders(
+                &ZH_TW["oneclient.cluster.package_manager.search_empty.scoped.title"],
+                &[&"模組", &"本機"],
+            ),
+            "「本機」中沒有符合搜尋條件的模組。"
+        );
+    }
+
+    #[test]
+    fn cached_translations_overlay_bundled_chinese_without_losing_other_entries() {
+        let key = "oneclient.common.cancel";
+        let offline = translation_table(Some("zh_TW"), None).unwrap();
+        assert_eq!(offline[key], "取消");
+        let cached = HashMap::from([(key.to_string(), "取消操作".to_string())]);
+        let updated = translation_table(Some("zh_TW"), Some(cached.clone())).unwrap();
+        assert_eq!(updated[key], "取消操作");
+        assert_eq!(updated.len(), offline.len());
+        assert_eq!(
+            updated["oneclient.common.save"],
+            offline["oneclient.common.save"]
+        );
+        assert!(translation_table(None, None).is_none());
+        assert!(translation_table(Some("de_DE"), None).is_none());
+        assert_eq!(
+            translation_table(Some("de_DE"), Some(cached.clone())),
+            Some(cached)
+        );
+    }
 
     #[test]
     fn manifest_keeps_only_safe_launcher_files() {

@@ -8,16 +8,17 @@ use crate::components::{
     Button, ColorPicker, Dropdown, IconType, Segment, SegmentedControl, TextInput, toggle,
 };
 use crate::hooks::{use_debounced, use_dispatch};
+use crate::i18n::{t, tf};
 use crate::routes::Route;
 use crate::theme::colors::{self, Hex, Palette};
 use crate::theme::{Theme, font_families, pixel_font_size_of, save_theme};
 
 const BORDER_OPACITIES: [u8; 7] = [5, 10, 15, 20, 30, 45, 60];
 const CORNERS: [(&str, f32); 4] = [
-    ("Square", 0.),
-    ("Subtle", 0.5),
-    ("Default", 1.),
-    ("Round", 1.5),
+    ("oneclient.settings.theme_editor.corners.square", 0.),
+    ("oneclient.settings.theme_editor.corners.subtle", 0.5),
+    ("oneclient.common.default", 1.),
+    ("oneclient.settings.theme_editor.corners.round", 1.5),
 ];
 
 #[derive(PartialEq)]
@@ -29,7 +30,10 @@ impl Component for SettingsThemeEditor {
         let draft = use_state(|| {
             let mut theme = (*colors::active_theme()).clone();
             if theme.is_builtin() {
-                theme.name = format!("{} (Custom)", theme.name);
+                theme.name = tf(
+                    "oneclient.settings.theme_editor.custom_name",
+                    &[&theme.name],
+                );
             }
             theme
         });
@@ -70,7 +74,7 @@ impl Component for SettingsThemeEditor {
                             saving.set(false);
                             tracing::error!("Failed to save theme: {err:#}");
                             dispatch
-                                .notify("Couldn't save the theme")
+                                .notify(t("oneclient.settings.theme_editor.save_failed"))
                                 .body(format!("{err:#}"))
                                 .error()
                                 .toast_only()
@@ -84,104 +88,109 @@ impl Component for SettingsThemeEditor {
         settings_page()
             .child(settings_row(
                 IconType::Pencil01,
-                "Name",
-                "Saved as a JSON file in the launcher's themes folder.",
-                rect()
-                    .width(Size::px(220.))
-                    .child(TextInput::new(name).placeholder("My theme")),
+                t("oneclient.settings.theme_editor.name"),
+                t("oneclient.settings.theme_editor.name.description"),
+                rect().width(Size::px(220.)).child(
+                    TextInput::new(name)
+                        .placeholder(t("oneclient.settings.theme_editor.name.placeholder")),
+                ),
             ))
             .child(settings_row(
                 IconType::Moon01,
-                "Base",
-                "Whether the theme is dark or light. Changes which way hover and pressed shades go.",
+                t("oneclient.settings.theme_editor.base"),
+                t("oneclient.settings.theme_editor.base.description"),
                 SegmentedControl::new(light)
-                    .segment(Segment::new(false).label("Dark"))
-                    .segment(Segment::new(true).label("Light")),
+                    .segment(
+                        Segment::new(false).label(t("oneclient.settings.appearance.theme.dark")),
+                    )
+                    .segment(
+                        Segment::new(true).label(t("oneclient.settings.appearance.theme.light")),
+                    ),
             ))
-            .child(section_header("Colors"))
+            .child(section_header(t("oneclient.settings.theme_editor.colors")))
             .child(color_row(
                 draft,
                 IconType::LayoutTop,
-                "Background",
-                "Behind every page.",
+                t("oneclient.settings.theme_editor.background"),
+                t("oneclient.settings.theme_editor.background.description"),
                 |palette| &mut palette.page,
             ))
             .child(color_row(
                 draft,
                 IconType::Copy01,
-                "Surface",
-                "Settings rows, dialogs and menus.",
+                t("oneclient.settings.theme_editor.surface"),
+                t("oneclient.settings.theme_editor.surface.description"),
                 |palette| &mut palette.page_elevated,
             ))
             .child(color_row(
                 draft,
                 IconType::Square,
-                "Cards",
-                "Version, package and stat cards.",
+                t("oneclient.settings.theme_editor.cards"),
+                t("oneclient.settings.theme_editor.cards.description"),
                 |palette| &mut palette.card,
             ))
             .child(color_row(
                 draft,
                 IconType::Sliders04,
-                "Controls",
-                "Inputs, dropdowns and secondary buttons.",
+                t("oneclient.settings.theme_editor.controls"),
+                t("oneclient.settings.theme_editor.controls.description"),
                 |palette| &mut palette.component,
             ))
             .child(color_row(
                 draft,
                 IconType::ParagraphWrap,
-                "Text",
-                "Titles and body text.",
+                t("oneclient.settings.theme_editor.text"),
+                t("oneclient.settings.theme_editor.text.description"),
                 |palette| &mut palette.text,
             ))
             .child(color_row(
                 draft,
                 IconType::MessageTextSquare01,
-                "Secondary text",
-                "Descriptions, hints and muted labels.",
+                t("oneclient.settings.theme_editor.secondary_text"),
+                t("oneclient.settings.theme_editor.secondary_text.description"),
                 |palette| &mut palette.text_secondary,
             ))
             .child(color_row(
                 draft,
                 IconType::PaintPour,
-                "Accent",
-                "Primary buttons and highlights, unless you set an accent color.",
+                t("oneclient.settings.theme_editor.accent"),
+                t("oneclient.settings.theme_editor.accent.description"),
                 |palette| &mut palette.accent,
             ))
-            .child(section_header("Borders"))
+            .child(section_header(t("oneclient.settings.theme_editor.borders")))
             .child(border_color_row(draft))
             .child(border_opacity_row(draft))
             .child(settings_row(
                 IconType::Square,
-                "Corners",
-                "How rounded cards, buttons and dialogs are.",
+                t("oneclient.settings.theme_editor.corners"),
+                t("oneclient.settings.theme_editor.corners.description"),
                 SegmentedControl::new(radius).segments(
                     CORNERS
                         .iter()
-                        .map(|(label, scale)| Segment::new(*scale).label(*label)),
+                        .map(|(label, scale)| Segment::new(*scale).label(t(label))),
                 ),
             ))
-            .child(section_header("Fonts"))
+            .child(section_header(t("oneclient.settings.theme_editor.fonts")))
             .child(font_row(
                 draft,
                 IconType::ParagraphWrap,
-                "Font",
-                "Used for all launcher text.",
+                t("oneclient.settings.theme_editor.font"),
+                t("oneclient.settings.theme_editor.font.description"),
                 edited.font.clone(),
                 |theme| &mut theme.font,
             ))
             .child(font_row(
                 draft,
                 IconType::CodeSnippet02,
-                "Code font",
-                "Used for logs and code blocks.",
+                t("oneclient.settings.theme_editor.code_font"),
+                t("oneclient.settings.theme_editor.code_font.description"),
                 edited.mono_font.clone(),
                 |theme| &mut theme.mono_font,
             ))
             .child(settings_row(
                 IconType::DotsGrid,
-                "Pixel icons",
-                "Use blocky pixel-art icons, like the Minecraft themes.",
+                t("oneclient.settings.theme_editor.pixel_icons"),
+                t("oneclient.settings.theme_editor.pixel_icons.description"),
                 toggle(pixel_icons),
             ))
             .child(
@@ -197,14 +206,14 @@ impl Component for SettingsThemeEditor {
                             .on_press(|_| {
                                 let _ = RouterContext::get().push(Route::SettingsAppearance {});
                             })
-                            .text("Discard"),
+                            .text(t("oneclient.settings.theme_editor.discard")),
                     )
                     .child(
                         Button::new()
                             .primary()
                             .enabled(!edited.name.is_empty() && !*saving.read())
                             .on_press(save)
-                            .text("Save theme"),
+                            .text(t("oneclient.settings.theme_editor.save")),
                     ),
             )
             .into_element()
@@ -236,8 +245,8 @@ fn border_color_row(draft: State<Theme>) -> impl IntoElement {
     let border = draft.read().colors.border.0;
     settings_row(
         IconType::Square,
-        "Border color",
-        "Outlines around cards, inputs and dialogs.",
+        t("oneclient.settings.theme_editor.border_color"),
+        t("oneclient.settings.theme_editor.border_color.description"),
         ColorPicker::new(colors::with_alpha(border, 255), move |picked: Color| {
             let mut draft = draft;
             let alpha = draft.peek().colors.border.0.a();
@@ -259,8 +268,8 @@ fn border_opacity_row(draft: State<Theme>) -> impl IntoElement {
 
     settings_row(
         IconType::Eye,
-        "Border opacity",
-        "Hovered and pressed borders get stronger from here.",
+        t("oneclient.settings.theme_editor.border_opacity"),
+        t("oneclient.settings.theme_editor.border_opacity.description"),
         Dropdown::new(format!("{selected}%"), options)
             .outlined()
             .on_select(move |index: usize| {

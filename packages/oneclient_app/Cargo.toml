@@ -48,6 +48,7 @@ notify.workspace = true
 
 anyhow.workspace = true
 regex.workspace = true
+emojis.workspace = true
 directories.workspace = true
 dunce.workspace = true
 percent-encoding.workspace = true

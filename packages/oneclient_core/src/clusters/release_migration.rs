@@ -17,7 +17,6 @@ use crate::versions::{ReleaseTarget, RemoteMigration};
 
 #[derive(Debug, Clone)]
 pub struct ReleaseMigrationOffer {
-    pub release: ReleaseTarget,
     pub target: Cluster,
     pub sources: Vec<Cluster>,
 }
@@ -124,40 +123,81 @@ pub async fn release_migration_offer(
     offer_for(target, &clusters, &content).await
 }
 
+#[derive(Debug, Clone)]
+pub struct MigrationPartners {
+    pub home: Cluster,
+    pub inbound: Vec<Cluster>,
+    pub outbound: Vec<Cluster>,
+}
+
 #[tracing::instrument(skip(state))]
-pub async fn manual_migration_offer(
+pub async fn manual_migration_partners(
     state: &LauncherState,
-    target_cluster_id: i64,
-    source_cluster_id: i64,
-) -> LauncherResult<OfferLookup> {
+    home_cluster_id: i64,
+) -> LauncherResult<Option<MigrationPartners>> {
     let clusters = state.clusters.list().await?;
     let content = state.services.content();
 
-    let (Some(target), Some(source)) = (
-        clusters
-            .iter()
-            .find(|cluster| cluster.id == target_cluster_id),
-        clusters
-            .iter()
-            .find(|cluster| cluster.id == source_cluster_id),
-    ) else {
-        return Ok(OfferLookup::MissingCluster);
+    let Some(home) = clusters
+        .iter()
+        .find(|cluster| cluster.id == home_cluster_id)
+        .cloned()
+    else {
+        return Ok(None);
     };
 
-    if !is_migration_source(source, target, can_migrate_manually)
-        || !has_packages_to_migrate(source.id, target.id, &state.bundles, &content).await?
-    {
-        return Ok(OfferLookup::NoSources);
+    let mut inbound = Vec::new();
+    let mut outbound = Vec::new();
+    let mut failure = None;
+    let partners = rank_migration_sources(&home, &clusters)
+        .into_iter()
+        .map(|source| (true, source))
+        .chain(
+            rank_migration_targets(&home, &clusters)
+                .into_iter()
+                .map(|target| (false, target)),
+        );
+    for (is_inbound, other) in partners {
+        let (source_id, target_id) = if is_inbound {
+            (other.id, home.id)
+        } else {
+            (home.id, other.id)
+        };
+        match has_packages_to_migrate(source_id, target_id, &state.bundles, &content).await {
+            Ok(true) if is_inbound => inbound.push(other),
+            Ok(true) => outbound.push(other),
+            Ok(false) => {}
+            Err(err) => {
+                tracing::warn!(error = %err, source_id, target_id, "skipping migration partner");
+                failure.get_or_insert(err);
+            }
+        }
+    }
+    if let Some(err) = failure.filter(|_| inbound.is_empty() && outbound.is_empty()) {
+        return Err(err.into());
     }
 
-    Ok(OfferLookup::Offer(Box::new(ReleaseMigrationOffer {
-        release: ReleaseTarget {
-            mc_version: target.mc_version.clone(),
-            loader: target.mc_loader,
-        },
-        target: target.clone(),
-        sources: vec![source.clone()],
-    })))
+    Ok(Some(MigrationPartners {
+        home,
+        inbound,
+        outbound,
+    }))
+}
+
+#[must_use]
+pub fn rank_migration_targets(source: &Cluster, clusters: &[Cluster]) -> Vec<Cluster> {
+    let mut targets: Vec<Cluster> = clusters
+        .iter()
+        .filter(|cluster| is_migration_source(source, cluster, can_migrate_manually))
+        .cloned()
+        .collect();
+    targets.sort_by_key(|cluster| {
+        (
+            cluster.mc_loader != source.mc_loader,
+            Reverse(cluster.last_played),
+        )
+    });
+    targets
 }
 
 #[must_use]
@@ -214,10 +254,6 @@ async fn offer_for(
     });
 
     Ok(OfferLookup::Offer(Box::new(ReleaseMigrationOffer {
-        release: ReleaseTarget {
-            mc_version: target.mc_version.clone(),
-            loader: target.mc_loader,
-        },
         target: target.clone(),
         sources,
     })))
@@ -455,5 +491,19 @@ mod tests {
         let clusters = [target.clone(), user_cluster(2, "26.3")];
         let sources = rank_migration_sources(&target, &clusters);
         assert_eq!(sources.iter().map(|c| c.id).collect::<Vec<_>>(), [2]);
+    }
+
+    #[test]
+    fn migration_targets_follow_loader_direction() {
+        let fabric = user_cluster(1, "1.8.9");
+        let ornithe = Cluster {
+            id: 2,
+            mc_loader: GameLoader::Ornithe,
+            ..user_cluster(2, "1.8.9")
+        };
+        let clusters = [fabric.clone(), ornithe.clone()];
+        let ids = |list: Vec<Cluster>| list.iter().map(|c| c.id).collect::<Vec<_>>();
+        assert_eq!(ids(rank_migration_targets(&fabric, &clusters)), [2]);
+        assert!(rank_migration_targets(&ornithe, &clusters).is_empty());
     }
 }

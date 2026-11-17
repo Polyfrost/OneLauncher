@@ -20,7 +20,7 @@ use crate::hooks::{
 };
 use crate::i18n::{t, tf};
 use crate::routes::Route;
-use crate::state::{ReleaseMigrationPrompt, ReleasePlanState};
+use crate::state::{MigrationDirection, ReleaseMigrationPrompt, ReleasePlanState};
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::format_size;
@@ -173,7 +173,12 @@ impl Component for ReleaseMigrationPopup {
             return rect().into_element();
         }
 
-        let target_running = game.is_running(prompt.target.id);
+        let running = prompt
+            .source()
+            .into_iter()
+            .chain(prompt.target())
+            .find(|cluster| game.is_running(cluster.id))
+            .map(cluster_title);
         let close = dispatch.clone();
         let panel_dispatch = dispatch.clone();
 
@@ -193,7 +198,7 @@ impl Component for ReleaseMigrationPopup {
                         wont_open,
                         deps_open,
                         copy_configs,
-                        target_running,
+                        running,
                     )),
             )
             .into_element()
@@ -210,7 +215,7 @@ fn dialog(
     wont_open: State<bool>,
     deps_open: State<bool>,
     copy_configs: State<bool>,
-    target_running: bool,
+    running: Option<String>,
 ) -> impl IntoElement {
     let plan = match prompt.plan() {
         Some(ReleasePlanState::Ready(plan)) => Some(plan),
@@ -246,7 +251,7 @@ fn dialog(
             wont_open,
             deps_open,
             copy_configs,
-            target_running,
+            running,
         ))
 }
 
@@ -255,7 +260,7 @@ fn art_panel(
     plan: Option<&ReleaseMigrationPlan>,
     excluded: &HashSet<SelectionKey>,
 ) -> impl IntoElement {
-    let target = &prompt.target;
+    let target = prompt.target().unwrap_or(&prompt.home);
     let parsed = parse_mc_version(&target.mc_version);
     let art = parsed
         .map(|parsed| DynamicArt::for_version(parsed.major, parsed.key(), Some(target.mc_loader)));
@@ -267,7 +272,7 @@ fn art_panel(
             _ => target.mc_loader.to_string(),
         });
     }
-    if let Some(java) = prompt.java_major {
+    if let Some(java) = prompt.java_major() {
         runtime.push(tf("oneclient.components.release_migration.java", &[&java]));
     }
 
@@ -429,21 +434,21 @@ fn content_panel(
     wont_open: State<bool>,
     deps_open: State<bool>,
     copy_configs: State<bool>,
-    target_running: bool,
+    running: Option<String>,
 ) -> impl IntoElement {
     let close = dispatch.clone();
     let picker_dispatch = dispatch.clone();
-    let source_title = prompt.source().map(cluster_title).unwrap_or_default();
-
-    let target_title = if prompt.target.user_created {
-        prompt.target.name.as_str()
-    } else {
-        prompt.target.mc_version.as_str()
-    };
-    let subtitle = tf(
-        "oneclient.components.release_migration.subtitle",
-        &[&target_title, &source_title],
-    );
+    let toggle = direction_toggle(prompt, &dispatch);
+    let subtitle = prompt
+        .source()
+        .zip(prompt.target())
+        .map(|(source, target)| {
+            tf(
+                "oneclient.components.release_migration.subtitle",
+                &[&cluster_title(target), &cluster_title(source)],
+            )
+        })
+        .unwrap_or_default();
 
     rect()
         .vertical()
@@ -492,7 +497,8 @@ fn content_panel(
                         .margin(Gaps::new(4., 0., 0., 0.))
                         .color(colors::fg_secondary()),
                 )
-                .child(source_picker(prompt, picker_dispatch))
+                .maybe_child(toggle)
+                .child(partner_picker(prompt, picker_dispatch))
                 .child(tab_row(plan, excluded, tab))
                 .child(package_list(
                     prompt, plan, meta, excluded, tab, wont_open, deps_open,
@@ -510,37 +516,77 @@ fn content_panel(
             dispatch,
             excluded,
             copy_configs,
-            target_running,
+            running,
         ))
 }
 
-fn source_picker(prompt: &ReleaseMigrationPrompt, dispatch: crate::Actions) -> impl IntoElement {
-    let sources: Vec<i64> = prompt.sources.iter().map(|cluster| cluster.id).collect();
-    let options: Vec<String> = prompt.sources.iter().map(cluster_title).collect();
-    let selected = prompt.source().map(cluster_title).unwrap_or_default();
+fn direction_toggle(prompt: &ReleaseMigrationPrompt, dispatch: &crate::Actions) -> Option<Element> {
+    if prompt.inbound.is_empty() || prompt.outbound.is_empty() {
+        return None;
+    }
+    let home = cluster_title(&prompt.home);
+    let mut pills = rect()
+        .horizontal()
+        .spacing(8.)
+        .margin(Gaps::new(18., 0., 0., 0.));
+    for (direction, key) in [
+        (
+            MigrationDirection::Into,
+            "oneclient.components.release_migration.direction.into",
+        ),
+        (
+            MigrationDirection::From,
+            "oneclient.components.release_migration.direction.from",
+        ),
+    ] {
+        let dispatch = dispatch.clone();
+        pills = pills.child(tab_pill(
+            tf(key, &[&home]),
+            prompt.direction == direction,
+            move || dispatch.set_migration_direction(direction),
+        ));
+    }
+    Some(pills.into_element())
+}
+
+fn partner_picker(prompt: &ReleaseMigrationPrompt, dispatch: crate::Actions) -> impl IntoElement {
+    let others = prompt.others();
+    let ids: Vec<i64> = others.iter().map(|cluster| cluster.id).collect();
+    let options: Vec<String> = others.iter().map(cluster_title).collect();
+    let selected = prompt.other().map(cluster_title).unwrap_or_default();
+
+    let picker = Dropdown::new(selected, options)
+        .outlined()
+        .width(Size::px(212.))
+        .height(Size::px(32.))
+        .on_select(move |index: usize| {
+            if let Some(id) = ids.get(index) {
+                dispatch.pick_migration_partner(*id);
+            }
+        })
+        .into_element();
+    let home = label()
+        .text(cluster_title(&prompt.home))
+        .font_size(text_size(14.))
+        .font_weight(FontWeight::MEDIUM)
+        .max_lines(1)
+        .color(colors::fg_primary())
+        .into_element();
+    let arrow = Icon::new(IconType::ArrowRight)
+        .size(16.)
+        .color(colors::fg_secondary())
+        .into_element();
+    let sides = match prompt.direction {
+        MigrationDirection::Into => vec![picker, arrow, home],
+        MigrationDirection::From => vec![home, arrow, picker],
+    };
 
     rect()
         .horizontal()
         .cross_align(Alignment::Center)
         .spacing(12.)
-        .margin(Gaps::new(18., 0., 0., 0.))
-        .child(
-            label()
-                .text(t("oneclient.components.release_migration.migrate_from"))
-                .font_size(text_size(13.))
-                .color(colors::fg_secondary()),
-        )
-        .child(
-            Dropdown::new(selected, options)
-                .outlined()
-                .width(Size::px(212.))
-                .height(Size::px(32.))
-                .on_select(move |index: usize| {
-                    if let Some(source_id) = sources.get(index) {
-                        dispatch.select_release_migration_source(*source_id);
-                    }
-                }),
-        )
+        .margin(Gaps::new(14., 0., 0., 0.))
+        .children(sides)
 }
 
 fn tab_row(
@@ -655,6 +701,10 @@ fn package_list(
     deps_open: State<bool>,
 ) -> impl IntoElement {
     let source_title = prompt.source().map(cluster_title).unwrap_or_default();
+    let target_version = prompt
+        .target()
+        .map(|target| target.mc_version.clone())
+        .unwrap_or_default();
 
     let message = match (prompt.plan(), plan) {
         (Some(ReleasePlanState::Loading) | None, _) => {
@@ -695,7 +745,7 @@ fn package_list(
     if rows.is_empty() && skipped.is_empty() && dependencies.is_empty() {
         return list_message(tf(
             "oneclient.components.release_migration.nothing_compatible",
-            &[&source_title, &prompt.target.mc_version],
+            &[&source_title, &target_version],
         ))
         .into_element();
     }
@@ -877,11 +927,14 @@ fn selected_hashes(
 }
 
 fn build_label(prompt: &ReleaseMigrationPrompt) -> String {
-    let mc_version = &prompt.target.mc_version;
+    let Some(target) = prompt.target() else {
+        return String::new();
+    };
+    let mc_version = &target.mc_version;
     if !prompt.is_cross_loader() {
         return mc_version.clone();
     }
-    match prompt.target.mc_loader {
+    match target.mc_loader {
         GameLoader::Ornithe => format!("Ornithe {mc_version}"),
         loader => format!("{loader} {mc_version}"),
     }
@@ -1152,7 +1205,7 @@ fn footer(
     dispatch: crate::Actions,
     excluded: State<HashSet<SelectionKey>>,
     copy_configs: State<bool>,
-    target_running: bool,
+    running: Option<String>,
 ) -> impl IntoElement {
     let dismiss = dispatch.clone();
 
@@ -1186,18 +1239,22 @@ fn footer(
         &[&count, &total, &format_size(bytes)],
     );
 
-    let enabled = count > 0 && !target_running;
+    let target_name = prompt.target().map(cluster_title).unwrap_or_default();
+    let enabled = count > 0 && running.is_none();
     let mut migrate = Button::new()
         .primary()
         .enabled(enabled)
         .on_press(move |_| {
             dispatch.migrate_release_packages(chosen.clone(), *copy_configs.peek());
         })
-        .text(t("oneclient.components.release_migration.migrate"));
-    if target_running {
+        .text(tf(
+            "oneclient.components.release_migration.copy_into",
+            &[&target_name],
+        ));
+    if let Some(running) = running {
         migrate = migrate.tooltip(tf(
             "oneclient.components.release_migration.close_target",
-            &[&prompt.target.name],
+            &[&running],
         ));
     }
 

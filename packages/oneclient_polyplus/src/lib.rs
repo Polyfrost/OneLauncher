@@ -20,7 +20,7 @@ pub use models::{
     BlockedPlayer, CursorPage, Friend, FriendRequest, GroupKind, GroupMessage, GroupSummary,
     IncomingSessionInvite, LastMessage,
     MAX_MESSAGE_LENGTH, MAX_PAGE_SIZE, MAX_RESOLVE_BATCH, PlayerStatus, RelationshipKind,
-    ResolvedPlayer, SessionInvite,
+    ResolvedPlayer, SessionInvite, SpecialChatStatus,
 };
 pub use packets::ClientboundPacket;
 

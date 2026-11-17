@@ -306,6 +306,8 @@ pub struct ChatState {
     pub self_status: PlayerStatus,
     pub friend_request: FriendRequestStatus,
     pub special_target: bool,
+    pub special_group: Option<i32>,
+    pub special_cooldown: Option<DateTime<FixedOffset>>,
     /// Where the next page of conversations starts; `None` once all are loaded
     pub groups_cursor: Option<String>,
     conversations: Vec<ChatConversation>,

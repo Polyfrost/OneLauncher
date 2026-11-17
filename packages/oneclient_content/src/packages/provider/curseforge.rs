@@ -754,6 +754,7 @@ impl From<CfFile> for VersionSummary {
             downloads: f.download_count,
             file_size: f.file_length,
             dependencies: f.dependencies.into_iter().map(Into::into).collect(),
+            blocked: f.download_url.is_none(),
         }
     }
 }
@@ -980,10 +981,10 @@ mod tests {
             "fileLength": 100
         });
 
-        let version: VersionDetail = serde_json::from_value::<CfFile>(raw)
-            .expect("curseforge file")
-            .into();
+        let file = serde_json::from_value::<CfFile>(raw).expect("curseforge file");
+        assert!(VersionSummary::from(file.clone()).blocked);
 
+        let version: VersionDetail = file.into();
         assert_eq!(version.files[0].url, "");
     }
 }

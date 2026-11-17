@@ -266,7 +266,15 @@ async fn latest_for(
     ctx: &ContentCtx,
 ) -> ContentResult<Option<(String, String)>> {
     let provider = ctx.providers.get(candidate.provider)?;
-    let Some(latest) = pick_version(provider, &candidate.project_id, cluster, ctx).await? else {
+    let Some(latest) = pick_version(
+        provider,
+        &candidate.project_id,
+        cluster,
+        Some(&candidate.version_id),
+        ctx,
+    )
+    .await?
+    else {
         return Ok(None);
     };
 

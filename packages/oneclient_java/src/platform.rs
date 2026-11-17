@@ -1,6 +1,8 @@
 //! Host detection is shared here but the *naming* stays per-vendor
 //! each API spells the same platform differently (e.g. Adoptium `mac`/`alpine-linux`/`x32`)
 
+use std::sync::OnceLock;
+
 use crate::data::PackageArchive;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,6 +47,25 @@ impl HostTarget {
         },
     };
 
+    #[must_use]
+    pub fn native() -> Self {
+        static NATIVE: OnceLock<HostArch> = OnceLock::new();
+        let arch = *NATIVE.get_or_init(|| {
+            let arch = detect_native_arch().unwrap_or(Self::CURRENT.arch);
+            tracing::info!(?arch, built_for = ?Self::CURRENT.arch, "detected the native CPU architecture");
+            arch
+        });
+        Self {
+            arch,
+            os: Self::CURRENT.os,
+        }
+    }
+
+    #[must_use]
+    pub fn runtime_arches() -> Vec<HostArch> {
+        runtime_arches(Self::native().arch, Self::CURRENT.arch)
+    }
+
     /// Liberica takes architecture and bitness as separate query parameters
     #[must_use]
     pub const fn bitness(self) -> &'static str {
@@ -74,6 +95,101 @@ impl HostTarget {
     pub const fn is_musl(self) -> bool {
         matches!(self.os, HostOs::Linux { musl: true })
     }
+}
+
+impl HostArch {
+    #[must_use]
+    pub const fn os_arch(self) -> &'static str {
+        match self {
+            Self::X86 => "x86",
+            Self::X86_64 => "amd64",
+            Self::Arm => "arm",
+            Self::Aarch64 => "aarch64",
+        }
+    }
+
+    #[must_use]
+    pub fn from_os_arch(os_arch: &str) -> Option<Self> {
+        match os_arch {
+            "amd64" | "x86_64" | "x64" => Some(Self::X86_64),
+            "aarch64" | "arm64" => Some(Self::Aarch64),
+            "x86" | "i386" | "i486" | "i586" | "i686" => Some(Self::X86),
+            "arm" => Some(Self::Arm),
+            _ => None,
+        }
+    }
+}
+
+#[must_use]
+pub fn runs_natively(os_arch: &str) -> bool {
+    HostArch::from_os_arch(os_arch).is_none_or(|arch| arch == HostTarget::native().arch)
+}
+
+fn runtime_arches(native: HostArch, built_for: HostArch) -> Vec<HostArch> {
+    if native == built_for {
+        vec![native]
+    } else {
+        vec![native, built_for]
+    }
+}
+
+#[cfg(any(windows, test))]
+fn arch_from_machine(machine: u16) -> Option<HostArch> {
+    match machine {
+        0x8664 => Some(HostArch::X86_64),
+        0xAA64 => Some(HostArch::Aarch64),
+        0x014C => Some(HostArch::X86),
+        0x01C4 => Some(HostArch::Arm),
+        _ => None,
+    }
+}
+
+#[cfg(windows)]
+fn detect_native_arch() -> Option<HostArch> {
+    use windows_sys::Win32::Foundation::HANDLE;
+    use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+    use windows_sys::core::BOOL;
+
+    type IsWow64Process2 = unsafe extern "system" fn(HANDLE, *mut u16, *mut u16) -> BOOL;
+
+    let kernel32: Vec<u16> = "kernel32.dll\0".encode_utf16().collect();
+    unsafe {
+        let module = GetModuleHandleW(kernel32.as_ptr());
+        if module.is_null() {
+            return None;
+        }
+        let proc = GetProcAddress(module, c"IsWow64Process2".as_ptr().cast())?;
+        let is_wow64_process2: IsWow64Process2 = std::mem::transmute(proc);
+
+        let mut process = 0u16;
+        let mut native = 0u16;
+        if is_wow64_process2(GetCurrentProcess(), &raw mut process, &raw mut native) == 0 {
+            return None;
+        }
+        arch_from_machine(native)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn detect_native_arch() -> Option<HostArch> {
+    let mut translated: libc::c_int = 0;
+    let mut size = size_of::<libc::c_int>();
+    let ret = unsafe {
+        libc::sysctlbyname(
+            c"sysctl.proc_translated".as_ptr(),
+            (&raw mut translated).cast(),
+            &raw mut size,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    (ret == 0 && translated == 1).then_some(HostArch::Aarch64)
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+fn detect_native_arch() -> Option<HostArch> {
+    None
 }
 
 #[cfg(windows)]
@@ -258,6 +374,35 @@ mod tests {
         assert!(!plist_is_legacy_macos(&plist("11.7.10")));
         assert!(!plist_is_legacy_macos(&plist("15.1")));
         assert!(!plist_is_legacy_macos(""));
+    }
+
+    #[test]
+    fn an_emulated_launcher_falls_back_to_its_own_architecture() {
+        assert_eq!(
+            runtime_arches(HostArch::Aarch64, HostArch::X86_64),
+            vec![HostArch::Aarch64, HostArch::X86_64]
+        );
+        assert_eq!(
+            runtime_arches(HostArch::X86_64, HostArch::X86_64),
+            vec![HostArch::X86_64]
+        );
+    }
+
+    #[test]
+    fn windows_machine_types_map_to_architectures() {
+        assert_eq!(arch_from_machine(0xAA64), Some(HostArch::Aarch64));
+        assert_eq!(arch_from_machine(0x8664), Some(HostArch::X86_64));
+        assert_eq!(arch_from_machine(0x014C), Some(HostArch::X86));
+        assert_eq!(arch_from_machine(0), None);
+    }
+
+    #[test]
+    fn jvm_os_arch_spellings_are_understood() {
+        assert_eq!(HostArch::from_os_arch("amd64"), Some(HostArch::X86_64));
+        assert_eq!(HostArch::from_os_arch("x86_64"), Some(HostArch::X86_64));
+        assert_eq!(HostArch::from_os_arch("aarch64"), Some(HostArch::Aarch64));
+        assert_eq!(HostArch::from_os_arch("ppc64le"), None);
+        assert!(runs_natively("ppc64le"));
     }
 
     #[test]

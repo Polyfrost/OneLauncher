@@ -79,12 +79,13 @@ impl JavaRuntimeProvider for MojangRuntimeProvider {
     }
 
     #[tracing::instrument(level = "debug", skip(self, net))]
-    async fn list_packages(
+    async fn list_arch_packages(
         &self,
         major: Option<u32>,
+        arch: HostArch,
         net: &RequestClient,
     ) -> JavaResult<Vec<JavaPackage>> {
-        let Some(platform) = MOJANG_PLATFORM else {
+        let Some(platform) = mojang_platform(HostTarget::CURRENT.os, arch) else {
             return Ok(Vec::new());
         };
 
@@ -115,7 +116,10 @@ impl JavaRuntimeProvider for MojangRuntimeProvider {
                 Some(
                     JavaPackage {
                         download_url: entry.manifest.url,
-                        name: format!("{INSTALL_PREFIX}{component}-{}", entry.version.name),
+                        name: format!(
+                            "{INSTALL_PREFIX}{platform}-{component}-{}",
+                            entry.version.name
+                        ),
                         java_version: vec![this_major],
                         vendor: JavaVendor::Mojang,
                         archive: HostTarget::CURRENT.archive(),
@@ -291,16 +295,18 @@ fn leading_major(name: &str) -> Option<u32> {
     digits.parse().ok()
 }
 
-const MOJANG_PLATFORM: Option<&str> = match (HostTarget::CURRENT.os, HostTarget::CURRENT.arch) {
-    (HostOs::Windows, HostArch::X86_64) => Some("windows-x64"),
-    (HostOs::Windows, HostArch::X86) => Some("windows-x86"),
-    (HostOs::Windows, HostArch::Aarch64) => Some("windows-arm64"),
-    (HostOs::MacOs, HostArch::X86_64) => Some("mac-os"),
-    (HostOs::MacOs, HostArch::Aarch64) => Some("mac-os-arm64"),
-    (HostOs::Linux { musl: false }, HostArch::X86_64) => Some("linux"),
-    (HostOs::Linux { musl: false }, HostArch::X86) => Some("linux-i386"),
-    _ => None,
-};
+const fn mojang_platform(os: HostOs, arch: HostArch) -> Option<&'static str> {
+    match (os, arch) {
+        (HostOs::Windows, HostArch::X86_64) => Some("windows-x64"),
+        (HostOs::Windows, HostArch::X86) => Some("windows-x86"),
+        (HostOs::Windows, HostArch::Aarch64) => Some("windows-arm64"),
+        (HostOs::MacOs, HostArch::X86_64) => Some("mac-os"),
+        (HostOs::MacOs, HostArch::Aarch64) => Some("mac-os-arm64"),
+        (HostOs::Linux { musl: false }, HostArch::X86_64) => Some("linux"),
+        (HostOs::Linux { musl: false }, HostArch::X86) => Some("linux-i386"),
+        _ => None,
+    }
+}
 
 #[cfg(test)]
 mod tests {

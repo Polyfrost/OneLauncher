@@ -320,7 +320,13 @@ async fn start(
 
         state
             .java
-            .prepare(major, search_for_java, false, None)
+            .prepare(
+                major,
+                crate::game::natives::native_java_ok(&version_info),
+                search_for_java,
+                false,
+                None,
+            )
             .await?
     };
 

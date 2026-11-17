@@ -31,12 +31,13 @@ impl JavaRuntimeProvider for ZuluRuntimeProvider {
     }
 
     #[tracing::instrument(level = "debug", skip(self, net))]
-    async fn list_packages(
+    async fn list_arch_packages(
         &self,
         major: Option<u32>,
+        arch: HostArch,
         net: &RequestClient,
     ) -> JavaResult<Vec<JavaPackage>> {
-        let url = zulu_url(major)?;
+        let url = zulu_url(major, arch)?;
         let packages = net
             .send_as::<Vec<ZuluPackage>>(Request::new(Method::GET, url))
             .await?;
@@ -63,12 +64,12 @@ fn map_zulu_package(pkg: ZuluPackage) -> JavaPackage {
     .with_checksum(checksum)
 }
 
-fn zulu_url(major: Option<u32>) -> JavaResult<Url> {
+fn zulu_url(major: Option<u32>, arch: HostArch) -> JavaResult<Url> {
     let mut url = Url::parse("https://api.azul.com/metadata/v1/zulu/packages/")?;
     {
         let mut q = url.query_pairs_mut();
         q.append_pair("os", ZULU_OS)
-            .append_pair("arch", ZULU_ARCH)
+            .append_pair("arch", zulu_arch(arch))
             .append_pair("archive_type", "zip")
             // Kits only never a bare runtime image
             .append_pair("java_package_type", "jdk")
@@ -88,12 +89,14 @@ fn zulu_url(major: Option<u32>) -> JavaResult<Url> {
     Ok(url)
 }
 
-const ZULU_ARCH: &str = match HostTarget::CURRENT.arch {
-    HostArch::X86 => "x86",
-    HostArch::X86_64 => "x64",
-    HostArch::Arm => "arm",
-    HostArch::Aarch64 => "aarch64",
-};
+const fn zulu_arch(arch: HostArch) -> &'static str {
+    match arch {
+        HostArch::X86 => "x86",
+        HostArch::X86_64 => "x64",
+        HostArch::Arm => "arm",
+        HostArch::Aarch64 => "aarch64",
+    }
+}
 
 const ZULU_OS: &str = match HostTarget::CURRENT.os {
     HostOs::Windows => "windows",
@@ -108,7 +111,7 @@ mod tests {
 
     #[test]
     fn only_kits_are_ever_requested() {
-        let url = zulu_url(Some(21)).expect("a valid url");
+        let url = zulu_url(Some(21), HostArch::X86_64).expect("a valid url");
 
         assert!(
             url.query()

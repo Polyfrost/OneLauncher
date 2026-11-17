@@ -107,6 +107,13 @@ fn native_download<'a>(lib: &'a Library, java_arch: &str) -> Option<&'a LibraryD
     classifiers.get(&os_key.replace("${arch}", oneclient_common::constants::ARCH_WIDTH))
 }
 
+#[must_use]
+pub fn natives_cover(libraries: &[Library], java_arch: &str, emulated_arch: &str) -> bool {
+    libraries.iter().all(|lib| {
+        native_download(lib, emulated_arch).is_none() || native_download(lib, java_arch).is_some()
+    })
+}
+
 fn native_download_size(lib: &Library, java_arch: &str) -> u64 {
     native_download(lib, java_arch).map_or(0, |native| u64::from(native.size))
 }
@@ -1714,6 +1721,57 @@ fn version_info_file_name(stem: &str, format_version: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn native_lib(keys: &[&str]) -> Library {
+        let natives: serde_json::Map<_, _> = keys
+            .iter()
+            .map(|key| ((*key).to_string(), format!("natives-{key}").into()))
+            .collect();
+        let classifiers: serde_json::Map<_, _> = keys
+            .iter()
+            .map(|key| {
+                (
+                    format!("natives-{key}"),
+                    serde_json::json!({ "sha1": "", "size": 1, "url": "" }),
+                )
+            })
+            .collect();
+        serde_json::from_value(serde_json::json!({
+            "name": "org.lwjgl.lwjgl:lwjgl-platform:2.9.4",
+            "natives": natives,
+            "downloads": { "classifiers": classifiers },
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn natives_cover_needs_a_build_for_the_native_arch() {
+        let x64_only = native_lib(&["windows", "osx", "linux"]);
+        let both = native_lib(&[
+            "windows",
+            "windows-arm64",
+            "osx",
+            "osx-arm64",
+            "linux",
+            "linux-arm64",
+        ]);
+        let plain: Library =
+            serde_json::from_value(serde_json::json!({ "name": "com.google:gson:2.8" })).unwrap();
+
+        assert!(!natives_cover(&[x64_only.clone()], "aarch64", "amd64"));
+        assert!(natives_cover(
+            &[both.clone(), plain.clone()],
+            "aarch64",
+            "amd64"
+        ));
+        assert!(!natives_cover(
+            &[both, x64_only.clone()],
+            "aarch64",
+            "amd64"
+        ));
+        assert!(natives_cover(&[x64_only], "amd64", "amd64"));
+        assert!(natives_cover(&[plain], "aarch64", "amd64"));
+    }
 
     #[test]
     fn a_format_bump_moves_the_cached_version_info() {

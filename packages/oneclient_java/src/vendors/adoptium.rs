@@ -2,11 +2,11 @@ use reqwest::{Method, Request};
 use serde::Deserialize;
 use url::Url;
 
-use oneclient_net::RequestClient;
+use oneclient_net::{RequestClient, RequestError};
 use polyio::Checksum;
 
 use crate::data::{JavaPackage, PackageArchive};
-use crate::error::JavaResult;
+use crate::error::{JavaError, JavaResult};
 use crate::platform::{HostArch, HostOs, HostTarget};
 use crate::vendors::{JavaRuntimeProvider, JavaVendor};
 
@@ -52,9 +52,10 @@ impl JavaRuntimeProvider for AdoptiumRuntimeProvider {
     }
 
     #[tracing::instrument(level = "debug", skip(self, net))]
-    async fn list_packages(
+    async fn list_arch_packages(
         &self,
         major: Option<u32>,
+        arch: HostArch,
         net: &RequestClient,
     ) -> JavaResult<Vec<JavaPackage>> {
         let (low, high) = match major {
@@ -72,10 +73,15 @@ impl JavaRuntimeProvider for AdoptiumRuntimeProvider {
             }
         };
 
-        let url = adoptium_url(low, high)?;
-        let releases = net
+        let url = adoptium_url(low, high, arch)?;
+        let releases = match net
             .send_as::<Vec<AdoptiumRelease>>(Request::new(Method::GET, url))
-            .await?;
+            .await
+        {
+            Ok(releases) => releases,
+            Err(RequestError::HttpStatus { status: 404, .. }) => Vec::new(),
+            Err(err) => return Err(JavaError::from(err)),
+        };
 
         let mut packages = Vec::new();
 
@@ -115,7 +121,7 @@ impl JavaRuntimeProvider for AdoptiumRuntimeProvider {
 }
 
 // A version range spans every GA major in one request instead of one per major
-fn adoptium_url(low: u32, high: u32) -> JavaResult<Url> {
+fn adoptium_url(low: u32, high: u32, arch: HostArch) -> JavaResult<Url> {
     let range = format!("%5B{low}%2C{}%5D", high + 1);
 
     let mut url = Url::parse(&format!(
@@ -124,7 +130,7 @@ fn adoptium_url(low: u32, high: u32) -> JavaResult<Url> {
 
     url.query_pairs_mut()
         .append_pair("os", ADOPTIUM_OS)
-        .append_pair("architecture", ADOPTIUM_ARCH)
+        .append_pair("architecture", adoptium_arch(arch))
         // Kits only a JRE lacks tooling mod loaders expect
         .append_pair("image_type", "jdk")
         .append_pair("jvm_impl", "hotspot")
@@ -140,12 +146,14 @@ fn adoptium_url(low: u32, high: u32) -> JavaResult<Url> {
 }
 
 /// Adoptium alone spells 32-bit x86 `x32`
-const ADOPTIUM_ARCH: &str = match HostTarget::CURRENT.arch {
-    HostArch::X86 => "x32",
-    HostArch::X86_64 => "x64",
-    HostArch::Arm => "arm",
-    HostArch::Aarch64 => "aarch64",
-};
+const fn adoptium_arch(arch: HostArch) -> &'static str {
+    match arch {
+        HostArch::X86 => "x32",
+        HostArch::X86_64 => "x64",
+        HostArch::Arm => "arm",
+        HostArch::Aarch64 => "aarch64",
+    }
+}
 
 /// Adoptium says `mac` where the other vendors say `macos` and publishes musl
 /// builds under `alpine-linux` rather than `linux-musl`
@@ -162,7 +170,7 @@ mod tests {
 
     #[test]
     fn only_kits_are_ever_requested() {
-        let url = adoptium_url(21, 21).expect("a valid url");
+        let url = adoptium_url(21, 21, HostArch::X86_64).expect("a valid url");
 
         assert!(url.query().is_some_and(|q| q.contains("image_type=jdk")));
         assert!(!url.query().is_some_and(|q| q.contains("image_type=jre")));

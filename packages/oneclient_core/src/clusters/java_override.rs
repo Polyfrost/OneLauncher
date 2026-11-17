@@ -86,7 +86,7 @@ pub async fn apply_bundle_java_override(
     if profile.java_path.is_none() {
         let runtime = state
             .java
-            .prepare(major, search_for_java, auto_install_java, progress)
+            .prepare(major, false, search_for_java, auto_install_java, progress)
             .await?;
 
         state

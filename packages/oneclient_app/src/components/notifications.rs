@@ -480,6 +480,9 @@ pub(crate) fn run_action(
         NotificationActionKind::OpenClusterUpdate(summaries) => {
             dispatch.open_cluster_update(summaries.clone());
         }
+        NotificationActionKind::OpenUrl(url) if url == crate::constants::RELEASES_URL => {
+            crate::platform::open_url(url);
+        }
         NotificationActionKind::OpenUrl(url) => confirm_link.set(Some(url.clone())),
         NotificationActionKind::OpenChat(group_id) => {
             dispatch.close_notification_center();

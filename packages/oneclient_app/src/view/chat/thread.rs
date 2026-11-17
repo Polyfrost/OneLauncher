@@ -630,7 +630,7 @@ impl Component for MessageRow {
 
 fn message_text(content: &str) -> Label {
     label()
-        .text(content.to_string())
+        .text(crate::chat::expand_shortcodes(content))
         .font_size(text_size(14.))
         .line_height(1.4)
         .color(colors::fg_primary())

@@ -1,7 +1,8 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use chrono::{DateTime, FixedOffset, Utc};
+use regex::{Captures, Regex};
 use uuid::Uuid;
 
 use oneclient_common::GameLoader;
@@ -20,6 +21,17 @@ pub fn thread_in_view(visible: bool, tab: SocialTab, active: Option<i32>, group_
 #[must_use]
 pub fn chat_visible(chat_window_focused: bool, social_open: bool, main_focused: bool) -> bool {
     chat_window_focused || (social_open && main_focused)
+}
+
+#[must_use]
+pub fn expand_shortcodes(text: &str) -> String {
+    static SHORTCODE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r":([a-z0-9_+-]+):").expect("valid shortcode regex"));
+    SHORTCODE
+        .replace_all(text, |c: &Captures| {
+            emojis::get_by_shortcode(&c[1]).map_or_else(|| c[0].to_string(), |e| e.to_string())
+        })
+        .into_owned()
 }
 
 #[must_use]
@@ -904,6 +916,11 @@ impl ChatState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shortcodes_become_emoji_and_unknown_ones_stay() {
+        assert_eq!(expand_shortcodes("hi :fire: 12:30:45 :nope:"), "hi 🔥 12:30:45 :nope:");
+    }
 
     #[test]
     fn the_panel_only_counts_as_visible_while_the_launcher_has_focus() {

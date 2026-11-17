@@ -1325,6 +1325,7 @@ pub async fn notify_chat(actions: Actions, toast: ChatToast) {
 }
 
 fn preview(content: &str) -> String {
+    let content = crate::chat::expand_shortcodes(content);
     let mut chars = content.chars();
     let mut cut: String = chars.by_ref().take(TOAST_PREVIEW_CHARS).collect();
     if chars.next().is_some() {

@@ -879,7 +879,8 @@ impl Component for ChatRow {
         let title = conversation_title(&self.conversation, counterpart.map(|_| name));
 
         let is_group = self.conversation.kind.is_shared();
-        let preview = self.conversation.preview.clone().map(|text| {
+        let preview = self.conversation.preview.as_deref().map(|text| {
+            let text = crate::chat::expand_shortcodes(text);
             if self.conversation.preview_sender == Some(self.own_id) {
                 tf("oneclient.chat.list.preview_you", &[&text])
             } else if is_group && self.conversation.preview_sender.is_some() {

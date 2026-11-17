@@ -1,7 +1,10 @@
+use std::sync::Arc;
+
 use oneclient_db::DbPool;
 use oneclient_events::EventBus;
 use oneclient_net::RequestClient;
 
+use crate::bundles::Prefetches;
 use crate::packages::provider::PackageProviderRegistry;
 
 /// `db` is taken directly not behind a port
@@ -13,6 +16,7 @@ pub struct ContentCtx {
     pub net: RequestClient,
     pub events: EventBus,
     pub providers: PackageProviderRegistry,
+    pub prefetches: Arc<Prefetches>,
 }
 
 impl ContentCtx {
@@ -22,12 +26,14 @@ impl ContentCtx {
         net: RequestClient,
         events: EventBus,
         providers: PackageProviderRegistry,
+        prefetches: Arc<Prefetches>,
     ) -> Self {
         Self {
             db,
             net,
             events,
             providers,
+            prefetches,
         }
     }
 }

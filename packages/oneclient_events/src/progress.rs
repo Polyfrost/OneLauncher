@@ -2,8 +2,8 @@
 //! the child so an early return on an error path cannot leave the UI showing a
 //! task that will never complete
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 use uuid::Uuid;
 
@@ -138,10 +138,18 @@ impl Drop for SessionInner {
 struct ChildInner {
     session_id: Uuid,
     child_id: Uuid,
-    events: EventBus,
+    events: Option<EventBus>,
     label: String,
     total: AtomicU64,
     finished: Arc<std::sync::atomic::AtomicBool>,
+    mirrored: Mutex<Mirrored>,
+}
+
+#[derive(Default)]
+struct Mirrored {
+    current: Option<u64>,
+    phase: Option<TaskPhase>,
+    to: Vec<GroupedProgressChild>,
 }
 
 #[derive(Clone)]
@@ -209,10 +217,11 @@ impl GroupedProgressSession {
             inner: Arc::new(ChildInner {
                 session_id: self.inner.session_id,
                 child_id,
-                events: self.inner.events.clone(),
+                events: Some(self.inner.events.clone()),
                 label,
                 total: AtomicU64::new(total),
                 finished: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                mirrored: Mutex::default(),
             }),
         }
     }
@@ -258,6 +267,26 @@ impl GroupedProgressSession {
 }
 
 impl GroupedProgressChild {
+    pub fn source(label: impl Into<String>, total: u64) -> Self {
+        Self {
+            inner: Arc::new(ChildInner {
+                session_id: Uuid::nil(),
+                child_id: Uuid::new_v4(),
+                events: None,
+                label: label.into(),
+                total: AtomicU64::new(total.max(1)),
+                finished: Arc::new(AtomicBool::new(false)),
+                mirrored: Mutex::default(),
+            }),
+        }
+    }
+
+    fn emit(&self, event: GroupedProgressEvent) {
+        if let Some(events) = &self.inner.events {
+            events.emit(event);
+        }
+    }
+
     pub fn label(&self) -> &str {
         &self.inner.label
     }
@@ -270,11 +299,16 @@ impl GroupedProgressChild {
         {
             return;
         }
-        self.inner.events.emit(GroupedProgressEvent::SetChildPhase {
+        self.emit(GroupedProgressEvent::SetChildPhase {
             session_id: self.inner.session_id,
             child_id: self.inner.child_id,
             phase,
         });
+        let mut mirrored = self.inner.mirrored.lock().unwrap();
+        mirrored.phase = Some(phase);
+        for mirror in &mirrored.to {
+            mirror.set_phase(phase);
+        }
     }
 
     pub fn set_progress(&self, current: u64, total: Option<u64>) {
@@ -293,12 +327,17 @@ impl GroupedProgressChild {
         if total > stored {
             self.inner.total.store(total, Ordering::Relaxed);
         }
-        self.inner.events.emit(GroupedProgressEvent::UpdateChild {
+        self.emit(GroupedProgressEvent::UpdateChild {
             session_id: self.inner.session_id,
             child_id: self.inner.child_id,
             current,
             total,
         });
+        let mut mirrored = self.inner.mirrored.lock().unwrap();
+        mirrored.current = Some(current);
+        for mirror in &mirrored.to {
+            mirror.set_progress(current, Some(total));
+        }
     }
 
     pub fn finish(&self) {
@@ -310,10 +349,25 @@ impl GroupedProgressChild {
             return;
         }
 
-        self.inner.events.emit(GroupedProgressEvent::FinishChild {
+        self.emit(GroupedProgressEvent::FinishChild {
             session_id: self.inner.session_id,
             child_id: self.inner.child_id,
         });
+        self.inner.mirrored.lock().unwrap().to.clear();
+    }
+
+    pub fn mirror_into(&self, other: GroupedProgressChild) {
+        let mut mirrored = self.inner.mirrored.lock().unwrap();
+        if self.inner.finished.load(Ordering::Relaxed) {
+            return;
+        }
+        if let Some(phase) = mirrored.phase {
+            other.set_phase(phase);
+        }
+        if let Some(current) = mirrored.current {
+            other.set_progress(current, Some(self.inner.total.load(Ordering::Relaxed)));
+        }
+        mirrored.to.push(other);
     }
 }
 
@@ -397,6 +451,67 @@ mod tests {
 
         drop(child);
         assert!(!has_finish(&drain(&mut rx)), "drop must not finish twice");
+    }
+
+    #[test]
+    fn a_mirror_follows_the_task_it_waits_on() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let events = EventBus::new(tx);
+        let session = GroupedProgressSession::start(&events, "test");
+        let source = session.child("file", 100, TaskCategory::Assets);
+        let waiter = session.child("file", 100, TaskCategory::Assets);
+        let waiter_id = waiter.inner.child_id;
+        source.mirror_into(waiter.clone());
+        let _ = drain(&mut rx);
+
+        source.set_phase(TaskPhase::Verifying);
+        source.set_progress(40, Some(100));
+        assert!(
+            drain(&mut rx).iter().any(|e| matches!(
+                e,
+                GroupedProgressEvent::SetChildPhase { child_id, phase: TaskPhase::Verifying, .. } if *child_id == waiter_id
+            )),
+            "the phase must reach the waiter too"
+        );
+
+        let late = session.child("file", 100, TaskCategory::Assets);
+        let late_id = late.inner.child_id;
+        source.mirror_into(late.clone());
+        let joined = drain(&mut rx);
+        assert!(
+            joined.iter().any(|e| matches!(
+                e,
+                GroupedProgressEvent::SetChildPhase { child_id, phase: TaskPhase::Verifying, .. } if *child_id == late_id
+            )) && joined.iter().any(|e| matches!(
+                e,
+                GroupedProgressEvent::UpdateChild { child_id, current: 40, .. } if *child_id == late_id
+            )),
+            "a late waiter starts from the task's current state: {joined:?}"
+        );
+
+        source.set_progress(70, Some(100));
+        source.finish();
+        let events = drain(&mut rx);
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                GroupedProgressEvent::UpdateChild { child_id, current: 70, .. } if *child_id == waiter_id
+            )),
+            "{events:?}"
+        );
+        assert!(
+            !events.iter().any(|e| matches!(
+                e,
+                GroupedProgressEvent::FinishChild { child_id, .. } if *child_id == waiter_id
+            )),
+            "the waiter's owner finishes it once its own work is done: {events:?}"
+        );
+
+        waiter.finish();
+        assert!(drain(&mut rx).iter().any(|e| matches!(
+            e,
+            GroupedProgressEvent::FinishChild { child_id, .. } if *child_id == waiter_id
+        )));
     }
 
     #[test]

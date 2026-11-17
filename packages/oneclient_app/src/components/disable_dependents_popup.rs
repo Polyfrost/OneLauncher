@@ -8,7 +8,7 @@
 
 use freya::prelude::*;
 
-use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea};
+use crate::components::{Button, Icon, IconType, OVERLAY_BASE_LEVEL, OverlayPopup, ScrollArea};
 use crate::disable::{self, PendingDisable};
 use crate::hooks::{Actions, invalidate_cluster_queries, use_disable_confirm, use_dispatch};
 use crate::i18n::t;
@@ -73,6 +73,7 @@ impl Component for DisableDependentsOverlay {
         );
 
         OverlayPopup::new()
+            .overlay_level(OVERLAY_BASE_LEVEL + 3)
             .on_close(move |_| pending.set(None))
             .child(
                 rect()

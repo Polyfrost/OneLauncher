@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use chrono::DateTime;
 use futures_util::StreamExt;
 use oneclient_db::dao::applied_migration as migration_dao;
@@ -11,11 +13,13 @@ use crate::bundles::error::BundleError;
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
 use crate::bundles::types::{BundleArchive, BundleFile, BundleFileKind, BundleManifest};
+use crate::bundles::updates::prefetch_until;
 use crate::ctx::ContentCtx;
 use crate::error::ContentError;
 use crate::error::ContentResult;
 use crate::packages::store::{
-    LiveSync, PackageStore, drop_unmanaged_mod, evict_if_unused, try_unlink_materialized,
+    LiveSync, PackageStore, artifact_absolute_path, drop_unmanaged_mod, evict_if_unused,
+    try_unlink_materialized,
 };
 use crate::packages::types::{ExternalFile, LinkedArtifactInfo, VersionDetail};
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
@@ -340,10 +344,34 @@ async fn resolve_bundle_version(
     if is_base62(version_id) {
         return crate::packages::get_version_cached(ctx, provider, project_id, version_id).await;
     }
+    if let Ok(Some(release)) =
+        artifact_dao::get_release_by_hash(&ctx.db, &polyio::normalize_hash(sha1)).await
+        && release.provider == provider as i64
+        && release.project_id == project_id
+        && let Ok(version) =
+            crate::packages::get_version_cached(ctx, provider, project_id, &release.version_id)
+                .await
+        && (version
+            .primary_file()
+            .is_some_and(|file| !file.url.is_empty())
+            || cached_copy_intact(&release.hash, ctx).await)
+    {
+        return Ok(version);
+    }
     if let Ok(Some((_, version))) = ctx.providers.lookup_version(sha1, ctx).await {
         return Ok(version);
     }
     crate::packages::get_version_cached(ctx, provider, project_id, version_id).await
+}
+
+async fn cached_copy_intact(hash: &str, ctx: &ContentCtx) -> bool {
+    let Ok(Some(artifact)) = artifact_dao::get_artifact_by_hash(&ctx.db, hash).await else {
+        return false;
+    };
+    let Ok(path) = artifact_absolute_path(&artifact.path) else {
+        return false;
+    };
+    oneclient_net::matches_on_disk(&path, hash).await
 }
 
 /// Puts the file in the package cache without linking it to any cluster
@@ -432,7 +460,16 @@ pub async fn install_bundle(
         .find(|a| a.manifest.name == bundle_name)
         .ok_or(BundleError::NotFound(bundle_name.to_string()))?;
 
-    install_enabled_bundle_files(&archive, cluster_id, true, skip_compatibility, None, ctx).await
+    install_enabled_bundle_files(
+        &archive,
+        cluster_id,
+        true,
+        skip_compatibility,
+        None,
+        ctx,
+        None,
+    )
+    .await
 }
 
 /// `suppression` comes from [`find_user_suppression`] so a choice filed under a
@@ -707,16 +744,7 @@ pub async fn heal_bundle_activity(
         return Ok(());
     }
 
-    let mut hidden: std::collections::HashMap<(&str, String), bool> =
-        std::collections::HashMap::new();
-    for archive in archives {
-        for file in &archive.manifest.files {
-            hidden.insert(
-                (archive.manifest.name.as_str(), file.kind.package_id()),
-                file.hidden,
-            );
-        }
-    }
+    let hidden = hidden_flags(archives);
 
     let overrides = overrides_outside_declined(
         cluster_id,
@@ -732,35 +760,19 @@ pub async fn heal_bundle_activity(
         .filter_map(|row| row.package_id.clone())
         .collect();
 
-    for row in tracked.iter().filter(|row| row.enabled == 0) {
-        let (Some(bundle_name), Some(package_id)) = (&row.bundle_name, &row.package_id) else {
-            continue;
-        };
-
-        if live_packages.contains(package_id) {
-            continue;
-        }
-        let Some(is_hidden) = hidden
-            .get(&(bundle_name.as_str(), package_id.clone()))
-            .copied()
+    for row in &tracked {
+        let Some((bundle_name, package_id, is_hidden)) =
+            heal_restores(row, &hidden, &overrides, &live_packages)
         else {
             continue;
         };
-
-        // Across bundles
-        // a package that moved keeps its old override row and reading only its
-        // current bundle would switch it back on
-        let suppression = find_user_suppression(&overrides, package_id);
-        if disable_was_deliberate(suppression) {
-            continue;
-        }
 
         tracing::info!(
             cluster_id,
             bundle = %bundle_name,
             package_id,
             hidden = is_hidden,
-            ?suppression,
+            suppression = ?find_user_suppression(&overrides, package_id),
             "re-enabling bundle content that was switched off with nothing recording the choice"
         );
 
@@ -772,10 +784,54 @@ pub async fn heal_bundle_activity(
             continue;
         }
 
-        live_packages.insert(package_id.clone());
+        live_packages.insert(package_id.to_string());
     }
 
     Ok(())
+}
+
+pub(crate) fn hidden_flags(
+    archives: &[BundleArchive],
+) -> std::collections::HashMap<(&str, String), bool> {
+    archives
+        .iter()
+        .flat_map(|archive| {
+            archive.manifest.files.iter().map(|file| {
+                (
+                    (archive.manifest.name.as_str(), file.kind.package_id()),
+                    file.hidden,
+                )
+            })
+        })
+        .collect()
+}
+
+/// The bundle, package and hidden flag of a copy [`heal_bundle_activity`]
+/// tries to switch back on, `None` when it is left as it is
+pub(crate) fn heal_restores<'a>(
+    row: &'a oneclient_db::models::BundleTrackedArtifactRow,
+    hidden: &std::collections::HashMap<(&str, String), bool>,
+    overrides: &[oneclient_db::models::ClusterBundleOverrideRow],
+    live_packages: &std::collections::HashSet<String>,
+) -> Option<(&'a str, &'a str, bool)> {
+    let (Some(bundle_name), Some(package_id)) = (&row.bundle_name, &row.package_id) else {
+        return None;
+    };
+    if row.enabled != 0 || live_packages.contains(package_id) {
+        return None;
+    }
+    let is_hidden = hidden
+        .get(&(bundle_name.as_str(), package_id.clone()))
+        .copied()?;
+
+    // Across bundles
+    // a package that moved keeps its old override row and reading only its
+    // current bundle would switch it back on
+    (!disable_was_deliberate(find_user_suppression(overrides, package_id))).then_some((
+        bundle_name,
+        package_id,
+        is_hidden,
+    ))
 }
 
 #[tracing::instrument(level = "debug", skip(archive, progress, ctx), fields(bundle = %archive.manifest.name))]
@@ -786,6 +842,7 @@ pub async fn install_enabled_bundle_files(
     skip_compatibility: bool,
     progress: Option<&GroupedProgressSession>,
     ctx: &ContentCtx,
+    deadline: Option<Instant>,
 ) -> ContentResult<Vec<String>> {
     if taken {
         extract_bundle_overrides_for_cluster(archive, cluster_id, ctx).await?;
@@ -830,6 +887,7 @@ pub async fn install_enabled_bundle_files(
         skip_compatibility,
         progress,
         ctx,
+        deadline,
     )
     .await;
 
@@ -852,6 +910,7 @@ pub(crate) async fn install_bundle_files(
     skip_compatibility: bool,
     progress: Option<&GroupedProgressSession>,
     ctx: &ContentCtx,
+    deadline: Option<Instant>,
 ) -> Vec<(BundleFile, ContentResult<String>)> {
     if let Some(p) = progress {
         let reserved_bytes: u64 = to_install.iter().map(|f| f.size.max(1)).sum();
@@ -862,36 +921,103 @@ pub(crate) async fn install_bundle_files(
         );
     }
 
-    futures_util::stream::iter(to_install.into_iter().map(|file| async move {
-        let child = progress.map(|p| {
-            let c = p.child(
-                format!("Mod {}", file.display_name()),
-                file.size.max(1),
-                oneclient_events::TaskCategory::Packages,
-            );
-            c.set_phase(TaskPhase::Downloading);
-            c
-        });
-
-        let result = install_package_from_bundle(
-            &file,
-            cluster_id,
-            bundle_name,
-            skip_compatibility,
-            child.as_ref(),
-            ctx,
-        )
+    let Some(deadline) = deadline else {
+        return futures_util::stream::iter(to_install.into_iter().map(|file| async move {
+            let child = file_child(&file, progress);
+            prefetch_until(&file, child.as_ref(), None, ctx).await;
+            let result = link_file(
+                &file,
+                cluster_id,
+                bundle_name,
+                skip_compatibility,
+                child,
+                ctx,
+            )
+            .await;
+            (file, result)
+        }))
+        .buffer_unordered(BUNDLE_INSTALL_CONCURRENCY)
+        .collect::<Vec<_>>()
         .await;
+    };
 
-        if let Some(child) = child {
-            child.set_phase(TaskPhase::Installing);
-            child.finish();
-        }
-        (file, result)
+    let fetched = futures_util::future::join_all(to_install.into_iter().map(|file| async move {
+        let child = file_child(&file, progress);
+        let fetched = prefetch_until(&file, child.as_ref(), Some(deadline), ctx).await;
+        (file, child, fetched)
     }))
+    .await;
+
+    if fetched.iter().any(|(_, _, fetched)| fetched.is_none()) {
+        tracing::info!(
+            bundle = %bundle_name,
+            "bundle files still downloading at the deadline, linking none of them until all are ready"
+        );
+        for (_, child, fetched) in fetched {
+            if let (Some(child), Some(_)) = (child, fetched) {
+                child.finish();
+            }
+        }
+        return Vec::new();
+    }
+
+    futures_util::stream::iter(fetched.into_iter().filter_map(|(file, child, fetched)| {
+        if let Some(Err(err)) = fetched {
+            tracing::warn!(file = %file.display_name(), error = %err, "bundle download failed, leaving it for later");
+            if let Some(child) = child {
+                child.finish();
+            }
+            return None;
+        }
+        Some((file, child))
+    }))
+    .map(|(file, child)| async move {
+        let result =
+            link_file(&file, cluster_id, bundle_name, skip_compatibility, child, ctx).await;
+        (file, result)
+    })
     .buffer_unordered(BUNDLE_INSTALL_CONCURRENCY)
     .collect::<Vec<_>>()
     .await
+}
+
+fn file_child(
+    file: &BundleFile,
+    progress: Option<&GroupedProgressSession>,
+) -> Option<GroupedProgressChild> {
+    progress.map(|p| {
+        let c = p.child(
+            format!("Mod {}", file.display_name()),
+            file.size.max(1),
+            TaskCategory::Packages,
+        );
+        c.set_phase(TaskPhase::Downloading);
+        c
+    })
+}
+
+async fn link_file(
+    file: &BundleFile,
+    cluster_id: i64,
+    bundle_name: &str,
+    skip_compatibility: bool,
+    child: Option<GroupedProgressChild>,
+    ctx: &ContentCtx,
+) -> ContentResult<String> {
+    let result = install_package_from_bundle(
+        file,
+        cluster_id,
+        bundle_name,
+        skip_compatibility,
+        child.as_ref(),
+        ctx,
+    )
+    .await;
+    if let Some(child) = child {
+        child.set_phase(TaskPhase::Installing);
+        child.finish();
+    }
+    result
 }
 
 pub(crate) struct PresentContent {
@@ -1132,6 +1258,7 @@ pub async fn install_cluster_bundles(
     bundles: &BundlesManager,
     progress: Option<&GroupedProgressSession>,
     ctx: &ContentCtx,
+    deadline: Option<Instant>,
 ) -> ContentResult<()> {
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
     if !cluster.uses_bundles() {
@@ -1158,7 +1285,8 @@ pub async fn install_cluster_bundles(
     for archive in &archives {
         let taken = takes_bundle(archive, &accepted);
         let installed =
-            install_enabled_bundle_files(archive, cluster_id, taken, true, progress, ctx).await?;
+            install_enabled_bundle_files(archive, cluster_id, taken, true, progress, ctx, deadline)
+                .await?;
         tracing::info!(
             cluster_id,
             bundle = %archive.manifest.name,
@@ -1767,5 +1895,155 @@ mod tests {
             )
             .is_empty()
         );
+    }
+
+    struct ServedByHash;
+
+    #[async_trait::async_trait]
+    impl crate::packages::PackageProvider for ServedByHash {
+        fn id(&self) -> ProviderId {
+            ProviderId::Modrinth
+        }
+        async fn search(
+            &self,
+            _: &crate::packages::SearchFilters,
+            _: &ContentCtx,
+        ) -> ContentResult<crate::packages::Page<crate::packages::ProjectSummary>> {
+            unreachable!()
+        }
+        async fn get_project(
+            &self,
+            _: &str,
+            _: &ContentCtx,
+        ) -> ContentResult<crate::packages::ProjectDetail> {
+            unreachable!()
+        }
+        async fn get_projects(
+            &self,
+            _: &[String],
+            _: &ContentCtx,
+        ) -> ContentResult<Vec<crate::packages::ProjectDetail>> {
+            unreachable!()
+        }
+        async fn list_versions(
+            &self,
+            _: &str,
+            _: Option<&str>,
+            _: Option<GameLoader>,
+            _: usize,
+            _: usize,
+            _: &ContentCtx,
+        ) -> ContentResult<crate::packages::Page<crate::packages::VersionSummary>> {
+            unreachable!()
+        }
+        async fn get_version(
+            &self,
+            _: &str,
+            _: &str,
+            _: &ContentCtx,
+        ) -> ContentResult<VersionDetail> {
+            unreachable!()
+        }
+        async fn get_versions(
+            &self,
+            _: &[String],
+            _: &ContentCtx,
+        ) -> ContentResult<Vec<VersionDetail>> {
+            unreachable!()
+        }
+        async fn lookup_versions(
+            &self,
+            identities: &[crate::packages::FileIdentity],
+            _: &ContentCtx,
+        ) -> ContentResult<crate::packages::VersionLookup> {
+            Ok(identities
+                .iter()
+                .map(|identity| {
+                    let version = VersionDetail {
+                        version_id: "served".to_string(),
+                        project_id: "project".to_string(),
+                        name: String::new(),
+                        version_number: String::new(),
+                        changelog: None,
+                        game_versions: Vec::new(),
+                        loaders: Vec::new(),
+                        published: chrono::Utc::now(),
+                        downloads: 0,
+                        files: vec![crate::packages::VersionFile {
+                            sha1: identity.sha1.clone(),
+                            url: "https://example.invalid/managed.jar".to_string(),
+                            file_name: "managed.jar".to_string(),
+                            primary: true,
+                            size: 1,
+                            fingerprint: None,
+                        }],
+                        dependencies: Vec::new(),
+                    };
+                    (identity.sha1.clone(), version)
+                })
+                .collect())
+        }
+        async fn latest_for_game_version(
+            &self,
+            _: &[crate::packages::InstalledPackage],
+            _: &str,
+            _: GameLoader,
+            _: &ContentCtx,
+        ) -> ContentResult<std::collections::HashMap<String, VersionDetail>> {
+            unreachable!()
+        }
+    }
+
+    #[tokio::test]
+    async fn a_damaged_cached_copy_resolves_to_a_downloadable_version() {
+        let dir = polyio::tempdir().await.unwrap();
+        let mut providers = crate::packages::PackageProviderRegistry::new();
+        providers.register(std::sync::Arc::new(ServedByHash));
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let ctx = ContentCtx::new(
+            oneclient_db::connect(dir.dir_path().join("test.db"))
+                .await
+                .unwrap(),
+            oneclient_net::RequestClient::new(oneclient_net::NetConfig::default()).unwrap(),
+            oneclient_events::EventBus::new(tx),
+            providers,
+            Default::default(),
+        );
+        let sha1 = polyio::sha1_bytes(b"the real jar");
+        let damaged = dir.dir_path().join("managed.jar");
+        tokio::fs::write(&damaged, b"not the real jar")
+            .await
+            .unwrap();
+        artifact_dao::insert_artifact(
+            &ctx.db,
+            &sha1,
+            ContentType::Mod as i64,
+            &damaged.to_string_lossy(),
+            "managed.jar",
+            Some(1),
+        )
+        .await
+        .unwrap();
+        artifact_dao::upsert_provider_release(
+            &ctx.db,
+            ProviderId::Modrinth as i64,
+            "project",
+            "cached",
+            &sha1,
+            "",
+            "",
+            None,
+            "[]",
+            "[]",
+        )
+        .await
+        .unwrap();
+
+        let version =
+            resolve_bundle_version(ProviderId::Modrinth, "project", "1.0.0+mc", &sha1, &ctx)
+                .await
+                .unwrap();
+
+        assert!(!version.primary_file().unwrap().url.is_empty());
     }
 }

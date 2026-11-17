@@ -12,7 +12,12 @@ static SECRET: LazyLock<Regex> = LazyLock::new(|| {
     .expect("secret pattern")
 });
 
-static NAMES: LazyLock<RwLock<Vec<String>>> = LazyLock::new(RwLock::default);
+static NAMES: LazyLock<RwLock<Vec<String>>> = LazyLock::new(|| {
+    let home_user = std::env::home_dir()
+        .and_then(|home| home.file_name()?.to_str().map(str::to_string))
+        .filter(|name| name.len() >= 3);
+    RwLock::new(home_user.into_iter().collect())
+});
 
 pub fn censor_username(name: &str) {
     let name = name.trim();

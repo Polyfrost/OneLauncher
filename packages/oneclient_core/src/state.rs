@@ -10,7 +10,7 @@ use crate::settings::{LauncherSettings, store};
 use crate::versions::VersionsManager;
 use oneclient_auth::AuthService;
 use oneclient_common::paths;
-use oneclient_content::bundles::BundlesManager;
+use oneclient_content::bundles::{BundlesManager, Prefetches};
 use oneclient_content::packages::provider::PackageProviderRegistry;
 use oneclient_discord::DiscordRpc;
 use oneclient_events::EventBus;
@@ -24,6 +24,7 @@ pub struct LauncherServices {
     pub requester: RequestClient,
     pub db: DbPool,
     pub packages: PackageProviderRegistry,
+    pub prefetches: Arc<Prefetches>,
 }
 
 pub struct LauncherState {
@@ -48,6 +49,7 @@ impl LauncherServices {
             self.requester.clone(),
             self.events.clone(),
             self.packages.clone(),
+            self.prefetches.clone(),
         )
     }
 
@@ -70,6 +72,7 @@ impl LauncherState {
             // `services` Real config is pushed in below before any request
             requester: RequestClient::new(oneclient_net::NetConfig::default())?,
             packages: PackageProviderRegistry::new(),
+            prefetches: Arc::default(),
         };
 
         let settings = store::load_settings(Some(&services.events)).await;

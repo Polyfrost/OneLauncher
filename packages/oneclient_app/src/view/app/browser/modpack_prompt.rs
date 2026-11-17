@@ -519,6 +519,7 @@ mod tests {
             downloads: 0,
             file_size: 0,
             dependencies: Vec::new(),
+            blocked: false,
         }
     }
 
@@ -618,6 +619,7 @@ mod tests {
             tags: Vec::new(),
             cover_path: None,
             dir_target: Default::default(),
+            takes_bundles: false,
         }
     }
 

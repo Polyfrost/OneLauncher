@@ -1,7 +1,7 @@
 use freya::prelude::*;
 
 use crate::components::{
-    Button, Icon, IconType, Markdown, MarkdownStyle, OverlayPopup, ScrollArea,
+    Button, Icon, IconType, Markdown, MarkdownStyle, OVERLAY_BASE_LEVEL, OverlayPopup, ScrollArea,
 };
 use crate::disable;
 use crate::hooks::{
@@ -48,6 +48,7 @@ impl Component for EssentialConfirmOverlay {
         let then = request.then.clone();
 
         OverlayPopup::new()
+            .overlay_level(OVERLAY_BASE_LEVEL + 3)
             .on_close(move |_| pending.set(None))
             .child(
                 rect()

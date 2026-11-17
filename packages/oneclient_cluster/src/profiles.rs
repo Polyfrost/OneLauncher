@@ -122,6 +122,7 @@ pub struct ProfileUpdate {
     pub hook_post: Patch<String>,
     pub os_extra: Patch<SettingsOsExtra>,
     pub browser_update_mode: Patch<PackageUpdateMode>,
+    pub copy_mod_files: Patch<bool>,
 }
 
 impl ProfileUpdate {
@@ -145,6 +146,8 @@ impl ProfileUpdate {
         self.os_extra.apply_to_option(&mut profile.os_extra);
         self.browser_update_mode
             .apply_to_option(&mut profile.browser_update_mode);
+        self.copy_mod_files
+            .apply_to_option(&mut profile.copy_mod_files);
     }
 }
 

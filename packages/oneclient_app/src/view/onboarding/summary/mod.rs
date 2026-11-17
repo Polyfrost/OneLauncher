@@ -2,7 +2,7 @@ use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_core::clusters::Cluster;
 use oneclient_core::images::BACKGROUND_IMAGE_EDGE;
-use oneclient_core::{BundleArchive, BundleFile, ImportTarget, MigrationSource, SentryExclusion};
+use oneclient_core::{ImportTarget, MigrationSource, SentryExclusion};
 use oneclient_db::models::OverrideType;
 
 use crate::components::ART_PREVIEW_EDGE;
@@ -15,7 +15,7 @@ use crate::i18n::t;
 use crate::routes::Route;
 use crate::theme::theme_display_name;
 use crate::utils::{home_cluster, sort_clusters_for_home};
-use crate::view::onboarding::{matching_new_cluster_id, pkg_key};
+use crate::view::onboarding::{bundle_plan, matching_new_cluster_id};
 
 mod view;
 use view::{SummaryView, summary_view};
@@ -176,20 +176,7 @@ fn build_plans(
     items
         .iter()
         .map(|cb| {
-            let kept = kept_package_ids(cb.cluster.id, &cb.archives, selected);
-            let mut overrides = Vec::new();
-            for archive in &cb.archives {
-                overrides.extend(archive_overrides(cb.cluster.id, archive, selected, &kept));
-            }
-            let choices = cb
-                .archives
-                .iter()
-                .filter(|archive| !archive.manifest.enabled)
-                .map(|archive| {
-                    let taken = bundle_taken(cb.cluster.id, archive, selected);
-                    (archive.manifest.name.clone(), taken)
-                })
-                .collect();
+            let (overrides, choices) = bundle_plan(cb.cluster.id, &cb.archives, selected);
             ClusterPlan {
                 cluster_id: cb.cluster.id,
                 overrides,
@@ -208,89 +195,6 @@ fn seen_versions(items: &[ClusterBundles]) -> Vec<String> {
     versions.sort();
     versions.dedup();
     versions
-}
-
-/// True once anything visible in the bundle was taken including one opted-in extra that would otherwise lose its dependencies
-fn bundle_taken(
-    cluster_id: i64,
-    archive: &BundleArchive,
-    selected: &std::collections::HashSet<String>,
-) -> bool {
-    archive.manifest.files.iter().any(|file| {
-        !file.hidden
-            && selected.contains(&pkg_key(
-                cluster_id,
-                &archive.manifest.name,
-                &file.kind.package_id(),
-            ))
-    })
-}
-
-/// Bundles overlap deciding each archive alone recorded a removal for a package an accepted bundle was about to install
-fn kept_package_ids(
-    cluster_id: i64,
-    archives: &[BundleArchive],
-    selected: &std::collections::HashSet<String>,
-) -> std::collections::HashSet<String> {
-    let mut kept = std::collections::HashSet::new();
-
-    for archive in archives {
-        let takes_hidden = bundle_taken(cluster_id, archive, selected);
-        for file in &archive.manifest.files {
-            let package_id = file.kind.package_id();
-            let wanted = if file.hidden {
-                takes_hidden
-            } else {
-                selected.contains(&pkg_key(cluster_id, &archive.manifest.name, &package_id))
-            };
-            if wanted {
-                kept.insert(package_id);
-            }
-        }
-    }
-
-    kept
-}
-
-fn archive_overrides(
-    cluster_id: i64,
-    archive: &BundleArchive,
-    selected: &std::collections::HashSet<String>,
-    kept_elsewhere: &std::collections::HashSet<String>,
-) -> Vec<(String, String, OverrideType)> {
-    let bundle_name = &archive.manifest.name;
-    let wants = |file: &BundleFile| {
-        selected.contains(&pkg_key(cluster_id, bundle_name, &file.kind.package_id()))
-    };
-
-    // Hidden files follow the bundle kept if anything from it was taken dropped if not
-    let takes_hidden = bundle_taken(cluster_id, archive, selected);
-
-    let mut overrides = Vec::new();
-    for file in &archive.manifest.files {
-        let wanted = if file.hidden {
-            takes_hidden
-        } else {
-            wants(file)
-        };
-
-        let override_type = match (wanted, file.enabled) {
-            // Matches the manifest default nothing to record
-            (true, true) | (false, false) => continue,
-            // Opting into a mod the bundle ships turned off
-            (true, false) => OverrideType::Enabled,
-            // Only really declined if no bundle the user took ships the same package
-            (false, true) => {
-                if kept_elsewhere.contains(&file.kind.package_id()) {
-                    continue;
-                }
-                OverrideType::Removed
-            }
-        };
-
-        overrides.push((bundle_name.clone(), file.kind.package_id(), override_type));
-    }
-    overrides
 }
 
 /// The bundle picks are written nowhere else so a failure has to stop the run rather than drop them silently
@@ -408,7 +312,9 @@ async fn apply_overrides(plan: &ClusterPlan) -> oneclient_core::LauncherResult<(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::view::onboarding::pkg_key;
     use crate::view::onboarding::test_support::{archive, cluster, file};
+    use oneclient_core::BundleArchive;
     use std::collections::HashSet;
 
     fn skyblock() -> BundleArchive {

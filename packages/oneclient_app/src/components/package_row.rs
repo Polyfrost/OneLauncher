@@ -131,6 +131,10 @@ impl PackageEntry {
         self.update_available && self.is_remote() && !self.in_bundle()
     }
 
+    pub fn update_checkable(&self) -> bool {
+        self.installed && self.hash.is_some() && self.is_remote() && !self.in_bundle()
+    }
+
     pub fn recency_badge(&self) -> Option<Element> {
         match self.seen_status {
             SeenStatus::New => Some(new_badge()),
@@ -539,6 +543,7 @@ pub fn package_context_menu(
     on_delete: EventHandler<(String, String)>,
     on_bundled: Option<EventHandler<()>>,
     on_select: EventHandler<()>,
+    on_check_update: Option<EventHandler<()>>,
 ) -> ContextMenu {
     let mut menu = ContextMenu::new(x, y).title(item.name.clone()).action(
         IconType::Check,
@@ -579,6 +584,14 @@ pub fn package_context_menu(
             IconType::Folder,
             t("oneclient.components.package_row.view_in_folder"),
             EventHandler::new_current(move |()| reveal_in_store(hash.clone())),
+        );
+    }
+
+    if let Some(on_check_update) = on_check_update {
+        menu = menu.action(
+            IconType::RefreshCw01,
+            t("oneclient.components.package_row.check_update"),
+            on_check_update,
         );
     }
 
@@ -676,22 +689,22 @@ pub(crate) fn grid_card(
     let title = item.name.clone();
     let hovering = *hovered.read();
 
-    let bg = match (enabled, hovering) {
-        (_, true) => colors::component_bg_hover(),
-        (true, false) => colors::component_bg(),
-        (false, false) => colors::component_bg_disabled(),
-    };
-
     let alpha = if enabled && item.copy_status != Some(CopyStatus::Skipped) {
         255u8
     } else {
         115u8
     };
 
-    let border = if !hovering {
-        colors::component_border()
-    } else {
-        colors::component_border_hover()
+    let bg = match (enabled, hovering) {
+        (_, true) => colors::component_bg_hover().with_a(alpha),
+        (true, false) => colors::brand().with_a(scale_a(alpha, 38. / 255.)),
+        (false, false) => colors::component_bg_disabled().with_a(alpha),
+    };
+
+    let border = match (enabled, hovering) {
+        (_, true) => colors::component_border_hover(),
+        (true, false) => colors::brand(),
+        (false, false) => colors::component_border(),
     };
 
     let header = rect()
@@ -773,7 +786,7 @@ pub(crate) fn grid_card(
         .spacing(9.)
         .padding(Gaps::new_all(GRID_CARD_PADDING))
         .corner_radius(rounded(6.))
-        .background(bg.with_a(alpha))
+        .background(bg)
         .border(border_all_color(1., border))
         .content(Content::Flex)
         .cursor(CursorIcon::Pointer)
@@ -1276,4 +1289,3 @@ pub(crate) fn pill(icon: Option<Element>, text: String, accent: Color) -> Elemen
         )
         .into_element()
 }
-

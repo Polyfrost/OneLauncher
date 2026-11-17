@@ -40,6 +40,10 @@ static STATUS_UNSAVED: AtomicUsize = AtomicUsize::new(0);
 static ROSTER_TICKET: AtomicU64 = AtomicU64::new(0);
 static ROSTER_APPLIED: AtomicU64 = AtomicU64::new(0);
 static CONVERSATIONS_TICKET: AtomicU64 = AtomicU64::new(0);
+/// A screen or two of chats; the next page is fetched once the list is
+/// scrolled to its end
+const GROUPS_PAGE: u64 = 30;
+static MORE_CONVERSATIONS: AtomicBool = AtomicBool::new(false);
 static CONVERSATIONS_APPLIED: AtomicU64 = AtomicU64::new(0);
 static DRAFTS: LazyLock<Mutex<HashMap<(Uuid, i32), String>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -251,23 +255,38 @@ fn roster_is_fresh() -> bool {
 }
 
 pub async fn load_conversations(station: Station) {
-    if !refresh_conversations(station).await {
+    refresh_conversations(station).await;
+}
+
+/// Appends the page after the last loaded conversation, if there is one.
+pub async fn load_more_conversations(station: Station) {
+    let Some(client) = client() else { return };
+    let Some(cursor) = station.peek().chat.groups_cursor.clone() else {
+        return;
+    };
+    if MORE_CONVERSATIONS.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let _guard = MoreGuard;
+
+    let owner = owner_of(station);
+    let ticket = CONVERSATIONS_TICKET.load(Ordering::Acquire);
+    let page = client.groups_page(Some(&cursor), GROUPS_PAGE).await;
+    // A refresh that started meanwhile owns the list now
+    if owner_of(station) != owner || CONVERSATIONS_TICKET.load(Ordering::Acquire) != ticket {
         return;
     }
 
-    let unread: Vec<i32> = {
-        let state = station.peek();
-        state
-            .chat
-            .conversations()
-            .iter()
-            .filter(|conversation| conversation.unread && !state.chat.has_messages(conversation.id))
-            .map(|conversation| conversation.id)
-            .collect()
-    };
-
-    for group_id in unread {
-        load_messages(station, group_id).await;
+    match page {
+        Ok(page) => {
+            station
+                .clone()
+                .write_channel(AppChannel::Chat)
+                .chat
+                .append_page(page.items, page.cursor);
+            watch_members(station);
+        }
+        Err(err) => tracing::warn!("could not load more conversations: {err:#}"),
     }
 }
 
@@ -283,37 +302,37 @@ async fn refresh_conversations(station: Station) -> bool {
     }
 
     let ticket = next_ticket(&CONVERSATIONS_TICKET);
-    let groups = client.groups().await;
-    let special_target = client.is_special_chat_target().await;
+    let (first, special_target) = tokio::join!(
+        client.groups_page(None, GROUPS_PAGE),
+        client.is_special_chat_target()
+    );
     if owner_of(station) != owner {
         return false;
     }
+    if let Ok(special_target) = special_target {
+        station
+            .clone()
+            .write_channel(AppChannel::Chat)
+            .chat
+            .special_target = special_target;
+    }
 
-    match groups {
-        Ok(groups) => {
-            if !is_newest(&CONVERSATIONS_APPLIED, ticket) {
-                return false;
-            }
-
-            station
-                .clone()
-                .write_channel(AppChannel::Chat)
-                .chat
-                .set_conversations(groups);
-            if let Ok(special_target) = special_target {
-                station
-                    .clone()
-                    .write_channel(AppChannel::Chat)
-                    .chat
-                    .special_target = special_target;
-            }
-            watch_members(station);
-        }
+    let page = match first {
+        Ok(page) => page,
         Err(err) => {
             report(station, &err);
             return false;
         }
+    };
+    if !is_newest(&CONVERSATIONS_APPLIED, ticket) {
+        return false;
     }
+    station
+        .clone()
+        .write_channel(AppChannel::Chat)
+        .chat
+        .refresh_first_page(page.items, page.cursor);
+    watch_members(station);
 
     true
 }
@@ -490,6 +509,7 @@ async fn add_polyplus(actions: &Actions, invite_id: i32) -> bool {
                 state.bundles.as_ref(),
                 Some(&session),
                 &content,
+                None,
             )
             .await
             {
@@ -791,6 +811,14 @@ pub async fn mark_read(station: Station, group_id: i32) {
         .mark_read(group_id);
 }
 
+struct MoreGuard;
+
+impl Drop for MoreGuard {
+    fn drop(&mut self) {
+        MORE_CONVERSATIONS.store(false, Ordering::Release);
+    }
+}
+
 struct ResyncGuard;
 
 impl Drop for ResyncGuard {
@@ -817,19 +845,9 @@ async fn resync_once(station: Station) {
     refresh_conversations(station).await;
     load_invite_games(station).await;
 
+    // Other conversations load their messages when opened. Read `active`
+    // first so the peek guard is dropped before load_messages writes.
     let active = station.peek().chat.active;
-    let unread: Vec<i32> = station
-        .peek()
-        .chat
-        .conversations()
-        .iter()
-        .filter(|conversation| conversation.unread && Some(conversation.id) != active)
-        .map(|conversation| conversation.id)
-        .collect();
-    for group_id in unread {
-        load_messages(station, group_id).await;
-    }
-
     if let Some(group_id) = active {
         load_messages(station, group_id).await;
         if unread_in_view(station, group_id) {
@@ -929,6 +947,7 @@ pub enum ChatJob {
     },
     OpenGroup(i32),
     OlderMessages(i32),
+    MoreConversations,
     Deliver {
         group_id: i32,
         key: Uuid,
@@ -989,6 +1008,7 @@ impl ChatJob {
             }
             Self::OpenGroup(group_id) => load_group(station, group_id).await,
             Self::OlderMessages(group_id) => load_older_messages(station, group_id).await,
+            Self::MoreConversations => load_more_conversations(station).await,
             Self::Deliver {
                 group_id,
                 key,
@@ -1411,6 +1431,10 @@ impl Actions {
                 loader,
             }),
         );
+    }
+
+    pub fn load_more_chats(&self) {
+        self.chat_job(ChatJob::MoreConversations);
     }
 
     pub fn resolve_chat_names(&self) {

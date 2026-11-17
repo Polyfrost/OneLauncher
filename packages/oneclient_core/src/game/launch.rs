@@ -2,7 +2,7 @@ use std::fmt::Write as _;
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 use interfrost::api::minecraft::ArgumentType;
@@ -24,6 +24,7 @@ use crate::settings::GameSettingsProfile;
 use crate::state::{LauncherServices, LauncherState};
 use oneclient_auth::MinecraftAccount;
 use oneclient_common::paths;
+use oneclient_content::bundles::BUNDLE_APPLY_BUDGET;
 use oneclient_discord::Presence;
 use oneclient_events::{CrashModIssue, CrashRemedy, GroupedProgressSession, LaunchStage};
 use oneclient_mc::{
@@ -48,7 +49,7 @@ pub async fn launch_cluster(
     account: &MinecraftAccount,
     search_for_java: bool,
 ) -> LauncherResult<LaunchedGame> {
-    launch_cluster_with(state, cluster_id, account, search_for_java, None).await
+    launch_cluster_with(state, cluster_id, account, search_for_java, None, None).await
 }
 
 #[tracing::instrument(skip(state, account))]
@@ -58,6 +59,7 @@ pub async fn launch_cluster_with(
     account: &MinecraftAccount,
     search_for_java: bool,
     extra_jvm_arg: Option<&str>,
+    bundle_budget: Option<Duration>,
 ) -> LauncherResult<LaunchedGame> {
     tracing::info!(cluster_id, search_for_java, "launching cluster");
 
@@ -71,7 +73,15 @@ pub async fn launch_cluster_with(
         return Err(GameError::AlreadyRunning(cluster_id).into());
     }
 
-    let result = start(state, cluster_id, account, search_for_java, extra_jvm_arg).await;
+    let result = start(
+        state,
+        cluster_id,
+        account,
+        search_for_java,
+        extra_jvm_arg,
+        bundle_budget,
+    )
+    .await;
 
     if result.is_err() {
         state.games.remove(cluster_id);
@@ -98,6 +108,7 @@ async fn start(
     account: &MinecraftAccount,
     search_for_java: bool,
     extra_jvm_arg: Option<&str>,
+    bundle_budget: Option<Duration>,
 ) -> LauncherResult<LaunchedGame> {
     let events = state.services.events.clone();
     let stage = |s: LaunchStage| {
@@ -218,6 +229,7 @@ async fn start(
             state.bundles.as_ref(),
             Some(&progress),
             &state.services.content(),
+            Some(Instant::now() + bundle_budget.unwrap_or(BUNDLE_APPLY_BUDGET)),
         )
         .await
     {
@@ -374,10 +386,22 @@ async fn start(
     let mods_in_cluster =
         crate::game::uses_cluster_mods_folder(cluster.mc_loader, loader_version_id, &custom_args);
 
-    if let Err(err) =
-        crate::game::materialize_content(&state.services, &cluster, &cwd, mods_in_cluster).await
+    match crate::game::materialize_content(
+        &state.services,
+        &cluster,
+        &cwd,
+        mods_in_cluster,
+        profile.copy_mod_files.unwrap_or(false),
+    )
+    .await
     {
-        tracing::warn!(cluster_id, error = %err, "failed to materialize cluster content");
+        Ok(()) => {}
+        Err(err @ crate::LauncherError::GameError(GameError::ModCopyFailed(_))) => {
+            return Err(err);
+        }
+        Err(err) => {
+            tracing::warn!(cluster_id, error = %err, "failed to materialize cluster content");
+        }
     }
 
     if !dedicated {

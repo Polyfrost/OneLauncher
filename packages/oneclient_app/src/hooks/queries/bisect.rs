@@ -2,7 +2,7 @@ use freya::query::{
     Mutation, MutationCapability, QueriesStorage, Query, QueryCapability, UseMutation, UseQuery,
     use_mutation, use_query,
 };
-use oneclient_core::{BisectAnswer, BisectStatus, LauncherError};
+use oneclient_core::{BisectAnswer, BisectChoice, BisectStatus, LauncherError};
 
 use crate::i18n::t;
 use crate::launcher::off_ui;
@@ -33,6 +33,13 @@ pub fn use_bisect(cluster_id: i64) -> Option<BisectStatus> {
     super::state::settled_or_loading(&query).flatten()
 }
 
+pub async fn bisect_report(cluster_id: i64) -> Result<String, String> {
+    let state = crate::launcher::state().map_err(|e| e.to_string())?;
+    off_ui(async move { oneclient_core::bisect_report(&state, cluster_id).await })
+        .await
+        .map_err(|e| e.to_string())
+}
+
 pub async fn invalidate_bisect_queries() {
     QueriesStorage::<BisectQuery>::invalidate_all().await;
 }
@@ -44,19 +51,18 @@ pub enum BisectAction {
     },
     Answer {
         cluster_id: i64,
-        broken: bool,
+        answer: BisectAnswer,
     },
     Skip {
         cluster_id: i64,
     },
-    Confirm {
-        cluster_id: i64,
-        reproduced: bool,
-    },
-    Restart {
-        cluster_id: i64,
-    },
     Undo {
+        cluster_id: i64,
+    },
+    Continue {
+        cluster_id: i64,
+    },
+    Reset {
         cluster_id: i64,
     },
     Finish {
@@ -72,6 +78,23 @@ pub enum BisectAction {
     },
     DeclineSuggestion {
         cluster_id: i64,
+    },
+    Choose {
+        cluster_id: i64,
+        hashes: Vec<String>,
+        choice: BisectChoice,
+    },
+    Settle {
+        cluster_id: i64,
+        hash: String,
+        ignore: bool,
+    },
+    FindHidden {
+        cluster_id: i64,
+    },
+    UseHidden {
+        cluster_id: i64,
+        accept: bool,
     },
 }
 
@@ -111,12 +134,7 @@ impl MutationCapability for BisectMutation {
                     }
                     started.map(|_| ())
                 }
-                BisectAction::Answer { cluster_id, broken } => {
-                    let answer = if broken {
-                        BisectAnswer::Broken
-                    } else {
-                        BisectAnswer::Works
-                    };
+                BisectAction::Answer { cluster_id, answer } => {
                     oneclient_core::answer_bisect(&state, cluster_id, answer)
                         .await
                         .map(|_| ())
@@ -124,19 +142,18 @@ impl MutationCapability for BisectMutation {
                 BisectAction::Skip { cluster_id } => {
                     oneclient_core::skip_bisect_answer(&state, cluster_id).await
                 }
-                BisectAction::Confirm {
-                    cluster_id,
-                    reproduced,
-                } => oneclient_core::confirm_bisect(&state, cluster_id, reproduced)
-                    .await
-                    .map(|_| ()),
-                BisectAction::Restart { cluster_id } => {
-                    oneclient_core::restart_bisect(&state, cluster_id)
+                BisectAction::Undo { cluster_id } => {
+                    oneclient_core::undo_bisect_answer(&state, cluster_id)
                         .await
                         .map(|_| ())
                 }
-                BisectAction::Undo { cluster_id } => {
-                    oneclient_core::undo_bisect_answer(&state, cluster_id)
+                BisectAction::Continue { cluster_id } => {
+                    oneclient_core::continue_bisect(&state, cluster_id)
+                        .await
+                        .map(|_| ())
+                }
+                BisectAction::Reset { cluster_id } => {
+                    oneclient_core::reset_bisect(&state, cluster_id)
                         .await
                         .map(|_| ())
                 }
@@ -157,6 +174,49 @@ impl MutationCapability for BisectMutation {
                         .await
                         .map(|_| ())
                 }
+                BisectAction::Choose {
+                    cluster_id,
+                    hashes,
+                    choice,
+                } => oneclient_core::set_bisect_mod_choice(&state, cluster_id, &hashes, choice)
+                    .await
+                    .map(|_| ()),
+                BisectAction::Settle {
+                    cluster_id,
+                    hash,
+                    ignore,
+                } => oneclient_core::settle_unresolvable_mod(&state, cluster_id, &hash, ignore)
+                    .await
+                    .map(|_| ()),
+                BisectAction::FindHidden { cluster_id } => {
+                    let events = &state.services.events;
+                    let progress_id = uuid::Uuid::new_v4();
+                    events.progress(progress_id, t("oneclient.bisect.hidden.progress"), 0, 0);
+                    let found = oneclient_core::find_hidden_dependencies(
+                        &state,
+                        cluster_id,
+                        |label, done, total| events.progress(progress_id, label, done, total),
+                    )
+                    .await;
+                    match &found {
+                        Ok(_) => events.finish_progress(
+                            progress_id,
+                            t("oneclient.bisect.hidden.done"),
+                            String::new(),
+                        ),
+                        Err(err) => events.fail_progress(
+                            progress_id,
+                            t("oneclient.bisect.hidden.failed"),
+                            err.to_string(),
+                        ),
+                    }
+                    found.map(|_| ())
+                }
+                BisectAction::UseHidden { cluster_id, accept } => {
+                    oneclient_core::use_hidden_dependencies(&state, cluster_id, accept)
+                        .await
+                        .map(|_| ())
+                }
             }
         })
         .await
@@ -165,7 +225,10 @@ impl MutationCapability for BisectMutation {
 
     async fn on_settled(&self, keys: &BisectAction, result: &Result<(), String>) {
         if let Err(err) = result
-            && !matches!(keys, BisectAction::Start { .. })
+            && !matches!(
+                keys,
+                BisectAction::Start { .. } | BisectAction::FindHidden { .. }
+            )
             && let Ok(state) = crate::launcher::state()
         {
             state

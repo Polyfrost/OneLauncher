@@ -1386,6 +1386,7 @@ async fn a_switched_off_copy_launch_leaves_off_keeps_the_bundle_opted_out() {
         &state.services.db,
         cluster_id,
         &[("other".to_string(), "Other".to_string())],
+        "{}",
     )
     .await
     .unwrap();
@@ -2382,6 +2383,7 @@ async fn a_mod_left_out_of_a_running_search_is_not_switched_back_on() {
         db,
         cluster_id,
         &[("other".to_string(), "Other".to_string())],
+        "{}",
     )
     .await
     .unwrap();

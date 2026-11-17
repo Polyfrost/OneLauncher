@@ -4840,6 +4840,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-util",
+ "toml",
  "tracing",
  "tracing-futures",
  "tracing-subscriber",

@@ -302,19 +302,15 @@ async fn refresh_conversations(station: Station) -> bool {
     }
 
     let ticket = next_ticket(&CONVERSATIONS_TICKET);
-    let (first, special_target) = tokio::join!(
+    let (first, special) = tokio::join!(
         client.groups_page(None, GROUPS_PAGE),
-        client.is_special_chat_target()
+        client.special_chat()
     );
     if owner_of(station) != owner {
         return false;
     }
-    if let Ok(special_target) = special_target {
-        station
-            .clone()
-            .write_channel(AppChannel::Chat)
-            .chat
-            .special_target = special_target;
+    if let Ok(special) = special {
+        apply_special(station, special);
     }
 
     let page = match first {
@@ -935,6 +931,20 @@ async fn deliver(station: Station, group_id: i32, key: Uuid, content: String) {
                 .fail_send(group_id, key);
         }
     }
+
+    if station.peek().chat.special_group == Some(group_id)
+        && let Ok(special) = client.special_chat().await
+        && owner_of(station) == owner
+    {
+        apply_special(station, special);
+    }
+}
+
+fn apply_special(station: Station, special: oneclient_polyplus::SpecialChatStatus) {
+    let mut guard = station.clone().write_channel(AppChannel::Chat);
+    guard.chat.special_target = special.is_special_chat_target;
+    guard.chat.special_group = special.group_id;
+    guard.chat.special_cooldown = special.cooldown_until;
 }
 
 #[derive(Clone, Debug, PartialEq)]

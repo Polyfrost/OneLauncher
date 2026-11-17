@@ -613,7 +613,7 @@ pub async fn alternative_version_id(
     };
     let content = state.services.content();
     let provider = content.providers.get(provider)?;
-    let picked = pick_version(provider, project_id, &row, &content).await?;
+    let picked = pick_version(provider, project_id, &row, None, &content).await?;
     Ok(picked.map(|pick| pick.version_id))
 }
 

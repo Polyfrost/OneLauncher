@@ -490,8 +490,8 @@ async fn import_playtime(
 ) -> Result<(), sqlx::Error> {
     let mut tx = db.begin().await?;
     if playtime.played_secs > 0 {
-        let secs = i64::try_from(playtime.played_secs.min(MAX_IMPORTED_PLAYED_SECS))
-            .unwrap_or(i64::MAX);
+        let secs =
+            i64::try_from(playtime.played_secs.min(MAX_IMPORTED_PLAYED_SECS)).unwrap_or(i64::MAX);
         cluster_dao::add_playtime(&mut *tx, cluster_id, secs).await?;
     }
     let last_played = playtime

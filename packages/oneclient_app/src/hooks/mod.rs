@@ -97,7 +97,9 @@ pub use queries::{
     use_version_art, use_version_art_gallery, use_version_loaders, use_version_metadata,
     use_versions, version_list, versions_metadata, versions_total,
 };
-pub use queries::{BisectAction, BisectMutation, use_bisect, use_bisect_mutation};
+pub use queries::{
+    BisectAction, BisectMutation, bisect_report, use_bisect, use_bisect_mutation,
+};
 pub use queries::{GraphicsBackendQuery, use_graphics_backend, use_has_game_options};
 pub(crate) use queries::{UNCREATED_CLUSTER, bundle_plan, bundle_taken, pkg_key};
 pub use queries::{

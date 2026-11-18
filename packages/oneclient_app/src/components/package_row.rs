@@ -169,10 +169,12 @@ impl PackageEntry {
     pub fn bisect_badge(&self) -> Option<Element> {
         let role = self.bisect_role?;
         let accent = match role {
-            BisectRole::Testing | BisectRole::Helper => colors::brand(),
-            BisectRole::Waiting => colors::fg_secondary(),
+            BisectRole::Testing | BisectRole::Helper | BisectRole::Required => colors::brand(),
+            BisectRole::Waiting | BisectRole::KeptOff | BisectRole::Omitted => {
+                colors::fg_secondary()
+            }
             BisectRole::Cleared => colors::success(),
-            BisectRole::Found => colors::danger(),
+            BisectRole::Found | BisectRole::Problem | BisectRole::Unresolvable => colors::danger(),
         };
         Some(status_tag(role.label(), accent))
     }

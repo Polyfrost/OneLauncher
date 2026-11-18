@@ -342,14 +342,20 @@ pub async fn read_zip_bytes_entry<K: Ord>(
 }
 
 /// Entries over [`MAX_ZIP_ENTRY_BYTES`] are skipped
-pub async fn read_zip_bytes_entries(data: Vec<u8>) -> PolyIOResult<Vec<(String, Vec<u8>)>> {
+pub async fn read_zip_bytes_entries(
+    data: Vec<u8>,
+    filter: impl Fn(&str) -> bool,
+) -> PolyIOResult<Vec<(String, Vec<u8>)>> {
     let mut reader = open_zip(futures_lite::io::Cursor::new(data)).await?;
     let mut entries: Vec<(String, usize)> = Vec::new();
     for (index, entry) in reader.file().entries().iter().enumerate() {
         let Ok(name) = entry.filename().as_str() else {
             continue;
         };
-        if !name.ends_with('/') && entry.uncompressed_size() <= MAX_ZIP_ENTRY_BYTES {
+        if !name.ends_with('/')
+            && filter(name)
+            && entry.uncompressed_size() <= MAX_ZIP_ENTRY_BYTES
+        {
             entries.push((name.to_string(), index));
         }
     }

@@ -4,8 +4,6 @@ use crate::models::{BisectEdgeKind, BisectExit, ClusterBisectModRow, ClusterBise
 
 pub struct BisectModState<'a> {
     pub hash: &'a str,
-    pub cleared_round: Option<i64>,
-    pub pinned_round: Option<i64>,
     pub testing: bool,
 }
 
@@ -16,7 +14,7 @@ pub async fn get_session(
     sqlx::query_as!(
         ClusterBisectSessionRow,
         r#"
-        SELECT cluster_id, round, pending_exit, started_at, retry_note, confirmed, finishing
+        SELECT cluster_id, pending_exit, started_at, retry_note, finishing, search
         FROM cluster_bisect_sessions
         WHERE cluster_id = ?
         "#,
@@ -33,7 +31,7 @@ pub async fn list_mods(
     sqlx::query_as!(
         ClusterBisectModRow,
         r#"
-        SELECT cluster_id, hash, cleared_round, testing, name, pinned_round, disable_on_finish
+        SELECT cluster_id, hash, testing, name, disable_on_finish
         FROM cluster_bisect_mods
         WHERE cluster_id = ?
         ORDER BY hash
@@ -61,13 +59,15 @@ pub async fn start(
     pool: &SqlitePool,
     cluster_id: i64,
     mods: &[(String, String)],
+    search: &str,
 ) -> Result<(), sqlx::Error> {
     let mut tx = pool.begin().await?;
     sqlx::query!(
         r#"
-        INSERT INTO cluster_bisect_sessions (cluster_id) VALUES (?)
+        INSERT INTO cluster_bisect_sessions (cluster_id, search) VALUES (?, ?)
         "#,
-        cluster_id
+        cluster_id,
+        search
     )
     .execute(&mut *tx)
     .await?;
@@ -86,25 +86,22 @@ pub async fn start(
     tx.commit().await
 }
 
-pub async fn save_round(
+pub async fn save(
     pool: &SqlitePool,
     cluster_id: i64,
-    round: i64,
-    confirmed: bool,
+    search: &str,
     mods: &[BisectModState<'_>],
 ) -> Result<(), sqlx::Error> {
     let none = BisectExit::None.as_i64();
-    let confirmed = i64::from(confirmed);
     let mut tx = pool.begin().await?;
     sqlx::query!(
         r#"
         UPDATE cluster_bisect_sessions
-        SET round = ?, pending_exit = ?, retry_note = NULL, confirmed = ?
+        SET search = ?, pending_exit = ?, retry_note = NULL
         WHERE cluster_id = ?
         "#,
-        round,
+        search,
         none,
-        confirmed,
         cluster_id
     )
     .execute(&mut *tx)
@@ -113,11 +110,9 @@ pub async fn save_round(
         let testing = i64::from(state.testing);
         sqlx::query!(
             r#"
-            UPDATE cluster_bisect_mods SET cleared_round = ?, pinned_round = ?, testing = ?
+            UPDATE cluster_bisect_mods SET testing = ?
             WHERE cluster_id = ? AND hash = ?
             "#,
-            state.cleared_round,
-            state.pinned_round,
             testing,
             cluster_id,
             state.hash
@@ -134,6 +129,70 @@ pub async fn save_round(
     .execute(&mut *tx)
     .await?;
     tx.commit().await
+}
+
+pub async fn add_mods(
+    pool: &SqlitePool,
+    cluster_id: i64,
+    mods: &[(String, String)],
+    search: &str,
+) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    for (hash, name) in mods {
+        sqlx::query!(
+            r#"
+            INSERT INTO cluster_bisect_mods (cluster_id, hash, name, testing) VALUES (?, ?, ?, 1)
+            "#,
+            cluster_id,
+            hash,
+            name
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+    sqlx::query!(
+        r#"
+        UPDATE cluster_bisect_sessions SET search = ?
+        WHERE cluster_id = ?
+        "#,
+        search,
+        cluster_id
+    )
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await
+}
+
+pub async fn set_search(pool: &SqlitePool, cluster_id: i64, search: &str) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+        UPDATE cluster_bisect_sessions SET search = ?
+        WHERE cluster_id = ?
+        "#,
+        search,
+        cluster_id
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn remove_edges(
+    pool: &SqlitePool,
+    cluster_id: i64,
+    kind: BisectEdgeKind,
+) -> Result<(), sqlx::Error> {
+    let kind = kind.as_i64();
+    sqlx::query!(
+        r#"
+        DELETE FROM cluster_bisect_edges WHERE cluster_id = ? AND kind = ?
+        "#,
+        cluster_id,
+        kind
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 pub async fn set_pending_exit(
@@ -317,27 +376,6 @@ pub async fn set_names(
     tx.commit().await
 }
 
-pub async fn set_confirmed(
-    pool: &SqlitePool,
-    cluster_id: i64,
-    confirmed: bool,
-) -> Result<(), sqlx::Error> {
-    let confirmed = i64::from(confirmed);
-    let none = BisectExit::None.as_i64();
-    sqlx::query!(
-        r#"
-        UPDATE cluster_bisect_sessions SET confirmed = ?, pending_exit = ?
-        WHERE cluster_id = ?
-        "#,
-        confirmed,
-        none,
-        cluster_id
-    )
-    .execute(pool)
-    .await?;
-    Ok(())
-}
-
 /// Recorded before any mod is switched back so an interrupted finish can be
 /// completed at the next startup
 pub async fn begin_finish(
@@ -416,4 +454,26 @@ pub async fn end(pool: &SqlitePool, cluster_id: i64) -> Result<(), sqlx::Error> 
     .execute(&mut *tx)
     .await?;
     tx.commit().await
+}
+
+pub async fn list_without_search(pool: &SqlitePool) -> Result<Vec<i64>, sqlx::Error> {
+    sqlx::query_scalar!(
+        r#"
+        SELECT cluster_id FROM cluster_bisect_sessions
+        WHERE search IS NULL AND finishing = 0
+        "#
+    )
+    .fetch_all(pool)
+    .await
+}
+
+pub async fn any_active(pool: &SqlitePool) -> Result<Option<i64>, sqlx::Error> {
+    sqlx::query_scalar!(
+        r#"
+        SELECT cluster_id FROM cluster_bisect_sessions
+        LIMIT 1
+        "#
+    )
+    .fetch_optional(pool)
+    .await
 }

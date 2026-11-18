@@ -33,14 +33,16 @@ pub fn censor_username(name: &str) {
 pub fn censor(line: &str) -> Cow<'_, str> {
     let out = SECRET.replace_all(line, "${1}${2}${3}${4}[censored]");
     let names = NAMES.read().unwrap_or_else(|err| err.into_inner());
-    if names.is_empty() {
-        return out;
+    censor_names(out, &names)
+}
+
+fn censor_names<'a>(mut text: Cow<'a, str>, names: &[String]) -> Cow<'a, str> {
+    for name in names {
+        if text.contains(name.as_str()) {
+            text = Cow::Owned(text.replace(name.as_str(), "[censored]"));
+        }
     }
-    let mut text = out.into_owned();
-    for name in names.iter() {
-        text = text.replace(name.as_str(), "[censored]");
-    }
-    Cow::Owned(text)
+    text
 }
 
 pub fn parse_level(line: &str) -> Option<LogLevel> {
@@ -65,4 +67,32 @@ pub fn parse_level(line: &str) -> Option<LogLevel> {
 fn level_from_segment(seg: &str) -> Option<LogLevel> {
     let token = seg.rsplit('/').next().unwrap_or(seg).trim();
     LogLevel::from_token(token)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clean_log_lines_stay_borrowed() {
+        let line = "[Render thread/INFO]: Loaded 138 advancements";
+        let names = [String::from("SamplePlayer")];
+
+        assert!(matches!(
+            censor_names(Cow::Borrowed(line), &names),
+            Cow::Borrowed(text) if text == line
+        ));
+    }
+
+    #[test]
+    fn redacts_names_in_registration_order_after_secrets() {
+        let line = "--accessToken SYNTHETIC EchoGuest EchoGuest123 EchoGuest";
+        let redacted = SECRET.replace_all(line, "${1}${2}${3}${4}[censored]");
+        let names = [String::from("EchoGuest"), String::from("EchoGuest123")];
+
+        assert_eq!(
+            censor_names(redacted, &names),
+            "--accessToken [censored] [censored] [censored]123 [censored]"
+        );
+    }
 }

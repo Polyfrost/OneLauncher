@@ -9,6 +9,49 @@ use oneclient_cluster::GameSettingsProfile;
 
 #[tracing::instrument(level = "debug", skip(notify))]
 pub async fn load_settings(notify: Option<&EventBus>) -> LauncherSettings {
+    let settings = load_settings_file(notify).await;
+    with_overrides(
+        settings,
+        std::env::vars_os().filter_map(|(key, value)| {
+            let key = key.to_str()?.strip_prefix(ENV_PREFIX)?.to_ascii_lowercase();
+            Some((key, value.into_string().ok()?))
+        }),
+    )
+}
+
+/// Any `settings.json` key can be overridden with `ONECLIENT_SETTING_<KEY>`
+pub const ENV_PREFIX: &str = "ONECLIENT_SETTING_";
+
+/// Values are read as JSON and fall back to a plain string, so
+/// `ONECLIENT_SETTING_THEME=light` and `ONECLIENT_SETTING_MAX_CONCURRENT_REQUESTS=10` both work
+fn with_overrides(
+    settings: LauncherSettings,
+    overrides: impl IntoIterator<Item = (String, String)>,
+) -> LauncherSettings {
+    let mut overrides = overrides.into_iter().peekable();
+    if overrides.peek().is_none() {
+        return settings;
+    }
+    let Ok(serde_json::Value::Object(mut fields)) = serde_json::to_value(&settings) else {
+        return settings;
+    };
+
+    for (key, raw) in overrides {
+        let value = serde_json::from_str(&raw)
+            .ok()
+            .filter(|value| fits(&key, value).is_ok())
+            .unwrap_or(serde_json::Value::String(raw));
+        tracing::info!(
+            "setting `{key}` overridden by {ENV_PREFIX}{}",
+            key.to_ascii_uppercase()
+        );
+        fields.insert(key, value);
+    }
+
+    salvaged_settings(serde_json::Value::Object(fields))
+}
+
+async fn load_settings_file(notify: Option<&EventBus>) -> LauncherSettings {
     match async {
         let path = paths::settings_file()?;
         let exists = polyio::try_exists(&path).await?;
@@ -89,19 +132,20 @@ fn salvaged_settings(value: serde_json::Value) -> LauncherSettings {
     let kept: serde_json::Map<_, _> = fields
         .into_iter()
         .filter(|(key, field)| {
-            let single =
-                serde_json::Value::Object([(key.clone(), field.clone())].into_iter().collect());
-            match serde_json::from_value::<LauncherSettings>(single) {
-                Ok(_) => true,
-                Err(err) => {
-                    tracing::warn!("reset setting `{key}` to its default: {err}");
-                    false
-                }
+            let fits = fits(key, field);
+            if let Err(err) = &fits {
+                tracing::warn!("reset setting `{key}` to its default: {err}");
             }
+            fits.is_ok()
         })
         .collect();
 
     serde_json::from_value(serde_json::Value::Object(kept)).unwrap_or_default()
+}
+
+fn fits(key: &str, field: &serde_json::Value) -> serde_json::Result<LauncherSettings> {
+    let single = serde_json::Value::Object([(key.to_owned(), field.clone())].into_iter().collect());
+    serde_json::from_value(single)
 }
 
 #[tracing::instrument(level = "debug", skip(settings))]

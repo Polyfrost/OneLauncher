@@ -29,13 +29,14 @@ as well as our [GitHub releases](https://github.com/Polyfrost/OneLauncher/releas
 
 <summary><h3>Flatpak Installation</h3></summary>
 
-1. First, navigate to the folder the .flatpak was downloaded in (example: Downloads)
+On most big distros, you can just double-click the .flatpak file to install it. You can also:
+1. First, navigate to the folder the .flatpak was downloaded in: (e.g. Downloads)
 ```
 cd Downloads
 ```
-2. Then you can install the package: (change filename with the one you downloaded)
+2. You can then install the package: (change filename with the one you downloaded)
 ```
-flatpak install ./OneClient_2.10.2_linux_x86_64.flatpak 
+flatpak install ./OneClient_2.11.0_linux_x86_64.flatpak 
 ```
 </details>
 <details>
@@ -43,11 +44,11 @@ flatpak install ./OneClient_2.10.2_linux_x86_64.flatpak
 <summary><h3>COPR Installation</h3></summary>
 
 On supported distributions (RHEL, Fedora, etc.), you can make use of the Fedora COPR instead of using the AppImage or manually installing the RPM file.
-1. First you have to enable the repository:
+1. First, you have to enable the repository:
 ```
 sudo dnf copr enable polyfrost/OneClient
 ```
-2. Then you can install the package:
+2. You can then install the package:
 ```
 sudo dnf install oneclient-bin
 ```

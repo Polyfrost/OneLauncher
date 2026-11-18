@@ -275,4 +275,5 @@ pub struct BundleWithUpdateStatus {
     pub files: Vec<(BundleFile, FileUpdateStatus)>,
     pub has_updates: bool,
     pub opted_in_types: HashSet<ContentType>,
+    pub taken: bool,
 }

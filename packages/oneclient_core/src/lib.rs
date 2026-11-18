@@ -82,7 +82,8 @@ pub use oneclient_content::bundles::{
     install_package_from_bundle, list_cluster_bundle_overrides, on_user_remove_artifact,
     pending_optional_mods, remove_artifact_from_cluster, resolve_optional_mods,
     set_artifact_enabled_to, set_bundle_package_enabled, set_bundle_package_opt_in,
-    set_bundle_package_override, set_bundle_package_overrides, skip_optional_mods,
+    set_bundle_package_override, set_bundle_package_overrides, set_bundle_package_removed,
+    skip_optional_mods,
 };
 pub use oneclient_content::packages::LinkedArtifactInfo;
 pub use oneclient_content::packages::dependents::{

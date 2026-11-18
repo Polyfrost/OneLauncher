@@ -329,6 +329,8 @@ async fn check_bundle_updates_inner(
     let external_ids = external_ids_by_sha1(&archives);
     let mut updates_available = Vec::new();
     let mut removals_available = Vec::new();
+    let suppressors =
+        overrides_outside_declined(cluster_id, &archives, overrides.to_vec(), ctx).await?;
 
     for bundle_pkg in &bundle_packages {
         let Some(pkg_id) = &bundle_pkg.package_id else {
@@ -406,7 +408,8 @@ async fn check_bundle_updates_inner(
             let user_disabled = matches!(
                 overrides_map.get(&(bundle_name.clone(), pkg_id.clone())),
                 Some(OverrideType::Disabled | OverrideType::Removed)
-            );
+            ) || find_user_suppression(&suppressors, pkg_id)
+                == Some(OverrideType::Removed);
             let still_shipped = shipped_keys_by_bundle
                 .get(bundle_name)
                 .is_some_and(|keys| keys.contains(&installed_key));
@@ -436,9 +439,9 @@ async fn check_bundle_updates_inner(
     updates_available.retain(|u| {
         let file_id = u.new_file.kind.package_id();
         !matches!(
-            overrides_map.get(&(u.bundle_name.clone(), file_id)),
+            overrides_map.get(&(u.bundle_name.clone(), file_id.clone())),
             Some(OverrideType::Removed)
-        )
+        ) && find_user_suppression(&suppressors, &file_id) != Some(OverrideType::Removed)
     });
 
     let addition_eligible_bundles = addition_eligible_bundles(
@@ -491,7 +494,8 @@ async fn check_bundle_updates_inner(
             let file_id = file.kind.package_id();
             let user_override = overrides_map
                 .get(&(archive.manifest.name.clone(), file_id.clone()))
-                .copied();
+                .copied()
+                .or_else(|| find_user_suppression(&suppressors, &file_id));
 
             let file_key = file.kind.bundle_key();
             let exact_file_installed = matches!(
@@ -1057,13 +1061,14 @@ pub async fn get_bundles_with_update_status(
         &overrides_map,
     )
     .await?;
+    let accepted = accepted_bundles(cluster_id, ctx).await?;
     // Kept apart from `live_bundles` so awaiting a first install alone gives no opt-out ownership
     let awaiting_install = bundles_awaiting_first_install(
         &archives,
         &bundle_packages,
         &all_linked_by_hash,
         &overrides_map,
-        &accepted_bundles(cluster_id, ctx).await?,
+        &accepted,
         &live_bundles,
     );
 
@@ -1130,6 +1135,7 @@ pub async fn get_bundles_with_update_status(
 
         results.push(BundleWithUpdateStatus {
             opted_in_types,
+            taken: takes_bundle(&archive, &accepted),
             archive,
             files,
             has_updates,

@@ -515,12 +515,32 @@ async fn start(
         .args(mc_args)
         .current_dir(&cwd);
 
+    // The folder name under metadata/java names the exact build we installed
+    let java_name = paths::java_dir()
+        .ok()
+        .and_then(|dir| {
+            Path::new(&java.absolute_path)
+                .strip_prefix(dir)
+                .ok()?
+                .components()
+                .next()
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        })
+        .unwrap_or_else(|| format!("{} {}", java.vendor, java.version));
+    let loader = match loader_version_id {
+        Some(id) => format!("{} {id}", cluster.mc_loader),
+        None => cluster.mc_loader.to_string(),
+    };
     let header = format!(
-        "OneClient {} · {} · {version_name} · Java {}\n\n{}\n\n",
+        "OneClient {} ({})\nOS: {} {}\nGame Version: {}\nGame Loader: {loader}\nJava: {} ({java_name})\nPWD: {}\nCommand: {}\n\n",
         env!("CARGO_PKG_VERSION"),
-        cluster.name,
+        if cfg!(debug_assertions) { "debug" } else { "release" },
+        sysinfo::System::kernel_long_version(),
+        std::env::consts::ARCH,
+        cluster.mc_version,
         java.major,
-        command_line(command.as_std(), &version_info.main_class),
+        shell_quote(&cwd.to_string_lossy()),
+        command_line(command.as_std()),
     );
 
     let log_path = oneclient_cluster::logs::cluster_output_log(&cluster)?;
@@ -1033,17 +1053,8 @@ fn base_command(profile: &GameSettingsProfile, java_path: &str) -> (Command, Opt
     (command, Some(program.to_string()))
 }
 
-fn command_line(command: &std::process::Command, main_class: &str) -> String {
-    #[cfg(not(windows))]
-    const CONTINUATION: &str = " \\\n  ";
-    #[cfg(windows)]
-    const CONTINUATION: &str = " `\n  ";
-
+fn command_line(command: &std::process::Command) -> String {
     let mut out = String::new();
-    if let Some(dir) = command.get_current_dir() {
-        let _ = writeln!(out, "cd {}", shell_quote(&dir.to_string_lossy()));
-    }
-
     for (key, value) in command.get_envs() {
         let (key, Some(value)) = (key.to_string_lossy(), value) else {
             continue;
@@ -1052,7 +1063,7 @@ fn command_line(command: &std::process::Command, main_class: &str) -> String {
         #[cfg(not(windows))]
         let _ = write!(out, "{key}={value} ");
         #[cfg(windows)]
-        let _ = writeln!(out, "$env:{key} = {value}");
+        let _ = write!(out, "$env:{key} = {value}; ");
     }
 
     #[cfg(windows)]
@@ -1062,14 +1073,8 @@ fn command_line(command: &std::process::Command, main_class: &str) -> String {
     out += &shell_quote(&command.get_program().to_string_lossy());
 
     for arg in command.get_args() {
-        let arg = arg.to_string_lossy();
-        let arg = oneclient_cluster::logs::censor(&arg);
-        out += if arg.starts_with('-') || arg == main_class {
-            CONTINUATION
-        } else {
-            " "
-        };
-        out += &shell_quote(&arg);
+        out += " ";
+        out += &shell_quote(&oneclient_cluster::logs::censor(&arg.to_string_lossy()));
     }
 
     out

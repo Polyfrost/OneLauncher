@@ -297,7 +297,7 @@ fn main() {
 
     #[cfg(target_os = "windows")]
     {
-        launch_config = launch_config.with_plugin(platform::frame::FramePlugin);
+        launch_config = launch_config.with_plugin(platform::frame::FramePlugin(settings.window_frame_fix));
     }
 
     if show_tray_icon {

@@ -363,6 +363,8 @@ pub(super) struct WardrobeCard {
     pub selected: bool,
     pub badge: Option<Badge>,
     pub thumbnail: Element,
+    /// Animated WebP swapped in for the thumbnail while hovered
+    pub preview: Option<String>,
     pub menu: Vec<MenuAction>,
     pub rename: Option<Rename>,
     pub enabled: bool,
@@ -411,7 +413,7 @@ impl Component for WardrobeCard {
             .map(|on_pick| {
                 rect()
                     .position(Position::new_absolute().top(6.).right(6.))
-                    .layer(Layer::Relative(1))
+                    .layer(THUMB_OVERLAY)
                     .child(swatch_column(&self.swatches, on_pick))
             });
         let has_menu = !self.menu.is_empty() || self.rename.is_some();
@@ -538,6 +540,13 @@ impl Component for WardrobeCard {
                             .border(hairline(colors::component_border()))
                             .overflow(Overflow::Clip)
                             .child(self.thumbnail.clone())
+                            .maybe_child(
+                                self.preview
+                                    .clone()
+                                    .filter(|_| hover && enabled)
+                                    .map(|url| AnimatedPreview { url }),
+                            )
+                            .maybe_child(self.preview.is_some().then(animated_tag))
                             .maybe_child(swatches),
                     ),
             )
@@ -632,7 +641,7 @@ impl Component for WardrobeCard {
             .maybe_child(self.badge.as_ref().map(|badge| {
                 rect()
                     .position(Position::new_absolute().top(0.).left(0.))
-                    .layer(Layer::Relative(1))
+                    .layer(CARD_OVERLAY)
                     .width(Size::fill())
                     .horizontal()
                     .main_align(Alignment::Center)
@@ -783,6 +792,7 @@ impl Component for SectionChip {
             .child(
                 label()
                     .text(self.text)
+                    .max_lines(1)
                     .font_size(text_size(14.))
                     .font_weight(if self.selected {
                         FontWeight::MEDIUM
@@ -910,6 +920,24 @@ pub(super) fn divider(text: &str) -> Element {
                 .color(colors::fg_secondary()),
         )
         .child(line())
+        .into_element()
+}
+
+/// Quiet left-aligned label that starts the store half of a category
+pub(super) fn store_label(text: &'static str) -> Element {
+    rect()
+        .horizontal()
+        .width(Size::fill())
+        .height(Size::fill())
+        .cross_align(Alignment::End)
+        .child(
+            label()
+                .text(text)
+                .max_lines(1)
+                .font_size(text_size(12.))
+                .font_weight(FontWeight::MEDIUM)
+                .color(colors::fg_secondary()),
+        )
         .into_element()
 }
 
@@ -1051,6 +1079,162 @@ impl Component for LookThumb {
     }
 }
 
+/// Layers add one per nesting level, so overlays need a jump bigger than the
+/// thumbnail's own depth to paint above it. Badges sit above thumbnail overlays.
+const THUMB_OVERLAY: Layer = Layer::Relative(8);
+/// Above the playing preview's image, which sits two levels inside its overlay
+const TAG_OVERLAY: Layer = Layer::Relative(12);
+const CARD_OVERLAY: Layer = Layer::Relative(16);
+
+fn animated_tag() -> Element {
+    rect()
+        .position(Position::new_absolute().top(6.).left(6.))
+        .layer(TAG_OVERLAY)
+        .padding(Gaps::new_symmetric(2., 5.))
+        .corner_radius(rounded(4.))
+        .background(colors::with_alpha(colors::page(), 200))
+        .interactive(false)
+        .child(
+            label()
+                .text(t("oneclient.wardrobe.badge.animated"))
+                .font_size(text_size(9.))
+                .font_weight(FontWeight::SEMI_BOLD)
+                .color(colors::fg_primary()),
+        )
+        .into_element()
+}
+
+/// Plays an animated WebP over the card's still cover. Frames are decoded one
+/// at a time into a single buffer, so a hovered card never holds the whole clip.
+#[derive(PartialEq)]
+struct AnimatedPreview {
+    url: String,
+}
+
+impl Component for AnimatedPreview {
+    fn render(&self) -> impl IntoElement {
+        let query = use_cached_image(Some(self.url.clone()), 0);
+        let mut source = use_state(|| None::<bytes::Bytes>);
+        let mut frame = use_state(|| None::<ImageHandle>);
+        if let Some((_, bytes)) = loaded_image(Some(&self.url), &query)
+            && source.peek().is_none()
+        {
+            source.set(Some(bytes));
+        }
+
+        use_hook(move || {
+            spawn(async move {
+                let mut player = None::<WebpPlayer>;
+                loop {
+                    if player.is_none() {
+                        player = source.peek().as_ref().and_then(WebpPlayer::new);
+                    }
+                    let delay = match player.as_mut().and_then(WebpPlayer::step) {
+                        Some((handle, delay)) => {
+                            frame.set(Some(handle));
+                            delay
+                        }
+                        None => std::time::Duration::from_millis(50),
+                    };
+                    tokio::time::sleep(delay).await;
+                }
+            });
+        });
+
+        let Some(handle) = frame.read().clone() else {
+            return rect().into_element();
+        };
+        // Inset by the thumbnail's hairline so its border stays visible on top
+        rect()
+            .position(Position::new_absolute().top(0.).left(0.))
+            .layer(THUMB_OVERLAY)
+            .width(Size::percent(100.))
+            .height(Size::percent(100.))
+            .padding(1.)
+            .interactive(false)
+            .child(
+                rect()
+                    .width(Size::fill())
+                    .height(Size::fill())
+                    .corner_radius(rounded(4.))
+                    .overflow(Overflow::Clip)
+                    .background(colors::page())
+                    .child(
+                        image(handle)
+                            .width(Size::fill())
+                            .height(Size::fill())
+                            .aspect_ratio(AspectRatio::Min)
+                            .image_cover(ImageCover::Center),
+                    ),
+            )
+            .into_element()
+    }
+}
+
+struct WebpPlayer {
+    codec: skia_safe::Codec<'static>,
+    info: skia_safe::ImageInfo,
+    pixels: Vec<u8>,
+    frames: usize,
+    next: usize,
+}
+
+impl WebpPlayer {
+    fn new(bytes: &bytes::Bytes) -> Option<Self> {
+        let mut codec = skia_safe::Codec::from_data_with_decoders(
+            skia_safe::Data::new_copy(bytes),
+            &[skia_safe::codec::webp_decoder::decoder()],
+        )?;
+        let info = skia_safe::ImageInfo::new(
+            codec.dimensions(),
+            skia_safe::ColorType::RGBA8888,
+            skia_safe::AlphaType::Premul,
+            None,
+        );
+        let frames = codec.get_frame_count().max(1);
+        Some(Self {
+            pixels: vec![0; info.compute_min_byte_size()],
+            codec,
+            info,
+            frames,
+            next: 0,
+        })
+    }
+
+    fn step(&mut self) -> Option<(ImageHandle, std::time::Duration)> {
+        let index = self.next;
+        let options = skia_safe::codec::Options {
+            frame_index: index,
+            // The buffer still holds the last frame, so skia only blends this one on top
+            prior_frame: index.checked_sub(1),
+            ..Default::default()
+        };
+        let row_bytes = self.info.min_row_bytes();
+        let result = self.codec.get_pixels_with_options(
+            &self.info,
+            &mut self.pixels,
+            row_bytes,
+            Some(&options),
+        );
+        if result != skia_safe::codec::Result::Success {
+            return None;
+        }
+        let millis = self
+            .codec
+            .get_frame_info(index)
+            .map_or(50, |info| info.duration.max(20));
+        self.next = (index + 1) % self.frames;
+        let size = self.info.dimensions();
+        let handle = ImageHandle::from_rgba(
+            size.width as u32,
+            size.height as u32,
+            bytes::Bytes::copy_from_slice(&self.pixels),
+            skia_safe::AlphaType::Premul,
+        )?;
+        Some((handle, std::time::Duration::from_millis(millis as u64)))
+    }
+}
+
 #[derive(PartialEq)]
 pub(super) struct CoverThumb {
     pub url: Option<String>,
@@ -1078,5 +1262,28 @@ impl Component for CoverThumb {
                 )
                 .into_element(),
         }
+    }
+}
+
+#[cfg(test)]
+mod webp_tests {
+    use super::WebpPlayer;
+
+    #[test]
+    fn plays_every_frame_and_loops() {
+        // 8x8, three solid frames: red, green, blue
+        let bytes = bytes::Bytes::from_static(include_bytes!("preview_fixture.webp"));
+        let mut player = WebpPlayer::new(&bytes).expect("decodes animated webp");
+        assert_eq!(player.frames, 3);
+        let mut firsts = Vec::new();
+        for _ in 0..4 {
+            let (_, delay) = player.step().expect("frame decodes");
+            assert_eq!(delay.as_millis(), 50);
+            firsts.push(player.pixels[..4].to_vec());
+        }
+        assert_eq!(firsts[0], [255, 0, 0, 255]);
+        assert_eq!(firsts[1], [0, 255, 0, 255]);
+        assert_eq!(firsts[2], [0, 0, 255, 255]);
+        assert_eq!(firsts[3], firsts[0], "loops back to the first frame");
     }
 }

@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::rc::Rc;
+use std::time::Duration;
 
 use freya::animation::*;
 use freya::prelude::*;
@@ -16,25 +17,26 @@ use uuid::Uuid;
 use super::parts::{
     AnchorChip, BACK_YAW, Badge, BadgeStyle, CAPE_ZOOM, CARD_CHROME, CARD_WIDTH, CapeSource,
     CoverThumb, FRONT_YAW, GRID_GAP, InfoHeading, LookThumb, MenuAction, Rename, SectionChip,
-    Swatch, WardrobeCard, detail_text, divider, library_intro, notice, price_label,
+    Swatch, WardrobeCard, detail_text, divider, library_intro, notice, price_label, store_label,
 };
 use super::preview::{HistoryList, RightColumn};
 use crate::components::{
-    Button, Dropdown, Icon, IconType, ScrollArea, ScrollAreaCtx, TextInput, centered_spinner,
+    Button, Dropdown, Icon, IconType, ScrollArea, ScrollAreaCtx, Spinner, TextInput,
+    centered_spinner,
 };
 use crate::hooks::wardrobe::{
     MojangLookQuery, OutfitsQuery, PlusCosmeticsQuery, SkinsQuery, StoreData, StoreQuery,
     UseWardrobeAction, WardrobeAction, active_cape, active_skin, invalidate_wardrobe_queries,
     plus_message, use_mojang_look, use_outfits, use_plus_cosmetics, use_skin_library, use_store,
-    use_wardrobe_action,
+    use_store_suggestions, use_wardrobe_action,
 };
 use crate::hooks::{
     mutation_is_running, query_error, query_is_loading, settled_or_loading, try_default_account,
-    use_current_account,
+    use_current_account, use_debounced, use_overlay_claim_when,
 };
 use crate::i18n::{t, tf};
-use crate::theme::{colors, text_size};
-use crate::ui::centered_note;
+use crate::theme::{colors, rounded, text_size};
+use crate::ui::{border_all_color, centered_note};
 use crate::view::app::cluster::confirm_dialog;
 
 const RIGHT_COLUMN_MIN_WIDTH: f32 = 320.;
@@ -71,19 +73,17 @@ pub(super) const BACK_VIEW_TYPES: [CosmeticType; 3] = [
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) enum Section {
-    Featured,
+    Cosmetics,
     Outfits,
     Skins,
-    Emotes,
-    Cosmetics,
 }
 
-fn section_tabs() -> [(Section, &'static str, IconType); 5] {
+fn section_tabs() -> [(Section, &'static str, IconType); 3] {
     [
         (
-            Section::Featured,
-            t("oneclient.wardrobe.section.featured"),
-            IconType::Rocket02,
+            Section::Cosmetics,
+            t("oneclient.wardrobe.section.cosmetics"),
+            IconType::Colors,
         ),
         (
             Section::Outfits,
@@ -94,16 +94,6 @@ fn section_tabs() -> [(Section, &'static str, IconType); 5] {
             Section::Skins,
             t("oneclient.wardrobe.section.skins"),
             IconType::Brush01,
-        ),
-        (
-            Section::Emotes,
-            t("oneclient.wardrobe.section.emotes"),
-            IconType::Play,
-        ),
-        (
-            Section::Cosmetics,
-            t("oneclient.wardrobe.section.cosmetics"),
-            IconType::Colors,
         ),
     ]
 }
@@ -297,6 +287,7 @@ impl WardrobeData {
                 variant_order: 0,
                 asset_id: item.asset_id,
                 cover_asset_id: item.cover_asset_id,
+                preview_url: item.preview_url.clone(),
             })
     }
 
@@ -357,6 +348,16 @@ impl WardrobeData {
             .and_then(|entry| entry.cover_asset_id)
             .or(item.cover_asset_id)
             .map(api::asset_url)
+    }
+
+    pub fn preview_for_variant(&self, variant: i32) -> Option<String> {
+        let item = self.store.as_ref()?.containing_variant(variant)?;
+        item.variants
+            .iter()
+            .flatten()
+            .find(|entry| entry.id == variant)
+            .and_then(|entry| entry.preview_url.clone())
+            .or_else(|| item.preview_url.clone())
     }
 
     pub fn variant_cover(&self, variant: &CosmeticVariant) -> Option<String> {
@@ -519,7 +520,9 @@ pub(super) fn shop_thumbnail(
     variant: &StoreVariant,
     interactive: bool,
 ) -> Element {
-    if item.kind == CosmeticType::Cape
+    // Cards show the generated cover; only the big preview renders the cape on the player
+    if interactive
+        && item.kind == CosmeticType::Cape
         && let Some(asset) = variant.asset_id.or(item.asset_id)
     {
         return LookThumb {
@@ -530,7 +533,7 @@ pub(super) fn shop_thumbnail(
             emote: None,
             particle_color: None,
             yaw: BACK_YAW,
-            zoom: if interactive { 1.0 } else { CAPE_ZOOM },
+            zoom: 1.0,
             interactive,
         }
         .into_element();
@@ -889,7 +892,7 @@ impl Component for WardrobeBody {
         let store_query = use_store();
         let action = use_wardrobe_action();
 
-        let section = use_state(|| Section::Featured);
+        let section = use_state(|| Section::Cosmetics);
         let show_history = use_state(|| false);
         let sort = use_state(|| Sort::Popular);
         let query = use_state(String::new);
@@ -995,11 +998,9 @@ impl Component for WardrobeBody {
             Vec::new()
         } else {
             match current_section {
-                Section::Featured => featured_content(&ctx),
+                Section::Cosmetics => cosmetics_content(&ctx),
                 Section::Outfits => outfits_content(&ctx),
                 Section::Skins => skins_content(&ctx),
-                Section::Emotes => emotes_content(&ctx),
-                Section::Cosmetics => cosmetics_content(&ctx),
             }
         };
         if !history
@@ -1125,18 +1126,13 @@ impl Component for WardrobeBody {
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .color(colors::fg_primary()),
                             )
-                            .child(
-                                TextInput::new(query)
-                                    .placeholder(t("oneclient.wardrobe.search"))
-                                    .compact()
-                                    .width(Size::px(260.))
-                                    .leading(
-                                        Icon::new(IconType::SearchMd)
-                                            .size(14.)
-                                            .color(colors::fg_secondary())
-                                            .into_element(),
-                                    ),
-                            ),
+                            .child(StoreSearch {
+                                data: data.clone(),
+                                query,
+                                shared,
+                                suggest: data.plus_available()
+                                    && current_section == Section::Cosmetics,
+                            }),
                     )
                     .child(
                         rect()
@@ -1177,13 +1173,245 @@ impl Component for WardrobeBody {
     }
 }
 
+const SEARCH_WIDTH: f32 = 260.;
+const SEARCH_DEBOUNCE: Duration = Duration::from_millis(250);
+
+/// The search box, plus a live dropdown of store matches while typing on the
+/// cosmetics tab. The grid below still filters by the same text.
+#[derive(PartialEq)]
+struct StoreSearch {
+    data: WardrobeData,
+    query: State<String>,
+    shared: Shared,
+    suggest: bool,
+}
+
+impl Component for StoreSearch {
+    fn render(&self) -> impl IntoElement {
+        let query = self.query;
+        let text = query.read().trim().to_string();
+        let settled = use_debounced(text.clone(), SEARCH_DEBOUNCE);
+        let settled = settled.read().clone();
+        let suggestions = use_store_suggestions(if self.suggest { &settled } else { "" });
+        let mut open = use_state(|| false);
+        let mut input_area = use_state(|| None::<Area>);
+        let mut panel_area = use_state(|| None::<Area>);
+
+        use_side_effect_with_deps(&text, move |text: &String| {
+            open.set_if_modified(!text.is_empty());
+        });
+        let showing = self.suggest && *open.read() && !text.is_empty();
+        use_overlay_claim_when(showing);
+
+        let on_global_pointer_up = move |e: Event<PointerEventData>| {
+            let point = e.global_location();
+            let point = (point.x as f32, point.y as f32).into();
+            let inside = |area: Option<Area>| area.is_some_and(|area| area.contains(point));
+            if !inside(*input_area.peek()) && !inside(*panel_area.peek()) {
+                open.set_if_modified(false);
+            }
+        };
+
+        let panel = showing.then(|| {
+            let mut rows = rect().vertical().width(Size::fill()).spacing(2.);
+            let searching = text != settled || query_is_loading(&suggestions);
+            let results = settled_or_loading(&suggestions).unwrap_or_default();
+            if searching && results.is_empty() {
+                rows = rows.child(search_note(
+                    Some(Spinner::new(14.).into_element()),
+                    t("oneclient.wardrobe.search.searching").to_string(),
+                ));
+            } else if let Some(error) = query_error(&suggestions).filter(|_| results.is_empty()) {
+                rows = rows.child(search_note(None, error));
+            } else if results.is_empty() {
+                rows = rows.child(search_note(
+                    None,
+                    tf("oneclient.wardrobe.search.no_results", &[&text]),
+                ));
+            } else {
+                let ctx = GridCtx {
+                    data: &self.data,
+                    shared: self.shared,
+                };
+                for item in results {
+                    let select = ctx.select(suggestion_selection(&self.data, item.id));
+                    rows = rows.child(SuggestionRow {
+                        item,
+                        on_press: EventHandler::new(move |()| {
+                            open.set(false);
+                            select.call(());
+                        }),
+                    });
+                }
+                rows = rows.child(
+                    rect()
+                        .width(Size::fill())
+                        .padding(Gaps::new(8., 10., 6., 10.))
+                        .cursor(CursorIcon::Pointer)
+                        .a11y_role(AccessibilityRole::Button)
+                        .on_press(move |_| open.set(false))
+                        .child(
+                            label()
+                                .text(tf("oneclient.wardrobe.search.see_all", &[&text]))
+                                .max_lines(1)
+                                .text_overflow(TextOverflow::Ellipsis)
+                                .font_size(text_size(12.))
+                                .color(colors::fg_secondary()),
+                        ),
+                );
+            }
+            rect().width(Size::px(0.)).height(Size::px(0.)).child(
+                rect()
+                    .layer(Layer::Overlay)
+                    .width(Size::px(SEARCH_WIDTH))
+                    .margin(Gaps::new(4., 0., 0., 0.))
+                    .padding(4.)
+                    .corner_radius(rounded(8.))
+                    .border(border_all_color(1., colors::component_border()))
+                    .background(colors::page_elevated())
+                    .on_sized(move |e: Event<SizedEventData>| {
+                        panel_area.set_if_modified(Some(e.area));
+                    })
+                    .child(rows),
+            )
+        });
+
+        rect()
+            .width(Size::px(SEARCH_WIDTH))
+            .on_global_pointer_up(on_global_pointer_up)
+            .on_global_key_down(move |e: Event<KeyboardEventData>| {
+                if e.key == Key::Named(NamedKey::Escape) {
+                    open.set_if_modified(false);
+                }
+            })
+            .child(
+                rect()
+                    .width(Size::fill())
+                    .on_sized(move |e: Event<SizedEventData>| {
+                        input_area.set_if_modified(Some(e.area));
+                    })
+                    .on_press(move |_| {
+                        if !query.peek().trim().is_empty() {
+                            open.set_if_modified(true);
+                        }
+                    })
+                    .child(
+                        TextInput::new(query)
+                            .placeholder(t("oneclient.wardrobe.search"))
+                            .compact()
+                            .width(Size::fill())
+                            .on_submit(move |_| open.set(false))
+                            .leading(
+                                Icon::new(IconType::SearchMd)
+                                    .size(14.)
+                                    .color(colors::fg_secondary())
+                                    .into_element(),
+                            ),
+                    ),
+            )
+            .maybe_child(panel)
+    }
+}
+
+/// Owned items open as owned so the preview offers equip instead of buy
+fn suggestion_selection(data: &WardrobeData, id: i32) -> Selection {
+    if data.emotes().iter().any(|emote| emote.id == id) {
+        Selection::Emote(id)
+    } else if let Some((group, _)) = data.variant(id) {
+        Selection::Owned(group.id)
+    } else {
+        Selection::Shop(id)
+    }
+}
+
+fn search_note(leading: Option<Element>, text: String) -> Element {
+    rect()
+        .horizontal()
+        .width(Size::fill())
+        .padding(Gaps::new_symmetric(10., 10.))
+        .cross_align(Alignment::Center)
+        .spacing(8.)
+        .maybe_child(leading)
+        .child(
+            label()
+                .text(text)
+                .max_lines(1)
+                .text_overflow(TextOverflow::Ellipsis)
+                .font_size(text_size(13.))
+                .color(colors::fg_secondary()),
+        )
+        .into_element()
+}
+
+#[derive(PartialEq)]
+struct SuggestionRow {
+    item: api::StoreSuggestion,
+    on_press: EventHandler<()>,
+}
+
+impl Component for SuggestionRow {
+    fn render(&self) -> impl IntoElement {
+        let mut hovered = use_state(|| false);
+        let on_press = self.on_press.clone();
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .padding(6.)
+            .spacing(10.)
+            .cross_align(Alignment::Center)
+            .corner_radius(rounded(6.))
+            .background(if *hovered.read() {
+                colors::ghost_overlay_hover()
+            } else {
+                Color::TRANSPARENT
+            })
+            .cursor(CursorIcon::Pointer)
+            .a11y_role(AccessibilityRole::Button)
+            .a11y_alt(self.item.name.clone())
+            .on_pointer_enter(move |_| hovered.set(true))
+            .on_pointer_leave(move |_| hovered.set(false))
+            .on_press(move |_| on_press.call(()))
+            .child(
+                rect()
+                    .width(Size::px(36.))
+                    .height(Size::px(36.))
+                    .corner_radius(rounded(5.))
+                    .background(colors::page())
+                    .overflow(Overflow::Clip)
+                    .child(CoverThumb {
+                        url: self.item.cover_asset_id.map(api::asset_url),
+                    }),
+            )
+            .child(
+                rect()
+                    .vertical()
+                    .width(Size::flex(1.0))
+                    .spacing(2.)
+                    .child(
+                        label()
+                            .text(self.item.name.clone())
+                            .max_lines(1)
+                            .text_overflow(TextOverflow::Ellipsis)
+                            .font_size(text_size(13.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .color(colors::fg_primary()),
+                    )
+                    .child(
+                        label()
+                            .text(type_label(self.item.kind))
+                            .max_lines(1)
+                            .font_size(text_size(11.))
+                            .color(colors::fg_secondary()),
+                    ),
+            )
+    }
+}
+
 fn section_key(section: Section, history: bool) -> u64 {
     let base = match section {
-        Section::Featured => 1,
+        Section::Cosmetics => 1,
         Section::Outfits => 2,
         Section::Skins => 3,
-        Section::Emotes => 4,
-        Section::Cosmetics => 5,
     };
     if history { base + 10 } else { base }
 }
@@ -1221,7 +1449,6 @@ impl Component for AnchorRow {
         });
         let mut row = rect()
             .horizontal()
-            .width(Size::fill())
             .cross_align(Alignment::Center)
             .spacing(4.);
         if labels.len() > 1 {
@@ -1279,10 +1506,17 @@ impl Header {
         let sections: Vec<(Section, &str, IconType)> = if store_enabled {
             section_tabs().to_vec()
         } else {
-            vec![section_tabs()[4]]
+            vec![section_tabs()[0]]
         };
 
-        let mut chips = rect().horizontal().width(Size::flex(1.0)).spacing(8.);
+        // Scrolls instead of squashing when the sort and cart controls crowd narrow windows
+        let mut chips = ScrollView::new()
+            .direction(Direction::Horizontal)
+            .show_scrollbar(false)
+            .invert_scroll_wheel(true)
+            .width(Size::flex(1.0))
+            .height(Size::px(33.))
+            .spacing(8.);
         for (target, text, icon) in sections {
             chips = chips.child(SectionChip {
                 text,
@@ -1300,6 +1534,12 @@ impl Header {
         }
 
         let cart_size = shared.cart.read().len();
+        let sort_labels: Vec<String> = Sort::ALL
+            .iter()
+            .map(|sort| sort.label().to_string())
+            .collect();
+        let sort_selected = sort.read().label();
+        let mut status = shared.status;
         let top = rect()
             .horizontal()
             .width(Size::fill())
@@ -1308,57 +1548,8 @@ impl Header {
             .cross_align(Alignment::Center)
             .spacing(8.)
             .child(chips)
-            .maybe_child(store_enabled.then(|| {
-                Button::new()
-                    .primary()
-                    .on_press(move |_| {
-                        let open = !*show_cart.read();
-                        show_cart.set(open);
-                    })
-                    .text(tf("oneclient.wardrobe.cart.button", &[&cart_size]))
-            }));
-
-        let left = if history {
-            rect()
-                .width(Size::flex(1.0))
-                .child(
-                    label()
-                        .text(t("oneclient.wardrobe.history.title"))
-                        .font_size(text_size(14.))
-                        .font_weight(FontWeight::MEDIUM)
-                        .color(colors::fg_primary()),
-                )
-                .into_element()
-        } else {
-            rect()
-                .width(Size::flex(1.0))
-                .child(AnchorRow {
-                    labels,
-                    anchors,
-                    scroll,
-                })
-                .into_element()
-        };
-
-        let sort_labels: Vec<String> = Sort::ALL
-            .iter()
-            .map(|sort| sort.label().to_string())
-            .collect();
-        let sort_selected = sort.read().label();
-        let mut status = shared.status;
-        let bottom = rect()
-            .horizontal()
-            .width(Size::fill())
-            .height(Size::px(33.))
-            .content(Content::Flex)
-            .cross_align(Alignment::Center)
-            .spacing(8.)
-            .child(left)
             .maybe_child(
-                (store_enabled
-                    && !history
-                    && matches!(current, Section::Emotes | Section::Cosmetics))
-                .then(|| {
+                (store_enabled && !history && current == Section::Cosmetics).then(|| {
                     Dropdown::new(sort_selected, sort_labels)
                         .width(Size::px(132.))
                         .height(Size::px(30.))
@@ -1427,7 +1618,55 @@ impl Header {
                         });
                     })
                     .child(Icon::new(IconType::RefreshCw01).size(14.)),
-            );
+            )
+            .maybe_child(store_enabled.then(|| {
+                Button::new()
+                    .primary()
+                    .on_press(move |_| {
+                        let open = !*show_cart.read();
+                        show_cart.set(open);
+                    })
+                    .text(tf("oneclient.wardrobe.cart.button", &[&cart_size]))
+            }));
+
+        let left = if history {
+            rect()
+                .width(Size::flex(1.0))
+                .child(
+                    label()
+                        .text(t("oneclient.wardrobe.history.title"))
+                        .font_size(text_size(14.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .color(colors::fg_primary()),
+                )
+                .into_element()
+        } else {
+            rect()
+                .width(Size::flex(1.0))
+                .child(
+                    // Popular, New, Bundles and Emotes push the chips past narrow windows
+                    ScrollView::new()
+                        .direction(Direction::Horizontal)
+                        .show_scrollbar(false)
+                        // so a plain mouse wheel moves the chips sideways
+                        .invert_scroll_wheel(true)
+                        .width(Size::fill())
+                        .height(Size::px(33.))
+                        .child(
+                            rect()
+                                .height(Size::fill())
+                                .main_align(Alignment::Center)
+                                .child(AnchorRow {
+                                    labels,
+                                    anchors,
+                                    scroll,
+                                }),
+                        ),
+                )
+                .into_element()
+        };
+
+        let bottom = rect().width(Size::fill()).height(Size::px(33.)).child(left);
 
         rect()
             .vertical()
@@ -1440,6 +1679,7 @@ impl Header {
 }
 
 const ANCHOR_HEIGHT: f32 = 24.;
+const STORE_LABEL_HEIGHT: f32 = 18.;
 const HEADING_HEIGHT: f32 = 28.;
 const NOTICE_HEIGHT: f32 = 57.;
 const INTRO_HEIGHT: f32 = 33.;
@@ -1713,137 +1953,51 @@ fn equip_strip(equipped: bool) -> (&'static str, IconType) {
     }
 }
 
-fn store_notice(
-    ctx: &GridCtx,
-    loading: &str,
-    empty: &str,
-    failed: impl Fn(&StoreData) -> bool,
-) -> Block {
+fn featured_rows(ctx: &GridCtx) -> Vec<Block> {
     let data = ctx.data;
-    Block::notice(match (&data.store, &data.store_error) {
-        (None, Some(error)) => error.clone(),
-        (None, None) => loading.to_string(),
-        (Some(store), _) if store.failed || failed(store) => {
-            t("oneclient.wardrobe.store.unreachable").to_string()
-        }
-        _ => empty.to_string(),
-    })
-}
-
-fn featured_content(ctx: &GridCtx) -> Vec<Block> {
-    let data = ctx.data;
+    let Some(store) = &data.store else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
-    if let Some(store) = &data.store {
-        let popular: Vec<&StoreItem> = store
-            .popular
+    for (text, items) in [
+        (t("oneclient.wardrobe.featured.popular"), &store.popular),
+        (t("oneclient.wardrobe.featured.new"), &store.newest),
+    ] {
+        let cards: Vec<Card> = items
             .iter()
             .filter(|item| data.matches(&item.name))
+            .map(|item| Card::Shop(item.id))
             .collect();
-        let newest: Vec<&StoreItem> = store
-            .newest
-            .iter()
-            .filter(|item| data.matches(&item.name))
-            .collect();
-        let bundles: Vec<&BundleInfo> = store
-            .bundles
-            .iter()
-            .filter(|bundle| data.matches(&bundle.name))
-            .collect();
-        if !popular.is_empty() {
-            out.push(ctx.anchor(t("oneclient.wardrobe.featured.popular")));
-            out.push(
-                ctx.grid(
-                    popular
-                        .into_iter()
-                        .map(|item| Card::Shop(item.id))
-                        .collect(),
-                ),
-            );
-        }
-        if !newest.is_empty() {
-            out.push(ctx.anchor(t("oneclient.wardrobe.featured.new")));
-            out.push(ctx.grid(newest.into_iter().map(|item| Card::Shop(item.id)).collect()));
-        }
-        if !bundles.is_empty() {
-            out.push(ctx.anchor(t("oneclient.wardrobe.featured.bundles")));
-            out.push(
-                ctx.grid(
-                    bundles
-                        .into_iter()
-                        .map(|bundle| Card::Bundle(bundle.id))
-                        .collect(),
-                ),
-            );
+        if !cards.is_empty() {
+            out.push(ctx.anchor(text));
+            out.push(ctx.grid(cards));
         }
     }
-    if out.is_empty() {
-        out.push(store_notice(
-            ctx,
-            t("oneclient.wardrobe.featured.loading"),
-            if data.query.trim().is_empty() {
-                t("oneclient.wardrobe.featured.empty")
-            } else {
-                t("oneclient.wardrobe.featured.no_match")
-            },
-            |store| store.featured_failed,
-        ));
+    let bundles: Vec<Card> = store
+        .bundles
+        .iter()
+        .filter(|bundle| data.matches(&bundle.name))
+        .map(|bundle| Card::Bundle(bundle.id))
+        .collect();
+    if !bundles.is_empty() {
+        out.push(ctx.anchor(t("oneclient.wardrobe.featured.bundles")));
+        out.push(ctx.grid(bundles));
     }
     out
 }
 
-fn emotes_content(ctx: &GridCtx) -> Vec<Block> {
-    let data = ctx.data;
+/// Owned cards, then the store's under a small label so the two never blur together
+fn owned_then_shop(owned: Vec<Card>, shop: Vec<Card>) -> Vec<Block> {
     let mut out = Vec::new();
-    let owned: Vec<&EmoteInfo> = data
-        .emotes()
-        .iter()
-        .filter(|emote| data.matches(&emote.name))
-        .collect();
     if !owned.is_empty() {
-        out.push(ctx.anchor(t("oneclient.wardrobe.emotes.owned")));
-        out.push(
-            ctx.grid(
-                owned
-                    .into_iter()
-                    .map(|emote| Card::Emote(emote.id))
-                    .collect(),
-            ),
-        );
+        out.push(Block::Cards(owned));
     }
-
-    let mut groups: Vec<(String, Vec<StoreItem>)> = Vec::new();
-    for item in data.shop(CosmeticType::Emote) {
-        let category = item
-            .tags
-            .category
-            .first()
-            .filter(|name| !name.trim().is_empty())
-            .map(|name| {
-                let name = name.trim();
-                let mut chars = name.chars();
-                chars
-                    .next()
-                    .map(|first| first.to_uppercase().collect::<String>() + chars.as_str())
-                    .unwrap_or_default()
-            })
-            .unwrap_or_else(|| t("oneclient.wardrobe.emotes.more").into());
-        match groups.iter_mut().find(|(name, _)| *name == category) {
-            Some((_, items)) => items.push(item),
-            None => groups.push((category, vec![item])),
-        }
-    }
-    for (category, items) in groups {
-        out.push(ctx.anchor(&category));
-        out.push(ctx.grid(items.iter().map(|item| Card::Shop(item.id)).collect()));
-    }
-
-    if out.is_empty() {
-        out.push(store_notice(
-            ctx,
-            t("oneclient.wardrobe.emotes.loading"),
-            t("oneclient.wardrobe.emotes.empty"),
-            |store| store.missing.contains(&CosmeticType::Emote),
+    if !shop.is_empty() {
+        out.push(Block::fixed(
+            store_label(t("oneclient.wardrobe.store.section")),
+            STORE_LABEL_HEIGHT,
         ));
+        out.push(Block::Cards(shop));
     }
     out
 }
@@ -1859,6 +2013,7 @@ fn cosmetics_content(ctx: &GridCtx) -> Vec<Block> {
     let mut out = Vec::new();
     let searching = !data.query.trim().is_empty();
     let store_down = data.store.as_ref().is_some_and(|store| store.failed);
+    out.extend(featured_rows(ctx));
 
     for (kind, text) in &categories() {
         if *kind == CosmeticType::Cape {
@@ -1878,15 +2033,34 @@ fn cosmetics_content(ctx: &GridCtx) -> Vec<Block> {
         }
 
         out.push(ctx.anchor(text));
-        let mut cards: Vec<Card> = owned
-            .into_iter()
-            .map(|group| Card::Owned(group.id))
-            .collect();
-        cards.extend(shop.iter().map(|item| Card::Shop(item.id)));
-        if !cards.is_empty() {
-            out.push(ctx.grid(cards));
-        }
+        out.extend(owned_then_shop(
+            owned
+                .into_iter()
+                .map(|group| Card::Owned(group.id))
+                .collect(),
+            shop.iter().map(|item| Card::Shop(item.id)).collect(),
+        ));
         if missing {
+            out.push(Block::notice(t("oneclient.wardrobe.store.unreachable")));
+        }
+    }
+
+    let emotes = owned_then_shop(
+        data.emotes()
+            .iter()
+            .filter(|emote| data.matches(&emote.name))
+            .map(|emote| Card::Emote(emote.id))
+            .collect(),
+        data.shop(CosmeticType::Emote)
+            .iter()
+            .map(|item| Card::Shop(item.id))
+            .collect(),
+    );
+    let emotes_missing = !searching && !store_down && store_missing(data, CosmeticType::Emote);
+    if !emotes.is_empty() || emotes_missing {
+        out.push(ctx.anchor(t("oneclient.wardrobe.category.emotes")));
+        out.extend(emotes);
+        if emotes_missing {
             out.push(Block::notice(t("oneclient.wardrobe.store.unreachable")));
         }
     }
@@ -1982,12 +2156,13 @@ fn cape_groups(ctx: &GridCtx) -> Vec<Block> {
             },
         ));
     } else {
-        let mut cards: Vec<Card> = owned
-            .into_iter()
-            .map(|group| Card::Owned(group.id))
-            .collect();
-        cards.extend(shop.iter().map(|item| Card::Shop(item.id)));
-        out.push(ctx.grid(cards));
+        out.extend(owned_then_shop(
+            owned
+                .into_iter()
+                .map(|group| Card::Owned(group.id))
+                .collect(),
+            shop.iter().map(|item| Card::Shop(item.id)).collect(),
+        ));
     }
 
     out
@@ -2021,6 +2196,7 @@ fn mojang_card(ctx: &GridCtx, cape: &MojangCape) -> Element {
             interactive: false,
         }
         .into_element(),
+        preview: None,
         menu: vec![{
             let toggle = ctx.equip(toggle.clone());
             MenuAction::new(
@@ -2062,25 +2238,10 @@ fn owned_card(ctx: &GridCtx, group: &CosmeticGroup) -> Element {
     };
     let on_equip = ctx.equip(toggle);
 
-    let thumbnail = match variant {
-        Some(variant) if group.kind == CosmeticType::Cape => LookThumb {
-            uuid: data.uuid.clone(),
-            skin: None,
-            cape: variant.url.clone().map(CapeSource::Plus),
-            cosmetics: Vec::new(),
-            emote: None,
-            particle_color: None,
-            yaw: BACK_YAW,
-            zoom: CAPE_ZOOM,
-            interactive: false,
-        }
-        .into_element(),
-        Some(variant) => CoverThumb {
-            url: data.variant_cover(variant),
-        }
-        .into_element(),
-        None => CoverThumb { url: None }.into_element(),
-    };
+    let thumbnail = CoverThumb {
+        url: variant.and_then(|variant| data.variant_cover(variant)),
+    }
+    .into_element();
 
     let swatches: Vec<Swatch> = group
         .ui_variants()
@@ -2117,6 +2278,7 @@ fn owned_card(ctx: &GridCtx, group: &CosmeticGroup) -> Element {
         selected: ctx.selected() == Some(picked.clone()),
         badge: None,
         thumbnail,
+        preview: variant.and_then(|variant| data.preview_for_variant(variant.id)),
         menu: vec![
             {
                 let preview = ctx.select(picked.clone());
@@ -2259,6 +2421,10 @@ fn shop_card(ctx: &GridCtx, item: &StoreItem) -> Element {
         selected: ctx.selected() == Some(Selection::Shop(item.id)),
         badge,
         thumbnail: shop_thumbnail(data, item, &variant, false),
+        preview: variant
+            .preview_url
+            .clone()
+            .or_else(|| item.preview_url.clone()),
         menu: vec![
             {
                 let preview = preview.clone();
@@ -2333,6 +2499,7 @@ fn bundle_card(ctx: &GridCtx, bundle: &BundleInfo) -> Element {
             url: bundle.asset_id.map(api::asset_url),
         }
         .into_element(),
+        preview: None,
         menu: vec![
             {
                 let view = view.clone();
@@ -2377,6 +2544,7 @@ fn emote_card(ctx: &GridCtx, emote: &EmoteInfo) -> Element {
             url: data.cover_for_variant(emote.id),
         }
         .into_element(),
+        preview: data.preview_for_variant(emote.id),
         menu: vec![{
             let preview = ctx.select(picked.clone());
             MenuAction::new(
@@ -2513,6 +2681,7 @@ fn outfit_card(ctx: &GridCtx, outfit: &OutfitInfo) -> Element {
             interactive: false,
         }
         .into_element(),
+        preview: None,
         menu: vec![
             {
                 let wear = wear.clone();
@@ -2696,6 +2865,7 @@ fn skin_card(ctx: &GridCtx, skin: &SkinInfo) -> Element {
             interactive: false,
         }
         .into_element(),
+        preview: None,
         menu: vec![
             {
                 let wear = wear.clone();

@@ -19,6 +19,7 @@ use crate::theme::{
     system_pair, system_theme_id, text_size, theme_display_name, themes,
 };
 use crate::ui::border_all_color;
+use crate::view::app::settings::appearance_picker::{section, style_picker, theme_mode_picker};
 use crate::view::app::settings::{resettable, settings_row};
 
 #[derive(PartialEq)]
@@ -72,7 +73,25 @@ impl Component for SettingsAppearance {
         });
 
         settings_page()
-            .child(theme_cards(&settings.theme))
+            .child(
+                // Same pickers as the onboarding Appearance step, capped so the previews keep
+                // their proportions on the wide settings page
+                rect()
+                    .vertical()
+                    .width(Size::fill())
+                    .max_width(Size::px(640.))
+                    .spacing(20.)
+                    .padding(Gaps::new(0., 0., 12., 0.))
+                    .child(section(
+                        t("oneclient.settings.appearance.style"),
+                        style_picker(&settings.theme, false, &dispatch),
+                    ))
+                    .child(section(
+                        t("oneclient.settings.appearance.mode"),
+                        theme_mode_picker(&settings.theme, &dispatch),
+                    )),
+            )
+            .maybe_child(custom_theme_cards(&settings.theme))
             .child(
                 rect()
                     .vertical()
@@ -101,7 +120,13 @@ impl Component for SettingsAppearance {
 
 const FAMILY_WIDTH: f32 = 3. * 126. + 2. * 16.;
 
-pub(crate) fn theme_cards(selected: &str) -> impl IntoElement {
+/// User-made themes keep their own cards (with duplicate/export/delete) below the built-in
+/// style and theme pickers; nothing is shown until one exists
+fn custom_theme_cards(selected: &str) -> Option<Element> {
+    if themes().iter().all(|theme| theme.is_builtin()) {
+        return None;
+    }
+
     let system_family = system_pair(selected).map(|(dark, _)| dark);
 
     let card = |theme: &crate::theme::Theme| ThemeCard {
@@ -123,7 +148,7 @@ pub(crate) fn theme_cards(selected: &str) -> impl IntoElement {
     };
 
     let mut families: Vec<(String, Vec<Rc<crate::theme::Theme>>)> = Vec::new();
-    for theme in themes() {
+    for theme in themes().into_iter().filter(|theme| !theme.is_builtin()) {
         let family = family_name(&theme.name);
         match families.iter_mut().find(|(name, _)| *name == family) {
             Some((_, members)) => members.push(theme),
@@ -179,13 +204,29 @@ pub(crate) fn theme_cards(selected: &str) -> impl IntoElement {
             .into_element()
     });
 
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .content(Content::wrap_spacing(24.))
-        .spacing(24.)
-        .children(groups)
-        .into_element()
+    Some(
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(10.)
+            .padding(Gaps::new(0., 0., 12., 0.))
+            .child(
+                label()
+                    .text(t("oneclient.settings.appearance.custom_themes"))
+                    .font_size(text_size(14.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .color(colors::fg_primary()),
+            )
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .content(Content::wrap_spacing(24.))
+                    .spacing(24.)
+                    .children(groups),
+            )
+            .into_element(),
+    )
 }
 
 #[derive(Clone, PartialEq)]

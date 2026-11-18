@@ -4,9 +4,13 @@ use crate::components::{IconType, toggle};
 use crate::hooks::{use_dispatch, use_onboarding_selection, use_settings_snapshot};
 use crate::i18n::t;
 use crate::routes::Route;
-use crate::view::app::settings::{settings_row, theme_cards};
+use crate::theme::{colors, text_size};
+use crate::view::app::settings::appearance_picker::{section, style_picker, theme_mode_picker};
+use crate::view::app::settings::settings_row;
+use crate::view::onboarding::parallax_grid::ParallaxGrid;
 use crate::view::onboarding::{
-    onboarding_illustration, onboarding_nav, onboarding_page, step_heading,
+    onboarding_compact, onboarding_dense, onboarding_illustration, onboarding_nav, onboarding_page,
+    step_heading,
 };
 
 #[derive(PartialEq)]
@@ -46,16 +50,37 @@ impl Component for OnboardingPreferences {
             });
         });
 
+        let dense = onboarding_dense();
+
         let content = rect()
             .vertical()
             .width(Size::fill())
-            .spacing(20.)
-            .child(step_heading(
-                t("oneclient.onboarding.preferences.title"),
-                t("oneclient.onboarding.preferences.subtitle"),
+            .spacing(if dense { 12. } else { 24. })
+            // Short windows keep just the title so Style and Theme both fit before scrolling
+            .child(if dense {
+                label()
+                    .text(t("oneclient.onboarding.preferences.title"))
+                    .font_size(text_size(28.))
+                    .font_weight(FontWeight::BOLD)
+                    .color(colors::fg_primary())
+                    .into_element()
+            } else {
+                step_heading(
+                    t("oneclient.onboarding.preferences.title"),
+                    t("oneclient.onboarding.preferences.subtitle"),
+                )
+                .into_element()
+            })
+            .child(section(
+                t("oneclient.onboarding.preferences.style"),
+                style_picker(&settings.theme, dense, &dispatch),
             ))
-            .child(theme_cards(&settings.theme))
-            .child(
+            .child(section(
+                t("oneclient.onboarding.preferences.theme"),
+                theme_mode_picker(&settings.theme, &dispatch),
+            ))
+            .child(section(
+                t("oneclient.onboarding.preferences.motion"),
                 rect()
                     .vertical()
                     .width(Size::fill())
@@ -72,11 +97,40 @@ impl Component for OnboardingPreferences {
                         t("oneclient.onboarding.preferences.parallax.description"),
                         toggle(parallax_on),
                     )),
+            ));
+
+        // Capped beside the illustration so the previews keep their proportions when maximized;
+        // the narrow layout has no illustration, so there it spans the page like the nav does
+        let content = if onboarding_compact() {
+            content
+        } else {
+            content.max_width(Size::px(640.))
+        }
+        .into_element();
+
+        // The dot field sits behind the illustration so the parallax toggle can be felt here
+        let illustration = rect()
+            .width(Size::fill())
+            .height(Size::fill())
+            .center()
+            .child(
+                rect()
+                    .position(Position::new_absolute())
+                    .width(Size::fill())
+                    .height(Size::fill())
+                    .child(ParallaxGrid {
+                        enabled: *parallax_on.read(),
+                    }),
             )
-            .into_element();
+            // Its own layer keeps the swatches above the dots, which otherwise paint on top
+            .child(
+                rect()
+                    .layer(Layer::Relative(1))
+                    .child(onboarding_illustration(IconType::OnboardingPreferences)),
+            );
 
         onboarding_page(
-            onboarding_illustration(IconType::OnboardingPreferences),
+            illustration,
             content,
             onboarding_nav(
                 Some(Route::OnboardingBundles {}),

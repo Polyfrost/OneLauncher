@@ -969,6 +969,44 @@ impl Component for ContentBox {
         let warnings_query = use_disable_warnings();
         let mut menu = use_state(|| None::<(f32, f32, PackageEntry)>);
         let mut copies_of = use_state(|| None::<String>);
+        let known_hashes =
+            use_hook(|| std::rc::Rc::new(std::cell::RefCell::new(None::<HashSet<String>>)));
+        let hashes_of = |item: &PackageEntry| {
+            item.hash
+                .iter()
+                .chain(item.copies.iter().filter_map(|copy| copy.hash.as_ref()))
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        let copy_groups: Vec<(String, Vec<String>)> = items
+            .iter()
+            .filter(|item| !item.copies.is_empty())
+            .map(|item| (item.package_id.clone(), hashes_of(item)))
+            .collect();
+        let shown_hashes: Vec<String> = items.iter().flat_map(hashes_of).collect();
+        use_side_effect_with_deps(&(shown_hashes, copy_groups), move |(shown, groups)| {
+            let mut known = known_hashes.borrow_mut();
+            let mut request = crate::hooks::COPIES_REQUEST.lock().unwrap();
+            let requested = request
+                .as_ref()
+                .filter(|(cluster, _)| *cluster == cluster_id)
+                .and_then(|(_, wanted)| {
+                    groups
+                        .iter()
+                        .find(|(_, hashes)| hashes.iter().any(|hash| wanted.contains(hash)))
+                });
+            if let Some((package_id, _)) = requested {
+                copies_of.set(Some(package_id.clone()));
+                *request = None;
+            } else if let Some(known) = known.as_ref().filter(|known| !known.is_empty())
+                && let Some((package_id, _)) = groups
+                    .iter()
+                    .find(|(_, hashes)| hashes.iter().any(|hash| !known.contains(hash)))
+            {
+                copies_of.set(Some(package_id.clone()));
+            }
+            known.get_or_insert_default().extend(shown.iter().cloned());
+        });
         let (on_delete, delete_dialog) =
             use_shared_delete(cluster_id, move |(_, hash): (String, String)| {
                 cluster.mutate(match parse_folder_pack_id(&hash) {
@@ -1086,6 +1124,8 @@ impl Component for ContentBox {
                     rect()
                         .width(Size::window_percent(100.))
                         .height(Size::window_percent(100.))
+                        .on_global_file_hover(move |_| copies_of.set(None))
+                        .on_pointer_press(move |_| copies_of.set(None))
                         .center()
                         .child(
                             rect()
@@ -1097,15 +1137,33 @@ impl Component for ContentBox {
                                 .corner_radius(rounded(14.))
                                 .background(colors::page_elevated())
                                 .border(border_all_color(1., colors::component_border()))
+                                .on_pointer_press(|e: Event<PointerEventData>| e.stop_propagation())
                                 .child(
-                                    label()
-                                        .text(tf(
-                                            "oneclient.cluster.package_manager.copies.title",
-                                            &[&(item.copies.len() + 1), &item.name],
-                                        ))
-                                        .font_size(text_size(16.))
-                                        .font_weight(FontWeight::SEMI_BOLD)
-                                        .color(colors::fg_strong()),
+                                    rect()
+                                        .horizontal()
+                                        .width(Size::fill())
+                                        .content(Content::Flex)
+                                        .cross_align(Alignment::Center)
+                                        .spacing(10.)
+                                        .child(
+                                            label()
+                                                .text(tf(
+                                                    "oneclient.cluster.package_manager.copies.title",
+                                                    &[&(item.copies.len() + 1), &item.name],
+                                                ))
+                                                .width(Size::flex(1.0))
+                                                .font_size(text_size(16.))
+                                                .font_weight(FontWeight::SEMI_BOLD)
+                                                .color(colors::fg_strong()),
+                                        )
+                                        .child(
+                                            Button::new()
+                                                .ghost()
+                                                .icon()
+                                                .tooltip(t("oneclient.common.close"))
+                                                .on_press(move |_| copies_of.set(None))
+                                                .child(Icon::new(IconType::X).size(18.)),
+                                        ),
                                 )
                                 .child(
                                     label()

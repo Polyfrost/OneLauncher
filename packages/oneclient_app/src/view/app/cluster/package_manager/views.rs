@@ -1086,6 +1086,8 @@ impl Component for ContentBox {
                     rect()
                         .width(Size::window_percent(100.))
                         .height(Size::window_percent(100.))
+                        .on_global_file_hover(move |_| copies_of.set(None))
+                        .on_pointer_press(move |_| copies_of.set(None))
                         .center()
                         .child(
                             rect()
@@ -1097,15 +1099,33 @@ impl Component for ContentBox {
                                 .corner_radius(rounded(14.))
                                 .background(colors::page_elevated())
                                 .border(border_all_color(1., colors::component_border()))
+                                .on_pointer_press(|e: Event<PointerEventData>| e.stop_propagation())
                                 .child(
-                                    label()
-                                        .text(tf(
-                                            "oneclient.cluster.package_manager.copies.title",
-                                            &[&(item.copies.len() + 1), &item.name],
-                                        ))
-                                        .font_size(text_size(16.))
-                                        .font_weight(FontWeight::SEMI_BOLD)
-                                        .color(colors::fg_strong()),
+                                    rect()
+                                        .horizontal()
+                                        .width(Size::fill())
+                                        .content(Content::Flex)
+                                        .cross_align(Alignment::Center)
+                                        .spacing(10.)
+                                        .child(
+                                            label()
+                                                .text(tf(
+                                                    "oneclient.cluster.package_manager.copies.title",
+                                                    &[&(item.copies.len() + 1), &item.name],
+                                                ))
+                                                .width(Size::flex(1.0))
+                                                .font_size(text_size(16.))
+                                                .font_weight(FontWeight::SEMI_BOLD)
+                                                .color(colors::fg_strong()),
+                                        )
+                                        .child(
+                                            Button::new()
+                                                .ghost()
+                                                .icon()
+                                                .tooltip(t("oneclient.common.close"))
+                                                .on_press(move |_| copies_of.set(None))
+                                                .child(Icon::new(IconType::X).size(18.)),
+                                        ),
                                 )
                                 .child(
                                     label()

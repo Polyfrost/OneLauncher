@@ -22,6 +22,9 @@ const PLAYER: usize = 0;
 const CAPE: usize = 1;
 const FIRST_COSMETIC: usize = 2;
 const CAM_DIST: f32 = 52.;
+/// How far the scroll wheel may pull the camera out or push it in
+const WHEEL_ZOOM_RANGE: (f32, f32) = (0.7, 3.0);
+const WHEEL_ZOOM_SPEED: f32 = 0.002;
 const MODEL_CENTER_Y: f32 = 16.;
 const DRAG_SENSITIVITY: f32 = 0.01;
 const PITCH_LIMIT: f32 = 1.3;
@@ -364,6 +367,7 @@ impl Component for PlayerModel {
         });
 
         let mut drag = use_state(|| None::<(f32, f32, f32, f32)>);
+        let mut wheel_zoom = use_state(|| 1f32);
 
         let mut last_view = use_state({
             let view = (self.uuid.clone(), self.yaw.to_bits());
@@ -376,10 +380,11 @@ impl Component for PlayerModel {
             yaw.set(self.yaw);
             pitch.set(self.pitch);
             drag.set(None);
+            wheel_zoom.set(1.);
         }
 
         let draggable = self.draggable;
-        let distance = CAM_DIST / self.zoom;
+        let distance = CAM_DIST / (self.zoom * *wheel_zoom.read());
         let target_y = MODEL_CENTER_Y + self.focus_y;
         let (cur_yaw, cur_pitch, now) = (yaw(), pitch(), seconds());
         let tint = self.particle_color.map(|color| color as u32);
@@ -441,6 +446,18 @@ impl Component for PlayerModel {
                 pitch.set((pitch0 + dy * DRAG_SENSITIVITY).clamp(-PITCH_LIMIT, PITCH_LIMIT));
 
                 Platform::get().current_window().request_redraw();
+            })
+            .on_wheel(move |e: Event<WheelEventData>| {
+                if !draggable {
+                    return;
+                }
+                e.stop_propagation();
+                let factor = (e.delta_y as f32 * WHEEL_ZOOM_SPEED).exp();
+                let (min, max) = WHEEL_ZOOM_RANGE;
+                let next = (*wheel_zoom.peek() * factor).clamp(min, max);
+                if next != *wheel_zoom.peek() {
+                    wheel_zoom.set(next);
+                }
             })
             // Global so a release outside the widget still ends the drag
             .on_global_pointer_up(move |_: Event<PointerEventData>| {

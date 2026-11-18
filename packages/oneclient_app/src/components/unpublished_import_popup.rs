@@ -31,6 +31,7 @@ impl Component for UnpublishedImportPopup {
         let close = dispatch.clone();
         let cancel = dispatch.clone();
         let others = dispatch.clone();
+        let without = dispatch.clone();
         OverlayPopup::new()
             .overlay_level(OVERLAY_BASE_LEVEL + 1)
             .on_close(move |_| close.cancel_unpublished_import())
@@ -43,6 +44,7 @@ impl Component for UnpublishedImportPopup {
                         &import,
                         move || cancel.cancel_unpublished_import(),
                         move || others.confirm_unpublished_import(false),
+                        move || without.confirm_unpublished_import_without(),
                         move || dispatch.confirm_unpublished_import(true),
                     )),
             )
@@ -50,7 +52,7 @@ impl Component for UnpublishedImportPopup {
     }
 }
 
-pub(crate) fn unpublished_rows(
+fn unpublished_rows(
     mods: &[UnpublishedFile],
 ) -> impl Iterator<Item = (String, Option<String>)> + '_ {
     mods.iter().map(|file| {
@@ -67,6 +69,7 @@ fn dialog(
     import: &UnpublishedImport,
     mut on_cancel: impl FnMut() + 'static,
     mut on_import_others: impl FnMut() + 'static,
+    mut on_import_without: impl FnMut() + 'static,
     mut on_import_all: impl FnMut() + 'static,
 ) -> impl IntoElement {
     let total = import.instances.len() + import.others;
@@ -108,6 +111,19 @@ fn dialog(
                 t("oneclient.components.unpublished_import.import_others.one"),
                 t("oneclient.components.unpublished_import.import_others.other"),
             ))
+            .into_element()
+    });
+    let unpublished: usize = import.instances.iter().map(|instance| instance.mods.len()).sum();
+    let listed = import.instances.iter().all(|instance| instance.unconfirmed == 0);
+    let without = (listed && unpublished > 0).then(|| {
+        Button::new()
+            .secondary()
+            .on_press(move |_| on_import_without())
+            .text(if unpublished == 1 {
+                t("oneclient.components.unpublished_import.import_without.one")
+            } else {
+                t("oneclient.components.unpublished_import.import_without.other")
+            })
             .into_element()
     });
     let all_text = if import.others > 0 {
@@ -180,6 +196,7 @@ fn dialog(
                         .text(t("oneclient.common.cancel")),
                 )
                 .maybe_child(others)
+                .maybe_child(without)
                 .child(
                     Button::new()
                         .danger()

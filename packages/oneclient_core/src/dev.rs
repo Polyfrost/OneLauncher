@@ -265,6 +265,7 @@ pub async fn ephemeral_state() -> LauncherResult<Arc<LauncherState>> {
         requester: RequestClient::new(oneclient_net::NetConfig::default())?,
         db,
         packages: PackageProviderRegistry::new(),
+        prefetches: Arc::default(),
     };
     let auth = Arc::new(oneclient_auth::AuthService::with_store(
         Default::default(),
@@ -307,6 +308,7 @@ pub async fn ephemeral_services() -> LauncherResult<LauncherServices> {
         requester: RequestClient::new(oneclient_net::NetConfig::default())?,
         db,
         packages: PackageProviderRegistry::new(),
+        prefetches: Arc::default(),
     })
 }
 

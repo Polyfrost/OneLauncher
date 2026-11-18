@@ -9,6 +9,7 @@ use oneclient_db::dao::cluster_bundle as bundle_dao;
 
 use crate::LauncherResult;
 use crate::clusters::Cluster;
+use crate::game::GameError;
 use crate::state::{LauncherServices, LauncherState};
 use oneclient_cluster::remove_mods_link;
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
@@ -18,7 +19,7 @@ use oneclient_content::packages::fabric_version;
 use oneclient_content::packages::local_manifest::JarModId;
 use oneclient_content::packages::store::manifest::{self, ManifestEntry, MaterializedManifest};
 use oneclient_content::packages::store::{
-    artifact_absolute_path, link_or_copy, remove_entry, sweep_staging_files,
+    artifact_absolute_path, link_or_copy, materialize_file, remove_entry, sweep_staging_files,
 };
 
 const REDIRECTED_DIRS: [&str; 2] = ["logs", "crash-reports"];
@@ -65,6 +66,7 @@ pub async fn materialize_content(
     cluster: &Cluster,
     game_dir: &Path,
     mods_in_cluster: bool,
+    copy_mod_files: bool,
 ) -> LauncherResult<()> {
     let mods_sync = lock_mods_sync(cluster.id).await;
 
@@ -311,8 +313,12 @@ pub async fn materialize_content(
         }
     }
 
+    let mut failed_copies = Vec::new();
+
     if mods_in_cluster {
-        let mut mod_entries = link_desired(&cluster_dir, &mods).await;
+        let mut mod_entries =
+            link_desired(&cluster_dir, &mods, copy_mod_files, &mut failed_copies).await;
+        mods_copied(&failed_copies)?;
         mod_entries.extend(held_mods);
         let spared = if isolated {
             failed_imports
@@ -335,7 +341,7 @@ pub async fn materialize_content(
     }
 
     if !own_packs {
-        let mut pack_entries = link_desired(&global_root, &packs).await;
+        let mut pack_entries = link_desired(&global_root, &packs, false, &mut failed_copies).await;
         pack_entries.extend(held_packs);
         manifest::save(
             &global_root,
@@ -345,7 +351,8 @@ pub async fn materialize_content(
         .await;
     }
 
-    let mut entries = link_desired(game_dir, &rest).await;
+    let mut entries = link_desired(game_dir, &rest, copy_mod_files, &mut failed_copies).await;
+    mods_copied(&failed_copies)?;
     entries.extend(held_rest);
     manifest::save(
         game_dir,
@@ -1518,7 +1525,7 @@ async fn skip_shadowed_bundle_mods(
     let shadowed = shadowed_bundle_hashes(
         services,
         cluster.id,
-        cluster.mc_loader == GameLoader::Fabric,
+        matches!(cluster.mc_loader, GameLoader::Fabric | GameLoader::Ornithe),
         &mods,
     )
     .await
@@ -1653,7 +1660,8 @@ pub async fn shadowed_bundle_mods(state: &LauncherState, cluster_id: i64) -> Dup
         .await
         .ok()
         .flatten()
-        .is_some_and(|row| row.mc_loader == GameLoader::Fabric as i64);
+        .and_then(|row| GameLoader::from_repr(row.mc_loader as u8))
+        .is_some_and(|loader| matches!(loader, GameLoader::Fabric | GameLoader::Ornithe));
 
     shadowed_bundle_hashes(services, cluster_id, loader_picks_newer, &mods).await
 }
@@ -1877,7 +1885,23 @@ async fn held_in_place(
     (mods, rest)
 }
 
-async fn link_desired(root: &Path, desired: &[Desired]) -> Vec<ManifestEntry> {
+/// There's no link to fall back to, and the game would start without the mod.
+/// Called before the cleanup and manifest save, so the previous file stays and
+/// the previous manifest still describes it
+fn mods_copied(failed: &[String]) -> LauncherResult<()> {
+    if failed.is_empty() {
+        return Ok(());
+    }
+    Err(GameError::ModCopyFailed(removal_summary(failed)).into())
+}
+
+/// Mods that couldn't be copied are added to `failed_copies`
+async fn link_desired(
+    root: &Path,
+    desired: &[Desired],
+    copy_mod_files: bool,
+    failed_copies: &mut Vec<String>,
+) -> Vec<ManifestEntry> {
     let mut entries = Vec::with_capacity(desired.len());
 
     for item in desired {
@@ -1885,20 +1909,55 @@ async fn link_desired(root: &Path, desired: &[Desired]) -> Vec<ManifestEntry> {
             .join(item.content_type.folder_name())
             .join(&item.file_name);
 
-        match link_or_copy(&item.src, &dest).await {
+        let copy = copy_mod_files && item.content_type == ContentType::Mod;
+        let placed = if copy && copy_in_place(item, &dest).await {
+            Ok(())
+        } else {
+            materialize_file(&item.src, &dest, copy).await
+        };
+
+        match placed {
             Ok(()) => entries.push(ManifestEntry {
                 path: item.relative_path(),
                 hash: item.hash.clone(),
             }),
-            Err(err) => tracing::warn!(
-                file = %item.file_name,
-                error = %err,
-                "failed to materialize content into the game directory"
-            ),
+            Err(err) => {
+                tracing::warn!(
+                    file = %item.file_name,
+                    error = %err,
+                    "failed to materialize content into the game directory"
+                );
+                if copy {
+                    failed_copies.push(item.file_name.clone());
+                }
+            }
         }
     }
 
     entries
+}
+
+/// A copy the last launch made is kept instead of rewriting every mod on every
+/// launch. A hard link into the cache (Windows) doesn't count as a copy
+async fn copy_in_place(item: &Desired, dest: &Path) -> bool {
+    let (Ok(placed), Ok(cached)) = (
+        polyio::symlink_metadata(dest).await,
+        polyio::stat(&item.src).await,
+    ) else {
+        return false;
+    };
+    if !placed.is_file() || placed.len() != cached.len() {
+        return false;
+    }
+
+    let same_file = matches!(
+        (polyio::file_id(dest).await, polyio::file_id(&item.src).await),
+        (Ok(placed), Ok(cached)) if placed == cached
+    );
+    !same_file
+        && polyio::sha1_file(dest)
+            .await
+            .is_ok_and(|disk| polyio::normalize_hash(&disk) == polyio::normalize_hash(&item.hash))
 }
 
 #[tracing::instrument(skip(services, cluster), fields(cluster_id = cluster.id), level = "debug")]
@@ -2306,7 +2365,14 @@ async fn adopt_file(
     content_type: ContentType,
     discard_stale: bool,
 ) -> Option<oneclient_content::ContentResult<oneclient_db::models::ArtifactRow>> {
-    if discard_stale && !cluster.is_isolated() && is_stale_launcher_content(services, path).await {
+    // Packs are never discarded: a hand-dropped pack can share a hash with a cached
+    // artifact (another instance's copy, or one removed in the launcher) and
+    // deleting it here loses the user's file without relinking it
+    if discard_stale
+        && content_type == ContentType::Mod
+        && !cluster.is_isolated()
+        && is_stale_launcher_content(services, path).await
+    {
         tracing::debug!(
             file = %path.display(),
             "discarding stale launcher content; the cache still holds it"
@@ -2863,17 +2929,18 @@ async fn sync_fabric_dep_overrides(cluster: &Cluster, game_dir: &Path) -> Launch
     let src = cluster.dir()?.join(FABRIC_DEP_OVERRIDES);
     let dest = game_dir.join(FABRIC_DEP_OVERRIDES);
 
-    if src == dest {
-        return Ok(());
-    }
+    let body = polyio::read(&src)
+        .await
+        .ok()
+        .filter(|bytes| bytes.iter().any(|b| !b.is_ascii_whitespace() && *b != 0));
 
-    if polyio::try_exists(&src).await.unwrap_or(false) {
-        if let Some(parent) = dest.parent() {
-            polyio::create_dir_all(parent).await.ok();
+    match body {
+        Some(body) if src != dest => polyio::write_atomic(&dest, body).await?,
+        Some(_) => {}
+        None if polyio::try_exists(&dest).await.unwrap_or(false) => {
+            polyio::remove_file(&dest).await.ok();
         }
-        polyio::copy(&src, &dest).await?;
-    } else if polyio::try_exists(&dest).await.unwrap_or(false) {
-        polyio::remove_file(&dest).await.ok();
+        None => {}
     }
 
     Ok(())
@@ -2881,6 +2948,58 @@ async fn sync_fabric_dep_overrides(cluster: &Cluster, game_dir: &Path) -> Launch
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn copy_mode_copies_only_mods_and_keeps_an_unchanged_copy() {
+        use super::*;
+
+        let root = polyio::testing::ScratchDir::new("materialize_mod_copies");
+        let src = root.join("cache.jar");
+        polyio::write(&src, b"content".as_slice()).await.unwrap();
+        let hash = polyio::sha1_file(&src).await.unwrap();
+        let desired = vec![
+            Desired {
+                content_type: ContentType::Mod,
+                file_name: "mod.jar".into(),
+                hash: hash.clone(),
+                src: src.clone(),
+            },
+            Desired {
+                content_type: ContentType::ResourcePack,
+                file_name: "pack.zip".into(),
+                hash,
+                src: src.clone(),
+            },
+        ];
+        let game_dir = root.join("game");
+        let mod_jar = game_dir.join("mods/mod.jar");
+        let cached = polyio::file_id(&src).await.unwrap();
+        let mut failed = Vec::new();
+
+        link_desired(&game_dir, &desired, true, &mut failed).await;
+        let copied = polyio::file_id(&mod_jar).await.unwrap();
+        assert_ne!(copied, cached);
+        assert_eq!(
+            polyio::file_id(game_dir.join("resourcepacks/pack.zip"))
+                .await
+                .unwrap(),
+            cached
+        );
+
+        link_desired(&game_dir, &desired, true, &mut failed).await;
+        assert_eq!(polyio::file_id(&mod_jar).await.unwrap(), copied);
+
+        // same size, different bytes
+        polyio::write(&mod_jar, b"CONTENT".as_slice())
+            .await
+            .unwrap();
+        link_desired(&game_dir, &desired, true, &mut failed).await;
+        assert_eq!(polyio::read(&mod_jar).await.unwrap(), b"content");
+
+        link_desired(&game_dir, &desired, false, &mut failed).await;
+        assert_eq!(polyio::file_id(&mod_jar).await.unwrap(), cached);
+        assert!(failed.is_empty());
+    }
+
     #[test]
     fn a_symlinked_home_gets_both_prefixes() {
         let body = allowed_symlinks_body(&[

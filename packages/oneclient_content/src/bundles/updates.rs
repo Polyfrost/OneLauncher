@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::bundle as bundle_catalog_dao;
@@ -13,15 +13,18 @@ use oneclient_db::models::ClusterPatch;
 use oneclient_db::models::{
     BundleTrackedArtifactRow, ClusterBundleOverrideRow, OptionalModStatus, OverrideType, SeenStatus,
 };
-use tokio::sync::Mutex as AsyncMutex;
+use oneclient_events::GroupedProgressChild;
+use tokio::sync::{Mutex as AsyncMutex, Semaphore};
 
-use futures_util::StreamExt;
+use futures_util::future::{BoxFuture, Shared};
+use futures_util::{FutureExt, StreamExt};
 
 use crate::bundles::install::{
     BUNDLE_INSTALL_CONCURRENCY, accepted_bundles, bundle_cluster, decline_unasked_skyblock,
     disable_was_deliberate, external_ids_by_sha1, find_override, find_user_suppression,
-    heal_bundle_activity, install_package_from_bundle, overrides_outside_declined,
-    prefetch_bundle_file, remove_artifact_from_cluster, set_artifact_enabled_to, takes_bundle,
+    heal_bundle_activity, heal_restores, hidden_flags, install_package_from_bundle,
+    overrides_outside_declined, prefetch_bundle_file, remove_artifact_from_cluster,
+    set_artifact_enabled_to, takes_bundle,
 };
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
@@ -37,6 +40,100 @@ use crate::packages::types::LinkedArtifactInfo;
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 
 static CLUSTER_UPDATE_LOCKS: OnceLock<Mutex<HashMap<i64, Arc<AsyncMutex<()>>>>> = OnceLock::new();
+
+type SharedPrefetch = Shared<BoxFuture<'static, Result<(), String>>>;
+
+pub struct Prefetches {
+    running: Mutex<HashMap<String, (SharedPrefetch, GroupedProgressChild)>>,
+    permits: Semaphore,
+}
+
+impl Default for Prefetches {
+    fn default() -> Self {
+        Self {
+            running: Mutex::default(),
+            permits: Semaphore::new(BUNDLE_INSTALL_CONCURRENCY),
+        }
+    }
+}
+
+pub const BUNDLE_APPLY_BUDGET: Duration = Duration::from_secs(60);
+
+fn prefetch_key(file: &BundleFile) -> String {
+    let sha1 = match &file.kind {
+        BundleFileKind::Managed { sha1, .. } => sha1,
+        BundleFileKind::External { file, .. } => &file.sha1,
+    };
+    format!(
+        "{}@{}@{sha1}",
+        file.kind.bundle_key(),
+        file.kind.bundle_version_id()
+    )
+}
+
+fn shared_prefetch(
+    file: &BundleFile,
+    child: Option<&GroupedProgressChild>,
+    ctx: &ContentCtx,
+) -> SharedPrefetch {
+    let key = prefetch_key(file);
+    let mut running = ctx.prefetches.running.lock().unwrap();
+    if let Some((task, source)) = running.get(&key) {
+        if let Some(child) = child {
+            source.mirror_into(child.clone());
+        }
+        return task.clone();
+    }
+
+    let source = GroupedProgressChild::source(file.display_name(), file.size);
+    if let Some(child) = child {
+        source.mirror_into(child.clone());
+    }
+    let task = tokio::spawn({
+        let file = file.clone();
+        let source = source.clone();
+        let ctx = ctx.clone();
+        let key = key.clone();
+        async move {
+            let _permit = ctx.prefetches.permits.acquire().await;
+            let fetched = prefetch_bundle_file(&file, Some(&source), &ctx).await;
+            ctx.prefetches.running.lock().unwrap().remove(&key);
+            fetched.map_err(|err| format!("{err:#}"))
+        }
+    });
+    let task = async move { task.await.map_err(|err| err.to_string())? }
+        .boxed()
+        .shared();
+    running.insert(key, (task.clone(), source));
+    task
+}
+
+pub(crate) async fn prefetch_until(
+    file: &BundleFile,
+    child: Option<&GroupedProgressChild>,
+    deadline: Option<Instant>,
+    ctx: &ContentCtx,
+) -> Option<Result<(), String>> {
+    let skip = || {
+        if let Some(child) = child {
+            child.finish();
+        }
+        None
+    };
+    if past(deadline) {
+        return skip();
+    }
+    let task = shared_prefetch(file, child, ctx);
+    match deadline {
+        Some(deadline) => {
+            match tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), task).await {
+                Ok(fetched) => Some(fetched),
+                Err(_) => skip(),
+            }
+        }
+        None => Some(task.await),
+    }
+}
 
 fn cluster_lock(cluster_id: i64) -> Arc<AsyncMutex<()>> {
     let locks = CLUSTER_UPDATE_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
@@ -468,7 +565,7 @@ pub async fn apply_bundle_updates(
     result
 }
 
-fn past(deadline: Option<Instant>) -> bool {
+pub(crate) fn past(deadline: Option<Instant>) -> bool {
     deadline.is_some_and(|deadline| Instant::now() >= deadline)
 }
 
@@ -558,10 +655,6 @@ pub async fn apply_bundle_updates_with(
     // and it also gets in before `deadline` stops new fetches from starting.
     to_fetch.sort_by_key(|file| std::cmp::Reverse(file.size));
     let fetched = futures_util::stream::iter(to_fetch.into_iter().map(|file| async move {
-        if past(deadline) {
-            return (file, None);
-        }
-
         let child = session.map(|s| {
             let c = s.child(
                 file.display_name(),
@@ -571,7 +664,9 @@ pub async fn apply_bundle_updates_with(
             c.set_phase(oneclient_events::TaskPhase::Downloading);
             c
         });
-        let fetched = prefetch_bundle_file(&file, child.as_ref(), ctx).await;
+        let Some(fetched) = prefetch_until(&file, child.as_ref(), deadline, ctx).await else {
+            return (file, None);
+        };
         if let Some(child) = child {
             child.finish();
         }
@@ -588,12 +683,12 @@ pub async fn apply_bundle_updates_with(
                 tracing::warn!(
                     cluster_id,
                     package_id = %file.kind.package_id(),
-                    error = %format!("{err:#}"),
+                    error = %err,
                     "bundle download failed"
                 );
                 result
                     .downloads_failed
-                    .push(format!("{}: {err:#}", file.display_name()));
+                    .push(format!("{}: {err}", file.display_name()));
                 result.stopped_early = true;
             }
             None => {
@@ -952,7 +1047,7 @@ pub async fn get_bundles_with_update_status(
         .collect();
 
     // Same liveness the updater uses so an untracked older install is not hidden from the list while it still takes on new files
-    let mut live_bundles = addition_eligible_bundles(
+    let live_bundles = addition_eligible_bundles(
         ctx,
         cluster_id,
         &archives,
@@ -962,12 +1057,15 @@ pub async fn get_bundles_with_update_status(
         &overrides_map,
     )
     .await?;
-    live_bundles.extend(bundles_awaiting_first_install(
+    // Kept apart from `live_bundles` so awaiting a first install alone gives no opt-out ownership
+    let awaiting_install = bundles_awaiting_first_install(
         &archives,
         &bundle_packages,
+        &all_linked_by_hash,
         &overrides_map,
         &accepted_bundles(cluster_id, ctx).await?,
-    ));
+        &live_bundles,
+    );
 
     let (installed_managed_keys, installed_external_hashes) =
         installed_bundle_keys(ctx, &all_linked).await?;
@@ -1015,18 +1113,20 @@ pub async fn get_bundles_with_update_status(
             files.push((file.clone(), status));
         }
 
-        let opted_in_types = if live_bundles.contains(&archive.manifest.name) {
-            let suppressed = opt_outs.suppressed(&archive);
-            archive
-                .manifest
-                .files
-                .iter()
-                .map(|f| f.content_type())
-                .filter(|ct| !suppressed.contains(ct))
-                .collect()
-        } else {
-            HashSet::new()
-        };
+        let awaiting_types = awaiting_install.get(&archive.manifest.name);
+        let opted_in_types =
+            if live_bundles.contains(&archive.manifest.name) || awaiting_types.is_some() {
+                let suppressed = opt_outs.suppressed(&archive, awaiting_types);
+                archive
+                    .manifest
+                    .files
+                    .iter()
+                    .map(|f| f.content_type())
+                    .filter(|ct| !suppressed.contains(ct))
+                    .collect()
+            } else {
+                HashSet::new()
+            };
 
         results.push(BundleWithUpdateStatus {
             opted_in_types,
@@ -1155,7 +1255,13 @@ impl<'a> TypeOptOuts<'a> {
         })
     }
 
-    fn signals(&self, archive: &BundleArchive) -> (HashSet<ContentType>, HashSet<ContentType>) {
+    /// `awaiting_install` counts files of the types launch installs for the
+    /// first time, which on an installed type would override the user's opt-out
+    fn signals(
+        &self,
+        archive: &BundleArchive,
+        awaiting_install: Option<&HashSet<ContentType>>,
+    ) -> (HashSet<ContentType>, HashSet<ContentType>) {
         let bundle_name = &archive.manifest.name;
         let mut all_suppressed: HashMap<ContentType, bool> = HashMap::new();
 
@@ -1167,7 +1273,9 @@ impl<'a> TypeOptOuts<'a> {
             let installed = self.installed_keys.contains(&key)
                 || matches!(&file.kind, BundleFileKind::External { file: ext, .. }
                     if self.installed_keys.contains(&external_bundle_key(&ext.sha1)));
-            if override_type.is_none() && !installed {
+            let awaited = file.enabled
+                && awaiting_install.is_some_and(|types| types.contains(&file.content_type()));
+            if override_type.is_none() && !installed && !awaited {
                 continue;
             }
             if self.shared_keys.contains(&key) {
@@ -1190,8 +1298,12 @@ impl<'a> TypeOptOuts<'a> {
         (seen, suppressed)
     }
 
-    fn suppressed(&self, archive: &BundleArchive) -> HashSet<ContentType> {
-        let (seen, mut suppressed) = self.signals(archive);
+    fn suppressed(
+        &self,
+        archive: &BundleArchive,
+        awaiting_install: Option<&HashSet<ContentType>>,
+    ) -> HashSet<ContentType> {
+        let (seen, mut suppressed) = self.signals(archive, awaiting_install);
         suppressed.extend(
             self.remembered
                 .get(&archive.manifest.name)
@@ -1208,7 +1320,7 @@ impl<'a> TypeOptOuts<'a> {
         ctx: &ContentCtx,
     ) -> ContentResult<HashSet<ContentType>> {
         let bundle_name = &archive.manifest.name;
-        let (seen, suppressed) = self.signals(archive);
+        let (seen, suppressed) = self.signals(archive, None);
         let remembered = self.remembered.get(bundle_name);
 
         for ct in &seen {
@@ -1225,7 +1337,7 @@ impl<'a> TypeOptOuts<'a> {
             }
         }
 
-        Ok(self.suppressed(archive))
+        Ok(self.suppressed(archive, None))
     }
 }
 
@@ -1246,6 +1358,9 @@ async fn addition_eligible_bundles(
     let (live_managed_keys, _) = installed_bundle_keys(ctx, live).await?;
 
     let mut eligible = live_bundle_names(bundle_packages, overrides);
+    if !bisect_dao::is_active(&ctx.db, cluster_id).await? {
+        eligible.extend(bundles_launch_heals(archives, bundle_packages, overrides));
+    }
     eligible.extend(infer_subscribed_from_archives(
         archives,
         overrides_map,
@@ -1261,37 +1376,56 @@ async fn addition_eligible_bundles(
     Ok(eligible)
 }
 
+/// The content types of each taken bundle that launch installs for the first
+/// time, kept only while launch installs at least one file of them. A bundle
+/// with copies tracked counts only while live so emptying it stays an opt-out
 fn bundles_awaiting_first_install(
     archives: &[BundleArchive],
     bundle_packages: &[BundleTrackedArtifactRow],
+    linked: &HashMap<String, &LinkedArtifactInfo>,
     overrides_map: &HashMap<(String, String), OverrideType>,
     accepted: &HashSet<String>,
-) -> HashSet<String> {
-    let names: HashSet<&str> = archives
-        .iter()
-        .map(|archive| archive.manifest.name.as_str())
-        .collect();
-    let installed_any = bundle_packages.iter().any(|row| {
-        row.bundle_name
-            .as_deref()
-            .is_some_and(|name| names.contains(name))
-    });
-    if installed_any {
-        return HashSet::new();
+    live: &HashSet<String>,
+) -> HashMap<String, HashSet<ContentType>> {
+    let mut installed: HashMap<&str, HashSet<ContentType>> = HashMap::new();
+    for row in bundle_packages {
+        if let Some(name) = row.bundle_name.as_deref() {
+            installed
+                .entry(name)
+                .or_default()
+                .extend(linked.get(&row.hash).map(|info| info.content_type));
+        }
     }
 
     archives
         .iter()
         .filter(|archive| takes_bundle(archive, accepted))
         .filter(|archive| {
-            archive.manifest.files.iter().any(|file| {
-                let choice = overrides_map
-                    .get(&(archive.manifest.name.clone(), file.kind.package_id()))
-                    .copied();
-                crate::bundles::effective_enabled(file, choice)
-            })
+            live.contains(&archive.manifest.name)
+                || !installed.contains_key(archive.manifest.name.as_str())
         })
-        .map(|archive| archive.manifest.name.clone())
+        .filter_map(|archive| {
+            let tracked = installed.get(archive.manifest.name.as_str());
+            let types: HashSet<ContentType> = archive
+                .manifest
+                .files
+                .iter()
+                .map(|file| file.content_type())
+                .filter(|ct| !tracked.is_some_and(|types| types.contains(ct)))
+                .collect();
+            archive
+                .manifest
+                .files
+                .iter()
+                .any(|file| {
+                    let choice = overrides_map
+                        .get(&(archive.manifest.name.clone(), file.kind.package_id()))
+                        .copied();
+                    types.contains(&file.content_type())
+                        && crate::bundles::effective_enabled(file, choice)
+                })
+                .then(|| (archive.manifest.name.clone(), types))
+        })
         .collect()
 }
 
@@ -1310,6 +1444,37 @@ fn live_bundle_names(
                 .map(|o| o.bundle_name.clone()),
         )
         .collect()
+}
+
+/// Launch heals one archive at a time in archive order, so a switched-off
+/// package shared by two bundles goes to the earlier one. Launch drops a
+/// declined bundle's own overrides before healing which never changes the
+/// outcome for a taken bundle since that one still reads them
+fn bundles_launch_heals(
+    archives: &[BundleArchive],
+    bundle_packages: &[BundleTrackedArtifactRow],
+    overrides: &[ClusterBundleOverrideRow],
+) -> HashSet<String> {
+    let mut live_packages: HashSet<String> = bundle_packages
+        .iter()
+        .filter(|row| row.enabled != 0)
+        .filter_map(|row| row.package_id.clone())
+        .collect();
+    let mut healed = HashSet::new();
+
+    for archive in archives {
+        let hidden = hidden_flags(std::slice::from_ref(archive));
+        for row in bundle_packages {
+            if let Some((bundle_name, package_id, _)) =
+                heal_restores(row, &hidden, overrides, &live_packages)
+            {
+                live_packages.insert(package_id.to_string());
+                healed.insert(bundle_name.to_string());
+            }
+        }
+    }
+
+    healed
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
@@ -1452,4 +1617,219 @@ fn select_highest_loader_version<'a>(
         .filter(|value| !value.is_empty())
         .max_by(|left, right| compare_version_like(left, right))
         .map(str::to_string)
+}
+
+#[cfg(test)]
+mod tests {
+    use oneclient_events::{
+        Event, EventBus, GroupedProgressEvent, GroupedProgressSession, ProgressEvent, TaskCategory,
+    };
+    use oneclient_net::{NetConfig, RequestClient};
+    use std::path::Path;
+    use tokio::sync::mpsc::UnboundedReceiver;
+
+    use super::*;
+    use crate::bundles::types::BundleFileType;
+    use crate::packages::provider::PackageProviderRegistry;
+    use crate::packages::types::ExternalFile;
+
+    async fn test_ctx(dir: &Path) -> (ContentCtx, EventBus, UnboundedReceiver<Event>) {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let events = EventBus::new(tx);
+        let ctx = ContentCtx::new(
+            oneclient_db::connect(dir.join("test.db")).await.unwrap(),
+            RequestClient::new(NetConfig::default()).unwrap(),
+            events.clone(),
+            PackageProviderRegistry::new(),
+            Default::default(),
+        );
+        (ctx, events, rx)
+    }
+
+    fn unreachable_file() -> BundleFile {
+        BundleFile {
+            enabled: true,
+            hidden: false,
+            path: "mods/unreachable.jar".to_string(),
+            size: 1,
+            file_type: BundleFileType::Normal,
+            kind: BundleFileKind::External {
+                file: ExternalFile {
+                    name: "unreachable.jar".to_string(),
+                    url: "unsupported://example.invalid/unreachable.jar".to_string(),
+                    sha1: "not a hash".to_string(),
+                    size: 1,
+                    content_type: ContentType::Mod,
+                },
+                id: Some("unreachable".to_string()),
+                meta: None,
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn a_download_leaves_finishing_its_progress_to_the_caller() {
+        let dir = polyio::tempdir().await.unwrap();
+        let (ctx, events, mut rx) = test_ctx(dir.dir_path()).await;
+        let file = unreachable_file();
+        let session = GroupedProgressSession::start(&events, "test");
+        let child = session.child("unreachable.jar", 1, TaskCategory::Packages);
+
+        assert!(shared_prefetch(&file, Some(&child), &ctx).await.is_err());
+
+        while let Ok(event) = rx.try_recv() {
+            assert!(
+                !matches!(
+                    event,
+                    Event::Progress(ProgressEvent::Grouped(
+                        GroupedProgressEvent::FinishChild { .. }
+                    ))
+                ),
+                "the caller still has its install to report on"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_failed_download_can_be_tried_again() {
+        let dir = polyio::tempdir().await.unwrap();
+        let (ctx, _events, _rx) = test_ctx(dir.dir_path()).await;
+        let file = unreachable_file();
+
+        assert!(shared_prefetch(&file, None, &ctx).await.is_err());
+        assert!(ctx.prefetches.running.lock().unwrap().is_empty());
+
+        let retry = shared_prefetch(&file, None, &ctx);
+        assert_eq!(ctx.prefetches.running.lock().unwrap().len(), 1);
+        assert!(retry.await.is_err());
+    }
+
+    fn managed_file(version_id: &str, sha1: &str) -> BundleFile {
+        BundleFile {
+            enabled: true,
+            hidden: false,
+            path: "mods/managed.jar".to_string(),
+            size: 1,
+            file_type: BundleFileType::Normal,
+            kind: BundleFileKind::Managed {
+                provider: ProviderId::Modrinth,
+                project_id: "project".to_string(),
+                version_id: version_id.to_string(),
+                sha1: sha1.to_string(),
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn each_distinct_file_gets_its_own_download() {
+        let dir = polyio::tempdir().await.unwrap();
+        let (ctx, _events, _rx) = test_ctx(dir.dir_path()).await;
+        let _held = ctx
+            .prefetches
+            .permits
+            .acquire_many(BUNDLE_INSTALL_CONCURRENCY as u32)
+            .await
+            .unwrap();
+
+        let mut other_project = managed_file("v1", "aaaa");
+        let mut other_provider = managed_file("v1", "aaaa");
+        if let BundleFileKind::Managed { project_id, .. } = &mut other_project.kind {
+            *project_id = "other".to_string();
+        }
+        if let BundleFileKind::Managed { provider, .. } = &mut other_provider.kind {
+            *provider = ProviderId::CurseForge;
+        }
+        let mut external_revision = unreachable_file();
+        if let BundleFileKind::External { file, .. } = &mut external_revision.kind {
+            file.sha1 = "another hash".to_string();
+        }
+
+        for file in [
+            managed_file("v1", "aaaa"),
+            managed_file("v1", "bbbb"),
+            managed_file("v2", "aaaa"),
+            managed_file("v1", "aaaa"),
+            other_project,
+            other_provider,
+            unreachable_file(),
+            external_revision,
+        ] {
+            let _ = shared_prefetch(&file, None, &ctx);
+        }
+
+        assert_eq!(ctx.prefetches.running.lock().unwrap().len(), 7);
+    }
+
+    #[tokio::test]
+    async fn a_session_joining_a_running_download_sees_its_progress() {
+        let dir = polyio::tempdir().await.unwrap();
+        let (ctx, events, mut rx) = test_ctx(dir.dir_path()).await;
+        let file = unreachable_file();
+        let session = GroupedProgressSession::start(&events, "test");
+        let joiner = session.child("joiner", 10, TaskCategory::Packages);
+
+        let _started = shared_prefetch(&file, None, &ctx);
+        let _joined = shared_prefetch(&file, Some(&joiner), &ctx);
+        let source = ctx.prefetches.running.lock().unwrap()[&prefetch_key(&file)]
+            .1
+            .clone();
+        source.set_progress(5, Some(10));
+
+        let mut joiner_id = None;
+        let mut joiner_progress = None;
+        while let Ok(event) = rx.try_recv() {
+            match event {
+                Event::Progress(ProgressEvent::Grouped(GroupedProgressEvent::AddChild {
+                    child_id,
+                    label,
+                    ..
+                })) if label == "joiner" => joiner_id = Some(child_id),
+                Event::Progress(ProgressEvent::Grouped(GroupedProgressEvent::UpdateChild {
+                    child_id,
+                    current,
+                    ..
+                })) if Some(child_id) == joiner_id => joiner_progress = Some(current),
+                _ => {}
+            }
+        }
+        assert_eq!(joiner_progress, Some(5));
+    }
+
+    #[tokio::test]
+    async fn no_download_starts_once_the_deadline_has_passed() {
+        let dir = polyio::tempdir().await.unwrap();
+        let (ctx, events, mut rx) = test_ctx(dir.dir_path()).await;
+        let session = GroupedProgressSession::start(&events, "test");
+        let _held = ctx
+            .prefetches
+            .permits
+            .acquire_many(BUNDLE_INSTALL_CONCURRENCY as u32)
+            .await
+            .unwrap();
+
+        let results = crate::bundles::install::install_bundle_files(
+            vec![unreachable_file()],
+            1,
+            "Bundle",
+            true,
+            Some(&session),
+            &ctx,
+            Some(Instant::now()),
+        )
+        .await;
+
+        assert!(results.is_empty());
+        assert!(ctx.prefetches.running.lock().unwrap().is_empty());
+        let finished = std::iter::from_fn(|| rx.try_recv().ok())
+            .filter(|event| {
+                matches!(
+                    event,
+                    Event::Progress(ProgressEvent::Grouped(
+                        GroupedProgressEvent::FinishChild { .. }
+                    ))
+                )
+            })
+            .count();
+        assert_eq!(finished, 1, "a skipped file must not hold its reservation");
+    }
 }

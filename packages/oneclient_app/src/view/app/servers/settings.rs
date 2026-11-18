@@ -392,6 +392,14 @@ impl Component for ServerSettings {
             "",
             super::software::java_row(&server),
         ));
+        if !server.plugins() && server.loader.is_modded() {
+            software.push((
+                Section::Software,
+                t("oneclient.servers.settings.client_mods.title"),
+                t("oneclient.servers.settings.client_mods.description"),
+                client_mods_row(&server),
+            ));
+        }
         software.push((
             Section::Performance,
             t("oneclient.servers.settings.backups_kept.title"),
@@ -1240,6 +1248,22 @@ fn backups_row(server: &LocalServer) -> Element {
             let hours = BACKUP_HOURS[index.min(BACKUP_HOURS.len() - 1)];
             servers::update(id.clone(), move |s| s.backup_hours = hours);
         }),
+    )
+    .into_element()
+}
+
+fn client_mods_row(server: &LocalServer) -> Element {
+    let id = server.id.clone();
+    let on = server.auto_disable_client_mods;
+    settings_row(
+        IconType::Cube01,
+        t("oneclient.servers.settings.client_mods.title"),
+        t("oneclient.servers.settings.client_mods.description"),
+        toggle_controlled(
+            on,
+            (move |()| servers::update(id.clone(), move |s| s.auto_disable_client_mods = !on))
+                .into(),
+        ),
     )
     .into_element()
 }

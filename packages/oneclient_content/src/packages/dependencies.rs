@@ -92,6 +92,7 @@ fn detached_row(mc_version: &str, loader: GameLoader) -> ClusterRow {
         description: None,
         tags: "[]".into(),
         cover_path: None,
+        takes_bundles: 0,
     }
 }
 
@@ -202,7 +203,7 @@ pub(crate) async fn resolve_one(
             let Some(project_id) = dep.project_id.as_deref() else {
                 return Ok(None);
             };
-            let Some(pick) = pick_version(provider, project_id, cluster, ctx).await? else {
+            let Some(pick) = pick_version(provider, project_id, cluster, None, ctx).await? else {
                 return Ok(None);
             };
             provider
@@ -298,7 +299,7 @@ async fn pick_mod_version(
                 .is_none_or(|range| satisfies(range, &version.version_number, &cluster.mc_version))
     });
 
-    Ok(choose_version(candidates, cluster, loader))
+    Ok(choose_version(candidates, cluster, loader, None))
 }
 
 fn numeric_parts(text: &str) -> Option<Vec<u64>> {
@@ -457,6 +458,7 @@ pub async fn pick_version(
     provider: &dyn PackageProvider,
     project_id: &str,
     cluster: &ClusterRow,
+    installed: Option<&str>,
     ctx: &ContentCtx,
 ) -> ContentResult<Option<VersionSummary>> {
     let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Vanilla);
@@ -489,15 +491,19 @@ pub async fn pick_version(
             .items;
     }
 
-    Ok(choose_version(candidates, cluster, loader))
+    Ok(choose_version(candidates, cluster, loader, installed))
 }
 
 fn choose_version(
     mut candidates: Vec<VersionSummary>,
     cluster: &ClusterRow,
     loader: GameLoader,
+    installed: Option<&str>,
 ) -> Option<VersionSummary> {
-    candidates.retain(|version| fits_cluster(version, cluster, loader));
+    candidates.retain(|version| {
+        (!version.blocked || installed == Some(version.version_id.as_str()))
+            && fits_cluster(version, cluster, loader)
+    });
     // Neither provider promises an order so sort rather than trust the page
     candidates.sort_by_key(|version| std::cmp::Reverse(version.published));
 
@@ -652,6 +658,7 @@ mod tests {
             downloads: 0,
             file_size: 0,
             dependencies: Vec::new(),
+            blocked: false,
         }
     }
 
@@ -674,6 +681,7 @@ mod tests {
             description: None,
             tags: "[]".into(),
             cover_path: None,
+            takes_bundles: 0,
         }
     }
 
@@ -704,8 +712,44 @@ mod tests {
             ),
         ];
 
-        let pick = choose_version(candidates, &cluster, GameLoader::Fabric);
+        let pick = choose_version(candidates, &cluster, GameLoader::Fabric, None);
         assert_eq!(pick.unwrap().version_id, "new");
+    }
+
+    #[test]
+    fn skips_a_version_that_cannot_be_downloaded() {
+        let cluster = cluster(GameLoader::Fabric, "1.21.4");
+        let fabric = |id, day| {
+            summary(
+                id,
+                ReleaseType::Release,
+                day,
+                vec![GameLoader::Fabric],
+                vec!["1.21.4"],
+            )
+        };
+        let old_kept = || fabric("old", 1);
+        let old = old_kept();
+        let blocked = VersionSummary {
+            blocked: true,
+            ..fabric("blocked", 2)
+        };
+
+        let pick = choose_version(
+            vec![old, blocked.clone()],
+            &cluster,
+            GameLoader::Fabric,
+            None,
+        );
+        assert_eq!(pick.unwrap().version_id, "old");
+        let pick = choose_version(
+            vec![old_kept(), blocked.clone()],
+            &cluster,
+            GameLoader::Fabric,
+            Some("blocked"),
+        );
+        assert_eq!(pick.unwrap().version_id, "blocked");
+        assert!(choose_version(vec![blocked], &cluster, GameLoader::Fabric, None).is_none());
     }
 
     #[test]
@@ -728,7 +772,7 @@ mod tests {
             ),
         ];
 
-        let pick = choose_version(candidates, &cluster, GameLoader::Fabric);
+        let pick = choose_version(candidates, &cluster, GameLoader::Fabric, None);
         assert_eq!(pick.unwrap().version_id, "beta");
     }
 
@@ -759,7 +803,7 @@ mod tests {
             ),
         ];
 
-        let pick = choose_version(candidates, &cluster, GameLoader::Fabric);
+        let pick = choose_version(candidates, &cluster, GameLoader::Fabric, None);
         assert_eq!(pick.unwrap().version_id, "fits");
     }
 
@@ -774,7 +818,7 @@ mod tests {
             vec!["1.21.4"],
         )];
 
-        let pick = choose_version(candidates, &cluster, GameLoader::Fabric);
+        let pick = choose_version(candidates, &cluster, GameLoader::Fabric, None);
         assert_eq!(pick.unwrap().version_id, "pack");
     }
 
@@ -789,7 +833,7 @@ mod tests {
             vec!["1.21.4"],
         )];
 
-        assert!(choose_version(candidates, &cluster, GameLoader::Fabric).is_none());
+        assert!(choose_version(candidates, &cluster, GameLoader::Fabric, None).is_none());
     }
 
     #[test]

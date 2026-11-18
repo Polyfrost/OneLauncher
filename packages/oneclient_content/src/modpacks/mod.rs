@@ -28,9 +28,10 @@ pub use update::{
 pub use share::{
     ClusterShare, PackCarryover, SHARE_ENTRY, SHARE_EXTENSION, SHARE_FORMAT, ShareContent,
     ShareExportReport, ShareExtras, ShareIcon, ShareScope, SharedBundleChoice, SharedDownload,
-    SharedFile, SharedFileSource, SharedJava, SharedModpack, SharedOverride, collect_share_content,
+    SharedFile, SharedFileSource, SharedJava, SharedModpack, SharedOverride, SharedPlaytime,
+    SharedSession, collect_share_content,
     ShareFingerprints, icon_entry, install_shared_content, read_cluster_share, read_share_extras,
-    read_share_icon, replace_share_settings, share_fingerprints, trusted_download,
+    read_share_icon, replace_share_settings, share_fingerprints, share_path, trusted_download,
     write_share_archive,
 };
 
@@ -41,6 +42,7 @@ pub use settings::{
 
 pub use install::{
     ModpackInstallReport, find_blocked_downloads, import_blocked_files, install_modpack,
+    store_blocked_files,
     store_modpack_archive,
 };
 pub use duplicates::recheck_duplicates;
@@ -265,6 +267,27 @@ pub async fn read_modpack(path: &Path, ctx: &ContentCtx) -> ContentResult<Modpac
         .await?
         .ok_or(PackageError::UnsupportedModpackFormat)?;
     curseforge::resolve(&bytes, ctx).await
+}
+
+pub async fn read_modpack_header(path: &Path) -> ContentResult<(String, GameLoader)> {
+    if let Some(bytes) = zip_entry(path, mrpack::INDEX_ENTRY).await? {
+        let manifest = mrpack::parse(&bytes)?;
+        return Ok((manifest.mc_version, manifest.loader));
+    }
+
+    let bytes = zip_entry(path, curseforge::MANIFEST_ENTRY)
+        .await?
+        .ok_or(PackageError::UnsupportedModpackFormat)?;
+    curseforge::header(&bytes)
+}
+
+pub async fn read_curseforge_header(path: &Path) -> ContentResult<Option<ModpackManifest>> {
+    match zip_entry(path, curseforge::MANIFEST_ENTRY).await? {
+        Some(bytes) if curseforge::is_modpack_manifest(&bytes) => {
+            curseforge::unresolved(&bytes).map(Some)
+        }
+        _ => Ok(None),
+    }
 }
 
 async fn zip_entry(path: &Path, entry: &str) -> ContentResult<Option<Vec<u8>>> {

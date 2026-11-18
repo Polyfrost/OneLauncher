@@ -372,10 +372,10 @@ fn mod_card(
 }
 
 #[derive(PartialEq)]
-struct OptionalModCard {
-    entry: PackageEntry,
-    cluster_id: i64,
-    on_toggle: EventHandler<()>,
+pub(crate) struct OptionalModCard {
+    pub(crate) entry: PackageEntry,
+    pub(crate) cluster_id: i64,
+    pub(crate) on_toggle: EventHandler<()>,
 }
 
 impl Component for OptionalModCard {

@@ -361,6 +361,63 @@ async fn settings_stay_home_unless_asked_for() {
 }
 
 #[tokio::test]
+async fn unchecked_content_types_stay_out_of_the_file() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let global = state.settings.read().global_game_settings.clone();
+    let ctx = state.services.content();
+    let mut options = CreateClusterOptions::new("Picky", "1.21.1", GameLoader::Fabric)
+        .kind(ClusterKind::Modded)
+        .user_created(true);
+    options.mc_loader_version = Some("0.16.5".into());
+    let source = state.clusters.create(&global, options).await.unwrap();
+
+    let scratch = polyio::testing::ScratchDir::new("export-content-types");
+    let local_jar = scratch.path().join("local-only.jar");
+    std::fs::write(&local_jar, jar("picky")).unwrap();
+    PackageStore::import_local_files(&[(local_jar, ContentType::Mod)], source.id, &ctx)
+        .await
+        .unwrap();
+
+    let export = |skip: Vec<ContentType>, file: &str| {
+        let dest = scratch.path().join(file);
+        let state = state.clone();
+        let options = ExportOptions::new(ExportMode::OneClient).without_types(skip);
+        async move {
+            oneclient_core::clusters::export_cluster_with(&state, source.id, &dest, options, None)
+                .await
+                .unwrap()
+        }
+    };
+    assert_eq!(export(Vec::new(), "all.oneclient").await.embedded.len(), 1);
+    let without_mods = export(vec![ContentType::Mod], "no-mods.oneclient").await;
+    assert!(without_mods.embedded.is_empty());
+    assert!(without_mods.missing.is_empty());
+
+    let mut options = CreateClusterOptions::new("Bundled", "1.21.1", GameLoader::Fabric)
+        .kind(ClusterKind::OneClient)
+        .user_created(true);
+    options.mc_loader_version = Some("0.16.5".into());
+    let bundled = state.clusters.create(&global, options).await.unwrap();
+    let dest = scratch.path().join("bundled.oneclient");
+    oneclient_core::clusters::export_cluster_with(
+        &state,
+        bundled.id,
+        &dest,
+        ExportOptions::new(ExportMode::OneClient).without_types(vec![ContentType::Mod]),
+        None,
+    )
+    .await
+    .unwrap();
+    let share = oneclient_content::modpacks::read_cluster_share(&dest)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(share.kind, ClusterKind::OneClient, "bundles would reinstall mods");
+    assert!(share.bundles.is_empty());
+    assert!(share.modpack.is_none());
+}
+
+#[tokio::test]
 async fn a_linked_import_follows_the_owners_updates() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
     let global = state.settings.read().global_game_settings.clone();

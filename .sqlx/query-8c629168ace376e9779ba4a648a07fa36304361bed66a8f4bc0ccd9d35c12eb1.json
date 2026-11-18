@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n\t\tSELECT name, java_path, resolution, force_fullscreen, mem_max, launch_args, game_args, launch_env,\n\t\t       hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode\n\t\tFROM setting_profiles\n\t\tWHERE name = ?\n\t\t",
+  "query": "\n\t\tSELECT name, java_path, resolution, force_fullscreen, mem_max, launch_args, game_args, launch_env,\n\t\t       hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode, copy_mod_files\n\t\tFROM setting_profiles\n\t\tWHERE name = ?\n\t\t",
   "describe": {
     "columns": [
       {
@@ -145,6 +145,17 @@
             "name": "browser_update_mode"
           }
         }
+      },
+      {
+        "name": "copy_mod_files",
+        "ordinal": 13,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "setting_profiles",
+            "name": "copy_mod_files"
+          }
+        }
       }
     ],
     "parameters": {
@@ -163,8 +174,9 @@
       true,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "86e3ba70da419464c0be3b3971f613c5a112558472cf2dcdeffa5907e3785318"
+  "hash": "8c629168ace376e9779ba4a648a07fa36304361bed66a8f4bc0ccd9d35c12eb1"
 }

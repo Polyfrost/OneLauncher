@@ -1,17 +1,19 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
+use oneclient_content::ContentCtx;
 use oneclient_content::bundles::{
     BundleFile, BundleFileKind, BundleFileType, BundleManifest, check_bundle_updates,
     get_bundles_with_update_status, install_cluster_bundles, on_user_disable_artifact,
-    on_user_remove_artifact, set_bundle_package_enabled,
+    on_user_remove_artifact, set_bundle_package_enabled, wanted_bundle_files,
 };
-use oneclient_content::ContentCtx;
 use oneclient_core::LauncherState;
 use oneclient_core::clusters::CreateClusterOptions;
+use oneclient_db::dao::cluster::ClusterMigration;
 use oneclient_db::dao::{
-    artifact as artifact_dao, cluster_bisect as bisect_dao, cluster_bundle as bundle_dao,
+    artifact as artifact_dao, cluster as cluster_dao, cluster_bisect as bisect_dao,
+    cluster_bundle as bundle_dao,
 };
 use oneclient_db::models::OverrideType;
 
@@ -1016,6 +1018,730 @@ async fn an_unrelated_catalog_bundle_sharing_a_mod_does_not_undo_the_opt_out() {
     );
 }
 
+async fn opted_in(state: &LauncherState, cluster_id: i64, name: &str) -> HashSet<ContentType> {
+    get_bundles_with_update_status(
+        cluster_id,
+        state.bundles.as_ref(),
+        &state.services.content(),
+    )
+    .await
+    .unwrap()
+    .into_iter()
+    .find(|b| b.archive.manifest.name == name)
+    .unwrap_or_else(|| panic!("{name} missing from the package list"))
+    .opted_in_types
+}
+
+#[tokio::test]
+async fn a_bundle_not_installed_yet_counts_as_opted_in() {
+    const NEW_BUNDLE: &str = "New Bundle";
+    const DECLINED: &str = "Declined Bundle";
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let db = &state.services.db;
+    let mut retained = manifest(vec![managed_file(true)]);
+    let mut added = named_manifest(NEW_BUNDLE, vec![newly_shipped_file()]);
+    let mut declined = named_manifest(DECLINED, vec![fabric_api_file()]);
+    declined.enabled = false;
+    for m in [&mut retained, &mut added, &mut declined] {
+        m.mc_version = "26.3".to_string();
+    }
+    for m in [retained, added, declined] {
+        oneclient_core::dev::seed_bundle_archive(&state, m)
+            .await
+            .unwrap();
+    }
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    oneclient_content::bundles::set_bundle_choices(
+        cluster_id,
+        &[(DECLINED.to_string(), false)],
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+    assert!(
+        bundle_dao::list_bundle_choices(db, cluster_id)
+            .await
+            .unwrap()
+            .contains(&(DECLINED.to_string(), false))
+    );
+    let source = cluster_dao::get_by_id(db, cluster_id)
+        .await
+        .unwrap()
+        .unwrap();
+    cluster_dao::migrate_version_if_unchanged(
+        db,
+        &source,
+        ClusterMigration {
+            mc_version: "26.3",
+            mc_loader: source.mc_loader,
+            mc_loader_version: source.mc_loader_version.as_deref(),
+            stage: source.stage,
+            name: None,
+            folder_name: &source.folder_name,
+        },
+    )
+    .await
+    .unwrap()
+    .unwrap();
+
+    let bundles = get_bundles_with_update_status(
+        cluster_id,
+        state.bundles.as_ref(),
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+    let opted_in = |name: &str| {
+        &bundles
+            .iter()
+            .find(|b| b.archive.manifest.name == name)
+            .unwrap_or_else(|| panic!("{name} missing from the package list"))
+            .opted_in_types
+    };
+
+    assert!(opted_in(BUNDLE).contains(&ContentType::Mod));
+    let new_bundle = bundles
+        .iter()
+        .find(|b| b.archive.manifest.name == NEW_BUNDLE)
+        .unwrap();
+    assert!(
+        new_bundle.files.iter().any(|(file, _)| {
+            file.kind.package_id() == "newcomer"
+                && new_bundle.opted_in_types.contains(&file.content_type())
+        }),
+        "a bundle the migrated cluster has not installed yet still belongs in the All tab"
+    );
+    assert!(
+        opted_in(DECLINED).is_empty(),
+        "a declined bundle stays opted out"
+    );
+}
+
+#[tokio::test]
+async fn an_accepted_opt_in_bundle_not_installed_yet_counts_as_opted_in() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let mut opt_in = named_manifest("Opt In", vec![newly_shipped_file()]);
+    opt_in.enabled = false;
+    oneclient_core::dev::seed_bundle_archive(&state, opt_in)
+        .await
+        .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    oneclient_content::bundles::set_bundle_choices(
+        cluster_id,
+        &[("Opt In".to_string(), true)],
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+
+    assert!(
+        opted_in(&state, cluster_id, "Opt In")
+            .await
+            .contains(&ContentType::Mod)
+    );
+}
+
+#[tokio::test]
+async fn a_bundle_not_installed_yet_with_nothing_switched_on_is_not_opted_in() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let mut optional = newly_shipped_file();
+    optional.enabled = false;
+    let mut optional_pack = resource_pack_file();
+    optional_pack.enabled = false;
+    for m in [
+        manifest(vec![managed_file(true)]),
+        named_manifest("Optional Only", vec![optional]),
+        named_manifest("Switched Off", vec![newly_shipped_file()]),
+        named_manifest("Mixed", vec![newly_shipped_file(), optional_pack]),
+    ] {
+        oneclient_core::dev::seed_bundle_archive(&state, m)
+            .await
+            .unwrap();
+    }
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    for bundle in ["Switched Off", "Mixed"] {
+        bundle_dao::save_override(
+            &state.services.db,
+            cluster_id,
+            bundle,
+            "newcomer",
+            OverrideType::Disabled,
+        )
+        .await
+        .unwrap();
+    }
+
+    for name in ["Optional Only", "Switched Off", "Mixed"] {
+        let types = opted_in(&state, cluster_id, name).await;
+        assert!(types.is_empty(), "{name} has nothing to install: {types:?}");
+    }
+}
+
+#[tokio::test]
+async fn an_installed_bundle_does_not_lose_its_opt_out_to_one_not_installed_yet() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        manifest(vec![
+            managed_file(true),
+            newly_shipped_file(),
+            resource_pack_file(),
+        ]),
+    )
+    .await
+    .unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        named_manifest("Unrelated Bundle", vec![managed_file(true)]),
+    )
+    .await
+    .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    artifact_dao::update_cluster_artifact(&state.services.db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    for (package_id, choice) in [
+        (PROJECT_ID, OverrideType::Disabled),
+        ("looks", OverrideType::Enabled),
+    ] {
+        bundle_dao::save_override(&state.services.db, cluster_id, BUNDLE, package_id, choice)
+            .await
+            .unwrap();
+    }
+
+    let types = opted_in(&state, cluster_id, BUNDLE).await;
+    assert!(
+        !types.contains(&ContentType::Mod) && types.contains(&ContentType::ResourcePack),
+        "the list must keep the opt-out the updater keeps: {types:?}"
+    );
+}
+
+async fn cluster_with_every_copy_off(state: &LauncherState) -> i64 {
+    oneclient_core::dev::seed_bundle_archive(
+        state,
+        manifest(vec![
+            managed_file(true),
+            newly_shipped_file(),
+            resource_pack_file(),
+        ]),
+    )
+    .await
+    .unwrap();
+    let cluster_id = cluster_with_tracked_mod(state).await;
+    artifact_dao::update_cluster_artifact(&state.services.db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    cluster_id
+}
+
+#[tokio::test]
+async fn a_bundle_with_every_copy_switched_off_by_accident_counts_as_opted_in() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = cluster_with_every_copy_off(&state).await;
+
+    let types = opted_in(&state, cluster_id, BUNDLE).await;
+    assert!(
+        types.contains(&ContentType::Mod),
+        "launch switches these copies back on so the bundle is still live: {types:?}"
+    );
+    assert!(
+        added_ids(&state, cluster_id)
+            .await
+            .contains(&"newcomer".to_string())
+    );
+}
+
+async fn track_bundle_copy(state: &LauncherState, cluster_id: i64, file: &BundleFile) {
+    let BundleFileKind::Managed {
+        project_id,
+        version_id,
+        sha1,
+        ..
+    } = &file.kind
+    else {
+        unreachable!("only managed files are tracked here");
+    };
+    let db = &state.services.db;
+    let file_name = file.path.rsplit('/').next().unwrap();
+    artifact_dao::insert_artifact(
+        db,
+        sha1,
+        file.content_type() as i64,
+        &format!("artifacts/{file_name}"),
+        file_name,
+        Some(1),
+    )
+    .await
+    .unwrap();
+    artifact_dao::link_cluster_artifact(db, cluster_id, sha1, file_name)
+        .await
+        .unwrap();
+    artifact_dao::upsert_provider_release(
+        db,
+        ProviderId::Modrinth as i64,
+        project_id,
+        version_id,
+        sha1,
+        file_name,
+        "1.0.0",
+        None,
+        MC_VERSION,
+        "fabric",
+    )
+    .await
+    .unwrap();
+    bundle_dao::track_bundle_artifact(db, cluster_id, sha1, BUNDLE, version_id, project_id)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn a_hidden_dependency_switched_off_by_accident_keeps_the_bundle_live() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        manifest(vec![hidden_dependency_file(), newly_shipped_file()]),
+    )
+    .await
+    .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    track_bundle_copy(&state, cluster_id, &hidden_dependency_file()).await;
+    let db = &state.services.db;
+    for (hash, file_name) in [
+        (HASH, "sodium.jar"),
+        (HIDDEN_DEP_HASH, "sodium-extra-lib.jar"),
+    ] {
+        artifact_dao::update_cluster_artifact(db, cluster_id, hash, file_name, 0)
+            .await
+            .unwrap();
+    }
+
+    let types = opted_in(&state, cluster_id, BUNDLE).await;
+    assert!(types.contains(&ContentType::Mod), "{types:?}");
+    assert!(
+        added_ids(&state, cluster_id)
+            .await
+            .contains(&"newcomer".to_string())
+    );
+    heal(&state, cluster_id).await;
+    let restored = artifact_dao::get_cluster_artifact(db, cluster_id, HIDDEN_DEP_HASH)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(restored.enabled, 0);
+}
+
+#[tokio::test]
+async fn a_bundle_with_every_copy_switched_off_on_purpose_stays_opted_out() {
+    for (filed_under, choice) in [
+        (BUNDLE, OverrideType::Disabled),
+        (BUNDLE, OverrideType::Removed),
+        ("Old Bundle", OverrideType::Disabled),
+        ("Old Bundle", OverrideType::Removed),
+    ] {
+        let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+        let cluster_id = cluster_with_every_copy_off(&state).await;
+        bundle_dao::save_override(
+            &state.services.db,
+            cluster_id,
+            filed_under,
+            PROJECT_ID,
+            choice,
+        )
+        .await
+        .unwrap();
+        let case = format!("{filed_under} {choice:?}");
+
+        assert_stays_opted_out(&state, cluster_id, &case).await;
+        heal(&state, cluster_id).await;
+        assert!(!cluster_mod_enabled(&state, cluster_id).await, "{case}");
+    }
+}
+
+async fn assert_stays_opted_out(state: &LauncherState, cluster_id: i64, case: &str) {
+    let types = opted_in(state, cluster_id, BUNDLE).await;
+    assert!(types.is_empty(), "{case}: {types:?}");
+    let added = added_ids(state, cluster_id).await;
+    assert!(added.is_empty(), "{case}: {added:?}");
+}
+
+#[tokio::test]
+async fn a_switched_off_copy_launch_leaves_off_keeps_the_bundle_opted_out() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        manifest(vec![newly_shipped_file(), resource_pack_file()]),
+    )
+    .await
+    .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    artifact_dao::update_cluster_artifact(&state.services.db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    assert_stays_opted_out(&state, cluster_id, "no longer shipped").await;
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = cluster_with_every_copy_off(&state).await;
+    bisect_dao::start(
+        &state.services.db,
+        cluster_id,
+        &[("other".to_string(), "Other".to_string())],
+    )
+    .await
+    .unwrap();
+    assert_stays_opted_out(&state, cluster_id, "bisect running").await;
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = cluster_with_every_copy_off(&state).await;
+    track_other_sodium_copy(&state, cluster_id, "Other Bundle").await;
+    assert_stays_opted_out(&state, cluster_id, "another copy live").await;
+}
+
+const OTHER_COPY: &str = "ffffffffffffffffffffffffffffffffffffffff";
+
+async fn track_other_sodium_copy(state: &LauncherState, cluster_id: i64, bundle: &str) {
+    let db = &state.services.db;
+    artifact_dao::insert_artifact(
+        db,
+        OTHER_COPY,
+        ContentType::Mod as i64,
+        "artifacts/sodium-other.jar",
+        "sodium-other.jar",
+        Some(1),
+    )
+    .await
+    .unwrap();
+    artifact_dao::link_cluster_artifact(db, cluster_id, OTHER_COPY, "sodium-other.jar")
+        .await
+        .unwrap();
+    bundle_dao::track_bundle_artifact(db, cluster_id, OTHER_COPY, bundle, VERSION_ID, PROJECT_ID)
+        .await
+        .unwrap();
+}
+
+async fn reverse_unordered_selects(state: &LauncherState) {
+    let db = &state.services.db;
+    let mut held = Vec::new();
+    for _ in 0..db.options().get_max_connections() {
+        let mut conn = db.acquire().await.unwrap();
+        sqlx::query("PRAGMA reverse_unordered_selects = ON")
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+        held.push(conn);
+    }
+}
+
+#[tokio::test]
+async fn the_bundle_launch_heals_first_takes_a_shared_switched_off_mod() {
+    // Tracked rows come back in bundle name order through an index, the same order launch visits archives, so the scan is reversed to catch a prediction that follows row order
+    for other in ["A Bundle", "Z Bundle"] {
+        let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+        reverse_unordered_selects(&state).await;
+        for name in [BUNDLE, other] {
+            seed_bundle_with_pack(&state, named_manifest(name, vec![managed_file(true)])).await;
+        }
+        let cluster_id = cluster_with_tracked_mod(&state).await;
+        track_other_sodium_copy(&state, cluster_id, other).await;
+        let db = &state.services.db;
+        for (hash, file_name) in [(HASH, "sodium.jar"), (OTHER_COPY, "sodium-other.jar")] {
+            artifact_dao::update_cluster_artifact(db, cluster_id, hash, file_name, 0)
+                .await
+                .unwrap();
+        }
+
+        let mut predicted = Vec::new();
+        for name in [BUNDLE, other] {
+            if opted_in(&state, cluster_id, name)
+                .await
+                .contains(&ContentType::Mod)
+            {
+                predicted.push(name.to_string());
+            }
+        }
+        install_cluster_bundles(
+            cluster_id,
+            state.bundles.as_ref(),
+            None,
+            &state.services.content(),
+            None,
+        )
+        .await
+        .unwrap();
+        let healed: Vec<String> = bundle_dao::list_bundle_tracked(db, cluster_id)
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|row| row.enabled != 0)
+            .filter_map(|row| row.bundle_name)
+            .collect();
+
+        assert_eq!(healed, [BUNDLE.min(other)], "{other}");
+        assert_eq!(predicted, healed, "{other}");
+    }
+}
+
+#[tokio::test]
+async fn a_bundle_on_a_cluster_with_nothing_installed_counts_as_opted_in() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![newly_shipped_file()]))
+        .await
+        .unwrap();
+    let global = state.settings.read().global_game_settings.clone();
+    let cluster = state
+        .clusters
+        .create(
+            &global,
+            CreateClusterOptions::new("Fresh Cluster", MC_VERSION, GameLoader::Fabric),
+        )
+        .await
+        .unwrap();
+
+    assert!(
+        opted_in(&state, cluster.id, BUNDLE)
+            .await
+            .contains(&ContentType::Mod)
+    );
+}
+
+/// Package ids launch installs, picked from the same choices and overrides launch reads
+async fn launch_installs(state: &LauncherState, cluster_id: i64) -> Vec<String> {
+    let db = &state.services.db;
+    let bundles = get_bundles_with_update_status(
+        cluster_id,
+        state.bundles.as_ref(),
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+    let accepted: HashSet<String> = bundle_dao::list_bundle_choices(db, cluster_id)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter_map(|(name, accepted)| accepted.then_some(name))
+        .collect();
+    let overrides = bundle_dao::list_overrides(db, cluster_id).await.unwrap();
+    wanted_bundle_files(
+        bundles.iter().map(|b| &b.archive.manifest),
+        &accepted,
+        |bundle, package| {
+            overrides
+                .iter()
+                .find(|o| o.bundle_name == bundle && o.package_id == package)
+                .and_then(|o| OverrideType::parse(&o.override_type))
+        },
+    )
+    .into_iter()
+    .map(|file| file.kind.package_id())
+    .collect()
+}
+
+#[tokio::test]
+async fn a_mod_unticked_at_onboarding_keeps_the_rest_of_the_bundle_opted_in() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        manifest(vec![
+            managed_file(true),
+            newly_shipped_file(),
+            resource_pack_file(),
+        ]),
+    )
+    .await
+    .unwrap();
+    let global = state.settings.read().global_game_settings.clone();
+    let cluster = state
+        .clusters
+        .create(
+            &global,
+            CreateClusterOptions::new("Fresh Cluster", MC_VERSION, GameLoader::Fabric),
+        )
+        .await
+        .unwrap();
+    oneclient_core::set_bundle_package_overrides(
+        cluster.id,
+        &[(
+            BUNDLE.to_string(),
+            "newcomer".to_string(),
+            OverrideType::Removed,
+        )],
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+
+    let bundles = get_bundles_with_update_status(
+        cluster.id,
+        state.bundles.as_ref(),
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+    let bundle = bundles
+        .iter()
+        .find(|b| b.archive.manifest.name == BUNDLE)
+        .unwrap();
+
+    assert!(
+        bundle.opted_in_types.contains(&ContentType::Mod),
+        "launch still installs the mods left ticked: {:?}",
+        bundle.opted_in_types
+    );
+    assert_eq!(
+        launch_installs(&state, cluster.id).await,
+        [PROJECT_ID, "looks"]
+    );
+}
+
+#[tokio::test]
+async fn every_mod_unticked_at_onboarding_keeps_the_bundle_out_of_mods() {
+    let optional_mod = BundleFile {
+        enabled: false,
+        path: "mods/optional.jar".to_string(),
+        kind: BundleFileKind::Managed {
+            provider: ProviderId::Modrinth,
+            project_id: "optional".to_string(),
+            version_id: "v1".to_string(),
+            sha1: "ffffffffffffffffffffffffffffffffffffffff".to_string(),
+        },
+        ..newly_shipped_file()
+    };
+    for extra in [None, Some(optional_mod)] {
+        let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+        let mut files = vec![
+            managed_file(true),
+            newly_shipped_file(),
+            resource_pack_file(),
+        ];
+        files.extend(extra.clone());
+        oneclient_core::dev::seed_bundle_archive(&state, manifest(files))
+            .await
+            .unwrap();
+        let global = state.settings.read().global_game_settings.clone();
+        let cluster = state
+            .clusters
+            .create(
+                &global,
+                CreateClusterOptions::new("Fresh Cluster", MC_VERSION, GameLoader::Fabric),
+            )
+            .await
+            .unwrap();
+        let unticked: Vec<_> = [PROJECT_ID, "newcomer"]
+            .map(|id| (BUNDLE.to_string(), id.to_string(), OverrideType::Removed))
+            .into();
+        oneclient_core::set_bundle_package_overrides(
+            cluster.id,
+            &unticked,
+            &state.services.content(),
+        )
+        .await
+        .unwrap();
+
+        let types = opted_in(&state, cluster.id, BUNDLE).await;
+        assert!(
+            !types.contains(&ContentType::Mod) && types.contains(&ContentType::ResourcePack),
+            "{extra:?}: {types:?}"
+        );
+        assert_eq!(
+            launch_installs(&state, cluster.id).await,
+            ["looks"],
+            "{extra:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_mod_type_not_installed_yet_ignores_the_resource_pack_already_installed() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        manifest(vec![
+            managed_file(true),
+            newly_shipped_file(),
+            resource_pack_file(),
+        ]),
+    )
+    .await
+    .unwrap();
+    let global = state.settings.read().global_game_settings.clone();
+    let cluster = state
+        .clusters
+        .create(
+            &global,
+            CreateClusterOptions::new("Fresh Cluster", MC_VERSION, GameLoader::Fabric),
+        )
+        .await
+        .unwrap();
+    oneclient_core::set_bundle_package_overrides(
+        cluster.id,
+        &[(
+            BUNDLE.to_string(),
+            PROJECT_ID.to_string(),
+            OverrideType::Removed,
+        )],
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+    track_bundle_copy(&state, cluster.id, &resource_pack_file()).await;
+
+    let types = opted_in(&state, cluster.id, BUNDLE).await;
+    assert!(
+        types.contains(&ContentType::Mod),
+        "launch still installs the mod left ticked: {types:?}"
+    );
+    assert_eq!(
+        launch_installs(&state, cluster.id).await,
+        ["newcomer", "looks"]
+    );
+}
+
+#[tokio::test]
+async fn an_installed_bundle_opted_out_of_mods_stays_out_when_a_mod_is_shipped() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        manifest(vec![
+            managed_file(true),
+            newly_shipped_file(),
+            resource_pack_file(),
+        ]),
+    )
+    .await
+    .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    artifact_dao::update_cluster_artifact(&state.services.db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    for (package_id, choice) in [
+        (PROJECT_ID, OverrideType::Disabled),
+        ("looks", OverrideType::Enabled),
+    ] {
+        bundle_dao::save_override(&state.services.db, cluster_id, BUNDLE, package_id, choice)
+            .await
+            .unwrap();
+    }
+
+    let types = opted_in(&state, cluster_id, BUNDLE).await;
+    assert!(
+        !types.contains(&ContentType::Mod) && types.contains(&ContentType::ResourcePack),
+        "{types:?}"
+    );
+    let check = check_bundle_updates(
+        cluster_id,
+        state.bundles.as_ref(),
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+    assert!(
+        !check
+            .additions_available
+            .iter()
+            .any(|a| a.new_file.kind.package_id() == "newcomer")
+    );
+}
+
 #[tokio::test]
 async fn untracked_older_install_counts_as_opted_in() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
@@ -1607,6 +2333,7 @@ async fn an_opt_in_bundle_switched_off_by_accident_is_repaired_at_install() {
         state.bundles.as_ref(),
         None,
         &state.services.content(),
+        None,
     )
     .await
     .unwrap();
@@ -1867,6 +2594,354 @@ async fn a_failed_download_applies_nothing() {
             .is_some(),
         "the mod due for removal stays until the whole batch can be applied"
     );
+}
+
+#[tokio::test]
+async fn the_deadline_bounds_downloads_already_running() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let body: Vec<u8> = (0..64 * 1024).map(|i| (i % 251) as u8).collect();
+    let sha1 = polyio::sha1_bytes(&body);
+    let (url, connections) = serve_jar(body, Some(std::time::Duration::from_millis(1500))).await;
+
+    let stalled = github_mod_served(&url, &sha1, 64 * 1024);
+    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![stalled]))
+        .await
+        .unwrap();
+    clusters_numbered_from(&state, 7000).await;
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    for _ in 0..2 {
+        let started = std::time::Instant::now();
+        let result = oneclient_content::bundles::apply_bundle_updates(
+            cluster_id,
+            state.bundles.as_ref(),
+            &ctx,
+            Some(started + std::time::Duration::from_millis(300)),
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(1),
+            "took {:?}",
+            started.elapsed()
+        );
+        assert!(result.stopped_early);
+        assert_eq!(result.downloads_failed.len(), 1);
+        assert!(result.downloads_failed[0].contains("ran out of time"));
+    }
+
+    let result = oneclient_content::bundles::apply_bundle_updates(
+        cluster_id,
+        state.bundles.as_ref(),
+        &ctx,
+        None,
+    )
+    .await
+    .unwrap();
+    assert!(
+        result.downloads_failed.is_empty(),
+        "{:?}",
+        result.downloads_failed
+    );
+    assert_eq!(
+        connections.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "later launches join the download already running"
+    );
+    assert!(
+        artifact_dao::get_cluster_artifact(&state.services.db, cluster_id, &sha1)
+            .await
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[tokio::test]
+async fn downloads_left_running_still_count_against_the_limit() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let in_flight = Arc::new(AtomicUsize::new(0));
+    let most = Arc::new(AtomicUsize::new(0));
+    let served = Arc::new(AtomicUsize::new(0));
+    let mut files = Vec::new();
+    for i in 0..12u8 {
+        let body: Vec<u8> = (0..4096).map(|b| (b as u8) ^ i).collect();
+        let sha1 = polyio::sha1_bytes(&body);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/mod-{i}.jar", listener.local_addr().unwrap());
+        let (in_flight, most, served) = (in_flight.clone(), most.clone(), served.clone());
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let (body, in_flight, most, served) = (
+                    body.clone(),
+                    in_flight.clone(),
+                    most.clone(),
+                    served.clone(),
+                );
+                tokio::spawn(async move {
+                    let mut request = [0u8; 1024];
+                    let _ = stream.read(&mut request).await;
+                    let now = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                    most.fetch_max(now, Ordering::SeqCst);
+                    let head = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len());
+                    let _ = stream.write_all(head.as_bytes()).await;
+                    let (first, rest) = body.split_at(body.len() / 2);
+                    let _ = stream.write_all(first).await;
+                    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+                    let _ = stream.write_all(rest).await;
+                    in_flight.fetch_sub(1, Ordering::SeqCst);
+                    served.fetch_add(1, Ordering::SeqCst);
+                });
+            }
+        });
+        let mut file = github_mod_served(&url, &sha1, 4096);
+        file.path = format!("mods/mod-{i}.jar");
+        if let BundleFileKind::External { file: ext, id, .. } = &mut file.kind {
+            ext.name = format!("mod-{i}.jar");
+            *id = Some(format!("mod-{i}"));
+        }
+        files.push(file);
+    }
+    let later = files.split_off(6);
+    clusters_numbered_from(&state, 8000).await;
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    for (shipped, deadline) in [
+        (files, Some(std::time::Duration::from_millis(300))),
+        (later, None),
+    ] {
+        oneclient_core::dev::seed_bundle_archive(&state, manifest(shipped))
+            .await
+            .unwrap();
+        oneclient_content::bundles::apply_bundle_updates(
+            cluster_id,
+            state.bundles.as_ref(),
+            &ctx,
+            deadline.map(|budget| std::time::Instant::now() + budget),
+        )
+        .await
+        .unwrap();
+    }
+    let started = std::time::Instant::now();
+    while served.load(Ordering::SeqCst) < 12
+        && started.elapsed() < std::time::Duration::from_secs(10)
+    {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+
+    assert_eq!(served.load(Ordering::SeqCst), 12);
+    assert!(
+        most.load(Ordering::SeqCst) <= 6,
+        "{} downloads ran at once",
+        most.load(Ordering::SeqCst)
+    );
+}
+
+async fn clusters_numbered_from(state: &LauncherState, first: i64) {
+    sqlx::query("INSERT INTO sqlite_sequence (name, seq) VALUES ('clusters', ?)")
+        .bind(first - 1)
+        .execute(&state.services.db)
+        .await
+        .unwrap();
+}
+
+async fn serve_jar(
+    body: Vec<u8>,
+    stall: Option<std::time::Duration>,
+) -> (String, Arc<std::sync::atomic::AtomicUsize>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let connections = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn({
+        let connections = connections.clone();
+        async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                connections.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let body = body.clone();
+                tokio::spawn(async move {
+                    let mut request = [0u8; 1024];
+                    let _ = stream.read(&mut request).await;
+                    let head = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len());
+                    let _ = stream.write_all(head.as_bytes()).await;
+                    let (first, rest) = body.split_at(body.len() / 2);
+                    let _ = stream.write_all(first).await;
+                    if let Some(stall) = stall {
+                        tokio::time::sleep(stall).await;
+                    }
+                    let _ = stream.write_all(rest).await;
+                });
+            }
+        }
+    });
+    (format!("http://{addr}/github-mod.jar"), connections)
+}
+
+fn github_mod_served(url: &str, sha1: &str, size: u64) -> BundleFile {
+    let mut file = github_mod_file();
+    file.size = size;
+    if let BundleFileKind::External { file: ext, .. } = &mut file.kind {
+        ext.url = url.to_string();
+        ext.sha1 = sha1.to_string();
+        ext.size = size;
+    }
+    file
+}
+
+async fn linked(state: &LauncherState, cluster_id: i64, hash: &str) -> bool {
+    artifact_dao::get_cluster_artifact(&state.services.db, cluster_id, hash)
+        .await
+        .unwrap()
+        .is_some()
+}
+
+#[tokio::test]
+async fn launch_install_stops_waiting_at_the_deadline() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let body: Vec<u8> = (0..64 * 1024).map(|i| (i % 239) as u8).collect();
+    let sha1 = polyio::sha1_bytes(&body);
+    let size = body.len() as u64;
+    let (url, connections) = serve_jar(body, Some(std::time::Duration::from_millis(1500))).await;
+    seed_bundle_with_pack(&state, manifest(vec![github_mod_served(&url, &sha1, size)])).await;
+    let fresh = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    let started = std::time::Instant::now();
+    let deadline = Some(started + std::time::Duration::from_millis(300));
+    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, deadline)
+        .await
+        .unwrap();
+
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(1),
+        "took {:?}",
+        started.elapsed()
+    );
+    assert!(!linked(&state, fresh, &sha1).await);
+
+    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, None)
+        .await
+        .unwrap();
+
+    assert_eq!(connections.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert!(linked(&state, fresh, &sha1).await);
+}
+
+#[tokio::test]
+async fn launch_install_links_nothing_while_part_of_the_bundle_is_downloading() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let fast_body: Vec<u8> = (0..64 * 1024).map(|i| (i % 227) as u8).collect();
+    let slow_body: Vec<u8> = (0..64 * 1024).map(|i| (i % 229) as u8).collect();
+    let fast_sha1 = polyio::sha1_bytes(&fast_body);
+    let slow_sha1 = polyio::sha1_bytes(&slow_body);
+    let size = fast_body.len() as u64;
+    let (fast_url, _) = serve_jar(fast_body, None).await;
+    let (slow_url, slow_connections) =
+        serve_jar(slow_body, Some(std::time::Duration::from_millis(1500))).await;
+    let fast = github_mod_served(&fast_url, &fast_sha1, size);
+    let mut slow = github_mod_served(&slow_url, &slow_sha1, size);
+    slow.path = "mods/slow-mod.jar".to_string();
+    if let BundleFileKind::External { file: ext, id, .. } = &mut slow.kind {
+        ext.name = "slow-mod.jar".to_string();
+        *id = Some("slow-mod".to_string());
+    }
+    seed_bundle_with_pack(&state, manifest(vec![fast, slow])).await;
+    let fresh = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    let deadline = Some(std::time::Instant::now() + std::time::Duration::from_millis(300));
+    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, deadline)
+        .await
+        .unwrap();
+
+    assert!(!linked(&state, fresh, &fast_sha1).await);
+    assert!(!linked(&state, fresh, &slow_sha1).await);
+
+    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, None)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        slow_connections.load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
+    assert!(linked(&state, fresh, &fast_sha1).await);
+    assert!(linked(&state, fresh, &slow_sha1).await);
+}
+
+#[tokio::test]
+async fn launch_install_does_not_retry_a_failed_download() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let body: Vec<u8> = (0..64 * 1024).map(|i| (i % 233) as u8).collect();
+    let wrong_sha1 = polyio::sha1_bytes(b"not the served body");
+    let size = body.len() as u64;
+    let (url, connections) = serve_jar(body, None).await;
+    seed_bundle_with_pack(&state, manifest(vec![github_mod_served(&url, &wrong_sha1, size)])).await;
+    let fresh = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    let deadline = Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
+    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, deadline)
+        .await
+        .unwrap();
+
+    assert_eq!(connections.load(std::sync::atomic::Ordering::SeqCst), 3);
+    assert!(!linked(&state, fresh, &wrong_sha1).await);
+}
+
+#[tokio::test]
+async fn install_without_a_deadline_retries_a_failed_download() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let body: Vec<u8> = (0..64 * 1024).map(|i| (i % 239) as u8).collect();
+    let wrong_sha1 = polyio::sha1_bytes(b"not the served body either");
+    let size = body.len() as u64;
+    let (url, connections) = serve_jar(body, None).await;
+    seed_bundle_with_pack(&state, manifest(vec![github_mod_served(&url, &wrong_sha1, size)])).await;
+    let fresh = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, None)
+        .await
+        .unwrap();
+
+    assert_eq!(connections.load(std::sync::atomic::Ordering::SeqCst), 6);
+    assert!(!linked(&state, fresh, &wrong_sha1).await);
+}
+
+#[tokio::test]
+async fn launch_install_joins_a_download_left_running() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let body: Vec<u8> = (0..64 * 1024).map(|i| (i % 241) as u8).collect();
+    let sha1 = polyio::sha1_bytes(&body);
+    let size = body.len() as u64;
+    let (url, connections) = serve_jar(body, Some(std::time::Duration::from_millis(1500))).await;
+    clusters_numbered_from(&state, 9000).await;
+    seed_bundle_with_pack(&state, manifest(vec![github_mod_served(&url, &sha1, size)])).await;
+    let fresh = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    let result = oneclient_content::bundles::apply_bundle_updates(
+        fresh,
+        state.bundles.as_ref(),
+        &ctx,
+        Some(std::time::Instant::now() + std::time::Duration::from_millis(300)),
+    )
+    .await
+    .unwrap();
+    assert!(result.stopped_early);
+
+    install_cluster_bundles(fresh, state.bundles.as_ref(), None, &ctx, None)
+        .await
+        .unwrap();
+
+    assert_eq!(connections.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert!(linked(&state, fresh, &sha1).await);
 }
 
 fn pinned_to(version_id: &str) -> BundleFile {

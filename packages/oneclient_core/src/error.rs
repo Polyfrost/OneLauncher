@@ -82,6 +82,8 @@ pub enum LauncherError {
 
     #[error("server: {0}")]
     Server(String),
+    #[error("OneClient exports are not checked for improvements")]
+    ShareNotScreened,
 }
 
 impl LauncherError {

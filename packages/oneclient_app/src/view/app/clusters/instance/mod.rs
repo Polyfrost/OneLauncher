@@ -10,7 +10,6 @@ mod data;
 mod details;
 mod edit;
 mod import;
-mod import_review;
 mod model;
 mod rail;
 mod shell;

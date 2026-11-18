@@ -482,10 +482,10 @@ pub(crate) fn run_action(
         NotificationActionKind::DisableServerMod {
             server_id,
             file_name,
-        } => crate::servers::disable_mod_and_restart(
+        } => crate::servers::disable_mods_and_restart(
             dispatch.station(),
             server_id.clone(),
-            file_name.clone(),
+            vec![file_name.clone()],
         ),
     }
 }

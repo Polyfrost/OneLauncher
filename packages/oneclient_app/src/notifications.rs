@@ -153,6 +153,7 @@ pub struct ExistingPackView {
 #[derive(Clone, Debug, PartialEq)]
 pub struct BlockedDownloads {
     pub cluster_id: ClusterId,
+    pub server_id: Option<String>,
     pub cluster_name: String,
     pub bundle_name: String,
     pub files: Vec<BlockedFile>,
@@ -1458,6 +1459,7 @@ mod package_update_tests {
         for (cluster_id, sha1) in [(1, "aa"), (2, "bb")] {
             state.open_blocked_downloads(BlockedDownloads {
                 cluster_id,
+                server_id: None,
                 cluster_name: "Pack".into(),
                 bundle_name: oneclient_content::modpacks::MODPACK_BUNDLE_NAME.into(),
                 files: vec![blocked_file(sha1)],
@@ -1476,6 +1478,7 @@ mod package_update_tests {
         let mut state = NotificationState::default();
         state.open_blocked_downloads(BlockedDownloads {
             cluster_id: 7,
+            server_id: None,
             cluster_name: "Pack".into(),
             bundle_name: oneclient_content::modpacks::MODPACK_BUNDLE_NAME.into(),
             files: vec![blocked_file("aa"), blocked_file("bb")],

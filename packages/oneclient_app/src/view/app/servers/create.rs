@@ -383,6 +383,7 @@ impl Component for CreateServerModal {
             }
             .to_string(),
             primary_enabled: ready,
+            primary_busy: false,
             on_close: (move |()| close_x.call(())).into(),
             on_secondary: (move |()| {
                 if index == 0 {
@@ -406,7 +407,7 @@ impl Component for CreateServerModal {
                     Some(ModpackOrigin::File) => {
                         spawn(async move {
                             if let Some(handle) = rfd::AsyncFileDialog::new()
-                                .add_filter(t("oneclient.servers.create.pack.filter"), &["mrpack"])
+                                .add_filter(t("oneclient.servers.create.pack.filter"), &["mrpack", "zip"])
                                 .pick_file()
                                 .await
                             {
@@ -740,7 +741,7 @@ fn load_pack(form: Form, picked: ModpackSource) {
                     (path, icon)
                 }
             };
-            let info = servers::read_mrpack(&path).await?;
+            let info = servers::read_pack(&path).await?;
             Ok::<_, oneclient_core::LauncherError>((path, info, icon))
         })
         .await;

@@ -52,6 +52,8 @@ pub struct LocalServer {
     pub java_path: Option<PathBuf>,
     #[serde(default)]
     pub autostart: bool,
+    #[serde(default = "default_on")]
+    pub auto_disable_client_mods: bool,
     /// Hours between automatic backups, zero turns them off
     #[serde(default)]
     pub backup_hours: u32,
@@ -75,6 +77,10 @@ fn default_kept() -> u32 {
     10
 }
 
+fn default_on() -> bool {
+    true
+}
+
 impl LocalServer {
     #[must_use]
     pub fn new(name: String, kind: ServerKind, mc_version: String, loader: GameLoader) -> Self {
@@ -91,6 +97,7 @@ impl LocalServer {
             java_major: None,
             java_path: None,
             autostart: false,
+            auto_disable_client_mods: true,
             backup_hours: 6,
             backups_kept: default_kept(),
             eula: false,

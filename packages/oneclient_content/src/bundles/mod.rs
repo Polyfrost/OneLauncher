@@ -33,6 +33,6 @@ pub use types::{
     BundlePackageUpdate, BundleUpdateCheckResult, BundleWithUpdateStatus, FileUpdateStatus,
 };
 pub use updates::{
-    apply_bundle_updates, apply_bundle_updates_with, check_bundle_updates,
-    cluster_has_bundle_content, get_bundles_with_update_status,
+    BUNDLE_APPLY_BUDGET, Prefetches, apply_bundle_updates, apply_bundle_updates_with,
+    check_bundle_updates, cluster_has_bundle_content, get_bundles_with_update_status,
 };

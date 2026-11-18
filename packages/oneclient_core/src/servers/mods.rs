@@ -122,9 +122,18 @@ pub(super) async fn mod_meta(jar: &Path) -> ModMeta {
 }
 
 async fn read_parsed(jar: &Path) -> Option<Parsed> {
-    let entries = polyio::read_zip_file_entries(jar, |name| META_FILES.contains(&name))
-        .await
-        .ok()?;
+    let has_data = std::sync::atomic::AtomicBool::new(false);
+    let entries = polyio::read_zip_file_entries(jar, |name| {
+        if name
+            .strip_prefix("data/")
+            .is_some_and(|rest| rest.contains('/') && !rest.ends_with('/'))
+        {
+            has_data.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        META_FILES.contains(&name)
+    })
+    .await
+    .ok()?;
     let mut parsed = META_FILES
         .iter()
         .filter_map(|wanted| entries.iter().find(|(name, _)| name == wanted))
@@ -135,6 +144,7 @@ async fn read_parsed(jar: &Path) -> Option<Parsed> {
         first.meta.depends.extend(other.meta.depends);
         first.meta.client_only |= other.meta.client_only;
     }
+    first.meta.has_data = has_data.into_inner();
     Some(first)
 }
 
@@ -143,6 +153,7 @@ pub(super) struct ModMeta {
     pub(super) ids: Vec<String>,
     pub(super) client_only: bool,
     pub(super) depends: Vec<String>,
+    pub(super) has_data: bool,
 }
 
 #[derive(Default)]
@@ -237,6 +248,7 @@ pub(super) fn parse_meta(file: &str, bytes: &[u8]) -> Parsed {
             ids,
             client_only: environment.and_then(Value::as_str) == Some("client"),
             depends: id_list(loader.and_then(|l| l.get("depends"))),
+            has_data: false,
         },
     }
 }
@@ -328,6 +340,7 @@ fn parse_mods_toml(text: &str) -> Parsed {
                 .and_then(toml::Value::as_bool)
                 .unwrap_or(false),
             depends,
+            has_data: false,
         },
     }
 }
@@ -667,11 +680,6 @@ async fn client_only<'a>(
     versions: impl IntoIterator<Item = &'a VersionDetail>,
 ) -> LauncherResult<HashSet<String>> {
     match provider_id {
-        ProviderId::CurseForge => Ok(versions
-            .into_iter()
-            .filter(|v| super::install::cf_client_only(&v.game_versions))
-            .map(|v| v.project_id.clone())
-            .collect()),
         ProviderId::Modrinth => {
             let ids: Vec<String> = versions.into_iter().map(|v| v.project_id.clone()).collect();
             if ids.is_empty() {
@@ -679,7 +687,7 @@ async fn client_only<'a>(
             }
             Ok(modrinth_client_only(&ids, &state.services.content()).await?)
         }
-        ProviderId::Local | ProviderId::Hangar => Ok(HashSet::new()),
+        ProviderId::CurseForge | ProviderId::Local | ProviderId::Hangar => Ok(HashSet::new()),
     }
 }
 
@@ -989,6 +997,7 @@ mod tests {
             downloads: 0,
             file_size: 0,
             dependencies: Vec::new(),
+            blocked: false,
         };
         let builds = [
             build("old", 1, ReleaseType::Release),

@@ -66,28 +66,24 @@ pub(super) fn is_modpack_manifest(bytes: &[u8]) -> bool {
         .is_ok_and(|manifest| manifest.manifest_type == MODPACK_MANIFEST_TYPE)
 }
 
-pub(super) async fn resolve(bytes: &[u8], ctx: &ContentCtx) -> ContentResult<ModpackManifest> {
+fn parse_manifest(bytes: &[u8]) -> ContentResult<CfManifest> {
     let manifest: CfManifest =
         serde_json::from_slice(bytes).map_err(|_| PackageError::UnsupportedModpackFormat)?;
     if manifest.manifest_type != MODPACK_MANIFEST_TYPE {
         return Err(PackageError::UnsupportedModpackFormat.into());
     }
+    Ok(manifest)
+}
 
+pub(super) fn header(bytes: &[u8]) -> ContentResult<(String, GameLoader)> {
+    let manifest = parse_manifest(bytes)?;
+    let (loader, _) = parse_loader(&manifest.minecraft.mod_loaders)?;
+    Ok((manifest.minecraft.version, loader))
+}
+
+pub(super) fn unresolved(bytes: &[u8]) -> ContentResult<ModpackManifest> {
+    let manifest = parse_manifest(bytes)?;
     let (loader, loader_version) = parse_loader(&manifest.minecraft.mod_loaders)?;
-
-    let requests: Vec<FileRequest> = manifest
-        .files
-        .iter()
-        .map(|file| FileRequest {
-            file_id: file.file_id,
-            project_id: Some(file.project_id),
-            required: file.required,
-            label: None,
-            destination: None,
-        })
-        .collect();
-    let contents = resolve_requests(&requests, ctx).await?;
-
     let overrides = manifest
         .overrides
         .map(|folder| folder.trim_matches('/').to_string())
@@ -101,9 +97,28 @@ pub(super) async fn resolve(bytes: &[u8], ctx: &ContentCtx) -> ContentResult<Mod
         mc_version: manifest.minecraft.version,
         loader,
         loader_version,
-        contents,
+        contents: ModpackContents::default(),
         override_prefixes: vec![format!("{overrides}/")],
     })
+}
+
+pub(super) async fn resolve(bytes: &[u8], ctx: &ContentCtx) -> ContentResult<ModpackManifest> {
+    let mut pack = unresolved(bytes)?;
+    let manifest = parse_manifest(bytes)?;
+
+    let requests: Vec<FileRequest> = manifest
+        .files
+        .iter()
+        .map(|file| FileRequest {
+            file_id: file.file_id,
+            project_id: Some(file.project_id),
+            required: file.required,
+            label: None,
+            destination: None,
+        })
+        .collect();
+    pack.contents = resolve_requests(&requests, ctx).await?;
+    Ok(pack)
 }
 
 pub(super) struct FileRequest {
@@ -315,6 +330,20 @@ mod tests {
 
         assert!(is_modpack_manifest(&serde_json::to_vec(&pack).unwrap()));
         assert!(!is_modpack_manifest(&serde_json::to_vec(&other).unwrap()));
+    }
+
+    #[test]
+    fn the_header_is_read_without_resolving_any_file() {
+        let pack = serde_json::json!({
+            "minecraft": {"version": "1.20.1", "modLoaders": [{"id": "forge-47.2.0", "primary": true}]},
+            "manifestType": "minecraftModpack",
+            "files": [{"projectID": 1, "fileID": 2, "required": true}]
+        });
+
+        assert_eq!(
+            header(&serde_json::to_vec(&pack).unwrap()).unwrap(),
+            ("1.20.1".to_string(), GameLoader::Forge)
+        );
     }
 
     fn project(content_type: ContentType) -> ProjectDetail {

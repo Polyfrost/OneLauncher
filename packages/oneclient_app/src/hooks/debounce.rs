@@ -22,7 +22,7 @@ where
         spawn(async move {
             tokio::time::sleep(delay).await;
             if *generation.peek() == this_gen {
-                debounced.set(value);
+                debounced.set_if_modified(value);
             }
         });
     });

@@ -44,6 +44,7 @@ pub(super) struct ListPane {
     pub names: Arc<HashMap<Uuid, String>>,
     pub special_target: bool,
     pub loading: bool,
+    pub more: bool,
     pub error: Option<String>,
     pub active: Option<i32>,
     pub roster: ChatRoster,
@@ -762,6 +763,39 @@ fn keyed_row(key: impl Hash, row: impl IntoElement) -> Element {
         .into_element()
 }
 
+/// Requests the next page of conversations each time it renders with a new
+/// count: it sits at the end of a list, so it only renders once that end
+/// scrolls into view (or the filtered list is empty)
+#[derive(PartialEq)]
+struct MoreChats {
+    loaded: usize,
+}
+
+impl Component for MoreChats {
+    fn render(&self) -> impl IntoElement {
+        use_dispatch().load_more_chats();
+        rect()
+    }
+}
+
+impl ListPane {
+    /// The page trigger for the row at `index` of `count`, only on the last
+    fn more_at(&self) -> impl Fn(usize, usize) -> Option<MoreChats> + 'static {
+        let (more, loaded) = (self.more, self.conversations.len());
+        move |index, count| (more && index + 1 >= count).then_some(MoreChats { loaded })
+    }
+}
+
+fn paged_row(key: impl Hash, row: impl IntoElement, more: Option<MoreChats>) -> Element {
+    rect()
+        .key(key)
+        .width(Size::fill())
+        .height(Size::fill())
+        .child(row)
+        .maybe_child(more)
+        .into_element()
+}
+
 fn list_hint(text: impl Into<String>) -> Element {
     rect()
         .width(Size::fill())
@@ -789,12 +823,17 @@ fn chats_tab(pane: &ListPane, query: &str) -> Element {
         .collect();
     let count = conversations.len();
     if count == 0 {
-        return list_hint(t("oneclient.chat.list.no_results"));
+        return rect()
+            .width(Size::fill())
+            .child(list_hint(t("oneclient.chat.list.no_results")))
+            .maybe_child(pane.more_at()(0, 0))
+            .into_element();
     }
 
     let expanded = pane.expanded;
     let active = pane.active;
     let view = pane.view;
+    let more_at = pane.more_at();
 
     ScrollArea::new()
         .width(Size::fill())
@@ -802,7 +841,7 @@ fn chats_tab(pane: &ListPane, query: &str) -> Element {
         .padding(LIST_PADDING)
         .lazy(count, CHAT_ROW_HEIGHT_PX, LIST_ROW_GAP_PX, move |index| {
             let conversation = conversations[index].clone();
-            keyed_row(
+            paged_row(
                 conversation.id,
                 ChatRow {
                     selected: expanded
@@ -812,6 +851,7 @@ fn chats_tab(pane: &ListPane, query: &str) -> Element {
                     own_id,
                     view,
                 },
+                more_at(index, count),
             )
         })
         .into_element()
@@ -1502,6 +1542,9 @@ fn groups_tab(pane: &ListPane, query: &str, on_create: EventHandler<()>) -> Elem
         .collect();
     let count = groups.len();
     let view = pane.view;
+    let more_at = pane.more_at();
+    // An empty filtered view may just not have reached its matches yet
+    let more_if_empty = more_at(0, 0).filter(|_| count == 0);
 
     let list = if groups.is_empty() {
         hint(t("oneclient.chat.groups.empty")).into_element()
@@ -1512,7 +1555,11 @@ fn groups_tab(pane: &ListPane, query: &str, on_create: EventHandler<()>) -> Elem
             .padding(BELOW_PINNED_PADDING)
             .lazy(count, CHAT_ROW_HEIGHT_PX, LIST_ROW_GAP_PX, move |index| {
                 let conversation = groups[index].clone();
-                keyed_row(conversation.id, GroupRow { conversation, view })
+                paged_row(
+                    conversation.id,
+                    GroupRow { conversation, view },
+                    more_at(index, count),
+                )
             })
             .into_element()
     };
@@ -1533,6 +1580,7 @@ fn groups_tab(pane: &ListPane, query: &str, on_create: EventHandler<()>) -> Elem
                 )),
         )
         .child(list)
+        .maybe_child(more_if_empty)
         .into_element()
 }
 
@@ -1568,6 +1616,9 @@ fn special_tab(pane: &ListPane, query: &str, filter: State<SpecialFilter>) -> El
     let expanded = pane.expanded;
     let active = pane.active;
     let view = pane.view;
+    let more_at = pane.more_at();
+    // An empty filtered view may just not have reached its matches yet
+    let more_if_empty = more_at(0, 0).filter(|_| count == 0);
 
     let list = if chats.is_empty() {
         hint(t("oneclient.chat.special.empty")).into_element()
@@ -1578,7 +1629,7 @@ fn special_tab(pane: &ListPane, query: &str, filter: State<SpecialFilter>) -> El
             .padding(BELOW_PINNED_PADDING)
             .lazy(count, CHAT_ROW_HEIGHT_PX, LIST_ROW_GAP_PX, move |index| {
                 let conversation = chats[index].clone();
-                keyed_row(
+                paged_row(
                     conversation.id,
                     ChatRow {
                         selected: expanded
@@ -1588,6 +1639,7 @@ fn special_tab(pane: &ListPane, query: &str, filter: State<SpecialFilter>) -> El
                         own_id,
                         view,
                     },
+                    more_at(index, count),
                 )
             })
             .into_element()
@@ -1617,6 +1669,7 @@ fn special_tab(pane: &ListPane, query: &str, filter: State<SpecialFilter>) -> El
                 ),
         )
         .child(list)
+        .maybe_child(more_if_empty)
         .into_element()
 }
 
@@ -1854,6 +1907,7 @@ mod tests {
                 names: Arc::default(),
                 special_target: false,
                 loading: false,
+                more: false,
                 error: None,
                 active: None,
                 roster: ChatRoster {

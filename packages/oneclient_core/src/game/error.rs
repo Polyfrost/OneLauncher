@@ -54,6 +54,11 @@ pub enum GameError {
     )]
     SharedFolderMissing(String),
 
+    #[error(
+        "couldn't copy {0} into this instance's mods folder; check free disk space or turn off Copy Mod Files in its settings"
+    )]
+    ModCopyFailed(String),
+
     #[error("failed to spawn the game process: {0}")]
     Spawn(String),
 
@@ -64,6 +69,15 @@ pub enum GameError {
 
     #[error("start the game once on this version before changing this setting")]
     OptionsOutdated,
+
+    #[error("the game isn't running")]
+    NotRunning,
+
+    #[error("this Java installation has no jcmd; use a full JDK to take thread dumps")]
+    JcmdMissing,
+
+    #[error("thread dump failed: {0}")]
+    ThreadDump(String),
 }
 
 impl GameError {

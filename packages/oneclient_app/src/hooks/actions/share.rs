@@ -6,10 +6,11 @@ use std::time::Duration;
 
 use freya::prelude::spawn_in_window;
 use oneclient_cluster::ClusterManager;
-use oneclient_content::modpacks::{SHARE_EXTENSION, ShareExportReport};
+use oneclient_content::modpacks::{SHARE_EXTENSION, SettingFile, ShareExportReport};
 use oneclient_core::LauncherState;
 use oneclient_core::clusters::{
-    ExportOptions, ModpackSource, SettingsChoice, export_cluster_with, list_setting_files,
+    ExportMode, ExportOptions, ModpackSource, SettingsChoice, export_cluster_with,
+    list_embedded_files, list_setting_files,
 };
 use oneclient_core::sharing::{
     self, Collaborator, LinkedPush, PublishedShare, RemoteShare, ShareCode, ShareRole, ShareUpdate,
@@ -759,17 +760,41 @@ pub async fn remove_collaborator(code: String, uuid: uuid::Uuid) -> Result<(), S
     .map_err(|err| err.to_string())
 }
 
-pub async fn load_setting_files(cluster_id: ClusterId) -> Vec<String> {
+pub async fn measure_share(cluster_id: ClusterId, options: ExportOptions) -> Option<u64> {
+    let state = launcher::state().ok()?;
+    let mut task = tokio::task::JoinSet::new();
+    task.spawn(async move { sharing::measure_share(&state, cluster_id, options).await });
+    task.join_next()
+        .await?
+        .ok()?
+        .inspect_err(|err| tracing::warn!(cluster_id, error = %err, "could not measure the share"))
+        .ok()
+}
+
+pub async fn load_setting_files(cluster_id: ClusterId) -> Vec<SettingFile> {
     let Ok(state) = launcher::state() else {
         return Vec::new();
     };
     match off_ui(async move { list_setting_files(&state, cluster_id).await }).await {
-        Ok(files) => files.into_iter().map(|file| file.path).collect(),
+        Ok(files) => files,
         Err(err) => {
             tracing::warn!(cluster_id, error = %err, "could not list the instance's settings files");
             Vec::new()
         }
     }
+}
+
+pub async fn load_embedded_files(
+    cluster_id: ClusterId,
+    mode: ExportMode,
+) -> Option<Vec<SettingFile>> {
+    let state = launcher::state().ok()?;
+    off_ui(async move { list_embedded_files(&state, cluster_id, mode).await })
+        .await
+        .inspect_err(|err| {
+            tracing::warn!(cluster_id, error = %err, "could not list the files the share would carry");
+        })
+        .ok()
 }
 
 pub(super) fn share_preview(source: &ModpackSource) -> Option<SharedPreview> {

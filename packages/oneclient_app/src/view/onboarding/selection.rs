@@ -3,10 +3,7 @@ use std::collections::HashSet;
 use oneclient_core::{BundleArchive, BundleFile};
 
 use crate::hooks::ClusterBundles;
-
-pub fn pkg_key(cluster_id: i64, bundle_name: &str, package_id: &str) -> String {
-    format!("{cluster_id}|{bundle_name}|{package_id}")
-}
+pub(crate) use crate::hooks::{UNCREATED_CLUSTER, bundle_plan, bundle_taken, pkg_key};
 
 pub fn is_default_bundle(archive: &BundleArchive) -> bool {
     archive.manifest.enabled
@@ -92,6 +89,7 @@ pub fn set_archive_selected(
 mod tests {
     use super::*;
     use crate::view::onboarding::test_support::{archive, cluster, file};
+    use oneclient_db::models::OverrideType;
 
     fn catalog() -> Vec<ClusterBundles> {
         vec![ClusterBundles {
@@ -202,6 +200,36 @@ mod tests {
         set_archive_selected(1, pvp, false, &mut selected);
         assert!(!archive_selected(1, pvp, &selected));
         assert!(selected.is_empty());
+    }
+
+    #[test]
+    fn untouched_new_instance_picks_record_nothing_for_default_bundles() {
+        let archives = vec![
+            archive(
+                "QoL",
+                true,
+                vec![
+                    file("qol-a", true, false),
+                    file("qol-opt", false, false),
+                    file("qol-dep", true, true),
+                ],
+            ),
+            archive("Utility", true, vec![file("util-a", true, false)]),
+            archive("SkyBlock", false, vec![file("sb-a", true, false)]),
+        ];
+        let mut picked = HashSet::new();
+        for archive in archives.iter().filter(|a| is_default_bundle(a)) {
+            set_archive_selected(UNCREATED_CLUSTER, archive, true, &mut picked);
+        }
+
+        let (overrides, choices) = bundle_plan(UNCREATED_CLUSTER, &archives, &picked);
+
+        let skyblock = "OneClient 1.21.11 Fabric [SkyBlock]";
+        assert_eq!(
+            overrides,
+            vec![(skyblock.to_string(), "sb-a".to_string(), OverrideType::Removed)]
+        );
+        assert_eq!(choices, vec![(skyblock.to_string(), false)]);
     }
 
     #[test]

@@ -25,6 +25,7 @@ const FORCE_AFTER: Duration = Duration::from_secs(20);
 const BOOT_WAIT: Duration = Duration::from_secs(600);
 const SAVE_WAIT: Duration = Duration::from_secs(120);
 const CRASH_TRACE_LINES: usize = 150;
+const MAX_AUTO_RESTARTS: u32 = 5;
 const LINE_BATCH: Duration = Duration::from_millis(50);
 
 pub(crate) type Station = RadioStation<AppState, AppChannel>;
@@ -110,6 +111,7 @@ static STOPPING: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::defau
 static PIDS: LazyLock<Mutex<HashMap<String, u32>>> = LazyLock::new(Default::default);
 static BACKUP_HOURS: LazyLock<Mutex<HashMap<String, u32>>> = LazyLock::new(Default::default);
 static RESTARTING: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
+static AUTO_RESTARTS: LazyLock<Mutex<HashMap<String, u32>>> = LazyLock::new(Default::default);
 static SAVED: LazyLock<Mutex<HashMap<String, Arc<tokio::sync::Notify>>>> =
     LazyLock::new(Default::default);
 
@@ -608,7 +610,13 @@ pub fn start(station: Station, id: String) {
                 }
                 Output::Exit(code) => {
                     let asked = STOPPING.lock().unwrap().remove(&id);
-                    let lines = station.peek().servers.get(&id).lines.clone();
+                    let (lines, booted) = {
+                        let live = station.peek().servers.get(&id);
+                        (live.lines.clone(), live.booted)
+                    };
+                    if booted {
+                        AUTO_RESTARTS.lock().unwrap().remove(&id);
+                    }
                     STDIN.lock().unwrap().remove(&id);
                     PIDS.lock().unwrap().remove(&id);
                     BACKUP_HOURS.lock().unwrap().remove(&id);
@@ -628,7 +636,8 @@ pub fn start(station: Station, id: String) {
                         live.cpu_percent = None;
                     });
                     if !asked && (boot_failed || code.is_some_and(|c| c != 0)) {
-                        report_crash(&server, &lines, code.unwrap_or_default()).await;
+                        report_crash(station, &server, &lines, booted, code.unwrap_or_default())
+                            .await;
                     }
                     invalidate_server(&id).await;
                 }
@@ -663,20 +672,84 @@ fn client_mod_culprit(lines: &[Arc<str>], jars: &[String]) -> Option<String> {
         .find_map(|line| jars.iter().find(|jar| names_jar(line, jar)).cloned())
 }
 
-async fn report_crash(server: &LocalServer, lines: &[Arc<str>], code: i32) {
-    let culprit = match server.dir() {
+fn is_missing_client_class(line: &str) -> bool {
+    (line.contains("NoClassDefFoundError") || line.contains("ClassNotFoundException"))
+        && [
+            "net/minecraft/client/",
+            "net.minecraft.client.",
+            "com/mojang/blaze3d/",
+            "com.mojang.blaze3d.",
+        ]
+        .iter()
+        .any(|client| line.contains(client))
+}
+
+fn missing_client_class_culprits(lines: &[Arc<str>], jars: &[String]) -> Vec<String> {
+    let mut found: Vec<String> = Vec::new();
+    for (at, line) in lines.iter().enumerate() {
+        if !is_missing_client_class(line) {
+            continue;
+        }
+        let culprit = lines[at..]
+            .iter()
+            .take(CRASH_TRACE_LINES)
+            .enumerate()
+            .take_while(|(n, line)| *n == 0 || !(line.starts_with('[') || line.trim().is_empty()))
+            .find_map(|(_, line)| jars.iter().find(|jar| names_jar(line, jar)));
+        if let Some(jar) = culprit
+            && !found.contains(jar)
+        {
+            found.push(jar.clone());
+        }
+    }
+    found
+}
+
+async fn report_crash(
+    station: Station,
+    server: &LocalServer,
+    lines: &[Arc<str>],
+    booted: bool,
+    code: i32,
+) {
+    let jars: Vec<String> = match server.dir() {
         Ok(dir) => {
             let folder = server.content_folder();
-            let jars: Vec<String> = off_ui(async move { servers::list_mods(&dir, folder).await })
+            off_ui(async move { servers::list_mods(&dir, folder).await })
                 .await
                 .into_iter()
                 .filter(|m| m.enabled)
                 .map(|m| m.file_name)
-                .collect();
-            client_mod_culprit(lines, &jars)
+                .collect()
         }
-        Err(_) => None,
+        Err(_) => Vec::new(),
     };
+    let culprits = missing_client_class_culprits(lines, &jars);
+    if !booted && server.auto_disable_client_mods && !culprits.is_empty() {
+        let attempt = {
+            let mut restarts = AUTO_RESTARTS.lock().unwrap();
+            let attempt = restarts.entry(server.id.clone()).or_default();
+            *attempt += 1;
+            *attempt
+        };
+        if attempt <= MAX_AUTO_RESTARTS {
+            if let Some(actions) = actions() {
+                actions
+                    .notify(t("oneclient.servers.client_mod.auto_title"))
+                    .body(tf(
+                        "oneclient.servers.client_mod.auto_body",
+                        &[&server.name, &culprits.join(", ")],
+                    ))
+                    .send();
+            }
+            disable_mods_and_restart(station, server.id.clone(), culprits);
+            return;
+        }
+    }
+    let culprit = culprits
+        .into_iter()
+        .next()
+        .or_else(|| client_mod_culprit(lines, &jars));
     match (culprit, actions()) {
         (Some(file_name), Some(actions)) => actions
             .notify(t("oneclient.servers.client_mod.title"))
@@ -731,20 +804,18 @@ pub fn set_mod_enabled(id: String, file_name: String, enabled: bool) {
     );
 }
 
-pub fn disable_mod_and_restart(station: Station, id: String, file_name: String) {
+pub fn disable_mods_and_restart(station: Station, id: String, file_names: Vec<String>) {
     spawn_in_window(async move {
         let result = off_ui({
             let id = id.clone();
             async move {
                 let _mods = hold(&MODS, &id).await;
                 let server = servers::load_server(&id).await?;
-                servers::set_mod_enabled(
-                    &server.dir()?,
-                    server.content_folder(),
-                    &file_name,
-                    false,
-                )
-                .await?;
+                let dir = server.dir()?;
+                for file_name in &file_names {
+                    servers::set_mod_enabled(&dir, server.content_folder(), file_name, false)
+                        .await?;
+                }
                 Ok::<_, oneclient_core::LauncherError>(())
             }
         })
@@ -972,6 +1043,7 @@ pub fn backup(id: String, quiet: bool) {
 /// Installs in the background, the server shows as installing until it finishes
 pub fn install(station: Station, mut server: LocalServer, prepare: Prepare, port: Option<u16>) {
     let id = server.id.clone();
+    let name = server.name.clone();
     write(station, &id, |live| {
         live.status = ServerStatus::Installing;
         live.lines = Arc::default();
@@ -1004,6 +1076,7 @@ pub fn install(station: Station, mut server: LocalServer, prepare: Prepare, port
             listed?;
             let state = launcher::state()?;
             let dir = server.dir()?;
+            let mut blocked = Vec::new();
             match prepare {
                 Prepare::None => {}
                 Prepare::Instance(cluster_id, game_dir) => {
@@ -1016,7 +1089,7 @@ pub fn install(station: Station, mut server: LocalServer, prepare: Prepare, port
                     ));
                 }
                 Prepare::Modpack(pack) => {
-                    servers::unpack_mrpack(&state, &pack, &dir, &progress).await?;
+                    blocked = servers::unpack_pack(&state, &pack, &dir, &progress).await?;
                 }
                 Prepare::Import(source) => {
                     if dir.starts_with(&source) {
@@ -1037,10 +1110,25 @@ pub fn install(station: Station, mut server: LocalServer, prepare: Prepare, port
                 props.set("server-port", &port.to_string());
                 props.write(&dir).await?;
             }
-            servers::install_server(&state, &mut server, &progress).await
+            servers::install_server(&state, &mut server, &progress)
+                .await
+                .map(|()| blocked)
         })
         .await;
         write(station, &id, |live| live.status = ServerStatus::Stopped);
+        if let (Ok(files), Some(actions)) = (&result, actions())
+            && !files.is_empty()
+        {
+            actions.open_blocked_downloads(crate::notifications::BlockedDownloads {
+                cluster_id: crate::hooks::UNCREATED_CLUSTER,
+                server_id: Some(id.clone()),
+                cluster_name: name,
+                bundle_name: String::new(),
+                files: files.clone(),
+                added: Default::default(),
+                open_when_done: false,
+            });
+        }
         if let Err(err) = result {
             let _ = failed_tx.send(servers::step_line(
                 "ERROR",
@@ -1452,7 +1540,41 @@ pub fn remove_player(id: String, name: String, op: bool) {
 
 #[cfg(test)]
 mod tests {
-    use super::{client_mod_culprit, is_boot_failure, player_event, player_uuid};
+    use super::{
+        client_mod_culprit, is_boot_failure, missing_client_class_culprits, player_event,
+        player_uuid,
+    };
+
+    #[test]
+    fn finds_every_mod_that_needs_a_client_class() {
+        let lines: Vec<std::sync::Arc<str>> = [
+            "[15:57:09] [modloading-worker-0/ERROR]: Failed to create mod instance. ModID: citresewn, class shcm.shsupercm.forge.citresewn.CITResewn",
+            "java.lang.NoClassDefFoundError: net/minecraft/client/renderer/texture/atlas/SpriteSource",
+            "\tat shcm.shsupercm.forge.citresewn.CITResewn.<clinit>(CITResewn.java:21) ~[citresewn-1.20.1-5.jar%23487!/:1.20.1-5]",
+            "\tat com.example.lib.Init.run(Init.java:3) ~[examplelib-1.0.jar%23189!/:?]",
+            "Caused by: java.lang.ClassNotFoundException: net.minecraft.client.renderer.texture.atlas.SpriteSource",
+            "[15:57:09] [modloading-worker-0/INFO]: Hybrid Aquatic loaded.",
+            "[15:57:09] [modloading-worker-0/ERROR]: Failed to create mod instance. ModID: stop_rendering, class com.corosus.stop_rendering.loader.forge.StopRenderingForge",
+            "java.lang.NoClassDefFoundError: net/minecraft/client/renderer/entity/layers/RenderLayer",
+            "\tat net.minecraftforge.eventbus.EventBus.registerObject(EventBus.java:80) ~[eventbus-6.2.33.jar%2352!/:?]",
+            "\tat com.corosus.stop_rendering.loader.forge.StopRenderingForge.<init>(StopRenderingForge.java:32) ~[stop_rendering-forge-1.0.3.jar%23699!/:1.0.3]",
+            "[15:57:10] [modloading-worker-0/INFO]: OldCannons loading... hybrid_aquatic-forge-1.20.1-1.7.4.jar",
+        ]
+        .into_iter()
+        .map(Into::into)
+        .collect();
+        let jars = [
+            "citresewn-1.20.1-5.jar".to_string(),
+            "examplelib-1.0.jar".to_string(),
+            "stop_rendering-forge-1.0.3.jar".to_string(),
+            "hybrid_aquatic-forge-1.20.1-1.7.4.jar".to_string(),
+        ];
+        assert_eq!(
+            missing_client_class_culprits(&lines, &jars),
+            ["citresewn-1.20.1-5.jar", "stop_rendering-forge-1.0.3.jar"]
+        );
+        assert!(missing_client_class_culprits(&lines[5..7], &jars).is_empty());
+    }
 
     #[test]
     fn spots_the_line_vanilla_logs_when_boot_fails() {

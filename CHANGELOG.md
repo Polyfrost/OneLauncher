@@ -1,3 +1,34 @@
+## 2.11.0 (2026-11-15)
+
+### Features
+
+- Added a Copy Mod Files instance setting for mods that don't work when linked from the shared cache by [TheBi11iona1re](https://github.com/TheBi11iona1re)
+
+### Fixes
+
+- Fixed Java runtimes installing corrupted when two installs overlap or the PC shuts down mid-install by [LynithDev](https://github.com/LynithDev)
+- Bundle mods show in the All tab again after migrating an instance or unticking mods during onboarding by [Wyvest](https://github.com/Wyvest)
+- Added a button in runtime row in cluster settings to navigate to java installation page by [rozwader](https://github.com/rozwader)
+- Censored your computer username in game logs by [LynithDev](https://github.com/LynithDev)
+- Fixed the launcher crashing when it regained focus with a chat open, and the game options editor showing an untranslated label
+- Added checking single mods for updates (not bundled ones). You can also check couple mods by selecting them together by [rozwader](https://github.com/rozwader)
+- Brought back colors on mod cards in cluster view by [rozwader](https://github.com/rozwader)
+- Fixed an empty fabric_loader_dependencies.json stopping Fabric from starting by [LynithDev](https://github.com/LynithDev)
+- Sped up mod downloads on slow or unstable connections by giving each file its own connection and splitting large files into parallel parts by [Wyvest](https://github.com/Wyvest)
+- Added improve by oneclient option for modpacks imported from a file by [rozwader](https://github.com/rozwader)
+- The launcher log now starts with the OneClient version by [junapur](https://github.com/junapur)
+- Added ability to edit options.txt in launcher by [rozwader](https://github.com/rozwader)
+- Added options (mods, textures and shaders) while exporting a cluster by [rozwader](https://github.com/rozwader)
+- On 1.8.9, a bundled mod now takes over from an older copy you installed yourself by [saadndm](https://github.com/saadndm)
+- Added ability to pick bundled mods in new instance creator by [rozwader](https://github.com/rozwader)
+- Properly scale the launcher's menu bar icon on MacOS by [simply-sunny](https://github.com/simply-sunny)
+- Revamped the share cluster dialog with options to exclude files and export playtime stats by [rozwader](https://github.com/rozwader)
+- Fixed the share dialog settings list being squashed and the files dialog showing contradictory text when nothing is packed by [rozwader](https://github.com/rozwader)
+- Fixed deleting an instance wiping resource packs and shaders still used by instances sharing its folder by [Wyvest](https://github.com/Wyvest)
+- Added thread dump button in logs view by [rozwader](https://github.com/rozwader)
+- Tooltips no longer pop back up over a dialog their button just opened
+- Verify download checksums before replacing the existing file by [LynithDev](https://github.com/LynithDev)
+
 ## 2.10.2 (2026-11-12)
 
 ### Fixes

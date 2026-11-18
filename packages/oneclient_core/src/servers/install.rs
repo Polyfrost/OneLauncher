@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -746,7 +747,7 @@ pub async fn copy_from_instance(
         found.push((meta, origin));
     }
 
-    let keep = keep_on_server(state, &found).await;
+    let keep = keep_on_server(state, &found, &[]).await;
     let mut copied = 0;
     let mut origins = Vec::new();
     for (((source, name), (_, origin)), keep) in candidates.iter().zip(&found).zip(&keep) {
@@ -767,44 +768,21 @@ pub async fn copy_from_instance(
     Ok((copied, candidates.len() - copied))
 }
 
-pub(super) fn cf_client_only(game_versions: &[String]) -> bool {
-    let tagged = |tag: &str| game_versions.iter().any(|v| v.eq_ignore_ascii_case(tag));
-    tagged("client") && !tagged("server")
-}
-
 async fn listed_client_only(
     state: &LauncherState,
     origins: impl Iterator<Item = &super::ModSource>,
 ) -> std::collections::HashSet<(oneclient_common::domain::ProviderId, String)> {
     use oneclient_common::domain::ProviderId;
-    let ctx = state.services.content();
-    let (mut modrinth, mut curseforge) = (Vec::new(), Vec::new());
-    for origin in origins {
-        match origin.provider {
-            ProviderId::Modrinth => modrinth.push(origin.project_id.clone()),
-            ProviderId::CurseForge => curseforge.push(origin.version_id.clone()),
-            ProviderId::Local | ProviderId::Hangar => {}
-        }
-    }
+    let modrinth: Vec<String> = origins
+        .filter(|origin| origin.provider == ProviderId::Modrinth)
+        .map(|origin| origin.project_id.clone())
+        .collect();
     let mut out = std::collections::HashSet::new();
-    match oneclient_content::packages::modrinth_client_only(&modrinth, &ctx).await {
+    match oneclient_content::packages::modrinth_client_only(&modrinth, &state.services.content())
+        .await
+    {
         Ok(ids) => out.extend(ids.into_iter().map(|id| (ProviderId::Modrinth, id))),
         Err(err) => tracing::warn!(%err, "could not ask Modrinth which mods are client-only"),
-    }
-    if !curseforge.is_empty() {
-        let versions = match state.services.packages.get(ProviderId::CurseForge) {
-            Ok(provider) => provider.get_versions(&curseforge, &ctx).await,
-            Err(err) => Err(err),
-        };
-        match versions {
-            Ok(versions) => out.extend(
-                versions
-                    .into_iter()
-                    .filter(|v| cf_client_only(&v.game_versions))
-                    .map(|v| (ProviderId::CurseForge, v.project_id)),
-            ),
-            Err(err) => tracing::warn!(%err, "could not ask CurseForge which mods are client-only"),
-        }
     }
     out
 }
@@ -812,34 +790,84 @@ async fn listed_client_only(
 async fn keep_on_server(
     state: &LauncherState,
     mods: &[(ModMeta, Option<super::ModSource>)],
+    hinted: &[bool],
 ) -> Vec<bool> {
     let listed = listed_client_only(state, mods.iter().filter_map(|(_, o)| o.as_ref())).await;
-    let metas: Vec<ModMeta> = mods
+    let hinted: Vec<bool> = mods
         .iter()
-        .map(|(meta, origin)| {
-            let mut meta = meta.clone();
-            meta.client_only |= origin
-                .as_ref()
-                .is_some_and(|o| listed.contains(&(o.provider, o.project_id.clone())));
-            meta
+        .enumerate()
+        .map(|(i, (_, origin))| {
+            hinted.get(i).copied().unwrap_or(false)
+                || origin
+                    .as_ref()
+                    .is_some_and(|o| listed.contains(&(o.provider, o.project_id.clone())))
         })
         .collect();
-    server_side(&metas)
+    let metas: Vec<ModMeta> = mods.iter().map(|(meta, _)| meta.clone()).collect();
+    server_side(&trust_hints(metas, &hinted))
 }
 
-async fn disable_client_mods(state: &LauncherState, dir: &Path) -> LauncherResult<usize> {
+fn trust_hints(mut metas: Vec<ModMeta>, hinted: &[bool]) -> Vec<ModMeta> {
+    let hinted: Vec<bool> = hinted
+        .iter()
+        .zip(&metas)
+        .map(|(hinted, meta)| *hinted && !meta.has_data)
+        .collect();
+    let mut rescued = vec![false; metas.len()];
+    loop {
+        let needed: HashSet<&str> = metas
+            .iter()
+            .zip(hinted.iter().zip(&rescued))
+            .filter(|(m, (hinted, rescued))| !m.client_only && (!**hinted || **rescued))
+            .flat_map(|(m, _)| m.depends.iter().map(String::as_str))
+            .collect();
+        let newly: Vec<usize> = (0..metas.len())
+            .filter(|&i| {
+                hinted[i]
+                    && !rescued[i]
+                    && !metas[i].client_only
+                    && metas[i].ids.iter().any(|id| needed.contains(id.as_str()))
+            })
+            .collect();
+        if newly.is_empty() {
+            break;
+        }
+        for i in newly {
+            rescued[i] = true;
+        }
+    }
+    for (i, meta) in metas.iter_mut().enumerate() {
+        meta.client_only |= hinted[i] && !rescued[i];
+    }
+    metas
+}
+
+async fn disable_client_mods(
+    state: &LauncherState,
+    dir: &Path,
+    hints: &HashSet<String>,
+) -> LauncherResult<usize> {
     let mut jars = Vec::new();
-    let mut found = Vec::new();
+    let mut metas = Vec::new();
+    let mut hashes = Vec::new();
     if let Ok(mut entries) = tokio::fs::read_dir(dir.join("mods")).await {
         while let Some(entry) = entries.next_entry().await? {
             let name = entry.file_name().to_string_lossy().to_string();
             if name.ends_with(".jar") {
-                found.push((mod_meta(&entry.path()).await, None));
+                metas.push(mod_meta(&entry.path()).await);
+                hashes.push(polyio::normalize_hash(&polyio::sha1_file(&entry.path()).await?));
                 jars.push(name);
             }
         }
     }
-    let keep = keep_on_server(state, &found).await;
+    let on_modrinth = modrinth_sources(state, &hashes).await;
+    let found: Vec<_> = metas
+        .into_iter()
+        .zip(&hashes)
+        .map(|(meta, hash)| (meta, on_modrinth.get(hash).cloned()))
+        .collect();
+    let hinted: Vec<bool> = jars.iter().map(|name| hints.contains(name)).collect();
+    let keep = keep_on_server(state, &found, &hinted).await;
     let mut disabled = 0;
     for (name, keep) in jars.iter().zip(keep) {
         if !keep {
@@ -848,6 +876,42 @@ async fn disable_client_mods(state: &LauncherState, dir: &Path) -> LauncherResul
         }
     }
     Ok(disabled)
+}
+
+async fn modrinth_sources(
+    state: &LauncherState,
+    hashes: &[String],
+) -> std::collections::HashMap<String, super::ModSource> {
+    use oneclient_common::domain::ProviderId;
+    let identities: Vec<_> = hashes
+        .iter()
+        .map(oneclient_content::packages::FileIdentity::from_sha1)
+        .collect();
+    let ctx = state.services.content();
+    let lookup = match state.services.packages.get(ProviderId::Modrinth) {
+        Ok(provider) => provider.lookup_versions(&identities, &ctx).await,
+        Err(err) => Err(err),
+    };
+    match lookup {
+        Ok(found) => found
+            .into_iter()
+            .map(|(hash, version)| {
+                (
+                    hash,
+                    super::ModSource {
+                        provider: ProviderId::Modrinth,
+                        project_id: version.project_id,
+                        version_id: version.version_id,
+                        version_number: version.version_number,
+                    },
+                )
+            })
+            .collect(),
+        Err(err) => {
+            tracing::warn!(%err, "could not look the server's mods up on Modrinth");
+            Default::default()
+        }
+    }
 }
 
 /// Which mods belong on a server: not client-only, and not needing a mod that was left out
@@ -947,31 +1011,42 @@ pub async fn pack_icon(
     ))
 }
 
-pub async fn read_mrpack(path: &Path) -> LauncherResult<PackInfo> {
-    let index = mrpack_index(path).await?;
-    let (loader, loader_version) = pack_loader(&index.dependencies);
-    if !supports_loader(loader) {
-        return Err(fail(format!("{loader} servers are not supported yet")));
+pub async fn read_pack(path: &Path) -> LauncherResult<PackInfo> {
+    let info = if let Some(index) = mrpack_index(path).await? {
+        let (loader, loader_version) = pack_loader(&index.dependencies);
+        PackInfo {
+            name: index.name,
+            mc_version: index
+                .dependencies
+                .get("minecraft")
+                .cloned()
+                .ok_or_else(|| fail("the pack does not name a Minecraft version"))?,
+            loader,
+            loader_version,
+        }
+    } else if let Some(pack) = oneclient_content::modpacks::read_curseforge_header(path).await? {
+        PackInfo {
+            name: pack.name,
+            mc_version: pack.mc_version,
+            loader: pack.loader,
+            loader_version: pack.loader_version,
+        }
+    } else {
+        return Err(fail("not a Modrinth or CurseForge modpack"));
+    };
+    if !supports_loader(info.loader) {
+        return Err(fail(format!("{} servers are not supported yet", info.loader)));
     }
-    Ok(PackInfo {
-        name: index.name,
-        mc_version: index
-            .dependencies
-            .get("minecraft")
-            .cloned()
-            .ok_or_else(|| fail("the pack does not name a Minecraft version"))?,
-        loader,
-        loader_version,
-    })
+    Ok(info)
 }
 
-async fn mrpack_index(path: &Path) -> LauncherResult<MrpackIndex> {
+async fn mrpack_index(path: &Path) -> LauncherResult<Option<MrpackIndex>> {
     let entries = polyio::read_zip_file_entries(path, |name| name == "modrinth.index.json").await?;
-    let (_, bytes) = entries
+    entries
         .into_iter()
         .next()
-        .ok_or_else(|| fail("not a Modrinth pack, modrinth.index.json is missing"))?;
-    Ok(serde_json::from_slice(&bytes)?)
+        .map(|(_, bytes)| serde_json::from_slice(&bytes).map_err(Into::into))
+        .transpose()
 }
 
 fn pack_loader(deps: &std::collections::HashMap<String, String>) -> (GameLoader, Option<String>) {
@@ -1144,28 +1219,259 @@ fn allowed_pack_download(url: &str) -> bool {
     })
 }
 
-pub async fn unpack_mrpack(
+pub async fn unpack_pack(
     state: &LauncherState,
     pack: &Path,
     dir: &Path,
     progress: Progress<'_>,
+) -> LauncherResult<Vec<oneclient_content::modpacks::BlockedFile>> {
+    let (prefixes, hints, missing) = match mrpack_index(pack).await? {
+        Some(index) => {
+            let hints = unpack_mrpack(state, index, dir, progress).await?;
+            let missing = install_checker_mods(state, pack, dir, progress).await?;
+            (
+                vec!["overrides/".to_string(), "server-overrides/".to_string()],
+                hints,
+                missing,
+            )
+        }
+        None => {
+            let (prefixes, missing) = unpack_curseforge(state, pack, dir, progress).await?;
+            (prefixes, HashSet::new(), missing)
+        }
+    };
+    step(progress, "Extracting the pack's overrides");
+    for prefix in prefixes {
+        polyio::extract_zip_filtered(
+            pack,
+            dir,
+            Some(|name: &str| name.starts_with(&prefix)),
+            Some(|name: &str| name.strip_prefix(&prefix).unwrap_or(name).to_string()),
+        )
+        .await?;
+    }
+    let disabled = disable_client_mods(state, dir, &hints).await?;
+    if disabled > 0 {
+        step(
+            progress,
+            format_args!("Disabled {disabled} client-only mods the server cannot load"),
+        );
+    }
+    Ok(missing)
+}
+
+fn jar_name(path: &str) -> Option<String> {
+    path.strip_prefix("mods/")
+        .filter(|name| !name.contains('/'))
+        .map(str::to_string)
+}
+
+async fn unpack_curseforge(
+    state: &LauncherState,
+    pack: &Path,
+    dir: &Path,
+    progress: Progress<'_>,
+) -> LauncherResult<(Vec<String>, Vec<oneclient_content::modpacks::BlockedFile>)> {
+    step(progress, "Looking up the CurseForge pack's files");
+    let manifest = oneclient_content::modpacks::read_modpack(pack, &state.services.content()).await?;
+    let contents = &manifest.contents;
+    let wanted: Vec<(&str, &str, &str)> = contents
+        .files
+        .iter()
+        .filter_map(|file| match &file.kind {
+            oneclient_content::bundles::BundleFileKind::Managed { sha1, .. } => contents
+                .direct
+                .get(sha1)
+                .map(|direct| (file.path.as_str(), direct.url.as_str(), sha1.as_str())),
+            oneclient_content::bundles::BundleFileKind::External { file: external, .. } => Some((
+                file.path.as_str(),
+                external.url.as_str(),
+                external.sha1.as_str(),
+            )),
+        })
+        .chain(
+            contents
+                .loose
+                .iter()
+                .map(|file| (file.path.as_str(), file.url.as_str(), file.sha1.as_str())),
+        )
+        .collect();
+    step(
+        progress,
+        format_args!("Unpacking {}: {} files", manifest.name, wanted.len()),
+    );
+    for (i, (path, url, sha1)) in wanted.iter().enumerate() {
+        step(
+            progress,
+            format_args!("Downloading {path} ({}/{})", i + 1, wanted.len()),
+        );
+        download(state, url, &dir.join(path), Some(sha1)).await?;
+    }
+    let missing = finish_blocked(state, contents, dir, progress).await?;
+    Ok((manifest.override_prefixes, missing))
+}
+
+async fn finish_blocked(
+    state: &LauncherState,
+    contents: &oneclient_content::modpacks::ModpackContents,
+    dir: &Path,
+    progress: Progress<'_>,
+) -> LauncherResult<Vec<oneclient_content::modpacks::BlockedFile>> {
+    let missing = copy_blocked_files(state, &contents.blocked, dir, progress).await?;
+    if !missing.is_empty() {
+        let names: Vec<_> = missing.iter().map(|f| f.file_name.as_str()).collect();
+        progress(step_line(
+            "WARN",
+            format_args!(
+                "CurseForge does not let launchers download {}, download them by hand once the install finishes",
+                names.join(", ")
+            ),
+        ));
+    }
+    if !contents.unresolved.is_empty() {
+        progress(step_line(
+            "WARN",
+            format_args!(
+                "Could not find {} on CurseForge",
+                contents.unresolved.join(", ")
+            ),
+        ));
+    }
+    Ok(missing)
+}
+
+async fn install_checker_mods(
+    state: &LauncherState,
+    pack: &Path,
+    dir: &Path,
+    progress: Progress<'_>,
+) -> LauncherResult<Vec<oneclient_content::modpacks::BlockedFile>> {
+    let manifest = oneclient_content::modpacks::read_modpack(pack, &state.services.content()).await?;
+    let contents = &manifest.contents;
+    let wanted: Vec<(&str, &str, &str)> = contents
+        .files
+        .iter()
+        .filter_map(|file| match &file.kind {
+            oneclient_content::bundles::BundleFileKind::Managed {
+                provider: oneclient_common::domain::ProviderId::CurseForge,
+                sha1,
+                ..
+            } => contents
+                .direct
+                .get(sha1)
+                .map(|direct| (file.path.as_str(), direct.url.as_str(), sha1.as_str())),
+            _ => None,
+        })
+        .collect();
+    if wanted.is_empty() && contents.blocked.is_empty() {
+        return Ok(Vec::new());
+    }
+    step(
+        progress,
+        format_args!(
+            "Adding {} CurseForge mods the pack's missing mods checker lists",
+            wanted.len() + contents.blocked.len()
+        ),
+    );
+    for (i, (path, url, sha1)) in wanted.iter().enumerate() {
+        step(
+            progress,
+            format_args!("Downloading {path} ({}/{})", i + 1, wanted.len()),
+        );
+        download(state, url, &dir.join(path), Some(sha1)).await?;
+    }
+    finish_blocked(state, contents, dir, progress).await
+}
+
+async fn stored_file(state: &LauncherState, sha1: &str) -> LauncherResult<Option<PathBuf>> {
+    let ctx = state.services.content();
+    Ok(
+        oneclient_db::dao::artifact::get_artifact_by_hash(&ctx.db, sha1)
+            .await?
+            .and_then(|row| {
+                oneclient_content::packages::store::artifact_absolute_path(&row.path).ok()
+            })
+            .filter(|path| path.is_file()),
+    )
+}
+
+pub async fn add_blocked_files(
+    dir: &Path,
+    found: &[(PathBuf, oneclient_content::modpacks::BlockedFile)],
 ) -> LauncherResult<()> {
-    let index = mrpack_index(pack).await?;
+    for (source, file) in found {
+        let target = dir.join(&file.path);
+        if let Some(parent) = target.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        tokio::fs::copy(source, &target).await?;
+    }
+    Ok(())
+}
+
+async fn copy_blocked_files(
+    state: &LauncherState,
+    blocked: &[oneclient_content::modpacks::BlockedFile],
+    dir: &Path,
+    progress: Progress<'_>,
+) -> LauncherResult<Vec<oneclient_content::modpacks::BlockedFile>> {
+    let mut found = Vec::new();
+    let mut missing = Vec::new();
+    for file in blocked {
+        match stored_file(state, &file.sha1).await? {
+            Some(path) => found.push((path, file.clone())),
+            None => missing.push(file.clone()),
+        }
+    }
+    if let Some(downloads) =
+        directories::UserDirs::new().and_then(|dirs| dirs.download_dir().map(Path::to_path_buf))
+        && !missing.is_empty()
+    {
+        let in_downloads =
+            oneclient_content::modpacks::find_blocked_downloads(&[downloads], &missing).await;
+        missing.retain(|file| !in_downloads.iter().any(|(_, f)| f.sha1 == file.sha1));
+        found.extend(in_downloads);
+    }
+    add_blocked_files(dir, &found).await?;
+    if !found.is_empty() {
+        step(
+            progress,
+            format_args!(
+                "Copied {} files CurseForge only allows downloading by hand from earlier downloads",
+                found.len()
+            ),
+        );
+    }
+    Ok(missing)
+}
+
+async fn unpack_mrpack(
+    state: &LauncherState,
+    index: MrpackIndex,
+    dir: &Path,
+    progress: Progress<'_>,
+) -> LauncherResult<HashSet<String>> {
+    let unsupported = |file: &&MrpackFile| {
+        file.env
+            .as_ref()
+            .and_then(|env| env.get("server"))
+            .is_some_and(|s| s == "unsupported")
+    };
+    let hints: HashSet<String> = index
+        .files
+        .iter()
+        .filter(unsupported)
+        .filter_map(|file| jar_name(&file.path))
+        .collect();
     let wanted: Vec<_> = index
         .files
         .iter()
-        .filter(|file| {
-            !file
-                .env
-                .as_ref()
-                .and_then(|env| env.get("server"))
-                .is_some_and(|s| s == "unsupported")
-        })
+        .filter(|file| !unsupported(file) || jar_name(&file.path).is_some())
         .collect();
     step(
         progress,
         format_args!(
-            "Unpacking {}: {} server files, {} client-only left out",
+            "Unpacking {}: {} files, {} client-only left out",
             index.name,
             wanted.len(),
             index.files.len() - wanted.len()
@@ -1207,24 +1513,7 @@ pub async fn unpack_mrpack(
         )
         .await?;
     }
-    step(progress, "Extracting the pack's overrides");
-    for prefix in ["overrides/", "server-overrides/"] {
-        polyio::extract_zip_filtered(
-            pack,
-            dir,
-            Some(move |name: &str| name.starts_with(prefix)),
-            Some(move |name: &str| name.strip_prefix(prefix).unwrap_or(name).to_string()),
-        )
-        .await?;
-    }
-    let disabled = disable_client_mods(state, dir).await?;
-    if disabled > 0 {
-        step(
-            progress,
-            format_args!("Disabled {disabled} client-only mods the server cannot load"),
-        );
-    }
-    Ok(())
+    Ok(hints)
 }
 
 #[cfg(test)]
@@ -1300,6 +1589,43 @@ mod tests {
     }
 
     #[test]
+    fn flagged_mods_a_server_mod_needs_stay_on_the_server() {
+        let fabric = |json: &str| parse_mod_meta("fabric.mod.json", json.as_bytes());
+        let mods = vec![
+            fabric(r#"{"id":"hapi"}"#),
+            fabric(r#"{"id":"aquatic","depends":{"hapi":"*"}}"#),
+            fabric(r#"{"id":"base"}"#),
+            fabric(r#"{"id":"middle","depends":{"base":"*"}}"#),
+            fabric(r#"{"id":"content","depends":{"middle":"*"}}"#),
+            fabric(r#"{"id":"minimap"}"#),
+            fabric(r#"{"id":"zoom","environment":"client"}"#),
+            fabric(r#"{"id":"zoomaddon","depends":{"zoom":"*"}}"#),
+        ];
+        let hinted = [true, false, true, true, false, true, false, false];
+        assert_eq!(
+            server_side(&trust_hints(mods, &hinted)),
+            vec![true, true, true, true, true, false, false, false]
+        );
+    }
+
+    #[test]
+    fn flagged_mods_shipping_data_stay_on_the_server() {
+        let fabric = |json: &str, has_data: bool| ModMeta {
+            has_data,
+            ..parse_mod_meta("fabric.mod.json", json.as_bytes())
+        };
+        let mods = vec![
+            fabric(r#"{"id":"breeding"}"#, true),
+            fabric(r#"{"id":"hud"}"#, false),
+            fabric(r#"{"id":"zoom","environment":"client"}"#, true),
+        ];
+        assert_eq!(
+            server_side(&trust_hints(mods, &[true, true, false])),
+            vec![true, false, false]
+        );
+    }
+
+    #[test]
     fn mods_needing_a_client_only_mod_stay_off_the_server() {
         let oneconfig = parse_mod_meta(
             "fabric.mod.json",
@@ -1339,14 +1665,6 @@ mod tests {
             server_side(&[minimap, addon, jei]),
             vec![false, false, true]
         );
-    }
-
-    #[test]
-    fn curseforge_client_tag_without_server_tag_means_client_only() {
-        let tags = |t: &[&str]| t.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        assert!(cf_client_only(&tags(&["1.20.1", "Client"])));
-        assert!(!cf_client_only(&tags(&["1.20.1", "Client", "Server"])));
-        assert!(!cf_client_only(&tags(&["1.20.1"])));
     }
 
     #[tokio::test]

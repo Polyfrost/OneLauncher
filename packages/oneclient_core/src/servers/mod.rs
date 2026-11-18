@@ -14,8 +14,9 @@ pub use backups::{
 };
 pub use install::{
     ImportGuess, PackInfo, Progress, copy_from_instance, detect_import, download_pack,
-    install_server, java_for, pack_icon, platform_available, read_mrpack, step_line,
-    supports_loader, unpack_mrpack,
+    add_blocked_files, install_server, java_for, pack_icon, platform_available,
+    read_pack, step_line,
+    supports_loader, unpack_pack,
 };
 pub use mods::{
     ModSource, ModUpdate, ServerMod, check_mod_updates, identify_mods, install_mod, list_mods,

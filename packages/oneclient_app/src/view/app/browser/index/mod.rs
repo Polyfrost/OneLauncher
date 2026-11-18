@@ -316,8 +316,8 @@ impl Component for BrowserBody {
             }
         };
         let plugin_server = server.as_ref().is_some_and(|s| s.plugins);
-        let curseforge_blocked = server_packs
-            || (!plugin_server && loader_fixed && loaders.contains(&GameLoader::Ornithe));
+        let curseforge_blocked =
+            !plugin_server && loader_fixed && loaders.contains(&GameLoader::Ornithe);
         let providers = if plugin_server {
             ProviderId::PLUGIN_PROVIDERS
         } else {

@@ -9,10 +9,10 @@ use oneclient_common::paths;
 use super::parse::parse_level;
 use super::{LogFileInfo, LogKind, LogLevel, LogLine, LogsError, ReadOptions};
 
-/// Restricted to cluster dirs the launcher's own logs belong to the live
+/// Restricted to cluster and server dirs the launcher's own logs belong to the live
 /// console and must not be readable deletable or uploadable from a cluster page
 pub(super) fn ensure_allowed(path: &Path) -> ClusterResult<PathBuf> {
-    polyio::ensure_under(path, [paths::clusters_dir()?])?
+    polyio::ensure_under(path, [paths::clusters_dir()?, paths::servers_dir()?])?
         .ok_or_else(|| LogsError::InvalidName(path.display().to_string()).into())
 }
 

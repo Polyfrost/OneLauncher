@@ -310,6 +310,10 @@ impl HangarVersion {
     }
 
     fn into_summary(mut self) -> VersionSummary {
+        let blocked = self
+            .downloads
+            .get(PLATFORM)
+            .is_none_or(|d| d.download_url.is_none());
         let size = self
             .downloads
             .get(PLATFORM)
@@ -330,6 +334,7 @@ impl HangarVersion {
             published: self.created_at,
             downloads: self.stats.total_downloads,
             file_size: size,
+            blocked,
         }
     }
 }

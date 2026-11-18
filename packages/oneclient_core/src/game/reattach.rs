@@ -302,7 +302,7 @@ async fn reconcile(
 
     // A cluster re-adopted moments ago may share this directory clearing it
     // mid-session would pull that game apart underneath it
-    let shared_dir_busy = state.games.dir_in_use_by(&cwd, cluster_id).is_some();
+    let shared_dir_busy = state.games.dir_in_use_by(&cwd, Some(cluster_id)).is_some();
     if shared_dir_busy {
         tracing::debug!(
             cluster_id,

@@ -10,7 +10,9 @@ use freya::elements::image::{AspectRatio, ImageCover, ImageHandle, image};
 use super::cluster_menu::cluster_menu_entries;
 use super::dynamic_art::use_art_bytes;
 use super::local_image::decode;
-use crate::components::{ART_PREVIEW_EDGE, ContextMenu, DynamicArt, Icon, IconType, LocalImage};
+use crate::components::{
+    ART_PREVIEW_EDGE, ContextMenu, DynamicArt, Icon, IconType, LocalImage, use_home_stack,
+};
 use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters};
 use crate::motion::use_animations_enabled;
 use crate::routes::Route;
@@ -506,6 +508,7 @@ struct OtherVersionsTile {
 impl Component for OtherVersionsTile {
     fn render(&self) -> impl IntoElement {
         let mut hovering = use_state(|| false);
+        let stack = use_home_stack();
 
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
@@ -551,8 +554,12 @@ impl Component for OtherVersionsTile {
                     .y(0.)
                     .color(Color::from_af32rgb(0.3, 0, 0, 0)),
             )
-            .on_press(|_| {
-                let _ = RouterContext::get().push(Route::Clusters {});
+            .on_press(move |_| match stack {
+                // Stacked home: slide down to the versions page instead of routing away
+                Some(stack) => stack.set_open(true),
+                None => {
+                    let _ = RouterContext::get().push(Route::Clusters {});
+                }
             })
             .child(
                 rect()

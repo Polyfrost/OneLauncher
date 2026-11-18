@@ -542,7 +542,9 @@ impl NotificationState {
             return;
         }
         match &self.blocked_downloads {
-            Some(open) if open.cluster_id != blocked.cluster_id => {
+            Some(open)
+                if (open.cluster_id, &open.server_id) != (blocked.cluster_id, &blocked.server_id) =>
+            {
                 self.blocked_queue.push_back(blocked);
             }
             _ => self.blocked_downloads = Some(blocked),
@@ -589,11 +591,15 @@ impl NotificationState {
         closed
     }
 
-    pub fn resolve_blocked_downloads(&mut self, cluster_id: ClusterId, sha1s: &[String]) {
-        if let Some(blocked) = self
-            .blocked_downloads
-            .as_mut()
-            .filter(|blocked| blocked.cluster_id == cluster_id)
+    pub fn resolve_blocked_downloads(
+        &mut self,
+        cluster_id: ClusterId,
+        server_id: Option<&str>,
+        sha1s: &[String],
+    ) {
+        if let Some(blocked) = self.blocked_downloads.as_mut().filter(|blocked| {
+            blocked.cluster_id == cluster_id && blocked.server_id.as_deref() == server_id
+        })
         {
             blocked.added.extend(sha1s.iter().cloned());
         }
@@ -1486,8 +1492,9 @@ mod package_update_tests {
             open_when_done: true,
         });
 
-        state.resolve_blocked_downloads(8, &["aa".to_string()]);
-        state.resolve_blocked_downloads(7, &["aa".to_string()]);
+        state.resolve_blocked_downloads(8, None, &["aa".to_string()]);
+        state.resolve_blocked_downloads(7, Some("srv"), &["bb".to_string()]);
+        state.resolve_blocked_downloads(7, None, &["aa".to_string()]);
 
         let blocked = state.take_blocked_downloads().unwrap();
         assert_eq!(blocked.files.len(), 2);

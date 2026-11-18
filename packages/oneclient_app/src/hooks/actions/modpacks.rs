@@ -1023,7 +1023,7 @@ impl Actions {
                     let sha1s: Vec<String> = found.iter().map(|file| file.sha1.clone()).collect();
                     actions.with_engine(|app| {
                         app.notifications
-                            .resolve_blocked_downloads(cluster_id, &sha1s);
+                            .resolve_blocked_downloads(cluster_id, server_id.as_deref(), &sha1s);
                     });
                     match &server_id {
                         Some(server_id) => crate::hooks::invalidate_server(server_id).await,

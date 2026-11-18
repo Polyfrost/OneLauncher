@@ -1228,7 +1228,7 @@ pub async fn unpack_pack(
     let (prefixes, hints, missing) = match mrpack_index(pack).await? {
         Some(index) => {
             let hints = unpack_mrpack(state, index, dir, progress).await?;
-            let missing = install_checker_mods(state, pack, dir, progress).await?;
+            let (_, missing) = install_pack_files(state, pack, dir, progress, true).await?;
             (
                 vec!["overrides/".to_string(), "server-overrides/".to_string()],
                 hints,
@@ -1236,7 +1236,7 @@ pub async fn unpack_pack(
             )
         }
         None => {
-            let (prefixes, missing) = unpack_curseforge(state, pack, dir, progress).await?;
+            let (prefixes, missing) = install_pack_files(state, pack, dir, progress, false).await?;
             (prefixes, HashSet::new(), missing)
         }
     };
@@ -1266,40 +1266,63 @@ fn jar_name(path: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-async fn unpack_curseforge(
+async fn install_pack_files(
     state: &LauncherState,
     pack: &Path,
     dir: &Path,
     progress: Progress<'_>,
+    checker_only: bool,
 ) -> LauncherResult<(Vec<String>, Vec<oneclient_content::modpacks::BlockedFile>)> {
-    step(progress, "Looking up the CurseForge pack's files");
+    use oneclient_content::bundles::BundleFileKind;
+    if !checker_only {
+        step(progress, "Looking up the CurseForge pack's files");
+    }
     let manifest = oneclient_content::modpacks::read_modpack(pack, &state.services.content()).await?;
     let contents = &manifest.contents;
     let wanted: Vec<(&str, &str, &str)> = contents
         .files
         .iter()
         .filter_map(|file| match &file.kind {
-            oneclient_content::bundles::BundleFileKind::Managed { sha1, .. } => contents
-                .direct
-                .get(sha1)
-                .map(|direct| (file.path.as_str(), direct.url.as_str(), sha1.as_str())),
-            oneclient_content::bundles::BundleFileKind::External { file: external, .. } => Some((
+            BundleFileKind::Managed { provider, sha1, .. }
+                if !checker_only || *provider == oneclient_common::domain::ProviderId::CurseForge =>
+            {
+                contents
+                    .direct
+                    .get(sha1)
+                    .map(|direct| (file.path.as_str(), direct.url.as_str(), sha1.as_str()))
+            }
+            BundleFileKind::External { file: external, .. } if !checker_only => Some((
                 file.path.as_str(),
                 external.url.as_str(),
                 external.sha1.as_str(),
             )),
+            _ => None,
         })
         .chain(
             contents
                 .loose
                 .iter()
+                .filter(|_| !checker_only)
                 .map(|file| (file.path.as_str(), file.url.as_str(), file.sha1.as_str())),
         )
         .collect();
-    step(
-        progress,
-        format_args!("Unpacking {}: {} files", manifest.name, wanted.len()),
-    );
+    if checker_only {
+        if wanted.is_empty() && contents.blocked.is_empty() {
+            return Ok((manifest.override_prefixes, Vec::new()));
+        }
+        step(
+            progress,
+            format_args!(
+                "Adding {} CurseForge mods the pack's missing mods checker lists",
+                wanted.len() + contents.blocked.len()
+            ),
+        );
+    } else {
+        step(
+            progress,
+            format_args!("Unpacking {}: {} files", manifest.name, wanted.len()),
+        );
+    }
     for (i, (path, url, sha1)) in wanted.iter().enumerate() {
         step(
             progress,
@@ -1307,16 +1330,6 @@ async fn unpack_curseforge(
         );
         download(state, url, &dir.join(path), Some(sha1)).await?;
     }
-    let missing = finish_blocked(state, contents, dir, progress).await?;
-    Ok((manifest.override_prefixes, missing))
-}
-
-async fn finish_blocked(
-    state: &LauncherState,
-    contents: &oneclient_content::modpacks::ModpackContents,
-    dir: &Path,
-    progress: Progress<'_>,
-) -> LauncherResult<Vec<oneclient_content::modpacks::BlockedFile>> {
     let missing = copy_blocked_files(state, &contents.blocked, dir, progress).await?;
     if !missing.is_empty() {
         let names: Vec<_> = missing.iter().map(|f| f.file_name.as_str()).collect();
@@ -1337,50 +1350,7 @@ async fn finish_blocked(
             ),
         ));
     }
-    Ok(missing)
-}
-
-async fn install_checker_mods(
-    state: &LauncherState,
-    pack: &Path,
-    dir: &Path,
-    progress: Progress<'_>,
-) -> LauncherResult<Vec<oneclient_content::modpacks::BlockedFile>> {
-    let manifest = oneclient_content::modpacks::read_modpack(pack, &state.services.content()).await?;
-    let contents = &manifest.contents;
-    let wanted: Vec<(&str, &str, &str)> = contents
-        .files
-        .iter()
-        .filter_map(|file| match &file.kind {
-            oneclient_content::bundles::BundleFileKind::Managed {
-                provider: oneclient_common::domain::ProviderId::CurseForge,
-                sha1,
-                ..
-            } => contents
-                .direct
-                .get(sha1)
-                .map(|direct| (file.path.as_str(), direct.url.as_str(), sha1.as_str())),
-            _ => None,
-        })
-        .collect();
-    if wanted.is_empty() && contents.blocked.is_empty() {
-        return Ok(Vec::new());
-    }
-    step(
-        progress,
-        format_args!(
-            "Adding {} CurseForge mods the pack's missing mods checker lists",
-            wanted.len() + contents.blocked.len()
-        ),
-    );
-    for (i, (path, url, sha1)) in wanted.iter().enumerate() {
-        step(
-            progress,
-            format_args!("Downloading {path} ({}/{})", i + 1, wanted.len()),
-        );
-        download(state, url, &dir.join(path), Some(sha1)).await?;
-    }
-    finish_blocked(state, contents, dir, progress).await
+    Ok((manifest.override_prefixes, missing))
 }
 
 async fn stored_file(state: &LauncherState, sha1: &str) -> LauncherResult<Option<PathBuf>> {

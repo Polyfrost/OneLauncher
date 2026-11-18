@@ -733,18 +733,14 @@ async fn report_crash(
             *attempt
         };
         if attempt <= MAX_AUTO_RESTARTS {
-            if let Some(actions) = actions() {
-                actions
-                    .notify(t("oneclient.servers.client_mod.auto_title"))
-                    .body(tf(
-                        "oneclient.servers.client_mod.auto_body",
-                        &[&server.name, &culprits.join(", ")],
-                    ))
-                    .send();
-            }
-            disable_mods_and_restart(station, server.id.clone(), culprits);
+            let notice = tf(
+                "oneclient.servers.client_mod.auto_body",
+                &[&server.name, &culprits.join(", ")],
+            );
+            disable_mods_and_restart(station, server.id.clone(), culprits, Some(notice));
             return;
         }
+        AUTO_RESTARTS.lock().unwrap().remove(&server.id);
     }
     let culprit = culprits
         .into_iter()
@@ -804,7 +800,12 @@ pub fn set_mod_enabled(id: String, file_name: String, enabled: bool) {
     );
 }
 
-pub fn disable_mods_and_restart(station: Station, id: String, file_names: Vec<String>) {
+pub fn disable_mods_and_restart(
+    station: Station,
+    id: String,
+    file_names: Vec<String>,
+    notice: Option<String>,
+) {
     spawn_in_window(async move {
         let result = off_ui({
             let id = id.clone();
@@ -822,7 +823,15 @@ pub fn disable_mods_and_restart(station: Station, id: String, file_names: Vec<St
         .await;
         invalidate_server(&id).await;
         match result {
-            Ok(()) => start(station, id),
+            Ok(()) => {
+                if let (Some(body), Some(actions)) = (notice, actions()) {
+                    actions
+                        .notify(t("oneclient.servers.client_mod.auto_title"))
+                        .body(body)
+                        .send();
+                }
+                start(station, id);
+            }
             Err(err) => notify_error(t("oneclient.servers.mods.toggle_failed"), err),
         }
     });

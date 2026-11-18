@@ -896,7 +896,7 @@ fn shown_files<'a>(
     })
 }
 
-fn bundle_blurb<'a>(
+pub(crate) fn bundle_blurb<'a>(
     files: impl Iterator<Item = &'a BundleFile>,
     names: &HashMap<String, String>,
 ) -> String {
@@ -934,19 +934,17 @@ fn update_picked(
     }
 }
 
-fn file_keys(archive: &BundleArchive, keep: impl Fn(&BundleFile) -> bool) -> Vec<String> {
+pub(crate) fn file_keys(
+    cluster_id: i64,
+    archive: &BundleArchive,
+    keep: impl Fn(&BundleFile) -> bool,
+) -> Vec<String> {
     archive
         .manifest
         .files
         .iter()
         .filter(|file| !file.hidden && keep(file))
-        .map(|file| {
-            pkg_key(
-                UNCREATED_CLUSTER,
-                &archive.manifest.name,
-                &file.kind.package_id(),
-            )
-        })
+        .map(|file| pkg_key(cluster_id, &archive.manifest.name, &file.kind.package_id()))
         .collect()
 }
 
@@ -985,8 +983,8 @@ fn bundles_step(mut wizard: Wizard, picks: &Picks) -> Element {
             let name = archive.manifest.name.clone();
             let taken = picks.bundles.taken(archive);
             let count = shown_files(archive, &picks.bundles.picked, taken).count();
-            let visible = file_keys(archive, |_| true);
-            let mut turn_on = file_keys(archive, is_default_file);
+            let visible = file_keys(UNCREATED_CLUSTER, archive, |_| true);
+            let mut turn_on = file_keys(UNCREATED_CLUSTER, archive, is_default_file);
             if turn_on.is_empty() {
                 turn_on = visible.clone();
             }

@@ -11,7 +11,7 @@ use crate::Route;
 use crate::components::Button;
 use crate::components::{
     ART_PREVIEW_EDGE, AppNavbar, CodeBlock, CrashDialog, DynamicArt, FileDropOverlay, Icon,
-    IconType, OverlayPopup, accept_drop, copy_button, use_provide_lobby,
+    IconType, OverlayPopup, accept_drop, copy_button, use_provide_home_stack, use_provide_lobby,
 };
 use crate::i18n::{t, tf};
 use crate::layout::AnimatedAppOutlet;
@@ -42,6 +42,7 @@ impl Component for AppShell {
         let active_cluster = use_state(|| None::<ClusterId>);
         use_provide_active_cluster(ActiveClusterState(active_cluster));
         use_provide_lobby();
+        use_provide_home_stack();
 
         let browser_compat = use_state(|| BROWSER_COMPAT_DEFAULT);
         use_provide_browser_compat(BrowserCompatState(browser_compat));

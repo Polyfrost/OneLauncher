@@ -7,7 +7,7 @@ use freya::{
 use crate::theme::{rounded, text_size};
 use crate::{
     Route,
-    components::{Avatar, Icon, IconType},
+    components::{Avatar, HomeStack, Icon, IconType, use_home_stack},
     hooks::{
         settled_or_loading, try_default_account, use_active_cluster_id, use_browser_type,
         use_chat_allowed, use_chat_unread, use_clusters, use_current_account, use_dispatch,
@@ -40,7 +40,7 @@ impl Component for Navbar {
         let eased = intro.get().value();
         let slide = (1.0 - eased) * -theme::NAVBAR_HEIGHT_PX;
 
-        let over_art = matches!(use_route::<Route>(), Route::Home {});
+        let over_art = home_page_in_view(&use_route::<Route>(), use_home_stack());
         let measured = *navbar_width.read();
         let show_logo = measured <= 0. || measured > LOGO_HIDE_NAVBAR_W;
 
@@ -77,6 +77,12 @@ impl Component for Navbar {
                     .position(Position::new_absolute().top(0.).left(0.).right(0.)),
             )
     }
+}
+
+/// Home's art is only behind the navbar while the home page (not the versions page
+/// it scrolls into) is in view
+fn home_page_in_view(route: &Route, stack: Option<HomeStack>) -> bool {
+    matches!(route, Route::Home {}) && !stack.is_some_and(|stack| *stack.on_versions.read())
 }
 
 fn navbar_left(show_logo: bool, over_art: bool) -> impl IntoElement {
@@ -134,7 +140,7 @@ impl Component for NavbarLogo {
 
 fn navbar_center(is_small: bool) -> impl IntoElement {
     let route = use_route::<Route>();
-    let over_art = matches!(route, Route::Home {});
+    let over_art = home_page_in_view(&route, use_home_stack());
     let browse_target = browse_target();
 
     rect()
@@ -148,15 +154,9 @@ fn navbar_center(is_small: bool) -> impl IntoElement {
         .cross_align(Alignment::Center)
         .spacing(if is_small { 12. } else { 4. })
         .child(NavLink {
-            active: route == Route::Home {},
-            target: NavTarget::Route(Route::Home {}),
+            active: over_art,
+            target: NavTarget::Home,
             nav_label: t("oneclient.components.navbar.home"),
-            over_art,
-        })
-        .child(NavLink {
-            active: route == Route::Clusters {},
-            target: NavTarget::Route(Route::Clusters {}),
-            nav_label: t("oneclient.components.navbar.versions"),
             over_art,
         })
         .child(NavLink {
@@ -198,6 +198,8 @@ fn browse_target() -> Route {
 #[derive(PartialEq, Clone)]
 enum NavTarget {
     Route(Route),
+    /// Home's page, scrolled back up to the top if it was on the versions page
+    Home,
 }
 
 #[derive(PartialEq)]
@@ -216,6 +218,8 @@ impl Component for NavLink {
 
         let active = self.active;
         let target = self.target.clone();
+        let stack = use_home_stack();
+        let at_home = matches!(use_route::<Route>(), Route::Home {});
         let nav_label = self.nav_label;
         let over_art = self.over_art;
 
@@ -258,6 +262,14 @@ impl Component for NavLink {
                     NavTarget::Route(_) if active => {}
                     NavTarget::Route(route) => {
                         let _ = RouterContext::get().push(route.clone());
+                    }
+                    NavTarget::Home => {
+                        if let Some(stack) = stack {
+                            stack.set_open(false);
+                        }
+                        if !at_home {
+                            let _ = RouterContext::get().push(Route::Home {});
+                        }
                     }
                 }
             })

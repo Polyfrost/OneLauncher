@@ -6,7 +6,8 @@ use oneclient_content::ContentCtx;
 use oneclient_content::bundles::{
     BundleFile, BundleFileKind, BundleFileType, BundleManifest, check_bundle_updates,
     get_bundles_with_update_status, install_cluster_bundles, on_user_disable_artifact,
-    on_user_remove_artifact, set_bundle_package_enabled, wanted_bundle_files,
+    on_user_enable_artifact, on_user_remove_artifact, set_bundle_package_enabled,
+    set_bundle_package_removed, wanted_bundle_files,
 };
 use oneclient_core::LauncherState;
 use oneclient_core::clusters::CreateClusterOptions;
@@ -2882,7 +2883,11 @@ async fn launch_install_does_not_retry_a_failed_download() {
     let wrong_sha1 = polyio::sha1_bytes(b"not the served body");
     let size = body.len() as u64;
     let (url, connections) = serve_jar(body, None).await;
-    seed_bundle_with_pack(&state, manifest(vec![github_mod_served(&url, &wrong_sha1, size)])).await;
+    seed_bundle_with_pack(
+        &state,
+        manifest(vec![github_mod_served(&url, &wrong_sha1, size)]),
+    )
+    .await;
     let fresh = cluster_with_tracked_mod(&state).await;
     let ctx = state.services.content();
 
@@ -2902,7 +2907,11 @@ async fn install_without_a_deadline_retries_a_failed_download() {
     let wrong_sha1 = polyio::sha1_bytes(b"not the served body either");
     let size = body.len() as u64;
     let (url, connections) = serve_jar(body, None).await;
-    seed_bundle_with_pack(&state, manifest(vec![github_mod_served(&url, &wrong_sha1, size)])).await;
+    seed_bundle_with_pack(
+        &state,
+        manifest(vec![github_mod_served(&url, &wrong_sha1, size)]),
+    )
+    .await;
     let fresh = cluster_with_tracked_mod(&state).await;
     let ctx = state.services.content();
 
@@ -3234,4 +3243,479 @@ async fn a_timed_out_sync_publishes_no_archive() {
         root.join("bundles/first-of-two.mrpack.staged").exists(),
         "the next sync resumes from it"
     );
+}
+
+#[tokio::test]
+async fn removal_from_a_declined_bundle_that_became_default_still_suppresses() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let now_default = "Previously optional";
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        named_manifest(now_default, vec![newly_shipped_file()]),
+    )
+    .await
+    .unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        manifest(vec![managed_file(true), newly_shipped_file()]),
+    )
+    .await
+    .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+    bundle_dao::save_bundle_choices(
+        &state.services.db,
+        cluster_id,
+        &[(now_default.to_string(), false)],
+    )
+    .await
+    .unwrap();
+    set_bundle_package_removed(cluster_id, now_default, "newcomer", None, true, &ctx)
+        .await
+        .unwrap();
+
+    let additions = added_ids(&state, cluster_id).await;
+    assert!(
+        !additions.contains(&"newcomer".to_string()),
+        "deleted mod offered again: {additions:?}"
+    );
+}
+
+#[tokio::test]
+async fn restoring_a_deleted_optional_mod_keeps_it_opted_in() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+    bundle_dao::save_override(
+        &state.services.db,
+        cluster_id,
+        BUNDLE,
+        PROJECT_ID,
+        OverrideType::Enabled,
+    )
+    .await
+    .unwrap();
+
+    on_user_remove_artifact(cluster_id, HASH, &ctx)
+        .await
+        .unwrap();
+    on_user_enable_artifact(cluster_id, HASH, &ctx)
+        .await
+        .unwrap();
+
+    let overrides: Vec<(String, String)> =
+        bundle_dao::list_overrides(&state.services.db, cluster_id)
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|o| o.package_id == PROJECT_ID)
+            .map(|o| (o.bundle_name, o.override_type))
+            .collect();
+    assert_eq!(overrides, [(BUNDLE.to_string(), "enabled".to_string())]);
+}
+
+#[tokio::test]
+async fn deleting_a_row_without_a_hash_still_disables_the_installed_copy() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    set_bundle_package_removed(cluster_id, BUNDLE, PROJECT_ID, None, true, &ctx)
+        .await
+        .unwrap();
+
+    let artifact = artifact_dao::get_cluster_artifact(&state.services.db, cluster_id, HASH)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(artifact.enabled, 0);
+}
+
+#[tokio::test]
+async fn deleting_from_a_taken_bundle_survives_heal_when_a_declined_bundle_owns_the_copy() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    seed_opt_in_bundle(&state, BUNDLE).await;
+    let mut other = manifest(vec![managed_file(true)]);
+    other.name = "Default Bundle".into();
+    seed_bundle_with_pack(&state, other).await;
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    set_bundle_package_removed(cluster_id, "Default Bundle", PROJECT_ID, None, true, &ctx)
+        .await
+        .unwrap();
+    heal(&state, cluster_id).await;
+
+    assert!(!cluster_mod_enabled(&state, cluster_id).await);
+}
+
+#[tokio::test]
+async fn a_mod_deleted_under_another_bundle_takes_no_updates() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let mut newer = managed_file(true);
+    if let BundleFileKind::Managed {
+        version_id, sha1, ..
+    } = &mut newer.kind
+    {
+        *version_id = "v2".to_string();
+        *sha1 = "cccccccccccccccccccccccccccccccccccccccc".to_string();
+    }
+    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![newer]))
+        .await
+        .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    set_bundle_package_removed(cluster_id, "Other Bundle", PROJECT_ID, None, true, &ctx)
+        .await
+        .unwrap();
+
+    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &ctx)
+        .await
+        .unwrap();
+    assert!(
+        check.updates_available.is_empty(),
+        "deleted mod offered an update: {:?}",
+        check.updates_available
+    );
+}
+
+#[tokio::test]
+async fn restoring_a_deleted_mod_switches_on_one_copy() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    track_other_sodium_copy(&state, cluster_id, BUNDLE).await;
+    let ctx = state.services.content();
+
+    set_bundle_package_removed(cluster_id, BUNDLE, PROJECT_ID, None, true, &ctx)
+        .await
+        .unwrap();
+    set_bundle_package_removed(cluster_id, BUNDLE, PROJECT_ID, None, false, &ctx)
+        .await
+        .unwrap();
+
+    let mut enabled = 0;
+    for hash in [HASH, OTHER_COPY] {
+        let artifact = artifact_dao::get_cluster_artifact(&state.services.db, cluster_id, hash)
+            .await
+            .unwrap()
+            .unwrap();
+        enabled += artifact.enabled;
+    }
+    assert_eq!(enabled, 1);
+}
+
+#[tokio::test]
+async fn restoring_a_deleted_mod_switches_on_the_chosen_copy() {
+    for chosen in [HASH, OTHER_COPY] {
+        let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+        let cluster_id = cluster_with_tracked_mod(&state).await;
+        track_other_sodium_copy(&state, cluster_id, BUNDLE).await;
+        let ctx = state.services.content();
+
+        for removed in [true, false] {
+            set_bundle_package_removed(cluster_id, BUNDLE, PROJECT_ID, Some(chosen), removed, &ctx)
+                .await
+                .unwrap();
+        }
+
+        for hash in [HASH, OTHER_COPY] {
+            let artifact = artifact_dao::get_cluster_artifact(&state.services.db, cluster_id, hash)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                artifact.enabled != 0,
+                hash == chosen,
+                "chose {chosen}, {hash}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn restoring_a_deleted_mod_switches_on_a_chosen_untracked_copy() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let db = &state.services.db;
+    artifact_dao::insert_artifact(
+        db,
+        OTHER_COPY,
+        ContentType::Mod as i64,
+        "artifacts/sodium-other.jar",
+        "sodium-other.jar",
+        Some(1),
+    )
+    .await
+    .unwrap();
+    artifact_dao::link_cluster_artifact(db, cluster_id, OTHER_COPY, "sodium-other.jar")
+        .await
+        .unwrap();
+    let ctx = state.services.content();
+
+    for removed in [true, false] {
+        set_bundle_package_removed(cluster_id, BUNDLE, PROJECT_ID, Some(OTHER_COPY), removed, &ctx)
+            .await
+            .unwrap();
+    }
+
+    for hash in [HASH, OTHER_COPY] {
+        let artifact = artifact_dao::get_cluster_artifact(db, cluster_id, hash)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(artifact.enabled != 0, hash == OTHER_COPY, "{hash}");
+    }
+}
+
+#[tokio::test]
+async fn restoring_a_deleted_mod_keeps_its_opt_in_to_a_declined_bundle() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let db = &state.services.db;
+    let ctx = state.services.content();
+    bundle_dao::save_bundle_choices(db, cluster_id, &[("Declined".to_string(), false)])
+        .await
+        .unwrap();
+    bundle_dao::save_override(
+        db,
+        cluster_id,
+        "Declined",
+        PROJECT_ID,
+        OverrideType::Enabled,
+    )
+    .await
+    .unwrap();
+
+    for removed in [true, false] {
+        set_bundle_package_removed(cluster_id, BUNDLE, PROJECT_ID, Some(HASH), removed, &ctx)
+            .await
+            .unwrap();
+    }
+
+    let rows = bundle_dao::list_overrides(db, cluster_id).await.unwrap();
+    assert!(
+        rows.iter().any(|o| o.bundle_name == "Declined"
+            && o.package_id == PROJECT_ID
+            && o.override_type == "enabled"),
+        "opt-in lost: {rows:?}"
+    );
+}
+
+#[tokio::test]
+async fn re_enabling_a_disabled_mod_opts_into_nothing() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let db = &state.services.db;
+    let ctx = state.services.content();
+    bundle_dao::save_bundle_choices(db, cluster_id, &[(BUNDLE.to_string(), false)])
+        .await
+        .unwrap();
+    bundle_dao::save_override(db, cluster_id, "Other", PROJECT_ID, OverrideType::Removed)
+        .await
+        .unwrap();
+
+    on_user_disable_artifact(cluster_id, HASH, &ctx)
+        .await
+        .unwrap();
+    on_user_enable_artifact(cluster_id, HASH, &ctx)
+        .await
+        .unwrap();
+
+    let rows = bundle_dao::list_overrides(db, cluster_id).await.unwrap();
+    assert!(
+        !rows.iter().any(|o| o.override_type == "enabled"),
+        "enable wrote an opt-in: {rows:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_mod_deleted_under_another_bundle_is_not_detached() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![managed_file(false)]))
+        .await
+        .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    set_bundle_package_removed(cluster_id, "Other Bundle", PROJECT_ID, None, true, &ctx)
+        .await
+        .unwrap();
+
+    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &ctx)
+        .await
+        .unwrap();
+    assert!(
+        check.removals_available.is_empty(),
+        "deleted copy will be detached: {:?}",
+        check.removals_available
+    );
+}
+
+#[tokio::test]
+async fn deleting_copies_from_several_bundles_keeps_their_opt_ins() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    track_other_sodium_copy(&state, cluster_id, "Other Bundle").await;
+    let ctx = state.services.content();
+    for bundle in [BUNDLE, "Other Bundle"] {
+        bundle_dao::save_override(
+            &state.services.db,
+            cluster_id,
+            bundle,
+            PROJECT_ID,
+            OverrideType::Enabled,
+        )
+        .await
+        .unwrap();
+    }
+
+    set_bundle_package_removed(cluster_id, BUNDLE, PROJECT_ID, None, true, &ctx)
+        .await
+        .unwrap();
+
+    let mut overrides: Vec<(String, String)> =
+        bundle_dao::list_overrides(&state.services.db, cluster_id)
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|o| o.package_id == PROJECT_ID)
+            .map(|o| (o.bundle_name, o.override_type))
+            .collect();
+    overrides.sort();
+    assert_eq!(
+        overrides,
+        [
+            ("Other Bundle".to_string(), "removed".to_string()),
+            (BUNDLE.to_string(), "removed".to_string()),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn restoring_a_deleted_mod_keeps_every_bundles_opt_in() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+    for bundle in [BUNDLE, "Other Bundle"] {
+        bundle_dao::save_override(
+            &state.services.db,
+            cluster_id,
+            bundle,
+            PROJECT_ID,
+            OverrideType::Enabled,
+        )
+        .await
+        .unwrap();
+    }
+
+    on_user_remove_artifact(cluster_id, HASH, &ctx)
+        .await
+        .unwrap();
+    on_user_enable_artifact(cluster_id, HASH, &ctx)
+        .await
+        .unwrap();
+
+    let mut overrides: Vec<(String, String)> =
+        bundle_dao::list_overrides(&state.services.db, cluster_id)
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|o| o.package_id == PROJECT_ID)
+            .map(|o| (o.bundle_name, o.override_type))
+            .collect();
+    overrides.sort();
+    assert_eq!(
+        overrides,
+        [
+            ("Other Bundle".to_string(), "enabled".to_string()),
+            (BUNDLE.to_string(), "enabled".to_string()),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn deleting_an_untracked_copy_switches_it_off() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    bundle_dao::clear_bundle_tracking(&state.services.db, cluster_id, HASH)
+        .await
+        .unwrap();
+
+    set_bundle_package_removed(
+        cluster_id,
+        BUNDLE,
+        PROJECT_ID,
+        Some(HASH),
+        true,
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+
+    assert!(!cluster_mod_enabled(&state, cluster_id).await);
+}
+
+#[tokio::test]
+async fn deleting_under_a_declined_bundle_survives_heal() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let mut hidden = managed_file(true);
+    hidden.hidden = true;
+    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![hidden]))
+        .await
+        .unwrap();
+    let mut declined = named_manifest("Declined", vec![managed_file(true)]);
+    declined.enabled = false;
+    oneclient_core::dev::seed_bundle_archive(&state, declined)
+        .await
+        .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+
+    set_bundle_package_removed(
+        cluster_id,
+        "Declined",
+        PROJECT_ID,
+        Some(HASH),
+        true,
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+    heal(&state, cluster_id).await;
+
+    assert!(!cluster_mod_enabled(&state, cluster_id).await);
+}
+
+#[tokio::test]
+async fn turning_a_mod_back_on_does_not_opt_into_a_declined_bundle() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let db = &state.services.db;
+    let ctx = state.services.content();
+    bundle_dao::save_bundle_choices(db, cluster_id, &[("Declined".to_string(), false)])
+        .await
+        .unwrap();
+    bundle_dao::save_override(
+        db,
+        cluster_id,
+        "Declined",
+        PROJECT_ID,
+        OverrideType::Removed,
+    )
+    .await
+    .unwrap();
+
+    on_user_disable_artifact(cluster_id, HASH, &ctx)
+        .await
+        .unwrap();
+    on_user_enable_artifact(cluster_id, HASH, &ctx)
+        .await
+        .unwrap();
+
+    let opted_in = bundle_dao::list_overrides(db, cluster_id)
+        .await
+        .unwrap()
+        .into_iter()
+        .any(|o| o.bundle_name == "Declined" && o.override_type == "enabled");
+    assert!(!opted_in);
 }

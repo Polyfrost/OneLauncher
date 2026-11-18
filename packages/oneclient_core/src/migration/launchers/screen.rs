@@ -11,10 +11,10 @@ use oneclient_content::packages::{
 };
 use oneclient_db::models::ClusterRow;
 
-use crate::{LauncherError, LauncherResult};
 use crate::clusters::flag_pack_mods;
 use crate::clusters::modpack::{ModpackSource, PreparedModpack, kind_for, prepare_modpack};
 use crate::state::LauncherState;
+use crate::{LauncherError, LauncherResult};
 
 use super::ExternalInstance;
 use super::import::{ModJar, hash_mod_files, list_mod_files, mod_files_stamp, scan_mod_jars};

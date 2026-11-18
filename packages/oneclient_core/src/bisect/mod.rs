@@ -379,7 +379,10 @@ pub async fn start_bisect(
     )
     .await
     .unwrap_or_else(|_| {
-        tracing::warn!(cluster_id, "reading the listed mod dependencies took too long");
+        tracing::warn!(
+            cluster_id,
+            "reading the listed mod dependencies took too long"
+        );
         Vec::new()
     });
     if !listed.is_empty()

@@ -2882,7 +2882,11 @@ async fn launch_install_does_not_retry_a_failed_download() {
     let wrong_sha1 = polyio::sha1_bytes(b"not the served body");
     let size = body.len() as u64;
     let (url, connections) = serve_jar(body, None).await;
-    seed_bundle_with_pack(&state, manifest(vec![github_mod_served(&url, &wrong_sha1, size)])).await;
+    seed_bundle_with_pack(
+        &state,
+        manifest(vec![github_mod_served(&url, &wrong_sha1, size)]),
+    )
+    .await;
     let fresh = cluster_with_tracked_mod(&state).await;
     let ctx = state.services.content();
 
@@ -2902,7 +2906,11 @@ async fn install_without_a_deadline_retries_a_failed_download() {
     let wrong_sha1 = polyio::sha1_bytes(b"not the served body either");
     let size = body.len() as u64;
     let (url, connections) = serve_jar(body, None).await;
-    seed_bundle_with_pack(&state, manifest(vec![github_mod_served(&url, &wrong_sha1, size)])).await;
+    seed_bundle_with_pack(
+        &state,
+        manifest(vec![github_mod_served(&url, &wrong_sha1, size)]),
+    )
+    .await;
     let fresh = cluster_with_tracked_mod(&state).await;
     let ctx = state.services.content();
 

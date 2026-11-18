@@ -1248,7 +1248,13 @@ mod tests {
         let kept: Vec<String> = scanned
             .files
             .iter()
-            .map(|file| file.path.file_name().unwrap().to_string_lossy().into_owned())
+            .map(|file| {
+                file.path
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned()
+            })
             .collect();
         assert_eq!(kept, ["good-top.jar"]);
         assert_eq!(dropped, 1);

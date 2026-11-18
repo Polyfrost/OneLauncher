@@ -156,40 +156,115 @@ pub enum ReleasePlanState {
     Failed,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MigrationDirection {
+    Into,
+    From,
+}
+
+#[must_use]
+pub fn opening_direction(
+    inbound: &[Cluster],
+    outbound: &[Cluster],
+    wanted: MigrationDirection,
+    picked: Option<i64>,
+) -> Option<MigrationDirection> {
+    let list = |direction: MigrationDirection| match direction {
+        MigrationDirection::Into => inbound,
+        MigrationDirection::From => outbound,
+    };
+    if let Some(id) = picked {
+        return list(wanted)
+            .iter()
+            .any(|cluster| cluster.id == id)
+            .then_some(wanted);
+    }
+    let fallback = match wanted {
+        MigrationDirection::Into => MigrationDirection::From,
+        MigrationDirection::From => MigrationDirection::Into,
+    };
+    [wanted, fallback]
+        .into_iter()
+        .find(|direction| !list(*direction).is_empty())
+}
+
 #[derive(Clone, Debug)]
 pub struct ReleaseMigrationPrompt {
-    pub key: String,
-    pub target: Cluster,
-    pub java_major: Option<u32>,
-    pub sources: Vec<Cluster>,
-    pub selected: i64,
-    pub plans: HashMap<i64, ReleasePlanState>,
+    pub home: Cluster,
+    pub direction: MigrationDirection,
+    pub inbound: Vec<Cluster>,
+    pub outbound: Vec<Cluster>,
+    pub picked_inbound: Option<i64>,
+    pub picked_outbound: Option<i64>,
+    pub plans: HashMap<(i64, i64), ReleasePlanState>,
+    pub java: HashMap<i64, u32>,
     pub origin: PromptOrigin,
 }
 
 impl ReleaseMigrationPrompt {
     #[must_use]
+    pub fn others(&self) -> &[Cluster] {
+        match self.direction {
+            MigrationDirection::Into => &self.inbound,
+            MigrationDirection::From => &self.outbound,
+        }
+    }
+
+    #[must_use]
+    pub fn other(&self) -> Option<&Cluster> {
+        let picked = match self.direction {
+            MigrationDirection::Into => self.picked_inbound,
+            MigrationDirection::From => self.picked_outbound,
+        };
+        let others = self.others();
+        picked
+            .and_then(|id| others.iter().find(|cluster| cluster.id == id))
+            .or_else(|| others.first())
+    }
+
+    #[must_use]
     pub fn source(&self) -> Option<&Cluster> {
-        self.sources
-            .iter()
-            .find(|cluster| cluster.id == self.selected)
+        match self.direction {
+            MigrationDirection::Into => self.other(),
+            MigrationDirection::From => self.other().map(|_| &self.home),
+        }
+    }
+
+    #[must_use]
+    pub fn target(&self) -> Option<&Cluster> {
+        match self.direction {
+            MigrationDirection::Into => self.other().map(|_| &self.home),
+            MigrationDirection::From => self.other(),
+        }
+    }
+
+    #[must_use]
+    pub fn pair(&self) -> Option<(i64, i64)> {
+        Some((self.source()?.id, self.target()?.id))
+    }
+
+    #[must_use]
+    pub fn java_major(&self) -> Option<u32> {
+        self.java.get(&self.target()?.id).copied()
     }
 
     #[must_use]
     pub fn can_copy_configs(&self) -> bool {
         self.source()
-            .is_some_and(|source| !source.shares_dir_with(&self.target))
+            .zip(self.target())
+            .is_some_and(|(source, target)| !source.shares_dir_with(target))
     }
 
     #[must_use]
     pub fn plan(&self) -> Option<&ReleasePlanState> {
-        self.plans.get(&self.selected)
+        self.plans.get(&self.pair()?)
     }
 
     #[must_use]
     pub fn is_cross_loader(&self) -> bool {
         self.source()
-            .is_some_and(|source| source.mc_loader != self.target.mc_loader)
+            .zip(self.target())
+            .is_some_and(|(source, target)| source.mc_loader != target.mc_loader)
     }
 }
 
@@ -555,6 +630,40 @@ mod tests {
     use super::*;
     use crate::view::app::{launch_button_state, shared_dir_taken};
     use crate::view::onboarding::test_support::cluster;
+
+    #[test]
+    fn migration_direction_decides_source_and_target() {
+        let mut prompt = ReleaseMigrationPrompt {
+            home: cluster(1),
+            direction: MigrationDirection::Into,
+            inbound: vec![cluster(2), cluster(3)],
+            outbound: vec![cluster(4)],
+            picked_inbound: Some(3),
+            picked_outbound: Some(99),
+            plans: HashMap::new(),
+            java: HashMap::new(),
+            origin: PromptOrigin::Manual,
+        };
+        assert_eq!(prompt.pair(), Some((3, 1)));
+
+        prompt.direction = MigrationDirection::From;
+        assert_eq!(prompt.pair(), Some((1, 4)));
+
+        prompt.outbound.clear();
+        assert_eq!(prompt.pair(), None);
+    }
+
+    #[test]
+    fn migration_opens_only_on_the_picked_partner() {
+        use MigrationDirection::{From, Into};
+        let inbound = [cluster(2)];
+        let outbound = [cluster(3)];
+        assert_eq!(opening_direction(&inbound, &outbound, From, Some(3)), Some(From));
+        assert_eq!(opening_direction(&inbound, &outbound, From, Some(9)), None);
+        assert_eq!(opening_direction(&inbound, &[], From, Some(3)), None);
+        assert_eq!(opening_direction(&inbound, &[], From, None), Some(Into));
+        assert_eq!(opening_direction(&[], &[], Into, None), None);
+    }
 
     #[test]
     fn a_second_click_is_refused_before_core_answers() {

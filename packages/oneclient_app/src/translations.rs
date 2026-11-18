@@ -355,16 +355,16 @@ mod tests {
                 "oneclient.common.cancel":"Anuluj",
                 "oneclient.components.package_row.copies":"kopie",
                 "oneclient.not.a.key":"x",
-                "oneclient.cluster.settings.migrate.from":"Z %s"
+                "oneclient.actions.migration_import.body":"Skopiowano z %s."
             }"#,
         )
         .unwrap();
         assert_eq!(table.get("oneclient.common.cancel").unwrap(), "Anuluj");
         assert_eq!(
             table
-                .get("oneclient.cluster.settings.migrate.from")
+                .get("oneclient.actions.migration_import.body")
                 .unwrap(),
-            "Z %s"
+            "Skopiowano z %s."
         );
         assert!(!table.contains_key("oneclient.components.package_row.copies"));
         assert!(!table.contains_key("oneclient.not.a.key"));

@@ -41,6 +41,7 @@ mod microsoft_login;
 mod modpack_confirm_popup;
 mod navbar;
 mod notifications;
+mod onedrive_warning;
 mod optional_mods_popup;
 mod overlay_popup;
 mod package_delete_dialog;
@@ -121,6 +122,7 @@ pub use navbar::{AppNavbar, OnboardingNavbar};
 pub(crate) use navbar::{window_controls, window_controls_with};
 pub use notifications::{ChevronToggle, NotificationCenter};
 pub(crate) use optional_mods_popup::OptionalModCard;
+pub use onedrive_warning::onedrive_warning;
 pub use optional_mods_popup::OptionalModsPopup;
 pub use overlay_popup::{
     OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, OverlayPopup, overlay_is_topmost, popup_surface,

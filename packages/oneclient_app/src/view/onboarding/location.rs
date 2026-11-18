@@ -3,7 +3,9 @@ use std::path::PathBuf;
 use freya::prelude::*;
 use freya::router::RouterContext;
 
-use crate::components::IconType;
+use oneclient_core::settings::data_dir::{self, DataDirCheck};
+
+use crate::components::{IconType, onedrive_warning};
 use crate::hooks::{use_dispatch, use_launcher, use_onboarding_selection};
 use crate::i18n::t;
 use crate::routes::Route;
@@ -27,6 +29,7 @@ impl Component for OnboardingLocation {
         let mut warning = use_state(|| None::<String>);
         let mut error = use_state(|| None::<String>);
         let mut waiting = use_state(|| false);
+        let onedrive = use_state(|| None::<DataDirCheck>);
 
         let answered = !launcher.needs_location;
         let settled = answered && launcher.ready;
@@ -65,7 +68,7 @@ impl Component for OnboardingLocation {
 
             spawn_in_window(async move {
                 if !answered {
-                    if let Err(message) = oneclient_core::settings::data_dir::apply(chosen).await {
+                    if let Err(message) = data_dir::apply(chosen).await {
                         error.set(Some(message));
                         waiting.set(false);
                         return;
@@ -147,13 +150,32 @@ impl Component for OnboardingLocation {
                                 t("oneclient.onboarding.location.pick_folder").to_string()
                             }),
                         chosen.is_some(),
-                        move |()| browse(picked, warning, error),
+                        move |()| browse(picked, warning, error, onedrive),
                     )),
             )
         };
 
         if let Some(message) = warning.read().clone() {
             content = content.child(note(message, colors::code_warn()));
+        }
+
+        if let Some(flagged) = onedrive.read().clone() {
+            let mut back = onedrive;
+            let mut proceed = onedrive;
+            content = content.child(onedrive_warning(
+                &flagged.path,
+                move |()| {
+                    back.set(None);
+                    browse(picked, warning, error, onedrive);
+                },
+                move |()| {
+                    if let Some(checked) = proceed.write().take() {
+                        error.set(None);
+                        warning.set(checked.warning);
+                        picked.set(Some(checked.path));
+                    }
+                },
+            ));
         }
 
         let failure = error.read().clone().or_else(|| launcher.error.clone());
@@ -188,6 +210,7 @@ fn browse(
     mut picked: State<Option<PathBuf>>,
     mut warning: State<Option<String>>,
     mut error: State<Option<String>>,
+    mut onedrive: State<Option<DataDirCheck>>,
 ) {
     spawn(async move {
         let Some(handle) = rfd::AsyncFileDialog::new()
@@ -198,7 +221,8 @@ fn browse(
             return;
         };
 
-        match oneclient_core::settings::data_dir::check(handle.path()).await {
+        match data_dir::check(handle.path()).await {
+            Ok(checked) if data_dir::in_onedrive(&checked.path) => onedrive.set(Some(checked)),
             Ok(checked) => {
                 error.set(None);
                 warning.set(checked.warning);

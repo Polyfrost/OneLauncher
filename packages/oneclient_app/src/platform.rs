@@ -427,7 +427,8 @@ pub mod frame {
 
     static RESIZING: AtomicBool = AtomicBool::new(false);
 
-    pub struct FramePlugin;
+    /// `Some` overrides the GPU detection, from `window_frame_fix` in settings.json
+    pub struct FramePlugin(pub Option<bool>);
 
     impl FreyaPlugin for FramePlugin {
         fn plugin_id(&self) -> &'static str {
@@ -457,10 +458,12 @@ pub mod frame {
                 || gpu.contains("NVIDIA")
                 || gpu.contains("Arc")
                 || (gpu.contains(" RX ") && !gpu.contains("Vega"));
-            if composes_frame {
-                decorate(window, hwnd);
-            } else if gpu.contains("Intel") {
-                install(hwnd, gpu);
+            match self.0 {
+                Some(true) => install(hwnd, gpu),
+                Some(false) => decorate(window, hwnd),
+                None if composes_frame => decorate(window, hwnd),
+                None if gpu.contains("Intel") => install(hwnd, gpu),
+                None => {}
             }
         }
     }

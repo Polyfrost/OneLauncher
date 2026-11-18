@@ -175,6 +175,14 @@ pub async fn required_java_major(
     state: &Arc<LauncherState>,
     cluster_id: i64,
 ) -> LauncherResult<Option<u32>> {
+    let info = cluster_version_info(state, cluster_id).await?;
+    Ok(info.java_version.map(|java| java.major_version))
+}
+
+pub(crate) async fn cluster_version_info(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+) -> LauncherResult<VersionInfo> {
     let cluster = state.clusters.get(cluster_id).await?;
     let mc_version = oneclient_common::version::normalize_mc_version_input(&cluster.mc_version);
 
@@ -204,7 +212,7 @@ pub async fn required_java_major(
         .await?
     };
 
-    Ok(info.java_version.map(|java| java.major_version))
+    Ok(info)
 }
 
 pub(crate) async fn resolved_loader_version(
@@ -333,6 +341,7 @@ async fn install_cluster(
             .java
             .prepare(
                 java_major,
+                crate::game::natives::native_java_ok(&version_info),
                 search_for_java,
                 auto_install_java,
                 Some(progress),

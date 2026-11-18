@@ -305,23 +305,39 @@ async fn start(
         state.games.set_natives(cluster_id, dir);
     }
 
-    let java = if let Some(runtime) = state
+    let native_ok = crate::game::natives::native_java_ok(&version_info);
+    let pinned = state
         .java
         .runtime_for_profile(profile.java_path.as_deref())
-        .await?
-    {
-        runtime
-    } else {
-        let major = version_info
-            .java_version
-            .as_ref()
-            .map(|v| v.major_version)
-            .ok_or(GameError::MissingJavaVersion)?;
+        .await?;
+    let java = match pinned {
+        Some(runtime) if !oneclient_java::wrong_arch_for_game(&runtime.os_arch, native_ok) => {
+            runtime
+        }
+        pinned => {
+            let major = match &pinned {
+                Some(runtime) => {
+                    tracing::info!(
+                        cluster_id,
+                        path = %runtime.absolute_path,
+                        os_arch = %runtime.os_arch,
+                        native_ok,
+                        "pinned Java has the wrong architecture for this version"
+                    );
+                    runtime.major
+                }
+                None => version_info
+                    .java_version
+                    .as_ref()
+                    .map(|v| v.major_version)
+                    .ok_or(GameError::MissingJavaVersion)?,
+            };
 
-        state
-            .java
-            .prepare(major, search_for_java, false, None)
-            .await?
+            state
+                .java
+                .prepare(major, native_ok, search_for_java, false, None)
+                .await?
+        }
     };
 
     // Stats every library and the asset tree, the same work `plan_downloads`

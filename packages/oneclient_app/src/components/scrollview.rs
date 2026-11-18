@@ -119,6 +119,7 @@ pub struct ScrollArea {
     reset_key: Option<u64>,
     controller: Option<ScrollController>,
     on_user_scroll: Option<EventHandler<()>>,
+    on_overscroll_bottom: Option<EventHandler<()>>,
     on_ctx: Option<EventHandler<ScrollAreaCtx>>,
     children: Vec<Element>,
     builder: Option<Box<dyn Fn(ScrollAreaCtx) -> Element>>,
@@ -147,6 +148,7 @@ impl ScrollArea {
             reset_key: None,
             controller: None,
             on_user_scroll: None,
+            on_overscroll_bottom: None,
             on_ctx: None,
             children: Vec::new(),
             builder: None,
@@ -216,6 +218,12 @@ impl ScrollArea {
 
     pub fn on_user_scroll(mut self, handler: impl FnMut(()) + 'static) -> Self {
         self.on_user_scroll = Some(EventHandler::new(handler));
+        self
+    }
+
+    /// Wheel scrolled down while already at the bottom
+    pub fn on_overscroll_bottom(mut self, handler: impl FnMut(()) + 'static) -> Self {
+        self.on_overscroll_bottom = Some(EventHandler::new(handler));
         self
     }
 
@@ -465,6 +473,7 @@ impl ScrollArea {
         let stick_bottom = self.stick_bottom;
         let anchor_key = self.anchor_key;
         let on_user_scroll = self.on_user_scroll.clone();
+        let on_overscroll_bottom = self.on_overscroll_bottom.clone();
 
         let internal = use_scroll_controller(ScrollConfig::default);
         let mut controller = self.controller.unwrap_or(internal);
@@ -634,6 +643,13 @@ impl ScrollArea {
                 let (_, cur_y) = controller.into();
                 let current = corrected_scroll(ct_h, vp_h, cur_y as f32);
                 let new_y = scroll_pos_from_wheel(v_delta, ct_h, vp_h, current);
+                let at_bottom = current <= -(ct_h - vp_h).ceil() + 0.5;
+                if v_delta < 0.0
+                    && at_bottom
+                    && let Some(cb) = &on_overscroll_bottom
+                {
+                    cb.call(());
+                }
                 if new_y != cur_y {
                     controller.scroll_to_y(new_y);
                 }

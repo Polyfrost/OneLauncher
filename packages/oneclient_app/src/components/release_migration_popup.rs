@@ -76,6 +76,7 @@ fn blocked_by_route(route: &Route) -> bool {
             | Route::OnboardingLanguage {}
             | Route::OnboardingAccount {}
             | Route::OnboardingPreferences {}
+            | Route::OnboardingBundlePicker {}
             | Route::OnboardingBundles {}
             | Route::OnboardingSummary {}
     )

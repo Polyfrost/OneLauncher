@@ -316,6 +316,60 @@ async fn deleting_a_bundled_mod_leaves_only_the_removal() {
             .map(|o| (o.bundle_name, o.override_type))
             .collect();
     assert_eq!(overrides, [(BUNDLE.to_string(), "removed".to_string())]);
+    assert!(
+        artifact_dao::get_cluster_artifact(&state.services.db, cluster_id, HASH)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        artifact_dao::get_artifact_by_hash(&state.services.db, HASH)
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn deleted_mod_is_not_re_added_by_another_bundle() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![managed_file(true)]))
+        .await
+        .unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        named_manifest(SHARED_BUNDLE, vec![managed_file(true), newly_shipped_file()]),
+    )
+    .await
+    .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    bundle_dao::save_override(
+        &state.services.db,
+        cluster_id,
+        SHARED_BUNDLE,
+        "newcomer",
+        OverrideType::Enabled,
+    )
+    .await
+    .unwrap();
+    let ctx = state.services.content();
+
+    on_user_remove_artifact(cluster_id, HASH, &ctx)
+        .await
+        .unwrap();
+
+    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &ctx)
+        .await
+        .unwrap();
+    let added: Vec<String> = check
+        .additions_available
+        .iter()
+        .map(|a| a.new_file.kind.package_id())
+        .collect();
+    assert!(
+        !added.iter().any(|id| id == PROJECT_ID),
+        "a deleted mod must not come back through another bundle: {added:?}"
+    );
 }
 
 #[tokio::test]
@@ -2799,6 +2853,37 @@ async fn linked(state: &LauncherState, cluster_id: i64, hash: &str) -> bool {
         .await
         .unwrap()
         .is_some()
+}
+
+#[tokio::test]
+async fn launch_does_not_reinstall_a_mod_deleted_while_another_bundle_ships_it() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let body: Vec<u8> = (0..64 * 1024).map(|i| (i % 233) as u8).collect();
+    let sha1 = polyio::sha1_bytes(&body);
+    let size = body.len() as u64;
+    let (url, _) = serve_jar(body, None).await;
+    for name in [BUNDLE, SHARED_BUNDLE] {
+        seed_bundle_with_pack(
+            &state,
+            named_manifest(name, vec![github_mod_served(&url, &sha1, size)]),
+        )
+        .await;
+    }
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+    install_cluster_bundles(cluster_id, state.bundles.as_ref(), None, &ctx, None)
+        .await
+        .unwrap();
+    assert!(linked(&state, cluster_id, &sha1).await);
+
+    on_user_remove_artifact(cluster_id, &sha1, &ctx)
+        .await
+        .unwrap();
+    install_cluster_bundles(cluster_id, state.bundles.as_ref(), None, &ctx, None)
+        .await
+        .unwrap();
+
+    assert!(!linked(&state, cluster_id, &sha1).await);
 }
 
 #[tokio::test]

@@ -868,7 +868,8 @@ pub async fn install_enabled_bundle_files(
                 file,
                 find_override(&overrides, &bundle_name, &package_id),
                 taken,
-            ) && !present.contains(file)
+            ) && find_user_suppression(&overrides, &package_id) != Some(OverrideType::Removed)
+                && !present.contains(file)
         })
         .cloned()
         .collect();
@@ -1309,7 +1310,8 @@ pub async fn on_user_remove_artifact(
     {
         clear_suppressing_overrides(cluster_id, &package_id, ctx).await?;
     }
-    handle_user_artifact_action(cluster_id, hash, ctx, OverrideType::Removed).await
+    handle_user_artifact_action(cluster_id, hash, ctx, OverrideType::Removed).await?;
+    detach_artifact(cluster_id, hash, ctx).await
 }
 
 /// The caller passes the value it wants

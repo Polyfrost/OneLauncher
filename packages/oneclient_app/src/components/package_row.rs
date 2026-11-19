@@ -435,15 +435,19 @@ pub(crate) fn set_enabled_action(
 }
 
 pub(crate) fn bundled_delete_action(item: &PackageEntry, cluster_id: i64) -> Option<ClusterAction> {
-    let hash = item.hash.clone()?;
-    Some(if item.deleted {
-        ClusterAction::SetArtifactEnabled {
+    if item.deleted {
+        return set_enabled_action(
             cluster_id,
-            hash,
-            enabled: true,
-        }
-    } else {
-        ClusterAction::DeleteBundledArtifact { cluster_id, hash }
+            item.hash.as_deref(),
+            item.bundle_name.as_deref(),
+            &item.package_id,
+            item.manifest_default,
+            true,
+        );
+    }
+    Some(ClusterAction::DeleteBundledArtifact {
+        cluster_id,
+        hash: item.hash.clone()?,
     })
 }
 
@@ -595,7 +599,9 @@ pub fn package_context_menu(
         );
     }
 
-    if let Some(on_bundled) = on_bundled.filter(|_| item.in_bundle() && item.installed) {
+    if let Some(on_bundled) =
+        on_bundled.filter(|_| item.in_bundle() && (item.installed || item.deleted) && !item.locked)
+    {
         menu = if item.deleted {
             menu.separator().action(
                 IconType::RefreshCcw02,

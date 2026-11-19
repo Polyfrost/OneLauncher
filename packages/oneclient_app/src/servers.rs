@@ -724,7 +724,12 @@ async fn report_crash(
         }
         Err(_) => Vec::new(),
     };
-    let culprits = missing_client_class_culprits(lines, &jars);
+    let mut culprits = missing_client_class_culprits(lines, &jars);
+    if let Some(jar) = client_mod_culprit(lines, &jars)
+        && !culprits.contains(&jar)
+    {
+        culprits.push(jar);
+    }
     if !booted && server.auto_disable_client_mods && !culprits.is_empty() {
         let attempt = {
             let mut restarts = AUTO_RESTARTS.lock().unwrap();
@@ -742,11 +747,7 @@ async fn report_crash(
         }
         AUTO_RESTARTS.lock().unwrap().remove(&server.id);
     }
-    let culprit = culprits
-        .into_iter()
-        .next()
-        .or_else(|| client_mod_culprit(lines, &jars));
-    match (culprit, actions()) {
+    match (culprits.into_iter().next(), actions()) {
         (Some(file_name), Some(actions)) => actions
             .notify(t("oneclient.servers.client_mod.title"))
             .body(tf(

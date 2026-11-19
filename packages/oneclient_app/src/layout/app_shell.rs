@@ -20,19 +20,21 @@ use oneclient_core::clusters::Cluster;
 use oneclient_core::images::BACKGROUND_IMAGE_EDGE;
 use oneclient_db::models::ClusterId;
 
+use crate::components::upload_mclogs::use_mclogs_feedback;
 use crate::hooks::{
     ActiveClusterState, BROWSER_COMPAT_DEFAULT, BrowserCompatState, BrowserStateStore,
-    BrowserTypeState, DataPackWorldState, settled_or_loading, use_active_cluster_id,
-    use_clusters, use_current_account, use_dispatch, use_game_snapshot, use_launcher,
-    use_provide_active_cluster, use_provide_browser_compat, use_provide_browser_state,
-    use_provide_browser_type, use_provide_datapack_world, use_splash, use_upload_log,
+    BrowserTypeState, DataPackWorldState, settled_or_loading, use_active_cluster_id, use_clusters,
+    use_current_account, use_dispatch, use_game_snapshot, use_launcher, use_provide_active_cluster,
+    use_provide_browser_compat, use_provide_browser_state, use_provide_browser_type,
+    use_provide_datapack_world, use_splash, use_upload_log,
 };
-use crate::components::upload_mclogs::use_mclogs_feedback;
 use crate::theme::{colors, rounded, text_size};
 use crate::utils::home_cluster;
 use oneclient_events::LaunchStage;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::rc::Rc;
+use tokio::sync::Notify;
 
 #[derive(PartialEq)]
 pub struct AppShell;
@@ -353,9 +355,12 @@ impl Component for ParallaxArt {
         let mut target = use_state(|| (0f32, 0f32));
         let mut current = use_state(|| (0f32, 0f32));
 
+        let target_changed = use_hook(|| Rc::new(Notify::new()));
+        let wake_animation = target_changed.clone();
         let mut anim_task = use_state(|| None::<OwnedTaskHandle>);
         use_side_effect_with_deps(&self.parallax_enabled, move |enabled| {
             if *enabled {
+                let target_changed = target_changed.clone();
                 let handle = spawn(async move {
                     let window = Platform::get().current_window();
 
@@ -367,11 +372,14 @@ impl Component for ParallaxArt {
                         let (tx, ty) = *target.peek();
                         let (cx, cy) = *current.peek();
 
-                        if (tx - cx).abs() > SETTLE || (ty - cy).abs() > SETTLE {
-                            current.set((cx + (tx - cx) * STEP, cy + (ty - cy) * STEP));
-                            window.request_redraw();
+                        let is_moving = (tx - cx).abs() > SETTLE || (ty - cy).abs() > SETTLE;
+                        if !is_moving {
+                            target_changed.notified().await;
+                            continue;
                         }
 
+                        current.set((cx + (tx - cx) * STEP, cy + (ty - cy) * STEP));
+                        window.request_redraw();
                         tokio::time::sleep(FRAME).await;
                     }
                 });
@@ -484,6 +492,7 @@ impl Component for ParallaxArt {
                             (loc.x as f32 / sw) * 2.0 - 1.0,
                             (loc.y as f32 / sh) * 2.0 - 1.0,
                         ));
+                        wake_animation.notify_one();
                     }
                 })
             })

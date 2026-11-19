@@ -1151,6 +1151,7 @@ impl Component for ContentBox {
                     &item,
                     cluster_id,
                     package_type,
+                    content_type,
                     on_delete,
                     on_bundled,
                     (move |()| selection.toggle(key.clone())).into(),

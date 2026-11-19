@@ -1,6 +1,6 @@
 use freya::prelude::*;
 use freya::router::RouterContext;
-use oneclient_content::packages::ProviderId;
+use oneclient_content::packages::{ContentType, ProviderId};
 use oneclient_core::{BisectRole, SeenStatus};
 
 use crate::components::{ContextMenu, Icon, IconType, toggle_controlled};
@@ -65,6 +65,7 @@ pub struct PackageEntry {
     pub github_url: Option<String>,
     pub name: String,
     pub file_name: String,
+    pub cluster_file_name: String,
     pub author: String,
     pub version: Option<String>,
     pub description: String,
@@ -540,6 +541,7 @@ pub fn package_context_menu(
     item: &PackageEntry,
     cluster_id: i64,
     package_type: &'static str,
+    content_type: ContentType,
     on_delete: EventHandler<(String, String)>,
     on_bundled: Option<EventHandler<()>>,
     on_select: EventHandler<()>,
@@ -579,11 +581,14 @@ pub fn package_context_menu(
         );
     }
 
-    if let Some(hash) = item.hash.clone() {
+    if item.hash.is_some() {
+        let file_name = item.cluster_file_name.clone();
         menu = menu.action(
             IconType::Folder,
             t("oneclient.components.package_row.view_in_folder"),
-            EventHandler::new_current(move |()| reveal_in_store(hash.clone())),
+            EventHandler::new_current(move |()| {
+                reveal_in_cluster(cluster_id, content_type, file_name.clone())
+            }),
         );
     }
 
@@ -983,26 +988,36 @@ impl Component for KebabButton {
     }
 }
 
-fn reveal_in_store(hash: String) {
+fn reveal_in_cluster(cluster_id: i64, content_type: ContentType, file_name: String) {
     spawn(async move {
         let Ok(state) = crate::launcher::state() else {
             return;
         };
-        let row = match oneclient_db::dao::artifact::get_artifact_by_hash(&state.services.db, &hash)
-            .await
-        {
-            Ok(Some(row)) => row,
-            Ok(None) => return,
+        let cluster = match state.clusters.get(cluster_id).await {
+            Ok(cluster) => cluster,
             Err(err) => {
-                tracing::warn!(%err, "failed to look up artifact for reveal");
+                tracing::warn!(%err, "failed to look up cluster for reveal");
                 return;
             }
         };
-        let Ok(path) = oneclient_content::packages::store::artifact_absolute_path(&row.path) else {
+        let dir = if content_type == ContentType::Mod {
+            oneclient_common::paths::cluster_mods_dir(&cluster.folder_name).ok()
+        } else {
+            cluster
+                .game_dir()
+                .ok()
+                .map(|dir| dir.join(content_type.folder_name()))
+        };
+        let Some(dir) = dir else {
             return;
         };
-        if let Some(dir) = path.parent() {
-            crate::platform::open_path(&dir.to_string_lossy());
+        let file = [file_name.clone(), format!("{file_name}.disabled")]
+            .into_iter()
+            .map(|name| dir.join(name))
+            .find(|path| path.exists());
+        match file {
+            Some(file) => crate::platform::reveal_file(file),
+            None => crate::platform::open_path(&dir.to_string_lossy()),
         }
     });
 }

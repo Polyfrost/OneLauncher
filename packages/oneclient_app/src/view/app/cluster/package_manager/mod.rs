@@ -242,7 +242,7 @@ pub fn bundle_packages(
                 opted_in,
             );
             row.advanced = advanced;
-            row.deleted = installed_info.is_some_and(|info| !info.enabled)
+            row.deleted = installed_info.is_none_or(|info| !info.enabled)
                 && removed.contains(row.package_id.as_str());
             row.github_url = file.github_repo_url();
             rows.push(row);
@@ -829,7 +829,7 @@ impl Component for PackageManager {
         let bundled_deletable: Vec<PackageEntry> = chosen
             .iter()
             .filter(|_| content_type == ContentType::Mod)
-            .filter(|p| p.installed && p.in_bundle() && !p.deleted)
+            .filter(|p| p.installed && p.in_bundle() && !p.deleted && !p.locked)
             .cloned()
             .collect();
 
@@ -1127,12 +1127,14 @@ mod tests {
             vec![
                 file("deleted", true, false),
                 file("turned-off", false, false),
+                file("gone", true, false),
             ],
         );
         let declined = bundle("Declined", false, vec![file("turned-off", true, false)]);
         let name = |b: &BundleWithUpdateStatus| b.archive.manifest.name.clone();
         let overrides = HashMap::from([
             ((name(&taken), "deleted".to_string()), "removed".to_string()),
+            ((name(&taken), "gone".to_string()), "removed".to_string()),
             (
                 (name(&taken), "turned-off".to_string()),
                 "disabled".to_string(),
@@ -1155,7 +1157,7 @@ mod tests {
             .filter(|p| Tab::Deleted.matches(p))
             .map(|p| p.package_id.as_str())
             .collect();
-        assert_eq!(deleted, ["deleted"]);
+        assert_eq!(deleted, ["deleted", "gone"]);
         assert!(
             rows.iter()
                 .any(|p| p.package_id == "turned-off" && Tab::All.matches(p))

@@ -503,6 +503,10 @@ async fn check_bundle_updates_inner(
                 continue;
             }
 
+            if find_user_suppression(overrides, &file_id) == Some(OverrideType::Removed) {
+                continue;
+            }
+
             if suppressed && user_override.is_none() {
                 continue;
             }

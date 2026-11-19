@@ -850,7 +850,7 @@ impl Component for PackageManager {
         let bundled_deletable: Vec<PackageEntry> = chosen
             .iter()
             .filter(|_| content_type == ContentType::Mod)
-            .filter(|p| p.in_bundle() && p.opted_in && !p.deleted)
+            .filter(|p| p.in_bundle() && p.opted_in && !p.deleted && !p.locked)
             .cloned()
             .collect();
 

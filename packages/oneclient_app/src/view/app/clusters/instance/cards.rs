@@ -77,23 +77,23 @@ impl Component for SelectCard {
     }
 }
 
-pub fn loader_mark(choice: LoaderChoice, selected: bool, size: f32) -> Option<Element> {
-    let path = choice.mark();
-    let drawn = AppAssets::get(path)
-        .is_some()
-        .then(|| AssetImage::new(path, size).into_element());
+pub fn asset_mark(path: &'static str, selected: bool, size: f32) -> Option<Element> {
+    AppAssets::get(path)?;
+    Some(
+        rect()
+            .width(Size::px(size))
+            .height(Size::px(size))
+            .corner_radius(rounded(5.))
+            .overflow(Overflow::Clip)
+            .opacity(if selected { 1.0 } else { 0.7 })
+            .child(AssetImage::new(path, size))
+            .into_element(),
+    )
+}
 
-    if let Some(drawn) = drawn {
-        return Some(
-            rect()
-                .width(Size::px(size))
-                .height(Size::px(size))
-                .corner_radius(rounded(5.))
-                .overflow(Overflow::Clip)
-                .opacity(if selected { 1.0 } else { 0.7 })
-                .child(drawn)
-                .into_element(),
-        );
+pub fn loader_mark(choice: LoaderChoice, selected: bool, size: f32) -> Option<Element> {
+    if let Some(drawn) = asset_mark(choice.mark(), selected, size) {
+        return Some(drawn);
     }
 
     let color = if selected {

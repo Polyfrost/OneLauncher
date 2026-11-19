@@ -259,7 +259,7 @@ fn use_bundle_context(
         match file.kind.metadata_provider() {
             ProviderId::Modrinth => modrinth_ids.push(file.kind.package_id()),
             ProviderId::CurseForge => curseforge_ids.push(file.kind.package_id()),
-            ProviderId::Local => {}
+            ProviderId::Local | ProviderId::Hangar => {}
         }
     }
 

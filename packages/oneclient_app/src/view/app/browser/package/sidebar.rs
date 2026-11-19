@@ -157,6 +157,7 @@ pub(super) fn sidebar(
                 })
                 .into_element(),
         })
+        .maybe_child(server_toggle(&installer, installed.as_ref()))
         .maybe_child(import_prompt.map(|mut prompt| {
             Button::new()
                 .secondary()
@@ -176,6 +177,41 @@ pub(super) fn sidebar(
             el.child(links_card(&project.links, confirm))
         })
         .into_element()
+}
+
+fn server_toggle(installer: &Installer, installed: Option<&Installed>) -> Option<Element> {
+    let server_id = installer.server_id.clone()?;
+    let installed = installed?;
+    let any_enabled = installed.versions.iter().any(|v| v.enabled);
+    let files: Vec<String> = installed
+        .versions
+        .iter()
+        .filter_map(|v| v.hash.clone())
+        .collect();
+    Some(
+        Button::new()
+            .secondary()
+            .width(Size::fill())
+            .on_press(move |_| {
+                for file in &files {
+                    crate::servers::set_mod_enabled(server_id.clone(), file.clone(), !any_enabled);
+                }
+            })
+            .child(
+                Icon::new(if any_enabled {
+                    IconType::XClose
+                } else {
+                    IconType::CheckCircle
+                })
+                .size(14.),
+            )
+            .text(if any_enabled {
+                t("oneclient.servers.browser.disable")
+            } else {
+                t("oneclient.servers.browser.enable")
+            })
+            .into_element(),
+    )
 }
 
 /// Plain text when the provider has no page so a local package doesn't look clickable

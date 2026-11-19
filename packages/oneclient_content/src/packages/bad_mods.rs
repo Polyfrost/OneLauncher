@@ -75,7 +75,7 @@ impl ProjectIds {
         match provider {
             ProviderId::Modrinth => self.modrinth.as_deref(),
             ProviderId::CurseForge => self.curseforge.as_deref(),
-            ProviderId::Local => None,
+            ProviderId::Local | ProviderId::Hangar => None,
         }
     }
 

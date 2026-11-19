@@ -24,14 +24,14 @@ use super::folder_list::confirm_dialog;
 
 mod views;
 use views::{
-    AdvancedSection, Bulk, ContentBox, ContentKind, EnabledFilter, HiddenFilter, SortMode,
-    toolbar_bar,
+    AdvancedSection, Bulk, ContentBox, ContentKind, HiddenFilter, toolbar_bar,
 };
+pub(crate) use views::{EnabledFilter, SortMode};
 pub(super) use views::{copy_list_button, empty_hint, empty_shell, empty_title, notice_bar};
 
 const CARD_H: f32 = 84.;
 pub(super) const CARD_SPACING: f32 = 8.;
-pub(super) const GRID_MAX_COLS: usize = 5;
+pub(crate) const GRID_MAX_COLS: usize = 5;
 
 pub type PackageMetaMap = HashMap<(ProviderId, String), CachedPackageMeta>;
 
@@ -407,7 +407,7 @@ fn package_url(item: &PackageEntry, content_type: ContentType) -> Option<String>
             "https://www.curseforge.com/projects/{}",
             item.package_id
         )),
-        ProviderId::Local => None,
+        ProviderId::Local | ProviderId::Hangar => None,
     }
 }
 

@@ -679,6 +679,23 @@ async fn candidate_files(locations: &[PathBuf]) -> Vec<PathBuf> {
 }
 
 #[tracing::instrument(level = "debug", skip(found, ctx), fields(files = found.len()))]
+pub async fn store_blocked_files(
+    found: &[(PathBuf, BlockedFile)],
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    for (path, file) in found {
+        let row = store::cache_local_file(path, file.content_type, ctx).await?;
+        if row.hash != file.sha1 {
+            return Err(PackageError::HashMismatch {
+                expected: file.sha1.clone(),
+                actual: row.hash,
+            }
+            .into());
+        }
+    }
+    Ok(())
+}
+
 pub async fn import_blocked_files(
     cluster_id: i64,
     bundle_name: &str,

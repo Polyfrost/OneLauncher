@@ -60,6 +60,7 @@ impl Component for RootLayout {
             .child(IncompatibleInstallPopup)
             .child(ReleaseMigrationPopup)
             .child(InviteJoinPopup)
+            .child(crate::view::app::servers::ServerShutdownOverlay)
             .child(StatusBar)
             .child(TooltipHost)
             .child(SplashCurtain)

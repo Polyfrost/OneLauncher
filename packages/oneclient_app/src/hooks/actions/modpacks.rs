@@ -5,7 +5,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use freya::prelude::spawn_in_window;
 use oneclient_content::modpacks::{
     BlockedFile, MODPACK_BUNDLE_NAME, ModpackInstallReport, find_blocked_downloads,
-    import_blocked_files,
+    import_blocked_files, store_blocked_files,
 };
 use oneclient_content::packages::ResolvedAlternative;
 use oneclient_core::clusters::{
@@ -831,6 +831,7 @@ impl Actions {
                     if !report.blocked.is_empty() {
                         actions.open_blocked_downloads(BlockedDownloads {
                             cluster_id: cluster.id,
+                            server_id: None,
                             cluster_name: cluster.name.clone(),
                             bundle_name,
                             files: report.blocked,
@@ -979,6 +980,7 @@ impl Actions {
     pub fn scan_blocked_downloads(
         &self,
         cluster_id: ClusterId,
+        server_id: Option<String>,
         bundle_name: String,
         locations: Vec<PathBuf>,
         files: Vec<BlockedFile>,
@@ -989,19 +991,28 @@ impl Actions {
 
             let imported = off_ui({
                 let state = state.clone();
+                let server_id = server_id.clone();
                 async move {
                     let found = find_blocked_downloads(&locations, &files).await;
                     if found.is_empty() {
                         return Ok(Vec::new());
                     }
-                    import_blocked_files(
-                        cluster_id,
-                        &bundle_name,
-                        &found,
-                        &state.services.content(),
+                    let ctx = state.services.content();
+                    match &server_id {
+                        Some(server_id) => {
+                            store_blocked_files(&found, &ctx).await?;
+                            let dir = oneclient_core::servers::load_server(server_id)
+                                .await?
+                                .dir()?;
+                            oneclient_core::servers::add_blocked_files(&dir, &found).await?;
+                        }
+                        None => {
+                            import_blocked_files(cluster_id, &bundle_name, &found, &ctx).await?;
+                        }
+                    }
+                    Ok::<_, oneclient_core::LauncherError>(
+                        found.into_iter().map(|(_, file)| file).collect::<Vec<_>>(),
                     )
-                    .await
-                    .map(|_| found.into_iter().map(|(_, file)| file).collect::<Vec<_>>())
                 }
             })
             .await;
@@ -1012,9 +1023,12 @@ impl Actions {
                     let sha1s: Vec<String> = found.iter().map(|file| file.sha1.clone()).collect();
                     actions.with_engine(|app| {
                         app.notifications
-                            .resolve_blocked_downloads(cluster_id, &sha1s);
+                            .resolve_blocked_downloads(cluster_id, server_id.as_deref(), &sha1s);
                     });
-                    crate::hooks::invalidate_cluster_queries().await;
+                    match &server_id {
+                        Some(server_id) => crate::hooks::invalidate_server(server_id).await,
+                        None => crate::hooks::invalidate_cluster_queries().await,
+                    }
                 }
                 Err(err) => {
                     tracing::warn!(cluster_id, error = %err, "could not add a manual download");

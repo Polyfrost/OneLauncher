@@ -388,6 +388,7 @@ impl Actions {
                             if !report.blocked.is_empty() {
                                 actions.open_blocked_downloads(BlockedDownloads {
                                     cluster_id: report.cluster_id,
+                                    server_id: None,
                                     cluster_name: report.cluster_name.clone(),
                                     files: report.blocked.clone(),
                                     bundle_name: oneclient_content::modpacks::MODPACK_BUNDLE_NAME

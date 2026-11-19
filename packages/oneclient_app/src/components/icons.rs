@@ -22,6 +22,7 @@ impl Icon {
         let color = match icon {
             IconType::Modrinth => Some(colors::MODRINTH_COLOR),
             IconType::Curseforge => Some(colors::CURSEFORGE_COLOR),
+            IconType::Hangar => Some(colors::HANGAR_COLOR),
             _ => None,
         };
 
@@ -88,6 +89,7 @@ impl From<ProviderId> for IconType {
         match val {
             ProviderId::Modrinth => IconType::Modrinth,
             ProviderId::CurseForge => IconType::Curseforge,
+            ProviderId::Hangar => IconType::Hangar,
             ProviderId::Local => IconType::Folder,
         }
     }
@@ -134,6 +136,7 @@ pub enum IconType {
     FolderDownload,
     Github,
     Globe01,
+    Hangar,
     HelpCircle,
     IconLogo,
     InfoCircle,
@@ -169,6 +172,7 @@ pub enum IconType {
     Rocket02,
     SearchMd,
     Send01,
+    Server01,
     Settings01,
     Settings02,
     Settings04,

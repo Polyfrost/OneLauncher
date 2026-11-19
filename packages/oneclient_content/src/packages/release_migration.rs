@@ -969,6 +969,7 @@ mod tests {
                 primary: true,
                 size: 1,
                 fingerprint: None,
+                sha256: None,
             }],
             dependencies: Vec::new(),
         }
@@ -1032,11 +1033,13 @@ mod tests {
             project_id: Some("fabric-api".into()),
             version_id: Some("v1".into()),
             kind: DependencyKind::Required,
+            name: None,
         };
         let loose = VersionDependency {
             project_id: Some("fabric-api".into()),
             version_id: None,
             kind: DependencyKind::Required,
+            name: None,
         };
         assert_eq!(dependency_key(&pinned).as_deref(), Some("version:v1"));
         assert_eq!(

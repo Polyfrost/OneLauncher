@@ -11,7 +11,7 @@ use crate::{
     hooks::{
         settled_or_loading, try_default_account, use_active_cluster_id, use_browser_type,
         use_chat_allowed, use_chat_unread, use_clusters, use_current_account, use_dispatch,
-        use_notifications_snapshot,
+        use_live_server_count, use_notifications_snapshot,
     },
     i18n::t,
     theme,
@@ -291,6 +291,7 @@ impl Component for NavbarRight {
         let unread = use_notifications_snapshot().unread_count();
         let unread_chats = use_chat_unread();
         let chat_allowed = use_chat_allowed();
+        let live_servers = use_live_server_count();
 
         let has_account = settled_or_loading(&current_account)
             .is_none_or(|account| account.is_some_and(|account| account.is_microsoft()));
@@ -323,6 +324,18 @@ impl Component for NavbarRight {
             .main_align(Alignment::End)
             .cross_align(Alignment::Center)
             .spacing(8.)
+            .child(
+                super::navbar_button(foreground)
+                    .tooltip(t("oneclient.components.navbar.servers"))
+                    .child(count_badge(
+                        IconType::Server01,
+                        live_servers,
+                        theme::colors::brand(),
+                    ))
+                    .on_press(|_| {
+                        let _ = RouterContext::get().push(Route::Servers {});
+                    }),
+            )
             .maybe_child(chat_allowed.then(|| {
                 super::navbar_button(foreground)
                     .tooltip(t("oneclient.components.navbar.social"))
@@ -333,7 +346,7 @@ impl Component for NavbarRight {
             .child(
                 super::navbar_button(foreground)
                     .tooltip(t("oneclient.components.navbar.notifications"))
-                    .child(notification_bell(unread))
+                    .child(count_badge(IconType::Bell01, unread, theme::colors::danger()))
                     .on_press(open_notifications),
             )
             .child(
@@ -397,26 +410,26 @@ fn social_icon(unread: bool) -> impl IntoElement {
         }))
 }
 
-fn notification_bell(unread: usize) -> impl IntoElement {
+fn count_badge(icon: IconType, count: usize, color: Color) -> impl IntoElement {
     rect()
         .width(Size::px(20.))
         .height(Size::px(20.))
-        .child(Icon::new(IconType::Bell01).size(20.))
-        .maybe_child((unread > 0).then(|| {
+        .child(Icon::new(icon).size(20.))
+        .maybe_child((count > 0).then(|| {
             rect()
                 .position(Position::new_absolute().top(-4.).right(-4.))
                 .width(Size::px(16.))
                 .height(Size::px(16.))
                 .corner_radius(rounded(8.))
-                .background(theme::colors::danger())
+                .background(color)
                 .layer(Layer::Relative(3))
                 .center()
                 .child(
                     label()
-                        .text(if unread > 9 {
+                        .text(if count > 9 {
                             "9+".to_string()
                         } else {
-                            unread.to_string()
+                            count.to_string()
                         })
                         .font_size(text_size(10.))
                         .font_weight(FontWeight::SEMI_BOLD)

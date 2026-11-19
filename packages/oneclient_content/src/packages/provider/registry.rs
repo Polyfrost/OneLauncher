@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::{CurseForgeProvider, ModrinthProvider, PackageProvider};
+use super::{CurseForgeProvider, HangarProvider, ModrinthProvider, PackageProvider};
 use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
 use crate::packages::error::PackageError;
@@ -22,6 +22,7 @@ impl PackageProviderRegistry {
         };
         registry.register(Arc::new(ModrinthProvider));
         registry.register(Arc::new(CurseForgeProvider));
+        registry.register(Arc::new(HangarProvider));
         registry
     }
 

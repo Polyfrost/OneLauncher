@@ -228,7 +228,9 @@ impl Component for ClusterShell {
                     .height(Size::flex(1.0))
                     .overflow(Overflow::Clip)
                     .padding(Gaps::new(0., SIDE_PADDING, SIDE_PADDING, SIDE_PADDING))
-                    .child(AnimatedRouter::<Route>::new(ClusterContentOutlet)),
+                    .child(AnimatedRouter::<Route>::new(TabContentOutlet {
+                        tab_index: cluster_tab_index,
+                    })),
             )
             .maybe_child(bisecting.then(|| {
                 crate::view::app::cluster::BisectQuestion {
@@ -246,17 +248,22 @@ impl Component for ClusterShell {
     }
 }
 
-fn tab_dir(from: &Route, to: &Route) -> f32 {
-    match (route_cluster(from), route_cluster(to)) {
-        (Some((_, a)), Some((_, b))) => (b.index() - a.index()).signum() as f32,
-        _ => 0.,
+fn cluster_tab_index(route: &Route) -> Option<i32> {
+    route_cluster(route).map(|(_, tab)| tab.index())
+}
+
+/// Slides tab content toward the side of the tab that was picked
+pub(crate) struct TabContentOutlet {
+    pub tab_index: fn(&Route) -> Option<i32>,
+}
+
+impl PartialEq for TabContentOutlet {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::fn_addr_eq(self.tab_index, other.tab_index)
     }
 }
 
-#[derive(PartialEq)]
-struct ClusterContentOutlet;
-
-impl Component for ClusterContentOutlet {
+impl Component for TabContentOutlet {
     fn render(&self) -> impl IntoElement {
         let mut router = use_animated_router::<Route>();
 
@@ -269,7 +276,13 @@ impl Component for ClusterContentOutlet {
         let mut last_to = use_state(|| None::<Route>);
 
         let (dir, to, is_transition) = match &*router.read() {
-            AnimatedRouterContext::FromTo(from, to) => (tab_dir(from, to), to.clone(), true),
+            AnimatedRouterContext::FromTo(from, to) => {
+                let dir = match ((self.tab_index)(from), (self.tab_index)(to)) {
+                    (Some(a), Some(b)) => (b - a).signum() as f32,
+                    _ => 0.,
+                };
+                (dir, to.clone(), true)
+            }
             AnimatedRouterContext::In(to) => (0., to.clone(), false),
         };
 

@@ -1,4 +1,7 @@
-use std::time::Duration;
+use std::cell::Cell;
+use std::rc::Rc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 use freya::prelude::*;
 
@@ -25,4 +28,53 @@ where
     });
 
     debounced
+}
+
+pub fn use_debounced_save<T>(value: T, delay: Duration, save: impl Fn(T) + 'static)
+where
+    T: Clone + PartialEq + 'static,
+{
+    let pending = use_hook(|| Rc::new(Cell::new(0u64)));
+    let first = use_hook(|| Rc::new(Cell::new(true)));
+    let save = use_hook(|| Rc::new(save));
+    use_side_effect_with_deps(&value, move |value| {
+        if first.replace(false) {
+            return;
+        }
+        let this = pending.get() + 1;
+        pending.set(this);
+        let (pending, save, value) = (pending.clone(), save.clone(), value.clone());
+        let saving = SaveGuard::new();
+        spawn_in_window(async move {
+            tokio::time::sleep(delay).await;
+            if pending.get() == this {
+                save(value);
+            }
+            drop(saving);
+        });
+    });
+}
+
+static SAVES: AtomicUsize = AtomicUsize::new(0);
+
+pub struct SaveGuard(());
+
+impl SaveGuard {
+    pub fn new() -> Self {
+        SAVES.fetch_add(1, Ordering::SeqCst);
+        Self(())
+    }
+}
+
+impl Drop for SaveGuard {
+    fn drop(&mut self) {
+        SAVES.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+pub async fn settle_saves(limit: Duration) {
+    let started = Instant::now();
+    while SAVES.load(Ordering::SeqCst) > 0 && started.elapsed() < limit {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
 }

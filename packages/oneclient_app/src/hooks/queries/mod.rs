@@ -18,9 +18,9 @@ mod cluster_content;
 mod clusters;
 mod disable_warnings;
 mod external_launchers;
-mod import_screening;
 mod folder_watch;
 mod image;
+mod import_screening;
 mod java;
 mod logs;
 mod migration;
@@ -29,6 +29,7 @@ mod package_updates;
 mod packages;
 mod player_profile;
 mod screenshots;
+mod servers;
 mod settings_profiles;
 mod skin;
 mod state;
@@ -108,6 +109,12 @@ pub use player_profile::use_player_profile;
 pub use screenshots::{
     ScreenshotAction, UseScreenshotAction, invalidate_screenshots_queries, try_cluster_screenshots,
     use_cluster_screenshots, use_local_image, use_screenshot_action, use_screenshot_folder_watch,
+};
+pub use servers::{
+    ServerFiles, ServerIcon, ServerRun, invalidate_server, invalidate_server_settings, use_server,
+    use_platform_available, use_plugin_versions, use_server_files, use_server_mod_updates,
+    use_server_log, use_server_mods, use_server_run,
+    use_servers,
 };
 pub use settings_profiles::{
     try_game_profile, use_cluster_profile, use_cluster_settings, use_game_profile,

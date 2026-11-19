@@ -109,17 +109,20 @@ pub enum ProviderId {
     Modrinth = 0,
     CurseForge = 1,
     Local = 2,
+    Hangar = 3,
 }
 
 impl ProviderId {
     pub const REMOTE_PROVIDERS: &[Self] = &[Self::Modrinth, Self::CurseForge];
     pub const REMOTE_PROVIDERS_STR: &[&str] = &["Modrinth", "CurseForge"];
+    pub const PLUGIN_PROVIDERS: &[Self] = &[Self::Modrinth, Self::Hangar];
 
     pub fn dir_name(self) -> &'static str {
         match self {
             Self::Modrinth => "modrinth",
             Self::CurseForge => "curseforge",
             Self::Local => "local",
+            Self::Hangar => "hangar",
         }
     }
 
@@ -128,6 +131,7 @@ impl ProviderId {
             Self::Modrinth => "https://modrinth.com/",
             Self::CurseForge => "https://www.curseforge.com/",
             Self::Local => "",
+            Self::Hangar => "https://hangar.papermc.io/",
         }
     }
 

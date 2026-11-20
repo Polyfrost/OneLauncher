@@ -950,6 +950,7 @@ pub async fn install_shared_content(
     progress: Option<&GroupedProgressSession>,
     ctx: &ContentCtx,
 ) -> ContentResult<ModpackInstallReport> {
+    let _mutation = crate::packages::package_mutation_guard().await;
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
     let linked_before: HashSet<String> = PackageStore::list_linked_artifacts(cluster_id, ctx)
         .await?

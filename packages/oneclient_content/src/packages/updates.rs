@@ -396,6 +396,7 @@ pub async fn apply_browser_package_update(
     child: Option<&GroupedProgressChild>,
     ctx: &ContentCtx,
 ) -> ContentResult<String> {
+    let _mutation = crate::packages::package_mutation_guard().await;
     // Never touch anything a bundle owns however this was called
     if bundle_dao::get_bundle_tracked(&ctx.db, update.cluster_id, &update.hash)
         .await?

@@ -2,6 +2,7 @@ mod download;
 mod gc;
 mod link;
 pub mod manifest;
+pub mod undo;
 mod paths;
 
 pub(crate) use download::store_release_dependencies;
@@ -115,6 +116,27 @@ impl PackageStore {
         child: Option<&GroupedProgressChild>,
         ctx: &ContentCtx,
     ) -> ContentResult<(ArtifactRow, LiveSync)> {
+        Self::install_to_cluster_recording_link(
+            provider_id, project, version, cluster_id, skip_compatibility, force_download, child, ctx,
+        )
+        .await
+        .map(|(artifact, live, _)| (artifact, live))
+    }
+
+    /// Returns the new link's timestamp when this install created it. Upserts of
+    /// existing links return no timestamp, so an Undo cannot claim them.
+    #[allow(clippy::too_many_arguments)]
+    #[tracing::instrument(skip(project, version, child, ctx), fields(project_id = %project.id, version_id = %version.version_id))]
+    pub async fn install_to_cluster_recording_link(
+        provider_id: ProviderId,
+        project: &ProjectDetail,
+        version: &VersionDetail,
+        cluster_id: i64,
+        skip_compatibility: bool,
+        force_download: bool,
+        child: Option<&GroupedProgressChild>,
+        ctx: &ContentCtx,
+    ) -> ContentResult<(ArtifactRow, LiveSync, Option<String>)> {
         tracing::info!("installing package to cluster");
         let cluster = Self::get_cluster(cluster_id, ctx).await?;
 
@@ -126,7 +148,7 @@ impl PackageStore {
             Self::download_and_cache(provider_id, project, version, force_download, child, ctx)
                 .await?;
 
-        let enabled = Self::link_artifact(&artifact, &cluster, None, ctx).await?;
+        let (enabled, added_at) = Self::link_artifact_recording_addition(&artifact, &cluster, None, ctx).await?;
 
         Self::replace_other_versions(cluster_id, provider_id, &project.id, &artifact.hash, ctx)
             .await?;
@@ -137,7 +159,7 @@ impl PackageStore {
             LiveSync::Skipped
         };
 
-        Ok((artifact, live))
+        Ok((artifact, live, added_at))
     }
 
     /// Bundle-owned copies are stepped over
@@ -228,15 +250,26 @@ impl PackageStore {
         cluster_file_name: Option<&str>,
         ctx: &ContentCtx,
     ) -> ContentResult<bool> {
+        Self::link_artifact_recording_addition(artifact, cluster, cluster_file_name, ctx)
+            .await
+            .map(|(enabled, _)| enabled)
+    }
+
+    async fn link_artifact_recording_addition(
+        artifact: &ArtifactRow,
+        cluster: &ClusterRow,
+        cluster_file_name: Option<&str>,
+        ctx: &ContentCtx,
+    ) -> ContentResult<(bool, Option<String>)> {
         let content_type = ContentType::from_repr(artifact.content_type as u8);
         ensure_mods_unlocked(cluster.id, content_type, ctx).await?;
 
         let name = cluster_file_name.unwrap_or(&artifact.file_name);
 
-        let link =
-            artifact_dao::link_cluster_artifact(&ctx.db, cluster.id, &artifact.hash, name).await?;
+        let (link, added_at) =
+            artifact_dao::link_cluster_artifact_recording_addition(&ctx.db, cluster.id, &artifact.hash, name).await?;
 
-        Ok(link.enabled != 0)
+        Ok((link.enabled != 0, added_at))
     }
 
     #[tracing::instrument(level = "debug", skip(artifact, ctx), fields(hash = %artifact.hash))]

@@ -174,7 +174,7 @@ pub async fn materialized_root(
         .map(|dir| (dir, manifest::MANIFEST_NAME))
 }
 
-async fn session_owns(cluster: &ClusterRow, db: &DbPool) -> bool {
+pub(super) async fn session_owns(cluster: &ClusterRow, db: &DbPool) -> bool {
     let Ok(game_dir) = paths::cluster_game_dir(&cluster.folder_name, cluster.is_isolated()) else {
         return false;
     };

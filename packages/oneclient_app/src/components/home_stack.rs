@@ -1,0 +1,60 @@
+use freya::prelude::*;
+
+/// Home renders the home page and the versions page as one vertical stack. This state
+/// lives on `AppShell` so the navbar and the outlet backdrop can follow it too, and so
+/// coming back to Home (e.g. from a cluster page) returns to whichever page you left.
+#[derive(Clone, Copy)]
+pub struct HomeStack {
+    /// `true` = settled on (or heading to) the versions page
+    pub open: State<bool>,
+    /// 0 = home page in view, 1 = versions page in view; updated every frame of a slide
+    pub progress: State<f32>,
+    /// `progress` past the halfway mark; changes rarely, so cheap for the navbar to watch
+    pub on_versions: State<bool>,
+}
+
+impl HomeStack {
+    pub fn set_open(self, open: bool) {
+        let mut state = self.open;
+        if *state.peek() != open {
+            state.set(open);
+        }
+    }
+
+    pub fn publish_progress(self, value: f32) {
+        let mut progress = self.progress;
+        if (*progress.peek() - value).abs() > f32::EPSILON {
+            progress.set(value);
+        }
+        let mut on_versions = self.on_versions;
+        let past_half = value > 0.5;
+        if *on_versions.peek() != past_half {
+            on_versions.set(past_half);
+        }
+    }
+}
+
+pub fn use_provide_home_stack() {
+    let open = use_state(|| false);
+    let progress = use_state(|| 0f32);
+    let on_versions = use_state(|| false);
+    use_hook(|| {
+        provide_context(HomeStack {
+            open,
+            progress,
+            on_versions,
+        })
+    });
+}
+
+pub fn use_home_stack() -> Option<HomeStack> {
+    use_hook(try_consume_context::<HomeStack>)
+}
+
+/// When present in context, `ScrollArea` hands wheel input up to the home stack:
+/// always while `pass_all` is set (the stack is mid-scroll), and otherwise once the
+/// area is pinned against an edge, so scrolling flows between the list and the stack.
+#[derive(Clone, Copy)]
+pub struct WheelEdgeChain {
+    pub pass_all: State<bool>,
+}

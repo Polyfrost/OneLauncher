@@ -530,23 +530,43 @@ fn is_nested_jar(name: &str) -> bool {
 
 #[tracing::instrument(level = "debug", fields(jar = %jar.display()))]
 pub async fn read_jar_dependencies(jar: &Path) -> JarDependencies {
+    read_dependencies(jar, false).await.unwrap_or_default()
+}
+
+/// Returns no dependency proof when nested jars or unfamiliar metadata could
+/// declare additional requirements or mod IDs.
+pub(crate) async fn verified_jar_dependencies(jar: &Path) -> Option<JarDependencies> {
+    read_dependencies(jar, true).await
+}
+
+async fn read_dependencies(jar: &Path, verify: bool) -> Option<JarDependencies> {
+    const JARJAR_METADATA: &str = "META-INF/jarjar/metadata.json";
     let entries = match polyio::read_zip_file_entries(jar, |name| {
-        MANIFESTS.contains(&name) || is_nested_jar(name)
+        MANIFESTS.contains(&name) || is_nested_jar(name) || (verify && name == JARJAR_METADATA)
     })
     .await
     {
         Ok(entries) => entries,
         Err(err) => {
             tracing::debug!("could not read {}: {err}", jar.display());
-            return JarDependencies::default();
+            return None;
         }
     };
 
     let mut out = JarDependencies::default();
     for (name, bytes) in &entries {
-        if is_nested_jar(name) {
+        if is_nested_jar(name) || name == JARJAR_METADATA {
+            if verify {
+                return None;
+            }
             out.bundled.extend(nested_provides(bytes).await);
             continue;
+        }
+        if verify {
+            let text = std::str::from_utf8(bytes).ok()?;
+            if !manifest_can_verify_dependencies(name, text) {
+                return None;
+            }
         }
         let Ok(text) = std::str::from_utf8(bytes) else {
             continue;
@@ -554,6 +574,8 @@ pub async fn read_jar_dependencies(jar: &Path) -> JarDependencies {
         if let Some(parsed) = parse_dependencies(name, text) {
             out.provides.extend(parsed.provides);
             out.requires.extend(parsed.requires);
+        } else if verify {
+            return None;
         }
     }
 
@@ -568,7 +590,49 @@ pub async fn read_jar_dependencies(jar: &Path) -> JarDependencies {
     out.requires.retain(|id| {
         out.provides.binary_search(id).is_err() && out.bundled.binary_search(id).is_err()
     });
-    out
+    Some(out)
+}
+
+fn manifest_can_verify_dependencies(name: &str, text: &str) -> bool {
+    fn no_declared_jars(value: &serde_json::Value) -> bool {
+        value
+            .get("jars")
+            .is_none_or(|jars| jars.as_array().is_some_and(Vec::is_empty))
+    }
+
+    match name {
+        FABRIC => serde_json::from_str::<serde_json::Value>(text).is_ok_and(|value| {
+            no_declared_jars(&value)
+                && value.get("requires").is_none()
+                && value
+                    .get("depends")
+                    .is_none_or(serde_json::Value::is_object)
+        }),
+        QUILT => serde_json::from_str::<serde_json::Value>(text).is_ok_and(|value| {
+            no_declared_jars(&value)
+                && value.get("quilt_loader").is_some_and(|loader| {
+                    no_declared_jars(loader)
+                        && ["depends", "provides"].into_iter().all(|key| {
+                            loader.get(key).is_none_or(|entries| {
+                                entries.as_array().is_some_and(|entries| {
+                                    entries.iter().all(|entry| {
+                                        // Group-qualified IDs and dependency
+                                        // alternatives require more than a literal ID.
+                                        quilt_id(entry)
+                                            .is_some_and(|id| !id.is_empty() && !id.contains(':'))
+                                            && entry.get("group").is_none()
+                                            && entry
+                                                .get("optional")
+                                                .is_none_or(serde_json::Value::is_boolean)
+                                    })
+                                })
+                            })
+                        })
+                })
+        }),
+        LEGACY_FORGE => false,
+        _ => true,
+    }
 }
 
 async fn nested_provides(bytes: &[u8]) -> Vec<String> {
@@ -717,6 +781,46 @@ mod tests {
 
     fn parse_mod_version(manifest: &str, text: &str) -> Option<String> {
         parse_mod(manifest, text)?.version
+    }
+
+    #[tokio::test]
+    async fn a_fabric_jar_outside_standard_prefixes_is_unverified() {
+        let dir = polyio::testing::ScratchDir::new("undo_external_embedded_jar");
+        let jar = dir.path().join("outer.jar");
+        polyio::create_dir_all(dir.path()).await.unwrap();
+        let file = tokio::fs::File::create(&jar).await.unwrap();
+        let mut writer = async_zip::tokio::write::ZipFileWriter::with_tokio(file);
+        for (name, bytes) in [
+            (
+                FABRIC,
+                br#"{"id":"outer", "jars":[{"file":"assets/extra.jar"}]}"#.as_slice(),
+            ),
+            ("assets/extra.jar", b"opaque nested jar".as_slice()),
+        ] {
+            let entry =
+                async_zip::ZipEntryBuilder::new(name.into(), async_zip::Compression::Stored);
+            writer.write_entry_whole(entry, bytes).await.unwrap();
+        }
+        writer.close().await.unwrap();
+
+        assert_eq!(read_jar_dependencies(&jar).await.provides, ["outer"]);
+        assert!(verified_jar_dependencies(&jar).await.is_none());
+    }
+
+    #[test]
+    fn quilt_grouped_ids_and_alternatives_are_not_literal_id_proof() {
+        assert!(manifest_can_verify_dependencies(
+            QUILT,
+            r#"{"quilt_loader":{"id":"outer","depends":[{"id":"plain","versions":"*"}]}}"#,
+        ));
+        for depends in [
+            r#"["org.example:library"]"#,
+            r#"[{"group":"org.example","id":"library"}]"#,
+            r#"[["alternative-a","alternative-b"]]"#,
+        ] {
+            let manifest = format!(r#"{{"quilt_loader":{{"id":"outer","depends":{depends}}}}}"#);
+            assert!(!manifest_can_verify_dependencies(QUILT, &manifest));
+        }
     }
 
     #[test]
@@ -933,10 +1037,8 @@ credits="Thanks to everyone"
         assert_eq!(fabric.mod_id.as_deref(), Some("sodium-extra"));
         assert_eq!(fabric.version.as_deref(), Some("0.9.4+mc26.2"));
 
-        let forge = parse_forge(
-            "[[mods]]\nmodId = \"jei\"\nversion = \"${file.jarVersion}\"\n",
-        )
-        .expect("forge");
+        let forge = parse_forge("[[mods]]\nmodId = \"jei\"\nversion = \"${file.jarVersion}\"\n")
+            .expect("forge");
         assert_eq!(forge.mod_id.as_deref(), Some("jei"));
         assert_eq!(forge.version, None);
     }

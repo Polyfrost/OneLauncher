@@ -6,7 +6,7 @@ use oneclient_db::dao::applied_migration as migration_dao;
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::cluster_bisect as bisect_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
-use oneclient_db::models::ClusterRow;
+use oneclient_db::models::{ClusterArtifactRow, ClusterRow};
 use oneclient_db::models::OverrideType;
 
 use crate::bundles::error::BundleError;
@@ -1260,6 +1260,7 @@ pub async fn install_cluster_bundles(
     ctx: &ContentCtx,
     deadline: Option<Instant>,
 ) -> ContentResult<()> {
+    let _mutation = crate::packages::package_mutation_guard().await;
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
     if !cluster.uses_bundles() {
         tracing::debug!(cluster_id, "instance does not take bundle content");
@@ -1434,44 +1435,111 @@ pub async fn remove_artifact_from_cluster(
     Ok(())
 }
 
-pub(crate) async fn detach_artifact(cluster_id: i64, hash: &str, ctx: &ContentCtx) -> ContentResult<()> {
-    // Looked up first but never allowed to block removal
-    // a package whose artifact row has gone missing must still be removable
+pub(crate) async fn detach_artifact(
+    cluster_id: i64,
+    hash: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
-    let target = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
-        .await?
-        .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8));
-    crate::packages::store::ensure_mods_unlocked(cluster_id, target, ctx).await?;
-
+    let content_type = removable_content_type(cluster_id, hash, ctx).await?;
     let link = artifact_dao::get_cluster_artifact(&ctx.db, cluster_id, hash).await?;
-
-    // Database first unconditionally
-    // on Windows a jar held open by a running game blocks deleting every hard
-    // link which used to fail the whole removal
-    // The folder is rebuilt from the database at the next launch
     artifact_dao::unlink_cluster_artifact(&ctx.db, cluster_id, hash).await?;
+    finish_detach(&cluster, hash, content_type, link, ctx).await;
+    Ok(())
+}
 
-    if let (Some(content_type), Some(link)) = (target, &link) {
-        let name = &link.cluster_file_name;
-        drop_unmanaged_mod(&cluster, content_type, name, hash, &ctx.db).await;
+/// An Undo owns exactly the manual link its install created.
+pub async fn can_undo_artifact(
+    cluster_id: i64,
+    hash: &str,
+    added_at: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<bool> {
+    Ok(artifact_dao::matches_manual_artifact_link(&ctx.db, cluster_id, hash, added_at).await?
+        && clusters_sharing_artifact(cluster_id, hash, ctx)
+            .await?
+            .is_none_or(|count| count <= 1))
+}
+
+/// The caller holds the exclusive package mutation guard through planning and
+/// removal. The database commits the whole group before files are cleaned up,
+/// so circular dependencies cannot leave a partial removal.
+pub async fn detach_undo_artifacts(
+    cluster_id: i64,
+    artifacts: &[(&str, &str)],
+    ctx: &ContentCtx,
+) -> ContentResult<bool> {
+    use crate::packages::store::{manifest, undo::StagedUndoFiles};
+
+    let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    let _manifest = manifest::lock().await;
+    let mut staged = StagedUndoFiles::default();
+    for (hash, _) in artifacts {
+        let prepared = async {
+            let content_type = removable_content_type(cluster_id, hash, ctx).await?;
+            let link = artifact_dao::get_cluster_artifact(&ctx.db, cluster_id, hash).await?;
+            if let (Some(content_type), Some(link)) = (content_type, link) {
+                staged.stage(&cluster, &link, content_type, ctx).await?;
+            }
+            ContentResult::Ok(())
+        }.await;
+        if let Err(err) = prepared {
+            staged.rollback().await;
+            return Err(err);
+        }
     }
 
-    // Best-effort folder cleanup failure here is not an error
-    let deferred = match (target, link) {
+    match artifact_dao::unlink_unchanged_manual_artifacts(&ctx.db, cluster_id, artifacts).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            staged.rollback().await;
+            return Ok(false);
+        }
+        Err(err) => {
+            staged.rollback().await;
+            return Err(err.into());
+        }
+    }
+
+    staged.commit().await;
+    // Other sessions may still load these cache files through shared content
+    // directories. Leave cache reclamation to the normal storage cleanup.
+    Ok(true)
+}
+
+async fn removable_content_type(
+    cluster_id: i64,
+    hash: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<Option<ContentType>> {
+    let content_type = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
+        .await?
+        .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8));
+    crate::packages::store::ensure_mods_unlocked(cluster_id, content_type, ctx).await?;
+    Ok(content_type)
+}
+
+async fn finish_detach(
+    cluster: &ClusterRow,
+    hash: &str,
+    content_type: Option<ContentType>,
+    link: Option<ClusterArtifactRow>,
+    ctx: &ContentCtx,
+) {
+    // A jar held open on Windows can defer folder cleanup until the next launch.
+    let deferred = match (content_type, link) {
         (Some(content_type), Some(link)) => {
-            try_unlink_materialized(&cluster, content_type, &link.cluster_file_name, &ctx.db).await
+            let name = &link.cluster_file_name;
+            drop_unmanaged_mod(cluster, content_type, name, hash, &ctx.db).await;
+            try_unlink_materialized(cluster, content_type, name, &ctx.db).await
                 == LiveSync::Deferred
         }
         _ => false,
     };
 
-    // The package actually lives in the cache
-    // `evict_if_unused` drops it only once no other cluster still needs it
     if !deferred && let Err(err) = evict_if_unused(hash, ctx).await {
         tracing::warn!(hash, error = %err, "failed to evict unused artifact from the cache");
     }
-
-    Ok(())
 }
 
 async fn sharing_scope(

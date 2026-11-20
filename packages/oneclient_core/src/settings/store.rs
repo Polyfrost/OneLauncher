@@ -195,7 +195,7 @@ mod tests {
         });
         let second = async {
             waiting_for_first.await.unwrap();
-            settings.write().theme = "system:minecraft-dark".into();
+            settings.write().theme = "system:polyglass-dark".into();
             let mut latest = std::pin::pin!(with_current_settings(&settings, async |snapshot| {
                 saved.lock().unwrap().push(snapshot.theme.clone());
             }));
@@ -209,7 +209,7 @@ mod tests {
             latest.await;
         };
         tokio::join!(first, second);
-        assert_eq!(*saved.lock().unwrap(), ["dark", "system:minecraft-dark"]);
+        assert_eq!(*saved.lock().unwrap(), ["dark", "system:polyglass-dark"]);
     }
 
     fn salvage(raw: &str) -> LauncherSettings {

@@ -1944,7 +1944,7 @@
   "oneclient.layout.settings.info.copied.title": "Copied to clipboard",
   "oneclient.layout.settings.info.copy_failed.body": "Could not copy system information to the clipboard.",
   "oneclient.layout.settings.info.copy_failed.title": "Copy failed",
-  "oneclient.layout.settings.info.copy_tooltip": "Click to copy to clipboard",
+  "oneclient.layout.settings.info.copy_tooltip": "Copy system information",
   "oneclient.layout.settings.info.ram": "RAM Total of %s MB",
   "oneclient.layout.settings.search.empty": "No settings matched your search.",
   "oneclient.layout.settings.search.placeholder": "Search settings...",

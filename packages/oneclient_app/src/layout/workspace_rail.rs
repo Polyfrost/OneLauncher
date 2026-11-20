@@ -6,15 +6,14 @@ use crate::routes::Route;
 use crate::theme::{colors, glass, rounded, rounded_px, text_size};
 use crate::ui::border_all_color;
 
-pub(super) const ROW_HEIGHT: f32 = 34.;
-pub(super) const ROW_GAP: f32 = 3.;
+pub(super) const WIDTH: f32 = 196.;
 
-pub(super) fn surface(width: f32) -> Rect {
+pub(super) fn surface() -> Rect {
     let rail = rect()
         .vertical()
         .content(Content::Flex)
-        .width(Size::px(width))
-        .min_width(Size::px(width))
+        .width(Size::px(WIDTH))
+        .min_width(Size::px(WIDTH))
         .height(Size::fill())
         .overflow(Overflow::Clip)
         .padding(Gaps::new_all(6.));
@@ -38,6 +37,7 @@ pub(super) struct Tab {
     pub route: Route,
     pub active: bool,
     pub has_dot: bool,
+    pub height: f32,
     pub lens: Option<(glass::PillTrack, usize)>,
 }
 
@@ -61,12 +61,12 @@ impl Component for Tab {
             .horizontal()
             .content(Content::Flex)
             .width(Size::fill())
-            .height(Size::px(ROW_HEIGHT))
-            .padding(Gaps::new_symmetric(0., 10.))
-            .spacing(9.)
+            .height(Size::px(self.height))
+            .padding(Gaps::new_symmetric(0., 7.))
+            .spacing(7.)
             .cross_align(Alignment::Center)
             .corner_radius(if lens.is_some() {
-                CornerRadius::new_all(ROW_HEIGHT / 2.)
+                CornerRadius::new_all(self.height / 2.)
             } else {
                 rounded(7.)
             })

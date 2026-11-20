@@ -8,8 +8,34 @@ use crate::ui::border_all_color;
 
 const NAVBAR_GAP_PX: f32 = 8.;
 const WINDOW_GUTTER_PX: f32 = 24.;
+const COMPACT_GUTTER_PX: f32 = 12.;
 const HEADER_INSET_PX: f32 = 20.;
 const ENTER_SHIFT_PX: f32 = 32.;
+
+#[derive(Clone, Copy)]
+pub(super) struct WorkspaceLayout {
+    pub compact: bool,
+    pub inset: f32,
+    pub row_height: f32,
+    pub row_gap: f32,
+}
+
+impl WorkspaceLayout {
+    pub fn current() -> Self {
+        let window = *Platform::get().current_window().root_size.read();
+        Self::for_size(window.width, window.height)
+    }
+
+    pub fn for_size(width: f32, height: f32) -> Self {
+        let compact = height < 760.;
+        Self {
+            compact,
+            inset: if compact || width < 1000. { 12. } else { 16. },
+            row_height: if compact { 28. } else { 34. },
+            row_gap: if compact { 2. } else { 3. },
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum WorkspaceDialog {
@@ -129,6 +155,24 @@ impl Component for WorkspacePopup {
             }
         );
         let show_back = browsing_in_instance && RouterContext::get().can_go_back();
+        let window = *Platform::get().current_window().root_size.read();
+        let layout = WorkspaceLayout::for_size(window.width, window.height);
+        let header_height = if layout.compact && self.kind != WorkspaceDialog::Statistics {
+            40.
+        } else {
+            48.
+        };
+        let compact = window.width < 1000. || window.height < 720.;
+        let gutter = if compact {
+            COMPACT_GUTTER_PX
+        } else {
+            WINDOW_GUTTER_PX
+        };
+        let panel_width = if compact {
+            Size::fill()
+        } else {
+            Size::window_percent(92.)
+        };
         let max_width = if self.kind == WorkspaceDialog::Statistics {
             1060.
         } else {
@@ -178,9 +222,9 @@ impl Component for WorkspacePopup {
                     .height(Size::window_percent(100.))
                     .padding(Gaps::new(
                         NAVBAR_HEIGHT_PX + NAVBAR_GAP_PX,
-                        WINDOW_GUTTER_PX,
-                        WINDOW_GUTTER_PX,
-                        WINDOW_GUTTER_PX,
+                        gutter,
+                        gutter,
+                        gutter,
                     ))
                     .center()
                     // Move the whole panel while its full-window backdrop stays fixed.
@@ -190,7 +234,7 @@ impl Component for WorkspacePopup {
                     .child(
                         face.vertical()
                             .content(Content::Flex)
-                            .width(Size::window_percent(92.))
+                            .width(panel_width)
                             .max_width(Size::px(max_width))
                             .height(Size::fill())
                             .max_height(Size::px(930.))
@@ -209,7 +253,7 @@ impl Component for WorkspacePopup {
                                     .horizontal()
                                     .content(Content::Flex)
                                     .cross_align(Alignment::Center)
-                                    .height(Size::px(48.))
+                                    .height(Size::px(header_height))
                                     .width(Size::fill())
                                     .padding(Gaps::new_symmetric(0., HEADER_INSET_PX))
                                     .spacing(12.)

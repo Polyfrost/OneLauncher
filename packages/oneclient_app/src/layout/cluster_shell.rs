@@ -11,15 +11,13 @@ use crate::i18n::t;
 use crate::routes::Route;
 use crate::theme::{colors, glass, rounded, text_size};
 
-use super::workspace_rail;
+use super::{workspace_dialog::WorkspaceLayout, workspace_rail};
 use crate::ui::entrance_motion_layer;
 use crate::view::app::ExportInstanceModal;
 use crate::view::app::{
     launch_button_label, launch_button_state, launch_syncing, use_shared_dir_taken,
 };
 
-const HEADER_HEIGHT: f32 = 64.;
-const WORKSPACE_INSET: f32 = 20.;
 /// Launch button height; the icon buttons beside it are squares of the same size
 const ACTION_HEIGHT: f32 = 40.;
 const ACTION_ICON_SIZE: f32 = 20.;
@@ -111,6 +109,7 @@ pub struct ClusterShell;
 impl Component for ClusterShell {
     fn render(&self) -> impl IntoElement {
         let route = use_route::<Route>();
+        let layout = WorkspaceLayout::current();
         let (cluster_id, active_tab) =
             route_cluster(&route).unwrap_or((0, ClusterViewShellTab::Overview));
 
@@ -180,6 +179,7 @@ impl Component for ClusterShell {
                 launch_state,
                 game.is_running(cluster_id),
                 sharing,
+                layout,
             )
             .into_element()
         });
@@ -196,13 +196,8 @@ impl Component for ClusterShell {
                     .content(Content::Flex)
                     .width(Size::fill())
                     .height(Size::flex(1.))
-                    .spacing(18.)
-                    .padding(Gaps::new(
-                        0.,
-                        WORKSPACE_INSET,
-                        WORKSPACE_INSET,
-                        WORKSPACE_INSET,
-                    ))
+                    .spacing(layout.inset)
+                    .padding(Gaps::new(0., layout.inset, layout.inset, layout.inset))
                     .child(cluster_tabs(
                         active_tab,
                         cluster_id,
@@ -210,6 +205,7 @@ impl Component for ClusterShell {
                         show_datapacks,
                         show_mod_tabs,
                         game_folder,
+                        layout,
                     ))
                     .child(
                         rect()
@@ -312,21 +308,35 @@ fn cluster_header(
     launch_state: (&'static str, bool),
     running: bool,
     mut sharing: State<bool>,
+    layout: WorkspaceLayout,
 ) -> impl IntoElement {
     let (launch_label, launch_enabled) = launch_state;
     let kill_dispatch = dispatch.clone();
+    let (action_height, artwork_width, artwork_height) = if layout.compact {
+        (34., 64., 40.)
+    } else {
+        (ACTION_HEIGHT, 74., 48.)
+    };
+    let launch_button = Button::new().primary();
+    let launch_button = if layout.compact {
+        launch_button.medium()
+    } else {
+        launch_button.large()
+    };
     rect()
         .horizontal()
         .content(Content::Flex)
         .width(Size::fill())
-        .min_height(Size::px(HEADER_HEIGHT))
-        .padding(Gaps::new(12., WORKSPACE_INSET, 10., WORKSPACE_INSET))
+        .padding(Gaps::new_symmetric(
+            if layout.compact { 8. } else { 12. },
+            layout.inset,
+        ))
         .cross_align(Alignment::Center)
         .spacing(12.)
         .child(
             rect()
-                .width(Size::px(74.))
-                .height(Size::px(48.))
+                .width(Size::px(artwork_width))
+                .height(Size::px(artwork_height))
                 .corner_radius(rounded(8.))
                 .overflow(Overflow::Clip)
                 .child(artwork),
@@ -336,12 +346,12 @@ fn cluster_header(
                 .vertical()
                 .width(Size::flex(1.0))
                 .main_align(Alignment::Center)
-                .spacing(6.)
+                .spacing(if layout.compact { 3. } else { 6. })
                 .child(
                     label()
                         .text(title)
-                        .font_size(text_size(24.))
-                        .max_lines(2)
+                        .font_size(text_size(if layout.compact { 22. } else { 24. }))
+                        .max_lines(if layout.compact { 1 } else { 2 })
                         .text_overflow(TextOverflow::Ellipsis)
                         .font_weight(FontWeight::BOLD)
                         .color(colors::fg_primary()),
@@ -358,13 +368,13 @@ fn cluster_header(
             rect()
                 .horizontal()
                 .cross_align(Alignment::Center)
-                .spacing(10.)
+                .spacing(if layout.compact { 8. } else { 10. })
                 .child(
                     Button::new()
                         .secondary()
                         .icon()
-                        .width(Size::px(ACTION_HEIGHT))
-                        .height(Size::px(ACTION_HEIGHT))
+                        .width(Size::px(action_height))
+                        .height(Size::px(action_height))
                         .tooltip(t("oneclient.layout.cluster.share"))
                         .on_press(move |_| sharing.set(true))
                         .child(Icon::new(IconType::Share01).size(ACTION_ICON_SIZE)),
@@ -374,18 +384,16 @@ fn cluster_header(
                         Button::new()
                             .danger()
                             .icon()
-                            .width(Size::px(ACTION_HEIGHT))
-                            .height(Size::px(ACTION_HEIGHT))
+                            .width(Size::px(action_height))
+                            .height(Size::px(action_height))
                             .tooltip(t("oneclient.layout.cluster.stop_game"))
                             .on_press(move |_| kill_dispatch.kill_cluster(cluster_id))
                             .child(Icon::new(IconType::Square).size(ACTION_ICON_SIZE)),
                     )
                 })
                 .child(launch_button_label(
-                    Button::new()
-                        .primary()
-                        .large()
-                        .height(Size::px(ACTION_HEIGHT))
+                    launch_button
+                        .height(Size::px(action_height))
                         .enabled(launch_enabled)
                         .on_press(move |_| {
                             if launch_enabled {
@@ -404,6 +412,7 @@ fn cluster_tabs(
     show_datapacks: bool,
     show_mod_tabs: bool,
     game_folder: Option<GameFolder>,
+    layout: WorkspaceLayout,
 ) -> impl IntoElement {
     use ClusterViewShellTab::*;
 
@@ -440,6 +449,7 @@ fn cluster_tabs(
             route: tab.route(cluster_id),
             active: tab == active,
             has_dot: false,
+            height: layout.row_height,
             lens: lens.map(|track| (track, index)),
         }
         .into_element()
@@ -448,12 +458,13 @@ fn cluster_tabs(
     // Leave enough flexible space to place the two lower actions at the foot of
     // the panel. On short windows they scroll with the rest of the sidebar.
     let row_count = tabs.len() + usize::from(game_folder.is_some());
-    let navigation_height = row_count as f32 * workspace_rail::ROW_HEIGHT
-        + 3. * NAV_DIVIDER_HEIGHT
-        + (row_count + 3) as f32 * workspace_rail::ROW_GAP;
+    let divider_height = if layout.compact { 7. } else { 9. };
+    let navigation_height = row_count as f32 * layout.row_height
+        + 3. * divider_height
+        + (row_count + 3) as f32 * layout.row_gap;
     let settings_index = tabs.len() - 1;
 
-    workspace_rail::surface(166.)
+    workspace_rail::surface()
         .map(lens, |el, track| {
             track.events(el, move |index| {
                 if Some(index) != selected {
@@ -470,16 +481,18 @@ fn cluster_tabs(
                     ScrollArea::new()
                         .width(Size::fill())
                         .height(Size::fill())
+                        .scrollbar_gutter(true)
+                        .auto_hide_scrollbar()
                         .content(move |ctx| {
                             let mut index = 0;
                             let mut content = rect()
                                 .vertical()
                                 .width(Size::fill())
-                                .spacing(workspace_rail::ROW_GAP)
+                                .spacing(layout.row_gap)
                                 .maybe_child(lens.map(|track| track.indicator(selected)));
                             for (group_index, group) in groups.iter().enumerate() {
                                 if group_index != 0 {
-                                    content = content.child(nav_divider());
+                                    content = content.child(nav_divider(divider_height));
                                 }
                                 for tab in group.iter().flatten() {
                                     content = content.child(make_tab(*tab, index));
@@ -493,12 +506,11 @@ fn cluster_tabs(
                                         (ctx.viewport_h - navigation_height).max(0.),
                                     )),
                                 )
-                                .child(nav_divider())
-                                .maybe_child(
-                                    game_folder
-                                        .clone()
-                                        .map(|folder| ClusterFolderRow { folder }),
-                                )
+                                .child(nav_divider(divider_height))
+                                .maybe_child(game_folder.clone().map(|folder| ClusterFolderRow {
+                                    folder,
+                                    height: layout.row_height,
+                                }))
                                 .child(make_tab(Settings, settings_index))
                                 .into_element()
                         }),
@@ -516,6 +528,7 @@ struct GameFolder {
 #[derive(PartialEq)]
 struct ClusterFolderRow {
     folder: GameFolder,
+    height: f32,
 }
 
 impl Component for ClusterFolderRow {
@@ -547,9 +560,9 @@ impl Component for ClusterFolderRow {
             .horizontal()
             .content(Content::Flex)
             .width(Size::fill())
-            .height(Size::px(workspace_rail::ROW_HEIGHT))
-            .padding(Gaps::new(0., 7., 0., 10.))
-            .spacing(9.)
+            .height(Size::px(self.height))
+            .padding(Gaps::new_symmetric(0., 7.))
+            .spacing(7.)
             .cross_align(Alignment::Center)
             .corner_radius(rounded(7.))
             .background(if hover() {
@@ -590,12 +603,58 @@ impl Component for ClusterFolderRow {
     }
 }
 
-const NAV_DIVIDER_HEIGHT: f32 = 9.;
-
-fn nav_divider() -> Rect {
+fn nav_divider(height: f32) -> Rect {
     rect()
         .width(Size::fill())
         .height(Size::px(1.))
-        .margin(Gaps::new_symmetric((NAV_DIVIDER_HEIGHT - 1.) / 2., 7.))
+        .margin(Gaps::new_symmetric((height - 1.) / 2., 7.))
         .background(colors::component_border())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use freya_testing::TestingRunner;
+    use std::time::Duration;
+
+    #[test]
+    fn compact_instance_rail_keeps_settings_below_all_optional_tabs() {
+        let (mut runner, ()) = TestingRunner::new(
+            || {
+                cluster_tabs(
+                    ClusterViewShellTab::Textures,
+                    1,
+                    true,
+                    true,
+                    true,
+                    Some(GameFolder {
+                        path: std::path::PathBuf::new(),
+                        shared: true,
+                    }),
+                    WorkspaceLayout::for_size(800., 600.),
+                )
+            },
+            (800., 390.).into(),
+            |_| (),
+            1.,
+        );
+        runner.poll_n(Duration::ZERO, 5);
+
+        let bottom = |name| {
+            runner
+                .find(|node, element| {
+                    let mut access = element.accessibility().builder.clone();
+                    element.finish_accessibility(&mut access);
+                    (access.label() == Some(name)).then(|| node.layout().area.max_y())
+                })
+                .unwrap()
+        };
+        let settings = bottom(ClusterViewShellTab::Settings.label());
+        assert!(settings > bottom(ClusterViewShellTab::GameLog.label()));
+        assert!(settings > bottom(t("oneclient.layout.cluster.game_folder")));
+        assert!(
+            settings <= 390.,
+            "settings ended below the rail: {settings}"
+        );
+    }
 }

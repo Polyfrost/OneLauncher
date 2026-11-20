@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use std::time::{Duration, Instant};
 use std::{cell::RefCell, collections::HashMap};
 
 use freya::prelude::*;
@@ -217,6 +218,7 @@ pub struct ScrollArea {
     padding: Gaps,
     spacing: f32,
     show_scrollbar: bool,
+    auto_hide_scrollbar: bool,
     scrollbar_gutter: bool,
     bottom_fade: Option<Color>,
     horizontal: bool,
@@ -248,6 +250,7 @@ impl ScrollArea {
             padding: Gaps::default(),
             spacing: 0.,
             show_scrollbar: true,
+            auto_hide_scrollbar: false,
             scrollbar_gutter: false,
             bottom_fade: None,
             horizontal: false,
@@ -292,6 +295,11 @@ impl ScrollArea {
 
     pub fn show_scrollbar(mut self, show: bool) -> Self {
         self.show_scrollbar = show;
+        self
+    }
+
+    pub fn auto_hide_scrollbar(mut self) -> Self {
+        self.auto_hide_scrollbar = true;
         self
     }
 
@@ -618,6 +626,7 @@ impl ScrollArea {
         let spacing = self.spacing;
         let padding = self.padding;
         let show_scrollbar = self.show_scrollbar;
+        let auto_hide_scrollbar = self.auto_hide_scrollbar;
         let scrollbar_gutter = self.scrollbar_gutter;
         let stick_bottom = self.stick_bottom;
         let anchor_key = self.anchor_key;
@@ -640,6 +649,7 @@ impl ScrollArea {
         let mut anchored = use_state(|| anchor_key);
         let mut drag_start = use_state::<Option<(f32, i32)>>(|| None);
         let mut drag_start_x = use_state::<Option<(f32, f32)>>(|| None);
+        let mut hover_tracks = use_state(|| (false, false));
         let mut shift_held = use_state(|| false);
         let mut auto_scroll = use_state(|| None::<AutoScroll>);
         let mut auto_scroll_id = use_state(|| 0u64);
@@ -692,6 +702,7 @@ impl ScrollArea {
 
         let pressing_v = use_memo(move || drag_start.read().is_some());
         let pressing_h = use_memo(move || drag_start_x.read().is_some());
+        let (hovering_h, hovering_v) = *hover_tracks.read();
 
         let gutter = if show_v && scrollbar_gutter {
             SCROLLBAR_GUTTER
@@ -1026,6 +1037,16 @@ impl ScrollArea {
             }
         };
 
+        let on_viewport_move = move |e: Event<PointerEventData>| {
+            let point = e.global_location();
+            let x = point.x as f32 - *viewport_left.peek();
+            let y = point.y as f32 - *viewport_top.peek();
+            hover_tracks.set_if_modified((
+                show_h && y >= vp_h - 10. && y < vp_h,
+                show_v && x >= vp_w - SCROLLBAR_GUTTER && x < vp_w,
+            ));
+        };
+
         let on_global_release = move |e: Event<PointerEventData>| {
             if e.button() == Some(MouseButton::Middle) && auto_scroll.peek().is_some() {
                 auto_scroll.set(None);
@@ -1079,6 +1100,10 @@ impl ScrollArea {
                     })
                     .max_height(self.max_height.clone())
                     .overflow(Overflow::Clip)
+                    .maybe(auto_hide_scrollbar, |el| {
+                        el.on_pointer_move(on_viewport_move)
+                            .on_pointer_leave(move |_| hover_tracks.set_if_modified((false, false)))
+                    })
                     .on_sized(move |e: Event<SizedEventData>| {
                         let h = e.area.height();
                         let w = e.area.width();
@@ -1152,6 +1177,8 @@ impl ScrollArea {
                     .maybe_child(show_h.then(|| {
                         ScrollThumb {
                             vertical: false,
+                            auto_hide: auto_hide_scrollbar,
+                            track_hovered: hovering_h,
                             main_pos: scrollbar_x,
                             length: scrollbar_width,
                             pressing: pressing_h.into_readable(),
@@ -1162,6 +1189,8 @@ impl ScrollArea {
                     .maybe_child(show_v.then(|| {
                         ScrollThumb {
                             vertical: true,
+                            auto_hide: auto_hide_scrollbar,
+                            track_hovered: hovering_v,
                             main_pos: scrollbar_y,
                             length: scrollbar_height,
                             pressing: pressing_v.into_readable(),
@@ -1184,6 +1213,7 @@ impl PartialEq for ScrollArea {
             && self.padding == other.padding
             && self.spacing == other.spacing
             && self.show_scrollbar == other.show_scrollbar
+            && self.auto_hide_scrollbar == other.auto_hide_scrollbar
             && self.scrollbar_gutter == other.scrollbar_gutter
             && self.bottom_fade == other.bottom_fade
             && self.horizontal == other.horizontal
@@ -1205,10 +1235,57 @@ impl Component for ScrollArea {
 #[derive(PartialEq)]
 struct ScrollThumb {
     vertical: bool,
+    auto_hide: bool,
+    track_hovered: bool,
     main_pos: f32,
     length: f32,
     pressing: Readable<bool>,
     on_down: EventHandler<Event<PointerEventData>>,
+}
+
+const SCROLLBAR_IDLE: Duration = Duration::from_millis(650);
+const SCROLLBAR_FADE: Duration = Duration::from_millis(160);
+
+fn use_scrollbar_visibility(auto_hide: bool, position: f32, held: bool) -> f32 {
+    let mut previous = use_state(|| position);
+    let mut opacity = use_state(|| if auto_hide { 0. } else { 1. });
+    let mut pending = use_state(|| None::<OwnedTaskHandle>);
+    use_side_effect_with_deps(
+        &(auto_hide, position, held),
+        move |&(auto_hide, position, held)| {
+            pending.set(None);
+            let moved = *previous.peek() != position;
+            previous.set_if_modified(position);
+            if !auto_hide || held || moved {
+                opacity.set_if_modified(1.);
+            }
+            if !auto_hide || held || *opacity.peek() == 0. {
+                return;
+            }
+
+            let clock = AnimationClock::get();
+            let task = spawn(async move {
+                tokio::time::sleep(SCROLLBAR_IDLE).await;
+                let start = Instant::now();
+                let from = *opacity.peek();
+                let ticker = RenderingTicker::get();
+                let window = Platform::get().current_window();
+                loop {
+                    let elapsed = clock.correct_elapsed_duration(start.elapsed());
+                    let remaining =
+                        (1. - elapsed.as_secs_f32() / SCROLLBAR_FADE.as_secs_f32()).max(0.);
+                    opacity.set_if_modified(from * remaining);
+                    if remaining == 0. {
+                        break;
+                    }
+                    window.request_redraw();
+                    ticker.tick().await;
+                }
+            });
+            pending.set(Some(task.owned()));
+        },
+    );
+    *opacity.read()
 }
 
 impl Component for ScrollThumb {
@@ -1216,7 +1293,9 @@ impl Component for ScrollThumb {
         let mut hovering = use_state(|| false);
         let on_down = self.on_down.clone();
         let pressing = *self.pressing.read();
-        let hovered = *hovering.read();
+        let hovered = self.track_hovered || *hovering.read();
+        let visibility =
+            use_scrollbar_visibility(self.auto_hide, self.main_pos, pressing || hovered);
 
         let color = if pressing {
             colors::fg_secondary_pressed()
@@ -1264,16 +1343,18 @@ impl Component for ScrollThumb {
             .width(width)
             .height(height)
             .center()
+            .interactive(visibility > 0.)
             .layer(layer)
             .on_pointer_down(move |e| on_down.call(e))
-            .on_pointer_over(move |_| hovering.set(true))
-            .on_pointer_out(move |_| hovering.set(false))
+            .on_pointer_over(move |_| hovering.set_if_modified(true))
+            .on_pointer_out(move |_| hovering.set_if_modified(false))
             .child(
                 rect()
                     .width(bar_w)
                     .height(bar_h)
+                    .interactive(false)
                     .corner_radius(rounded(12.))
-                    .background(color.with_a(opacity)),
+                    .background(color.with_a((opacity as f32 * visibility).round() as u8)),
             )
     }
 }
@@ -1281,6 +1362,68 @@ impl Component for ScrollThumb {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn an_auto_hidden_scrollbar_reappears_on_motion_and_stays_visible_while_held() {
+        use freya_testing::prelude::{
+            MouseEventName, PlatformEvent, TestingRunner, WheelEventName,
+        };
+        use std::{cell::Cell, rc::Rc};
+
+        fn app() -> impl IntoElement {
+            let observed = use_consume::<Rc<Cell<f32>>>();
+            let mut position = use_state(|| 0.);
+            let mut held = use_state(|| false);
+            observed.set(use_scrollbar_visibility(true, position(), held()));
+            rect()
+                .width(Size::fill())
+                .height(Size::fill())
+                .on_wheel(move |_: Event<WheelEventData>| position.set(25.))
+                .on_pointer_down(move |_| held.set(true))
+                .on_global_pointer_up(move |_| held.set(false))
+        }
+
+        let (mut runner, observed) = TestingRunner::new(
+            app,
+            Size2D::new(320., 240.),
+            |runner| runner.provide_root_context(|| Rc::new(Cell::new(0f32))),
+            1.,
+        );
+        runner.poll_n(Duration::ZERO, 5);
+        assert_eq!(observed.get(), 0.);
+
+        runner.send_event(PlatformEvent::Wheel {
+            name: WheelEventName::Wheel,
+            source: WheelSource::Line,
+            phase: TouchPhase::Moved,
+            scroll: (0., -53.).into(),
+            cursor: (40., 40.).into(),
+        });
+        runner.poll_n(Duration::ZERO, 5);
+        assert_eq!(observed.get(), 1.);
+
+        let mouse = |name| PlatformEvent::Mouse {
+            name,
+            cursor: (40., 40.).into(),
+            button: Some(MouseButton::Left),
+        };
+        runner.send_event(mouse(MouseEventName::MouseDown));
+        runner.poll_n(Duration::ZERO, 5);
+        tokio::time::sleep(SCROLLBAR_IDLE + SCROLLBAR_FADE).await;
+        runner.poll_n(Duration::ZERO, 5);
+        assert_eq!(observed.get(), 1.);
+
+        runner.send_event(mouse(MouseEventName::MouseUp));
+        runner.poll_n(Duration::ZERO, 5);
+        for _ in 0..12 {
+            tokio::time::sleep(Duration::from_millis(80)).await;
+            runner.poll_n(Duration::ZERO, 2);
+            if observed.get() == 0. {
+                break;
+            }
+        }
+        assert_eq!(observed.get(), 0.);
+    }
 
     #[test]
     fn wheel_source_controls_the_units() {

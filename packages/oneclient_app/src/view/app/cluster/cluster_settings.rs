@@ -1615,6 +1615,7 @@ impl Component for MigrateFromRow {
 
         let picker: Element = if sources.is_empty() {
             label()
+                .max_width(Size::px(220.))
                 .text(if has_partners {
                     t("oneclient.cluster.settings.migrate.nothing")
                 } else {

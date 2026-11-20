@@ -33,6 +33,11 @@ use crate::{
     ui::border_all_color,
 };
 
+const ROW_INSET: f32 = 16.;
+const ROW_GAP: f32 = 16.;
+const ROW_ICON: f32 = 24.;
+const MIN_COPY_WIDTH: f32 = 160.;
+
 /// Bottom inset so the last row scrolls clear of the shell's clip edge instead of ending on it
 pub fn settings_page() -> Rect {
     rect()
@@ -97,59 +102,125 @@ fn settings_row_inner(
     trailing: SettingsControl,
     tone: RowTone,
 ) -> impl IntoElement {
-    let description = description.into();
-    let danger = tone == RowTone::Danger;
-    let tint = if danger {
-        colors::danger().with_a(26)
-    } else {
-        colors::page_elevated()
-    };
-    let row = if colors::active_theme().liquid_glass && !danger {
-        crate::theme::glass::content(rect(), tint, 16.)
-    } else {
-        rect().corner_radius(rounded(12.)).background(tint)
-    };
-    row.maybe(tone == RowTone::Disabled, |el| el.opacity(0.4))
-        .horizontal()
-        .width(Size::fill())
-        .content(Content::Flex)
-        .cross_align(Alignment::Center)
-        .spacing(16.)
-        .padding(Gaps::new_symmetric(12., 16.))
-        .maybe(danger, |el| {
-            el.border(border_all_color(1., colors::danger().with_a(128)))
-        })
-        .child(Icon::new(icon).maybe(danger, |icon| icon.color(colors::danger())))
-        .child(
-            rect()
-                .vertical()
-                .width(Size::flex(1.0))
-                .spacing(2.)
-                .child(
-                    rect()
-                        .horizontal()
-                        .cross_align(Alignment::Center)
-                        .spacing(6.)
-                        .child(
-                            label()
-                                .text(title)
-                                .font_size(text_size(16.))
-                                .font_weight(FontWeight::MEDIUM)
-                                .color(colors::fg_primary()),
-                        )
-                        .maybe_child(trailing.reset),
-                )
-                .child(
-                    label()
-                        .text(description)
-                        .font_size(text_size(12.))
-                        .color(colors::fg_secondary()),
-                ),
-        )
-        .child(trailing.control)
-        .into_element()
+    SettingsRow {
+        icon,
+        title,
+        description: description.into(),
+        trailing,
+        tone,
+    }
 }
 
+#[derive(PartialEq)]
+struct SettingsRow {
+    icon: IconType,
+    title: &'static str,
+    description: String,
+    trailing: SettingsControl,
+    tone: RowTone,
+}
+
+impl Component for SettingsRow {
+    fn render(&self) -> impl IntoElement {
+        let mut width = use_state(|| None::<f32>);
+        let mut control_width = use_state(|| 0.);
+        // Measure the control itself so switches can stay inline when wide pickers
+        // and translated status messages need a second line.
+        let stacked = width().is_some_and(|width| {
+            width - 2. * ROW_INSET - ROW_ICON - 2. * ROW_GAP - control_width() < MIN_COPY_WIDTH
+        });
+        let danger = self.tone == RowTone::Danger;
+        let tint = if danger {
+            colors::danger().with_a(26)
+        } else {
+            colors::page_elevated()
+        };
+        let row = if colors::active_theme().liquid_glass && !danger {
+            crate::theme::glass::content(rect(), tint, 16.)
+        } else {
+            rect().corner_radius(rounded(12.)).background(tint)
+        };
+        row.maybe(self.tone == RowTone::Disabled, |el| el.opacity(0.4))
+            .horizontal()
+            .width(Size::fill())
+            .content(Content::Flex)
+            .cross_align(if stacked {
+                Alignment::Start
+            } else {
+                Alignment::Center
+            })
+            .spacing(ROW_GAP)
+            .padding(Gaps::new_symmetric(12., ROW_INSET))
+            .on_sized(move |event: Event<SizedEventData>| {
+                width.set_if_modified(Some(event.area.width()));
+            })
+            .maybe(danger, |el| {
+                el.border(border_all_color(1., colors::danger().with_a(128)))
+            })
+            .child(
+                Icon::new(self.icon)
+                    .size(ROW_ICON)
+                    .maybe(danger, |icon| icon.color(colors::danger())),
+            )
+            .child(
+                rect()
+                    .width(Size::flex(1.))
+                    .content(Content::Flex)
+                    .maybe(stacked, |el| el.vertical().spacing(8.))
+                    .maybe(!stacked, |el| {
+                        el.horizontal()
+                            .spacing(ROW_GAP)
+                            .cross_align(Alignment::Center)
+                    })
+                    .child(
+                        rect()
+                            .vertical()
+                            .width(if stacked {
+                                Size::fill()
+                            } else {
+                                Size::flex(1.)
+                            })
+                            .spacing(2.)
+                            .child(
+                                rect()
+                                    .horizontal()
+                                    .width(Size::fill())
+                                    .cross_align(Alignment::Center)
+                                    .spacing(6.)
+                                    .child(
+                                        label()
+                                            .max_width(if self.trailing.reset.is_some() {
+                                                Size::percent(90.)
+                                            } else {
+                                                Size::fill()
+                                            })
+                                            .text(self.title)
+                                            .font_size(text_size(16.))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .color(colors::fg_primary()),
+                                    )
+                                    .maybe_child(self.trailing.reset.clone()),
+                            )
+                            .child(
+                                label()
+                                    .text(self.description.clone())
+                                    .font_size(text_size(12.))
+                                    .color(colors::fg_secondary()),
+                            ),
+                    )
+                    .child(
+                        rect()
+                            .max_width(Size::fill())
+                            .on_sized(move |event: Event<SizedEventData>| {
+                                control_width.set_if_modified(event.area.width());
+                            })
+                            .child(self.trailing.control.clone()),
+                    ),
+            )
+    }
+}
+
+#[derive(PartialEq)]
 pub struct SettingsControl {
     control: Element,
     reset: Option<Element>,
@@ -239,6 +310,52 @@ pub fn resettable_all<T: Clone + PartialEq + 'static>(
 mod tests {
     use super::*;
     use freya_testing::TestingRunner;
+    use std::time::Duration;
+
+    #[test]
+    fn wide_settings_controls_move_below_the_description_when_space_runs_out() {
+        for (width, controls, stacked) in
+            [(440., 300., true), (720., 300., false), (440., 84., false)]
+        {
+            let (mut test, ()) = TestingRunner::new(
+                move || {
+                    settings_row(
+                        IconType::Copy01,
+                        "Migrate",
+                        "Copy browser content to or from another instance.",
+                        rect()
+                            .width(Size::px(controls))
+                            .height(Size::px(28.))
+                            .a11y_alt("Migration controls"),
+                    )
+                },
+                (width, 200.).into(),
+                |_| (),
+                1.,
+            );
+            test.poll_n(Duration::ZERO, 5);
+            let area = |name| {
+                test.find(|node, element| {
+                    let mut access = element.accessibility().builder.clone();
+                    element.finish_accessibility(&mut access);
+                    (access.label() == Some(name) || access.value() == Some(name))
+                        .then(|| node.layout().area)
+                })
+                .unwrap()
+            };
+            let title = area("Migrate");
+            let control = area("Migration controls");
+            assert!(title.height() < 32., "title should fit on one line");
+            assert!(control.max_x() <= width - ROW_INSET + 0.5);
+            if stacked {
+                assert!(control.min_y() > title.max_y());
+                assert_eq!(control.min_x(), title.min_x());
+            } else {
+                assert!(control.min_y() < title.max_y());
+                assert!(control.min_x() > title.max_x());
+            }
+        }
+    }
 
     #[test]
     fn reset_mounts_for_a_modified_value_and_disappears_after_reset() {

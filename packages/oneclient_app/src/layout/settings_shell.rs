@@ -12,21 +12,21 @@ use sysinfo::RefreshKind;
 use sysinfo::System;
 
 use crate::components::{
-    Icon, IconType, ScrollArea, ScrollAreaCtx, TextInput, TooltipPlacement, use_tooltip_anchor,
+    Button, Icon, IconType, ScrollArea, ScrollAreaCtx, TextInput, TooltipPlacement,
+    use_tooltip_anchor,
 };
 use crate::hooks::{latest_changelog_version, use_changelog, use_settings_snapshot};
 use crate::i18n::{t, tf};
 use crate::routes::Route;
 use crate::theme::{colors, glass, rounded, text_size};
 
+use super::workspace_dialog::WorkspaceLayout;
 use super::workspace_rail;
 use crate::use_dispatch;
 
-const SIDEBAR_WIDTH_PX: f32 = 184.;
-/// One gutter on every side of the modal body, so the rail and content card sit evenly
-const BODY_GUTTER_PX: f32 = 16.;
 /// Matches the search field height so the content title lines up with it
 const TITLE_ROW_PX: f32 = 36.;
+const COMPACT_ROW_PX: f32 = 28.;
 const SEARCH_RESULTS_MAX: usize = 12;
 
 thread_local! {
@@ -185,6 +185,11 @@ impl Component for SettingsShell {
     fn render(&self) -> impl IntoElement {
         let route = use_route::<Route>();
         let active = route_tab(&route);
+        let window = *Platform::get().current_window().root_size.read();
+        let layout = WorkspaceLayout::for_size(window.width, window.height);
+        let compact = layout.compact;
+        // Regular-height tabs fit before there's room for all four diagnostics lines.
+        let compact_footer = window.height < 820.;
 
         let changelog_unread = has_unread_changelog();
 
@@ -234,23 +239,29 @@ impl Component for SettingsShell {
             .width(Size::fill())
             .height(Size::fill())
             .overflow(Overflow::Clip)
-            .padding(Gaps::new_all(BODY_GUTTER_PX))
-            .spacing(BODY_GUTTER_PX)
-            .child(sidebar(active, changelog_unread, search))
+            .padding(Gaps::new_all(layout.inset))
+            .spacing(layout.inset)
+            .child(sidebar(
+                active,
+                changelog_unread,
+                search,
+                layout,
+                compact_footer,
+            ))
             .child(
                 rect()
                     .vertical()
                     .width(Size::flex(1.0))
                     .height(Size::fill())
                     .overflow(Overflow::Clip)
-                    .spacing(12.)
-                    .child(content_header(active.label().to_string()))
+                    .spacing(if compact { 6. } else { 12. })
+                    .child(content_header(active.label(), compact))
                     .child(
                         ScrollArea::new()
                             .width(Size::fill())
                             .height(Size::flex(1.0))
-                            .show_scrollbar(true)
                             .scrollbar_gutter(true)
+                            .auto_hide_scrollbar()
                             .bottom_fade(colors::page_elevated())
                             .spacing(4.)
                             .scroll_controller(scroll)
@@ -263,11 +274,11 @@ impl Component for SettingsShell {
     }
 }
 
-fn content_header(title: String) -> impl IntoElement {
+fn content_header(title: &'static str, compact: bool) -> impl IntoElement {
     rect()
         .horizontal()
         .width(Size::fill())
-        .height(Size::px(TITLE_ROW_PX))
+        .height(Size::px(if compact { 30. } else { TITLE_ROW_PX }))
         .cross_align(Alignment::Center)
         .child(
             label()
@@ -436,7 +447,13 @@ fn has_unread_changelog() -> bool {
     }
 }
 
-fn sidebar(active: SettingsTab, changelog_unread: bool, search: State<String>) -> impl IntoElement {
+fn sidebar(
+    active: SettingsTab,
+    changelog_unread: bool,
+    search: State<String>,
+    layout: WorkspaceLayout,
+    compact_footer: bool,
+) -> impl IntoElement {
     let groups = groups();
     let tabs: Vec<_> = groups
         .iter()
@@ -445,8 +462,14 @@ fn sidebar(active: SettingsTab, changelog_unread: bool, search: State<String>) -
     let track = glass::use_vertical_pill_track(tabs.len());
     let lens = colors::active_theme().liquid_glass.then_some(track);
     let selected = tabs.iter().position(|tab| *tab == active);
+    let compact = layout.compact;
+    let group_heading_padding = if compact {
+        Gaps::new(0., 0., 0., 7.)
+    } else {
+        Gaps::new(4., 0., 3., 10.)
+    };
 
-    workspace_rail::surface(SIDEBAR_WIDTH_PX)
+    workspace_rail::surface()
         .map(lens, |el, track| {
             track.events(el, move |index| {
                 if Some(index) != selected
@@ -459,7 +482,7 @@ fn sidebar(active: SettingsTab, changelog_unread: bool, search: State<String>) -
         .child(
             rect()
                 .width(Size::fill())
-                .padding(Gaps::new(0., 0., 8., 0.))
+                .padding(Gaps::new(0., 0., if compact { 5. } else { 8. }, 0.))
                 .child(search_box(search)),
         )
         .child(
@@ -472,13 +495,14 @@ fn sidebar(active: SettingsTab, changelog_unread: bool, search: State<String>) -
                         .width(Size::fill())
                         .height(Size::fill())
                         .scrollbar_gutter(true)
+                        .auto_hide_scrollbar()
                         .bottom_fade(colors::page_elevated())
                         .padding(Gaps::new(0., 0., 5., 0.))
                         .child(
                             rect()
                                 .vertical()
                                 .width(Size::fill())
-                                .spacing(10.)
+                                .spacing(if compact { 5. } else { 10. })
                                 .maybe_child(lens.map(|track| track.indicator(selected)))
                                 .children(groups.into_iter().scan(0, move |index, group| {
                                     let rows = group.tabs.iter().filter_map(|tab| {
@@ -490,6 +514,7 @@ fn sidebar(active: SettingsTab, changelog_unread: bool, search: State<String>) -
                                             active: *tab == active,
                                             has_dot: *tab == SettingsTab::Changelog
                                                 && changelog_unread,
+                                            height: layout.row_height,
                                             lens: lens.map(|track| (track, *index)),
                                         };
                                         *index += 1;
@@ -499,12 +524,16 @@ fn sidebar(active: SettingsTab, changelog_unread: bool, search: State<String>) -
                                         rect()
                                             .vertical()
                                             .width(Size::fill())
-                                            .spacing(workspace_rail::ROW_GAP)
+                                            .spacing(layout.row_gap)
                                             .child(
-                                                rect().padding(Gaps::new(4., 0., 3., 10.)).child(
+                                                rect().padding(group_heading_padding).child(
                                                     label()
                                                         .text(group.label)
-                                                        .font_size(text_size(11.))
+                                                        .font_size(text_size(if compact {
+                                                            10.
+                                                        } else {
+                                                            11.
+                                                        }))
                                                         .font_weight(FontWeight::MEDIUM)
                                                         .color(colors::fg_secondary()),
                                                 ),
@@ -516,18 +545,19 @@ fn sidebar(active: SettingsTab, changelog_unread: bool, search: State<String>) -
                         ),
                 ),
         )
-        .child(SidebarInfo::new())
+        .child(SidebarInfo::new(compact_footer))
 }
 
 #[derive(PartialEq)]
 struct SidebarInfo {
+    compact: bool,
     kernel_version: String,
     ram_mb: u64,
     cpu_kind: String,
 }
 
 impl SidebarInfo {
-    pub fn new() -> Self {
+    fn new(compact: bool) -> Self {
         let system = System::new_with_specifics(
             RefreshKind::nothing()
                 .with_memory(MemoryRefreshKind::nothing().with_ram())
@@ -543,6 +573,7 @@ impl SidebarInfo {
             .unwrap_or_default();
 
         Self {
+            compact,
             kernel_version,
             ram_mb,
             cpu_kind: cpu_kind.to_string(),
@@ -553,8 +584,9 @@ impl SidebarInfo {
 impl Component for SidebarInfo {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
+        let copy_label = t("oneclient.layout.settings.info.copy_tooltip");
         let tooltip = use_tooltip_anchor(
-            Some(t("oneclient.layout.settings.info.copy_tooltip").into()),
+            (!self.compact).then(|| copy_label.into()),
             TooltipPlacement::Top,
         );
 
@@ -594,32 +626,68 @@ impl Component for SidebarInfo {
             }
         };
 
-        tooltip.attach(
-            rect()
+        if self.compact {
+            return rect()
                 .vertical()
                 .width(Size::fill())
-                .spacing(4.)
-                .font_size(text_size(11.))
-                .padding(Gaps::new(8., 10., 7., 10.))
-                .color(colors::fg_secondary())
                 .child(
                     rect()
                         .width(Size::fill())
                         .height(Size::px(1.))
-                        .margin(Gaps::new(0., 0., 3., 0.))
                         .background(colors::component_border()),
                 )
-                .children(display_items.into_iter().map(|item| {
-                    label()
-                        .text(item)
+                .child(
+                    Button::new()
+                        .small()
+                        .ghost()
+                        .height(Size::px(COMPACT_ROW_PX))
                         .width(Size::fill())
-                        .max_lines(1)
-                        .text_overflow(TextOverflow::Ellipsis)
-                        .into_element()
-                }))
-                .cursor(CursorIcon::Pointer)
-                .on_press(copy_to_clipboard),
-        )
+                        .foreground(colors::fg_secondary())
+                        .alt(copy_label)
+                        .tooltip(copy_label)
+                        .tooltip_placement(TooltipPlacement::Top)
+                        .child(
+                            label()
+                                .text(oneclient_common::constants::LAUNCHER_LABEL)
+                                .width(Size::flex(1.))
+                                .font_size(text_size(11.))
+                                .max_lines(1)
+                                .text_overflow(TextOverflow::Ellipsis),
+                        )
+                        .child(Icon::new(IconType::Copy01).size(13.))
+                        .on_press(copy_to_clipboard),
+                )
+                .into_element();
+        }
+
+        tooltip
+            .attach(
+                rect()
+                    .vertical()
+                    .width(Size::fill())
+                    .spacing(4.)
+                    .font_size(text_size(11.))
+                    .padding(Gaps::new(8., 10., 7., 10.))
+                    .color(colors::fg_secondary())
+                    .child(
+                        rect()
+                            .width(Size::fill())
+                            .height(Size::px(1.))
+                            .margin(Gaps::new(0., 0., 3., 0.))
+                            .background(colors::component_border()),
+                    )
+                    .children(display_items.into_iter().map(|item| {
+                        label()
+                            .text(item)
+                            .width(Size::fill())
+                            .max_lines(1)
+                            .text_overflow(TextOverflow::Ellipsis)
+                            .into_element()
+                    }))
+                    .cursor(CursorIcon::Pointer)
+                    .on_press(copy_to_clipboard),
+            )
+            .into_element()
     }
 }
 

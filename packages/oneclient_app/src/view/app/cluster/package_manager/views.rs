@@ -522,7 +522,7 @@ pub(super) fn toolbar_bar(
         rect()
             .vertical()
             .width(Size::fill())
-            .spacing(8.)
+            .spacing(6.)
             .child(find_content)
             .child(
                 rect()
@@ -679,7 +679,7 @@ pub(crate) fn notice_bar(text: String) -> Element {
                 .text(text)
                 .font_size(text_size(12.))
                 .width(Size::flex(1.0))
-                .color(colors::fg_secondary()),
+                .color(colors::fg_primary()),
         )
         .into_element()
 }

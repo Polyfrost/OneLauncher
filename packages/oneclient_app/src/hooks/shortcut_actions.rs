@@ -83,7 +83,7 @@ impl Actions {
             };
 
             let request = ShortcutRequest {
-                cluster_name: cluster.name.clone(),
+                cluster_name: crate::utils::instance_display_name(&cluster),
                 folder_name: cluster.folder_name.clone(),
                 dir: dir.clone(),
                 icon: cluster.modpack_icon_file().filter(|icon| icon.is_file()),
@@ -94,7 +94,7 @@ impl Actions {
                     let name = path
                         .file_name()
                         .map(|name| name.to_string_lossy().into_owned())
-                        .unwrap_or_else(|| cluster.name.clone());
+                        .unwrap_or_else(|| crate::utils::instance_display_name(&cluster));
 
                     actions
                         .notify(t("oneclient.shortcut_actions.created.title"))

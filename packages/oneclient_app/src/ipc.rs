@@ -14,6 +14,8 @@ const REPLY_OK: &str = "OK";
 pub enum IpcCommand {
     Launch(String),
     ImportShare(String),
+    /// Sent by the in-game client when the player changes its look, so the launcher follows
+    Theme(String),
     Focus,
     Close,
     Logs,
@@ -32,6 +34,7 @@ impl IpcCommand {
         match self {
             Self::Launch(folder) => format!("LAUNCH {folder}"),
             Self::ImportShare(code) => format!("SHARE {code}"),
+            Self::Theme(id) => format!("THEME {id}"),
             Self::Focus => "FOCUS".to_string(),
             Self::Close => "CLOSE".to_string(),
             Self::Logs => "LOGS".to_string(),
@@ -50,6 +53,10 @@ impl IpcCommand {
             return oneclient_core::sharing::ShareCode::parse(code)
                 .map(|code| Self::ImportShare(code.as_str().to_string()));
         }
+        if let Some(id) = line.strip_prefix("THEME ") {
+            let id = id.trim();
+            return is_theme_id(id).then(|| Self::Theme(id.to_string()));
+        }
         match line {
             "FOCUS" => Some(Self::Focus),
             "CLOSE" => Some(Self::Close),
@@ -59,6 +66,17 @@ impl IpcCommand {
             _ => None,
         }
     }
+}
+
+/// Theme ids are short slugs like `minecraft-dark` or `system:dark`; anything else is rejected
+/// before it can reach the settings file
+fn is_theme_id(id: &str) -> bool {
+    const MAX_THEME_ID: usize = 64;
+    !id.is_empty()
+        && id.len() <= MAX_THEME_ID
+        && id.bytes().all(|b| {
+            b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'-' | b'_' | b':')
+        })
 }
 
 #[must_use]
@@ -341,6 +359,32 @@ mod tests {
         assert_eq!(
             IpcCommand::decode("LAUNCH pack\r\n"),
             Some(IpcCommand::Launch("pack".into())),
+        );
+    }
+
+    #[test]
+    fn a_theme_survives_the_wire() {
+        for id in [
+            "dark",
+            "polyglass-light",
+            "system:polyglass-dark",
+            "minecraft-light",
+            "system:minecraft-dark",
+        ] {
+            let command = IpcCommand::Theme(id.into());
+            assert_eq!(IpcCommand::decode(&command.encode()), Some(command));
+        }
+    }
+
+    #[test]
+    fn odd_theme_ids_are_refused() {
+        assert_eq!(IpcCommand::decode("THEME"), None);
+        assert_eq!(IpcCommand::decode("THEME   "), None);
+        assert_eq!(IpcCommand::decode("THEME ../../evil"), None);
+        assert_eq!(IpcCommand::decode("THEME Dark Mode"), None);
+        assert_eq!(
+            IpcCommand::decode(&format!("THEME {}", "a".repeat(65))),
+            None
         );
     }
 

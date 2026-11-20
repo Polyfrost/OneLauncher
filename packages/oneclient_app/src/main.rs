@@ -9,7 +9,7 @@ use oneclient_app::ipc::{self, Claim};
 use oneclient_app::state::{AppState, LauncherInit};
 use oneclient_app::{
     Actions, ConfirmLinkOverlay, DisableConfirmState, DisableDependentsOverlay,
-    EssentialConfirmOverlay, EssentialGuardState, EventPump, LinkConfirmState, StartMaximizedState,
+    EssentialConfirmOverlay, EssentialGuardState, EventPump, StartMaximizedState,
     cli, constants, events, microsoft_java, platform, router, theme, translations,
     use_provide_actions, use_provide_disable_confirm, use_provide_essential_guard,
     use_provide_link_confirm, use_provide_start_maximized, use_provide_station,
@@ -89,8 +89,7 @@ impl App for OneClientApp {
 
         use_provide_actions(&actions);
 
-        let link_confirm = use_state(|| None::<String>);
-        use_provide_link_confirm(LinkConfirmState(link_confirm));
+        use_provide_link_confirm();
 
         let disable_confirm = use_state(|| None);
         use_provide_disable_confirm(DisableConfirmState(disable_confirm));
@@ -291,8 +290,8 @@ fn main() {
                 .and_then(|v| v.parse::<usize>().ok())
                 .unwrap_or(128 * 1024 * 1024),
         )
-        .with_plugin(freya::borderless::BorderlessPlugin::new())
         .with_plugin(freya::metrics::MetricsPlugin::default())
+        .with_plugin(oneclient_app::DialogFocusPlugin::default())
         .with_default_font(theme::DEFAULT_FONT);
 
     #[cfg(target_os = "windows")]

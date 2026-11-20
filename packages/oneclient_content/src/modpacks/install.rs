@@ -91,6 +91,7 @@ pub async fn install_modpack(
     progress: Option<&GroupedProgressSession>,
     ctx: &ContentCtx,
 ) -> ContentResult<ModpackInstallReport> {
+    let _mutation = crate::packages::package_mutation_guard().await;
     let contents = &manifest.contents;
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
     let root = paths::cluster_game_dir(&cluster.folder_name, cluster.is_isolated())?;
@@ -685,6 +686,7 @@ pub async fn import_blocked_files(
     found: &[(PathBuf, BlockedFile)],
     ctx: &ContentCtx,
 ) -> ContentResult<Vec<String>> {
+    let _mutation = crate::packages::package_mutation_guard().await;
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
     let mut imported = Vec::new();
 
@@ -805,7 +807,7 @@ mod tests {
         assert_eq!(found[0].0, renamed);
 
         let picked =
-            find_blocked_downloads(&[renamed.clone()], &[blocked(&sha1, wanted.len() as u64)])
+            find_blocked_downloads(std::slice::from_ref(&renamed), &[blocked(&sha1, wanted.len() as u64)])
                 .await;
         assert_eq!(picked.len(), 1);
     }

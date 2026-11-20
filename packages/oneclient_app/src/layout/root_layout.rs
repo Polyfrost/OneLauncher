@@ -3,11 +3,10 @@ use freya::router::*;
 
 use crate::components::{
     AccountSwitcher, BlockedDownloadsPopup, BundleChoicesPopup, ClusterUpdatePopup, ControlCenter,
-    FlaggedInstallPopup, GenericPromptOverlay, IncompatibleInstallPopup, InviteJoinPopup, JavaPromptOverlay,
-    MicrosoftJavaPromptOverlay,
-    ModpackConfirmPopup, NotificationCenter, OptionalModsPopup, PackageUpdatePopup,
-    ReleaseMigrationPopup, SplashCurtain, StatusBar, Toasts, TooltipHost, UnpublishedImportPopup,
-    UpdatePromptOverlay, use_provide_tooltips,
+    FlaggedInstallPopup, GenericPromptOverlay, IncompatibleInstallPopup, InviteJoinPopup,
+    JavaPromptOverlay, MicrosoftJavaPromptOverlay, ModpackConfirmPopup, NotificationCenter,
+    OptionalModsPopup, PackageUpdatePopup, ReleaseMigrationPopup, SplashCurtain, StatusBar, Toasts,
+    TooltipHost, UnpublishedImportPopup, UpdatePromptOverlay, use_provide_tooltips,
 };
 use crate::hooks::{SplashState, use_provide_overlay_claims, use_provide_splash};
 use crate::layout::{HomeArtPrefetch, PendingLaunchDriver, use_ipc_commands};
@@ -28,9 +27,9 @@ impl Component for RootLayout {
         use_ipc_commands();
 
         rect()
+            .background(colors::page())
             .width(Size::fill())
             .height(Size::fill())
-            .background(colors::page())
             .color(colors::fg_primary())
             .overflow(Overflow::Clip)
             .child(
@@ -43,7 +42,6 @@ impl Component for RootLayout {
             .child(NotificationCenter)
             .child(AccountSwitcher)
             .child(ControlCenter)
-            .child(Toasts)
             .child(UpdatePromptOverlay)
             .child(JavaPromptOverlay)
             .child(MicrosoftJavaPromptOverlay)
@@ -61,6 +59,7 @@ impl Component for RootLayout {
             .child(ReleaseMigrationPopup)
             .child(InviteJoinPopup)
             .child(StatusBar)
+            .child(Toasts)
             .child(TooltipHost)
             .child(SplashCurtain)
             .child(AnimationClockDriver)

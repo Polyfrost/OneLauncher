@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use super::*;
 
@@ -8,10 +9,10 @@ use oneclient_content::packages::ContentType;
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
-    Button, CardLayout, ChevronToggle, ContextMenu, CopyStatus, FilterMenu, FilterOption, Icon,
-    IconType, LazySection, OVERLAY_BASE_LEVEL, OverlayPopup, PackageEntry, PackageRow, ScrollArea,
-    Segment, SegmentedControl, TextInput, bundled_delete_action, package_context_menu,
-    parse_folder_pack_id, run_guarded, use_shared_delete,
+    Button, CardLayout, ChevronToggle, ContextMenu, CopyStatus, Dropdown, FilterMenu, FilterOption,
+    Icon, IconType, LazySection, OVERLAY_BASE_LEVEL, OverlayPopup, PackageEntry, PackageRow,
+    ScrollArea, TextInput, bundled_delete_action, package_context_menu, parse_folder_pack_id,
+    run_guarded, use_shared_delete,
 };
 use crate::hooks::{ClusterAction, Selection, use_cluster_mutation, use_dispatch};
 use crate::i18n::{t, tf};
@@ -19,6 +20,8 @@ use crate::routes::Route;
 use crate::theme::{colors, rounded, rounded_px, text_size};
 use crate::ui::border_all_color;
 use crate::{Actions, utils};
+
+use super::super::folder_list::{layout_toggle, open_folder_action};
 
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum SortMode {
@@ -345,39 +348,25 @@ impl Bulk {
     }
 }
 
-const TOOLBAR_STACK_W: f32 = 640.;
-const TABS_ROW_H: f32 = 34.;
+/// Below this, file and add actions move below search and view controls
+const TOOLBAR_STACK_W: f32 = 760.;
+/// Bulk actions are wide, so the toolbar stacks sooner while selecting
+const TOOLBAR_STACK_BULK_W: f32 = 940.;
+/// Between stacking and here the folder action keeps only its icon
+const TOOLBAR_COMPACT_W: f32 = 880.;
+const CATEGORY_W: f32 = 180.;
+const SEARCH_W: f32 = 200.;
 
-#[derive(PartialEq)]
-struct FilterTabs {
-    width: Size,
-    chips: Vec<Element>,
-}
-
-impl Component for FilterTabs {
-    fn render(&self) -> impl IntoElement {
-        let mut chips_w = use_state(|| 0f32);
-
-        ScrollArea::new()
-            .horizontal(*chips_w.read())
-            .show_scrollbar(false)
-            .width(self.width.clone())
-            .height(Size::px(TABS_ROW_H))
-            .child(
-                rect()
-                    .horizontal()
-                    .width(Size::auto())
-                    .height(Size::px(TABS_ROW_H))
-                    .cross_align(Alignment::Center)
-                    .spacing(6.)
-                    .on_sized(move |e: Event<SizedEventData>| {
-                        let w = e.area.width();
-                        if (*chips_w.peek() - w).abs() > 0.5 {
-                            chips_w.set(w);
-                        }
-                    })
-                    .children(self.chips.clone()),
-            )
+fn folder_tip(content_type: ContentType, shared: bool) -> String {
+    let scope = t(match content_type {
+        ContentType::Shader => "oneclient.cluster.folder.tip.shaders",
+        ContentType::ResourcePack => "oneclient.cluster.folder.tip.textures",
+        _ => "oneclient.cluster.folder.tip.mods",
+    });
+    if shared {
+        format!("{scope} {}", t("oneclient.cluster.folder.tip.shared"))
+    } else {
+        scope.to_string()
     }
 }
 
@@ -402,58 +391,68 @@ pub(super) fn toolbar_bar(
     noun_plural: &'static str,
     export: Vec<PackageEntry>,
     header: Option<String>,
+    folder: Option<PathBuf>,
+    shared: bool,
 ) -> impl IntoElement {
     let local_tab = matches!(tabs.get(active_idx), Some(Tab::Local));
 
-    let chips = tabs.iter().enumerate().map(|(i, tab)| {
-        let mut active = active;
-        CategoryChip {
-            label: tab.label(),
-            selected: i == active_idx,
-            on_press: (move |_| *active.write() = i).into(),
-        }
-        .into_element()
-    });
+    let labels: Vec<String> = tabs.iter().map(Tab::label).collect();
+    let current = labels.get(active_idx).cloned().unwrap_or_default();
 
     let mut top_corners = CornerRadius::new_all(0.);
     top_corners.fill_top(rounded_px(12.));
 
     let measured = *toolbar_width.read();
-    let stacked = measured > 0. && measured < TOOLBAR_STACK_W;
+    let stack_below = if bulk.active() {
+        TOOLBAR_STACK_BULK_W
+    } else {
+        TOOLBAR_STACK_W
+    };
+    let stacked = measured > 0. && measured < stack_below;
+    let compact_folder = !stacked && measured > 0. && measured < TOOLBAR_COMPACT_W;
 
-    let filter_tabs = FilterTabs {
-        width: if stacked {
-            Size::fill()
-        } else {
+    // One compact dropdown replaces the row of category chips; it names the active value
+    let category = {
+        let mut active = active;
+        Dropdown::new(
+            tf("oneclient.cluster.package_manager.category", &[&current]),
+            labels,
+        )
+        .outlined()
+        .solid_menu()
+        .width(Size::px(CATEGORY_W))
+        .height(Size::px(34.))
+        .tooltip(t("oneclient.cluster.package_manager.category.tooltip"))
+        .on_select(move |idx: usize| active.set(idx))
+        .into_element()
+    };
+    let search = TextInput::new(search)
+        .placeholder(t("oneclient.cluster.package_manager.search"))
+        .width(if stacked {
             Size::flex(1.0)
-        },
-        chips: chips.collect(),
-    }
-    .into_element();
+        } else {
+            Size::px(SEARCH_W)
+        })
+        .leading(
+            Icon::new(IconType::SearchMd)
+                .size(14.)
+                .color(colors::fg_secondary())
+                .into_element(),
+        )
+        .into_element();
 
-    let mut controls: Vec<Element> = vec![
-        TextInput::new(search)
-            .placeholder(t("oneclient.cluster.package_manager.search"))
-            .width(Size::px(180.))
-            .leading(
-                Icon::new(IconType::SearchMd)
-                    .size(14.)
-                    .color(colors::fg_secondary())
-                    .into_element(),
-            )
-            .into_element(),
-        filter_button(sort, current_sort, filters, show, hidden).into_element(),
-    ];
+    let view_controls = rect()
+        .horizontal()
+        .cross_align(Alignment::Center)
+        .spacing(8.)
+        .child(category)
+        .maybe(!bulk.active(), |group| {
+            group
+                .child(filter_button(sort, current_sort, filters, show, hidden))
+                .child(layout_toggle(layout))
+        });
 
-    controls.push(
-        SegmentedControl::new(layout)
-            .height(34.)
-            .icon_size(15.)
-            .equal_width(34.)
-            .segment(Segment::new(ViewLayout::List).icon(IconType::ParagraphWrap))
-            .segment(Segment::new(ViewLayout::Grid).icon(IconType::DotsGrid))
-            .into_element(),
-    );
+    let mut controls = Vec::new();
     if !export.is_empty() {
         controls.push(copy_list_button(
             dispatch.clone(),
@@ -463,6 +462,11 @@ pub(super) fn toolbar_bar(
             move || package_list_text(&export, content_type, header.as_deref()),
         ));
     }
+    controls.push(open_folder_action(
+        folder,
+        folder_tip(content_type, shared),
+        compact_folder,
+    ));
     controls.push(
         Button::new()
             .primary()
@@ -496,27 +500,37 @@ pub(super) fn toolbar_bar(
         controls
     };
 
+    let find_content = rect()
+        .horizontal()
+        .width(if stacked {
+            Size::fill()
+        } else {
+            Size::flex(1.)
+        })
+        .cross_align(Alignment::Center)
+        .spacing(12.)
+        .content(Content::Flex)
+        .child(search)
+        .child(view_controls);
+    let actions = rect()
+        .horizontal()
+        .cross_align(Alignment::Center)
+        .spacing(8.)
+        .children(controls);
+
     let inner = if stacked {
         rect()
             .vertical()
             .width(Size::fill())
-            .spacing(8.)
-            .child(
-                rect()
-                    .horizontal()
-                    .width(Size::fill())
-                    .height(Size::px(TABS_ROW_H))
-                    .cross_align(Alignment::Center)
-                    .child(filter_tabs),
-            )
+            .spacing(6.)
+            .child(find_content)
             .child(
                 rect()
                     .horizontal()
                     .width(Size::fill())
                     .cross_align(Alignment::Center)
-                    .spacing(8.)
-                    .content(Content::Flex)
-                    .children(controls),
+                    .main_align(Alignment::End)
+                    .child(actions),
             )
             .into_element()
     } else {
@@ -524,10 +538,10 @@ pub(super) fn toolbar_bar(
             .horizontal()
             .width(Size::fill())
             .cross_align(Alignment::Center)
-            .spacing(8.)
+            .spacing(16.)
             .content(Content::Flex)
-            .child(filter_tabs)
-            .children(controls)
+            .child(find_content)
+            .child(actions)
             .into_element()
     };
 
@@ -590,67 +604,6 @@ pub(crate) fn copy_list_button(
                 .color(colors::fg_secondary()),
         )
         .into_element()
-}
-
-#[derive(PartialEq)]
-struct CategoryChip {
-    label: String,
-    selected: bool,
-    on_press: EventHandler<Event<PressEventData>>,
-}
-
-impl Component for CategoryChip {
-    fn render(&self) -> impl IntoElement {
-        let mut hovered = use_state(|| false);
-        let selected = self.selected;
-
-        let a11y_id = use_a11y();
-        let focus = use_focus(a11y_id);
-        let focused = focus().is_focused();
-
-        let background = if selected {
-            colors::brand()
-        } else if *hovered.read() {
-            colors::component_bg_hover()
-        } else {
-            colors::component_bg()
-        };
-
-        rect()
-            .horizontal()
-            .height(Size::px(32.))
-            .center()
-            .padding(Gaps::new_symmetric(0., 12.))
-            .corner_radius(rounded(8.))
-            .background(background)
-            .border(crate::ui::border_all_color(
-                1.,
-                if selected || focused {
-                    colors::brand()
-                } else {
-                    colors::component_border()
-                },
-            ))
-            .cursor(CursorIcon::Pointer)
-            .a11y_id(a11y_id)
-            .a11y_focusable(true)
-            .a11y_role(AccessibilityRole::Tab)
-            .on_pointer_enter(move |_| hovered.set(true))
-            .on_pointer_leave(move |_| hovered.set(false))
-            .on_press(self.on_press.clone())
-            .child(
-                label()
-                    .text(self.label.clone())
-                    .font_size(text_size(12.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .max_lines(1)
-                    .color(if selected {
-                        colors::on_brand()
-                    } else {
-                        colors::fg_primary()
-                    }),
-            )
-    }
 }
 
 pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentType) -> String {
@@ -726,7 +679,7 @@ pub(crate) fn notice_bar(text: String) -> Element {
                 .text(text)
                 .font_size(text_size(12.))
                 .width(Size::flex(1.0))
-                .color(colors::fg_secondary()),
+                .color(colors::fg_primary()),
         )
         .into_element()
 }
@@ -809,6 +762,7 @@ fn open_browser(cluster_id: i64, package_type: &'static str) {
         cluster_id,
         package_type: package_type.to_string(),
         pick_cluster: false,
+        in_instance: true,
     });
 }
 
@@ -1154,14 +1108,17 @@ impl Component for ContentBox {
                     on_delete,
                     on_bundled,
                     (move |()| selection.toggle(key.clone())).into(),
-                    item.hash.clone().filter(|_| item.update_checkable()).map(|hash| {
-                        let dispatch = dispatch.clone();
-                        let package = (hash, item.name.clone());
-                        (move |()| {
-                            dispatch.check_package_updates(cluster_id, vec![package.clone()])
-                        })
-                        .into()
-                    }),
+                    item.hash
+                        .clone()
+                        .filter(|_| item.update_checkable())
+                        .map(|hash| {
+                            let dispatch = dispatch.clone();
+                            let package = (hash, item.name.clone());
+                            (move |()| {
+                                dispatch.check_package_updates(cluster_id, vec![package.clone()])
+                            })
+                            .into()
+                        }),
                 )
             };
             menu_for

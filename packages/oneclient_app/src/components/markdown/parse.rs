@@ -1,4 +1,7 @@
+use oneclient_content::packages::markdown::{Iframe, iframes};
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+
+use super::embed::Embed;
 
 #[derive(Clone, PartialEq)]
 pub enum Block {
@@ -29,6 +32,8 @@ pub enum Block {
         headers: Vec<Vec<TextSpan>>,
         rows: Vec<Vec<Vec<TextSpan>>>,
     },
+    /// A video or similar from a known provider, drawn as a card rather than played
+    Embed(Embed),
     Rule,
 }
 
@@ -222,7 +227,7 @@ impl Walker {
                     self.in_paragraph = false;
                     self.content.extend(spans);
                     let content = std::mem::take(&mut self.content);
-                    self.blocks.push(Block::Paragraph { content });
+                    self.blocks.push(paragraph_block(content));
                 }
             }
             TagEnd::CodeBlock => {
@@ -384,13 +389,15 @@ impl Walker {
 
     fn html_block(&mut self, html: &str) {
         let text = strip_tags(html);
-        if text.trim().is_empty() {
-            return;
+        if !text.trim().is_empty() {
+            self.blocks.push(Block::Paragraph {
+                content: vec![Inline::Span(TextSpan::new(text))],
+            });
         }
 
-        self.blocks.push(Block::Paragraph {
-            content: vec![Inline::Span(TextSpan::new(text))],
-        });
+        // Only the tag is read, so an iframe becomes a card or a link, never a running page
+        self.blocks
+            .extend(iframes(html).into_iter().map(iframe_block));
     }
 
     fn push_span(&mut self, span: TextSpan) {
@@ -408,6 +415,52 @@ impl Walker {
             self.spans.push(span);
         }
     }
+}
+
+fn iframe_block(frame: Iframe) -> Block {
+    match Embed::from_url(&frame.src, frame.title.as_deref(), true) {
+        Some(embed) => Block::Embed(embed),
+        None => {
+            let label = frame.title.clone().unwrap_or_else(|| frame.src.clone());
+            Block::Link {
+                url: frame.src,
+                title: frame.title,
+                content: vec![Inline::Span(TextSpan::new(label))],
+            }
+        }
+    }
+}
+
+/// A paragraph that is only a link to a video is that video, so it can show as one.
+///
+/// A link the author wrote with their own words around a page url stays a link: only the
+/// embed form of a url, or a page url standing as its own text, is taken for an embed.
+fn paragraph_block(content: Vec<Inline>) -> Block {
+    if let [
+        Inline::Link {
+            url, content: text, ..
+        },
+    ] = content.as_slice()
+    {
+        let mut label = String::new();
+        let plain = text.iter().all(|inline| match inline {
+            Inline::Span(span) => {
+                label.push_str(&span.text);
+                true
+            }
+            _ => false,
+        });
+
+        if plain {
+            let label = label.trim();
+            let allow_page = label.is_empty() || label == url.trim();
+            if let Some(embed) = Embed::from_url(url, Some(label), allow_page) {
+                return Block::Embed(embed);
+            }
+        }
+    }
+
+    Block::Paragraph { content }
 }
 
 /// Headings and table cells hold plain spans, so links and images collapse to their text.
@@ -598,5 +651,141 @@ mod tests {
         assert!(matches!(parsed[0], Block::Heading { .. }));
         assert!(matches!(parsed[1], Block::Blockquote { .. }));
         assert!(matches!(parsed[2], Block::Rule));
+    }
+
+    const WWAYPOINTS: &str = "- Highlights blocks, making it the #1 Trapping mod
+# Watch Sheet's Showcase (0.6.0):
+
+[YouTube video player](https://www.youtube-nocookie.com/embed/WaRLLta2Edg)
+
+After the video.";
+
+    fn embed_of(block: &Block) -> &Embed {
+        let Block::Embed(embed) = block else {
+            panic!("expected an embed");
+        };
+        embed
+    }
+
+    #[test]
+    fn the_wwaypoints_embed_follows_its_heading_and_keeps_what_comes_after() {
+        let parsed = blocks(WWAYPOINTS);
+
+        assert!(matches!(parsed[0], Block::List(_)));
+        let Block::Heading { spans, .. } = &parsed[1] else {
+            panic!("expected the showcase heading");
+        };
+        assert_eq!(spans[0].text, "Watch Sheet's Showcase (0.6.0):");
+        assert_eq!(
+            embed_of(&parsed[2]).provider,
+            super::super::embed::Provider::YouTube
+        );
+        assert_eq!(
+            embed_of(&parsed[2]).open_url,
+            "https://www.youtube.com/watch?v=WaRLLta2Edg"
+        );
+        assert_eq!(embed_of(&parsed[2]).title, None);
+        assert_eq!(paragraph_text(&parsed[3]), "After the video.");
+        assert_eq!(parsed.len(), 4);
+    }
+
+    #[test]
+    fn the_real_wwaypoints_description_ends_in_its_youtube_card() {
+        let body = oneclient_content::packages::markdown::normalize_markdown(
+            "### Officially Allowed on Hoplite\n\nwWaypoints is the new best waypoint mod.\n- Highlights blocks, making it the #1 Trapping mod\n# Watch Sheet's Showcase (0.6.0):\n<iframe width=\"560\" height=\"315\" src=\"https://www.youtube-nocookie.com/embed/WaRLLta2Edg\" title=\"YouTube video player\" frameborder=\"0\" allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share\" allowfullscreen></iframe>",
+        );
+        let parsed = blocks(&body);
+
+        let Block::Heading { spans, .. } = &parsed[parsed.len() - 2] else {
+            panic!("the showcase heading should come right before the embed");
+        };
+        assert_eq!(spans[0].text, "Watch Sheet's Showcase (0.6.0):");
+        assert_eq!(
+            embed_of(parsed.last().unwrap()).open_url,
+            "https://www.youtube.com/watch?v=WaRLLta2Edg"
+        );
+    }
+
+    #[test]
+    fn a_raw_iframe_that_was_never_normalised_still_becomes_an_embed() {
+        let parsed = blocks(
+            "# Showcase
+<iframe width=\"560\" src=\"https://www.youtube-nocookie.com/embed/WaRLLta2Edg\" title=\"YouTube video player\" allowfullscreen></iframe>
+
+after",
+        );
+
+        assert!(matches!(parsed[0], Block::Heading { .. }));
+        assert_eq!(
+            embed_of(&parsed[1]).open_url,
+            "https://www.youtube.com/watch?v=WaRLLta2Edg"
+        );
+        assert_eq!(paragraph_text(&parsed[2]), "after");
+    }
+
+    #[test]
+    fn an_iframe_from_an_unknown_site_is_a_link_never_an_embed() {
+        let parsed = blocks("<iframe src=\"https://example.com/player\" title=\"Demo\"></iframe>");
+
+        let Block::Link { url, content, .. } = &parsed[0] else {
+            panic!("expected a link");
+        };
+        assert_eq!(url, "https://example.com/player");
+        assert!(matches!(&content[0], Inline::Span(span) if span.text == "Demo"));
+    }
+
+    #[test]
+    fn a_script_or_javascript_iframe_renders_nothing() {
+        assert!(blocks("<iframe src=\"javascript:alert(1)\"></iframe>").is_empty());
+        assert!(
+            blocks("<script>alert(1)</script>")
+                .iter()
+                .all(|block| { !matches!(block, Block::Embed(_) | Block::Link { .. }) })
+        );
+    }
+
+    #[test]
+    fn a_lone_video_page_link_is_a_card_only_when_it_is_its_own_text() {
+        assert!(matches!(
+            blocks("<https://youtu.be/WaRLLta2Edg>")[0],
+            Block::Embed(_)
+        ));
+        assert!(matches!(
+            blocks("[https://youtu.be/WaRLLta2Edg](https://youtu.be/WaRLLta2Edg)")[0],
+            Block::Embed(_)
+        ));
+        assert_eq!(
+            paragraph_text(&blocks("[Watch it here](https://youtu.be/WaRLLta2Edg)")[0]),
+            "Watch it here"
+        );
+    }
+
+    #[test]
+    fn a_titled_embed_link_keeps_its_title() {
+        let parsed = blocks("[Sheet's Showcase](https://www.youtube.com/embed/WaRLLta2Edg)");
+        assert_eq!(
+            embed_of(&parsed[0]).title.as_deref(),
+            Some("Sheet's Showcase")
+        );
+    }
+
+    #[test]
+    fn a_video_link_inside_a_sentence_or_list_stays_a_link() {
+        assert!(matches!(
+            blocks("watch [it](https://www.youtube.com/embed/WaRLLta2Edg) now")[0],
+            Block::Paragraph { .. }
+        ));
+        assert!(matches!(
+            blocks("- [it](https://www.youtube.com/embed/WaRLLta2Edg)")[0],
+            Block::List(_)
+        ));
+    }
+
+    #[test]
+    fn a_plain_link_paragraph_is_unchanged() {
+        assert!(matches!(
+            blocks("[Docs](https://example.com)")[0],
+            Block::Paragraph { .. }
+        ));
     }
 }

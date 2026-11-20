@@ -549,6 +549,40 @@ async fn evaluate_candidates(
         return evaluation;
     }
 
+    resolve_migration_packages(offered, target, present, cache, ctx, evaluation).await
+}
+
+/// Re-resolves the selected packages against current links. The caller holds
+/// the package mutation guard from this check through application of the plan.
+pub async fn revalidate_release_migration(
+    cluster_id: i64,
+    packages: Vec<ReleaseMigrationPackage>,
+    bundles: &BundlesManager,
+    ctx: &ContentCtx,
+) -> ContentResult<(Vec<ReleaseMigrationPackage>, Vec<ReleaseMigrationDependency>)> {
+    let target = PackageStore::get_cluster(cluster_id, ctx).await?;
+    let present = target_projects(cluster_id, bundles, ctx).await?;
+    let evaluation = resolve_migration_packages(
+        packages, &target, &present, &DependencyCache::new(), ctx, Evaluation::default(),
+    ).await;
+
+    if evaluation.unreachable || !evaluation.unavailable.is_empty() {
+        return Err(crate::error::ContentError::InvalidData {
+            reason: "Could not verify all selected packages' current dependencies".into(),
+        });
+    }
+
+    Ok((evaluation.packages, evaluation.dependencies))
+}
+
+async fn resolve_migration_packages(
+    offered: Vec<ReleaseMigrationPackage>,
+    target: &ClusterRow,
+    present: &HashSet<String>,
+    cache: &DependencyCache,
+    ctx: &ContentCtx,
+    mut evaluation: Evaluation,
+) -> Evaluation {
     let resolved_packages =
         futures_util::stream::iter(offered.into_iter().map(|package| async move {
             let resolved = if resolves_dependencies(package.content_type) {
@@ -711,6 +745,7 @@ pub async fn process_waitlist(
             );
             continue;
         }
+        let _mutation = crate::packages::package_mutation_guard().await;
         let target = match PackageStore::get_cluster(cluster_id, ctx).await {
             Ok(target) => target,
             Err(err) => {

@@ -204,6 +204,7 @@ impl Component for LogViewer {
 
         rect()
             .vertical()
+            .content(Content::Flex)
             .width(Size::fill())
             .height(Size::fill())
             .overflow(Overflow::Clip)

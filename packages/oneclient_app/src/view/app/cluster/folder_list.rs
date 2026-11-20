@@ -8,7 +8,7 @@ use oneclient_core::settings::ViewLayout;
 use crate::components::{
     Button, CARD_GRID_H, CARD_H, CardLayout, GRID_GAP, GRID_MIN_W, Icon, IconType, LocalImage,
     OverlayPopup, ScrollArea, Segment, SegmentedControl, TextInput, badge, icon_box, kebab_button,
-    meta_size, meta_text, on_secondary, open_folder_button,
+    meta_size, meta_text, on_secondary,
 };
 use crate::hooks::{
     loaded_image, settled_or_loading, use_cached_image, use_clusters, use_game_snapshot,
@@ -20,7 +20,7 @@ use crate::ui::{ImageFallbackExt, border_all_color};
 use super::package_manager::{CARD_SPACING, GRID_MAX_COLS, notice_bar};
 
 const CONTROL_H: f32 = 34.;
-const SEARCH_W: f32 = 180.;
+const SEARCH_W: f32 = 200.;
 const IMAGE_EDGE: u32 = 128;
 const FIRST_DATAPACK_MAJOR: u32 = 13;
 
@@ -63,35 +63,89 @@ pub(super) fn matches_search(needle: &str, fields: &[&str]) -> bool {
     needle.is_empty() || fields.iter().any(|f| f.to_lowercase().contains(needle))
 }
 
-pub(super) fn toolbar_panel(leading: Option<Element>, controls: Vec<Element>) -> Element {
-    let mut top_corners = CornerRadius::new_all(0.);
-    top_corners.fill_top(rounded_px(12.));
+/// Below `stack_below` the leading controls take their own row and the actions drop under them
+#[derive(PartialEq)]
+struct ToolbarPanel {
+    leading: Vec<Element>,
+    controls: Vec<Element>,
+    stack_below: f32,
+}
 
-    rect()
-        .vertical()
-        .width(Size::fill())
-        .overflow(Overflow::Clip)
-        .padding(Gaps::new_symmetric(8., 12.))
-        .corner_radius(top_corners)
-        .background(colors::page_elevated())
-        .child(
+impl Component for ToolbarPanel {
+    fn render(&self) -> impl IntoElement {
+        let mut width = use_state(|| 0f32);
+        let measured = *width.read();
+        let stacked = measured > 0. && measured < self.stack_below;
+
+        let mut top_corners = CornerRadius::new_all(0.);
+        top_corners.fill_top(rounded_px(12.));
+
+        let leading = rect()
+            .horizontal()
+            .width(if stacked {
+                Size::fill()
+            } else {
+                Size::flex(1.0)
+            })
+            .height(Size::px(CONTROL_H))
+            .cross_align(Alignment::Center)
+            .spacing(8.)
+            .children(self.leading.clone());
+
+        let inner = if stacked {
+            rect()
+                .vertical()
+                .width(Size::fill())
+                .spacing(8.)
+                .child(leading)
+                .child(
+                    rect()
+                        .horizontal()
+                        .width(Size::fill())
+                        .cross_align(Alignment::Center)
+                        .main_align(Alignment::End)
+                        .spacing(8.)
+                        .children(self.controls.clone()),
+                )
+        } else {
             rect()
                 .horizontal()
                 .width(Size::fill())
                 .cross_align(Alignment::Center)
                 .spacing(8.)
                 .content(Content::Flex)
-                .child(
-                    rect()
-                        .horizontal()
-                        .width(Size::flex(1.0))
-                        .height(Size::px(CONTROL_H))
-                        .cross_align(Alignment::Center)
-                        .maybe_child(leading),
-                )
-                .children(controls),
-        )
-        .into_element()
+                .child(leading)
+                .children(self.controls.clone())
+        };
+
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .overflow(Overflow::Clip)
+            .padding(Gaps::new_symmetric(8., 12.))
+            .corner_radius(top_corners)
+            .background(colors::page_elevated())
+            .on_sized(move |event: Event<SizedEventData>| {
+                let next = event.data().area.width();
+                if (*width.peek() - next).abs() > 0.5 {
+                    width.set(next);
+                }
+            })
+            .child(inner)
+    }
+}
+
+pub(super) fn toolbar_panel(
+    leading: Vec<Element>,
+    controls: Vec<Element>,
+    stack_below: f32,
+) -> Element {
+    ToolbarPanel {
+        leading,
+        controls,
+        stack_below,
+    }
+    .into_element()
 }
 
 pub(super) fn search_input(search: State<String>) -> Element {
@@ -107,20 +161,72 @@ pub(super) fn search_input(search: State<String>) -> Element {
         .into_element()
 }
 
-pub(super) fn folder_button(folder: PathBuf) -> Element {
-    open_folder_button(folder)
-        .width(Size::px(CONTROL_H))
+pub(super) fn folder_button(folder: PathBuf, name: &'static str) -> Element {
+    Button::new()
+        .secondary()
         .height(Size::px(CONTROL_H))
+        .font_size(text_size(12.))
+        .on_press(move |_| {
+            std::fs::create_dir_all(&folder).ok();
+            crate::platform::open_path(&folder.to_string_lossy());
+        })
+        .child(Icon::new(IconType::Folder).size(15.))
+        .text(name)
         .into_element()
+}
+
+/// The scoped "Open folder" action that sits beside the add action
+///
+/// `tooltip` names exactly which folder it opens. With no folder the button stays put but is
+/// disabled, so a missing target reads as unavailable rather than as a missing feature.
+pub(super) fn open_folder_action(
+    folder: Option<PathBuf>,
+    tooltip: String,
+    compact: bool,
+) -> Element {
+    let button = Button::new()
+        .secondary()
+        .enabled(folder.is_some())
+        .tooltip(tooltip)
+        .on_press(move |_| {
+            if let Some(folder) = &folder {
+                std::fs::create_dir_all(folder).ok();
+                crate::platform::open_path(&folder.to_string_lossy());
+            }
+        });
+
+    let button = if compact {
+        button
+            .icon()
+            .width(Size::px(CONTROL_H))
+            .height(Size::px(CONTROL_H))
+            .child(Icon::new(IconType::Folder).size(16.))
+    } else {
+        button
+            .height(Size::px(CONTROL_H))
+            .font_size(text_size(12.))
+            .child(Icon::new(IconType::Folder).size(15.))
+            .text(t("oneclient.cluster.folder.open"))
+    };
+    button.into_element()
 }
 
 pub(super) fn layout_toggle(layout: State<ViewLayout>) -> Element {
     SegmentedControl::new(layout)
+        .static_indicator()
         .height(CONTROL_H)
         .icon_size(15.)
         .equal_width(CONTROL_H)
-        .segment(Segment::new(ViewLayout::List).icon(IconType::ParagraphWrap))
-        .segment(Segment::new(ViewLayout::Grid).icon(IconType::DotsGrid))
+        .segment(
+            Segment::new(ViewLayout::List)
+                .icon(IconType::ParagraphWrap)
+                .tooltip(t("oneclient.clusters.page.layout.list")),
+        )
+        .segment(
+            Segment::new(ViewLayout::Grid)
+                .icon(IconType::DotsGrid)
+                .tooltip(t("oneclient.clusters.page.layout.grid")),
+        )
         .into_element()
 }
 
@@ -462,14 +568,12 @@ pub(crate) fn dialog(
                 .height(Size::window_percent(100.))
                 .center()
                 .child(
-                    rect()
+                    crate::theme::glass::popup_panel(rect(), 14., colors::card())
                         .vertical()
                         .width(Size::px(400.))
                         .max_width(Size::window_percent(90.))
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
-                        .corner_radius(rounded(14.))
-                        .background(colors::card())
                         .border(border_all_color(1., colors::component_border()))
                         .child(
                             label()

@@ -1,6 +1,7 @@
 use freya::prelude::*;
 
 use super::MarkdownStyle;
+use super::embed_card::EmbedCard;
 use super::image::MarkdownImage;
 use super::parse::{Block, Inline, List, TextSpan};
 use crate::components::CodeBlock;
@@ -55,6 +56,7 @@ pub fn render_block(block: &Block, key: usize, style: &MarkdownStyle) -> Element
                 render_content(content, style.paragraph_size, style).font_slant(FontSlant::Italic),
             )
             .into(),
+        Block::Embed(embed) => EmbedCard::new(embed.clone(), style.clone()).key(key).into(),
         Block::Rule => rect()
             .key(key)
             .width(Size::fill())
@@ -230,7 +232,7 @@ impl MarkdownLink {
 
 impl Component for MarkdownLink {
     fn render(&self) -> impl IntoElement {
-        let pending = try_consume_root_context::<LinkConfirmState>().map(|state| state.0);
+        let pending = try_consume_root_context::<LinkConfirmState>();
         let mut hovering = use_state(|| false);
 
         let url = self.url.clone();

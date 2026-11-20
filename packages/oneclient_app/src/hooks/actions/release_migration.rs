@@ -8,6 +8,7 @@ use oneclient_content::packages::release_migration::{
     ReleaseMigrationDependency, ReleaseMigrationPackage, ReleaseMigrationPlan,
     ReleaseMigrationSkip, SkipReason, add_to_waitlist, apply_release_migration_dependency,
     apply_release_migration_package, plan_release_migrations, process_waitlist,
+    revalidate_release_migration,
 };
 use oneclient_content::packages::{
     ContentType, GameLoader, PackageBody, ProjectDetail, ProviderId, VersionDetail, VersionFile,
@@ -735,25 +736,13 @@ impl Actions {
             return;
         }
 
-        let chosen: HashSet<String> = packages
-            .iter()
-            .map(|package| package.source_hash.clone())
-            .collect();
-        let (dependencies, unavailable): (Vec<_>, Vec<_>) = match prompt.plans.get(&prompt.selected)
-        {
-            Some(ReleasePlanState::Ready(plan)) => (
-                plan.dependencies
-                    .iter()
-                    .filter(|dependency| dependency.is_needed_by(&chosen))
-                    .map(|dependency| (dependency.clone(), dependency.enabled_for(&packages)))
-                    .collect(),
-                plan.unavailable
-                    .iter()
-                    .filter(|skip| skip.reason == SkipReason::NoCompatibleVersion)
-                    .cloned()
-                    .collect(),
-            ),
-            _ => (Vec::new(), Vec::new()),
+        let unavailable: Vec<_> = match prompt.plans.get(&prompt.selected) {
+            Some(ReleasePlanState::Ready(plan)) => plan.unavailable
+                .iter()
+                .filter(|skip| skip.reason == SkipReason::NoCompatibleVersion)
+                .cloned()
+                .collect(),
+            _ => Vec::new(),
         };
         let waitlisted = !prompt.is_cross_loader();
 
@@ -765,13 +754,27 @@ impl Actions {
             let content = state.services.content();
             let source = prompt.source().filter(|_| copy_configs_too).cloned();
             let target = prompt.target;
+            let target_title = crate::utils::instance_display_name(&target);
+            let mutation = oneclient_content::packages::package_mutation_guard().await;
+            let (packages, dependencies) = match revalidate_release_migration(
+                target.id, packages, state.bundles.as_ref(), &content,
+            ).await {
+                Ok(plan) => plan,
+                Err(err) => {
+                    tracing::warn!(target_cluster_id = target.id, %err, "could not revalidate migration dependencies");
+                    actions.notify(t("oneclient.actions.release_migration.check_failed.title"))
+                        .body(t("oneclient.actions.release_migration.dependencies_changed"))
+                        .error().send();
+                    return;
+                }
+            };
             let total = packages.len() + dependencies.len();
 
             let session = oneclient_events::GroupedProgressSession::start(
                 &state.services.events,
                 tf(
                     "oneclient.actions.release_migration.migrating",
-                    &[&target.name],
+                    &[&target_title],
                 ),
             );
             session.expect(
@@ -782,7 +785,8 @@ impl Actions {
 
             let mut migrated = 0usize;
             let mut blocked: HashSet<String> = HashSet::new();
-            for (dependency, enabled) in &dependencies {
+            for dependency in &dependencies {
+                let enabled = dependency.enabled_for(&packages);
                 let child = session.child(
                     dependency.project.name.clone(),
                     1,
@@ -791,7 +795,7 @@ impl Actions {
                 match apply_release_migration_dependency(
                     target.id,
                     dependency,
-                    *enabled,
+                    enabled,
                     Some(&child),
                     &content,
                 )
@@ -837,6 +841,8 @@ impl Actions {
                 child.finish();
             }
 
+            drop(mutation);
+
             if !waitlisted {
                 tracing::info!(
                     target_cluster_id = target.id,
@@ -859,17 +865,17 @@ impl Actions {
             let spec = Some(NotificationSpec {
                 title: tf(
                     "oneclient.actions.release_migration.migrated.title",
-                    &[&target.name],
+                    &[&target_title],
                 ),
                 body: if failed == 0 && migrated == 1 {
                     tf(
                         "oneclient.actions.release_migration.migrated.body.one",
-                        &[&migrated, &target.name],
+                        &[&migrated, &target_title],
                     )
                 } else if failed == 0 {
                     tf(
                         "oneclient.actions.release_migration.migrated.body.other",
-                        &[&migrated, &target.name],
+                        &[&migrated, &target_title],
                     )
                 } else {
                     tf(

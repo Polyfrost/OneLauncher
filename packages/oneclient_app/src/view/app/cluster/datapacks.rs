@@ -18,13 +18,15 @@ use crate::{Actions, Route};
 
 use super::cluster_not_found;
 use super::folder_list::{
-    CardIcon, FolderCard, PACKAGE_ROWS, confirm_dialog, content_box, folder_button, layout_toggle,
-    matches_search, notify_in_use, search_input, toolbar_action, toolbar_panel,
+    CardIcon, FolderCard, PACKAGE_ROWS, confirm_dialog, content_box, layout_toggle, matches_search,
+    notify_in_use, open_folder_action, search_input, toolbar_action, toolbar_panel,
     use_game_folder_in_use,
 };
 use super::package_manager::{copy_list_button, empty_hint, empty_shell, empty_title};
 
-const WORLD_PICKER_W: f32 = 220.;
+const WORLD_PICKER_W: f32 = 180.;
+/// The world picker, search and every action fit on one row down to roughly here
+const TOOLBAR_STACK_W: f32 = 860.;
 
 #[derive(PartialEq)]
 pub struct ClusterDataPacks {
@@ -56,6 +58,7 @@ fn browse(cluster_id: i64, world: String, mut remembered: State<HashMap<i64, Str
         cluster_id,
         package_type: "datapack".to_string(),
         pick_cluster: false,
+        in_instance: true,
     });
 }
 
@@ -91,15 +94,34 @@ impl Component for ClusterDataPacks {
 
         let Some(world) = current else {
             let empty = (!query_is_loading(&worlds_query)).then(|| {
-                empty_shell(IconType::Globe01)
+                empty_shell(IconType::Database01)
                     .child(empty_title(t(
                         "oneclient.cluster.datapacks.no_worlds.title",
                     )))
                     .child(empty_hint(t("oneclient.cluster.datapacks.no_worlds.hint")))
+                    .child(rect().height(Size::px(8.)))
+                    .child(
+                        Button::new()
+                            .secondary()
+                            .on_press(move |_| {
+                                let _ = RouterContext::get()
+                                    .replace(Route::ClusterWorlds { cluster_id });
+                            })
+                            .text(t("oneclient.cluster.datapacks.no_worlds.worlds")),
+                    )
                     .into_element()
             });
+            // Data packs live inside a world, so with none there is no folder to open yet
             return cluster_content()
-                .child(toolbar_panel(None, vec![layout_toggle(layout)]))
+                .child(toolbar_panel(
+                    Vec::new(),
+                    vec![open_folder_action(
+                        None,
+                        t("oneclient.cluster.folder.tip.datapacks.none").to_string(),
+                        false,
+                    )],
+                    0.,
+                ))
                 .child(content_box(
                     0,
                     card_layout,
@@ -232,9 +254,7 @@ impl Component for ClusterDataPacks {
 
         let add_world = world.clone();
         let add_dispatch = dispatch.clone();
-        let mut controls = vec![search_input(search)];
-        controls.extend(folder.clone().map(folder_button));
-        controls.push(layout_toggle(layout));
+        let mut controls = vec![layout_toggle(layout)];
         if !all.is_empty() {
             let mut names: Vec<String> = all.iter().map(|p| p.file_name.clone()).collect();
             names.sort_by_key(|name| name.to_lowercase());
@@ -248,10 +268,18 @@ impl Component for ClusterDataPacks {
                         .iter()
                         .map(|name| format!("- {name}"))
                         .collect::<Vec<_>>()
-                        .join("\n")
+                        .join(
+                            "
+",
+                        )
                 },
             ));
         }
+        controls.push(open_folder_action(
+            folder.clone(),
+            tf("oneclient.cluster.folder.tip.datapacks", &[&world]),
+            false,
+        ));
         let browse_world = world.clone();
         controls.push(
             toolbar_action(IconType::SearchMd, t("oneclient.common.browse"))
@@ -324,7 +352,11 @@ impl Component for ClusterDataPacks {
         });
 
         cluster_content()
-            .child(toolbar_panel(Some(picker), controls))
+            .child(toolbar_panel(
+                vec![picker, search_input(search)],
+                controls,
+                TOOLBAR_STACK_W,
+            ))
             .child(content_box(
                 packs.len(),
                 card_layout,

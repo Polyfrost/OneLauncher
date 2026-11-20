@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 
 use freya::prelude::*;
 use oneclient_common::search::{MatchScore, SearchQuery};
@@ -385,6 +386,19 @@ pub(crate) fn make_row(
         modpack: None,
         added_at: installed_info.and_then(|i| i.added_at.clone()),
         published_at: installed_info.and_then(|i| i.published_at.clone()),
+    }
+}
+
+/// The folder the toolbar's "Open folder" opens for this content type
+///
+/// Mods live in the instance's own mods folder; shader and resource packs are read from the game folder.
+fn content_folder(cluster: &Cluster, content_type: ContentType) -> Option<PathBuf> {
+    match content_type {
+        ContentType::Mod => oneclient_common::paths::cluster_mods_dir(&cluster.folder_name).ok(),
+        _ => cluster
+            .game_dir()
+            .ok()
+            .map(|dir| dir.join(content_type.folder_name())),
     }
 }
 
@@ -1007,6 +1021,10 @@ impl Component for PackageManager {
                 noun_plural,
                 export_rows(&items, hidden),
                 cluster.as_ref().map(list_header),
+                cluster
+                    .as_ref()
+                    .and_then(|cluster| content_folder(cluster, content_type)),
+                shares_content == Some(true),
             ))
             .child(
                 ContentBox::new(

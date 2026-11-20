@@ -36,33 +36,18 @@ impl Component for Stats {
                         rect()
                             .vertical()
                             .width(Size::fill())
-                            .padding(Gaps::new(0., 40., 40., 40.))
-                            .spacing(24.)
-                            .child(header())
+                            .padding(Gaps::new(18., 22., 24., 22.))
+                            .spacing(16.)
+                            .child(
+                                label()
+                                    .text(t("oneclient.stats.description"))
+                                    .font_size(text_size(13.))
+                                    .color(colors::fg_secondary()),
+                            )
                             .child(body),
                     ),
             )
     }
-}
-
-fn header() -> Element {
-    rect()
-        .vertical()
-        .spacing(2.)
-        .child(
-            label()
-                .text(t("oneclient.stats.title"))
-                .font_size(text_size(32.))
-                .font_weight(FontWeight::BOLD)
-                .color(colors::fg_primary()),
-        )
-        .child(
-            label()
-                .text(t("oneclient.stats.description"))
-                .font_size(text_size(13.))
-                .color(colors::fg_secondary()),
-        )
-        .into_element()
 }
 
 fn loading_state() -> Element {

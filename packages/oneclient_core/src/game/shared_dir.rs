@@ -68,6 +68,7 @@ pub async fn materialize_content(
     mods_in_cluster: bool,
     copy_mod_files: bool,
 ) -> LauncherResult<()> {
+    let _mutation = oneclient_content::packages::package_mutation_guard().await;
     let mods_sync = lock_mods_sync(cluster.id).await;
 
     let dedicated = cluster.uses_dedicated_dir();
@@ -899,6 +900,7 @@ pub(crate) async fn lock_mods_sync(cluster_id: i64) -> tokio::sync::OwnedMutexGu
 }
 
 pub async fn sync_cluster_mods(state: &LauncherState, cluster_id: i64) -> bool {
+    let _mutation = oneclient_content::packages::package_mutation_guard().await;
     let _sync = lock_mods_sync(cluster_id).await;
     if state.games.is_active(cluster_id) {
         return false;
@@ -2167,6 +2169,7 @@ pub async fn import_manual_content(
     cluster: &Cluster,
     game_dir: &Path,
 ) {
+    let _mutation = oneclient_content::packages::package_mutation_guard().await;
     let _sync = lock_mods_sync(cluster.id).await;
     let mods_in_cluster = match cluster.dir() {
         Ok(dir) => manifest::mods_live_in_cluster(&dir).await,

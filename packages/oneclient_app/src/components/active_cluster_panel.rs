@@ -13,8 +13,8 @@ use crate::hooks::{
 use crate::i18n::t;
 use crate::routes::Route;
 use crate::theme::{colors, text_size};
-use crate::utils::sort_clusters_for_home;
-use crate::view::app::{launch_button_state, launch_syncing, shared_dir_taken};
+use crate::utils::{builtin_oneclient_title, sort_clusters_for_home};
+use crate::view::app::{launch_button_label, launch_button_state, launch_syncing, shared_dir_taken};
 
 #[derive(PartialEq)]
 pub struct ActiveClusterPanel;
@@ -63,6 +63,12 @@ impl Component for ActiveClusterPanel {
             active.as_ref().map(|c| c.mc_loader),
         );
 
+        let theme = colors::active_theme();
+        let subtitle_ink = if theme.colors.light || theme.liquid_glass {
+            Color::from_rgb(241, 242, 247)
+        } else {
+            colors::on_art_secondary()
+        };
         let Some(cluster) = active else {
             return rect()
                 .vertical()
@@ -72,13 +78,17 @@ impl Component for ActiveClusterPanel {
                     label()
                         .text(t("oneclient.components.active_cluster_panel.empty"))
                         .font_size(text_size(24.))
-                        .color(colors::on_art_secondary()),
+                        .color(subtitle_ink),
                 )
                 .child(LobbyHeroChip);
         };
 
         let version = format!("{} {}", cluster.mc_version, cluster.mc_loader);
-        let (title, subtitle) = if cluster.user_created && cluster.kind != ClusterKind::OneClient {
+        let (title, subtitle) = if let Some(title) = builtin_oneclient_title(&cluster) {
+            let mut details = vec![cluster.mc_loader.to_string()];
+            details.extend(metadata.map(|m| m.name.clone()));
+            (title, details.join(" \u{b7} "))
+        } else if cluster.user_created && cluster.kind != ClusterKind::OneClient {
             (cluster.name.clone(), version)
         } else {
             let mut parts = vec!["OneClient".to_string()];
@@ -89,7 +99,7 @@ impl Component for ActiveClusterPanel {
                 version
             };
             parts.extend(metadata.map(|m| m.name.clone()));
-            (title, parts.join(" · "))
+            (title, parts.join(" Â· "))
         };
         let cluster_id = cluster.id;
         let syncing = launch_syncing(&launcher, cluster.uses_bundles());
@@ -102,24 +112,12 @@ impl Component for ActiveClusterPanel {
             .cross_align(Alignment::Start)
             .offset_x(slide_x)
             .opacity(p)
-            .child(
-                label()
-                    .text(title)
-                    .width(Size::fill())
-                    .max_lines(1)
-                    .text_overflow(TextOverflow::Ellipsis)
-                    .font_size(text_size(56.))
-                    .line_height(1.1)
-                    .font_weight(FontWeight::BOLD)
-                    .color(colors::on_art()),
-            )
-            .child(
-                label()
-                    .text(subtitle)
-                    .font_size(text_size(16.))
-                    .font_weight(FontWeight::SEMI_BOLD)
-                    .color(colors::on_art_secondary()),
-            )
+            .child(home_heading(
+                title,
+                subtitle,
+                subtitle_ink,
+                theme.pixel_icons && theme.colors.light,
+            ))
             .child(
                 rect()
                     .horizontal()
@@ -137,13 +135,49 @@ impl Component for ActiveClusterPanel {
     }
 }
 
+pub(super) fn home_heading(
+    title: String,
+    subtitle: String,
+    subtitle_ink: Color,
+    space_subtitle: bool,
+) -> Rect {
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .child(
+            label()
+                .text(title)
+                .width(Size::fill())
+                .max_lines(1)
+                .text_overflow(TextOverflow::Ellipsis)
+                .font_size(text_size(56.))
+                .line_height(1.1)
+                .font_weight(FontWeight::BOLD)
+                .color(if colors::is_light() {
+                    Color::WHITE
+                } else {
+                    colors::on_art()
+                }),
+        )
+        .child(
+            label()
+                .text(subtitle)
+                .maybe(space_subtitle, |el| {
+                    el.letter_spacing(0.5).margin(Gaps::new(3., 0., 0., 0.))
+                })
+                .font_size(text_size(16.))
+                .font_weight(FontWeight::SEMI_BOLD)
+                .color(subtitle_ink),
+        )
+}
+
 fn launch_button(
     cluster_id: i64,
     dispatch: crate::Actions,
     state: (&'static str, bool),
 ) -> impl IntoElement {
     let (label, enabled) = state;
-    Button::new()
+    let button = Button::new()
         .primary()
         .medium()
         .font_size(text_size(16.))
@@ -154,8 +188,8 @@ fn launch_button(
             if enabled {
                 dispatch.launch_cluster(cluster_id);
             }
-        })
-        .text(label)
+        });
+    launch_button_label(button, label)
 }
 
 fn cluster_settings_button(cluster_id: i64) -> impl IntoElement {
@@ -167,5 +201,9 @@ fn cluster_settings_button(cluster_id: i64) -> impl IntoElement {
         .on_press(move |_| {
             let _ = RouterContext::get().push(Route::ClusterOverview { cluster_id });
         })
-        .child(Icon::new(IconType::Settings04).size(20.))
+        .child(
+            Icon::new(IconType::Settings04)
+                .size(20.)
+                .color(colors::on_art()),
+        )
 }

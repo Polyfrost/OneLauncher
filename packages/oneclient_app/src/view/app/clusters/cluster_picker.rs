@@ -2,8 +2,8 @@ use freya::prelude::*;
 use oneclient_core::clusters::Cluster;
 
 use super::page::{
-    Filter, Sort, cluster_matches, filter_menu, loader_options, recent_line_heads, search_input,
-    section_header, shown, toolbar,
+    Filter, Sort, card_width_for, cluster_matches, filter_menu, loader_options, recent_line_heads,
+    search_input, section_header, shown, toolbar,
 };
 use crate::components::{
     Button, Icon, IconType, LazySection, OVERLAY_BASE_LEVEL, OverlayPopup, ScrollArea, TabItem,
@@ -20,8 +20,7 @@ const DIALOG_PADDING_X: f32 = 22.;
 const INLINE_SEARCH_MIN_W: f32 = 640.;
 const MAX_COLUMNS: usize = 3;
 const CARD_MIN_W: f32 = 200.;
-const CARD_H: f32 = 150.;
-const CARD_GAP: f32 = 10.;
+const CARD_GAP: f32 = 16.;
 const HEADER_H: f32 = 30.;
 
 #[derive(PartialEq)]
@@ -190,6 +189,9 @@ impl Component for ClusterPickerModal {
 
         let selected = self.selected;
         let on_pick = self.on_pick.clone();
+        let width = *content_w.read();
+        let columns = crate::ui::columns_for(width, CARD_MIN_W, MAX_COLUMNS, CARD_GAP);
+        let card_height = VersionCard::height_for_width(card_width_for(width, columns, CARD_GAP));
         let body = if loading {
             centered_spinner(t("oneclient.clusters.picker.loading"))
         } else if sections.is_empty() {
@@ -204,7 +206,7 @@ impl Component for ClusterPickerModal {
                 .height(Size::fill())
                 .lazy_sections(
                     sections,
-                    CARD_H,
+                    card_height,
                     CARD_GAP,
                     CARD_MIN_W,
                     MAX_COLUMNS,
@@ -218,6 +220,8 @@ impl Component for ClusterPickerModal {
                             Some(cluster.id) == selected,
                             move |_| on_pick.call(picked.clone()),
                         )
+                        .selection_only()
+                        .height(card_height)
                         .into_element()
                     },
                     move |s| {
@@ -268,7 +272,7 @@ impl Component for ClusterPickerModal {
                         outside.call(());
                     })
                     .child(
-                        rect()
+                        crate::theme::glass::popup_panel(rect(), 16., colors::page())
                             .vertical()
                             .width(Size::px(DIALOG_W))
                             .height(Size::Inner)
@@ -276,8 +280,6 @@ impl Component for ClusterPickerModal {
                             .max_height(Size::window_percent(85.))
                             .padding(Gaps::new(8., DIALOG_PADDING_X, 22., DIALOG_PADDING_X))
                             .spacing(14.)
-                            .corner_radius(rounded(16.))
-                            .background(colors::page())
                             .border(border_all_color(1., colors::component_border()))
                             .on_press(|e: Event<PressEventData>| e.stop_propagation())
                             .on_sized(move |e: Event<SizedEventData>| {

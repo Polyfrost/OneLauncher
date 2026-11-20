@@ -3,6 +3,7 @@ use freya::prelude::*;
 use freya::router::*;
 
 use super::app_shell::{appshell_overlay, back_button, hides_overlay, navigate_back};
+use super::workspace_dialog::{RoutedPage, WorkspaceDialog, WorkspacePopup};
 use crate::Route;
 use crate::hooks::use_overlay_claims;
 use crate::theme;
@@ -13,84 +14,35 @@ enum Enter {
     None,
     Up,
     Fade,
-}
-
-/// This outlet must stay still for these the shell runs its own content-only
-/// transition else the sidebar animates along with the page
-fn is_sidebar_route(route: &Route) -> bool {
-    matches!(
-        route,
-        Route::SettingsAppearance {}
-            | Route::SettingsThemeEditor {}
-            | Route::SettingsMinecraft {}
-            | Route::SettingsAccounts {}
-            | Route::SettingsLauncher {}
-            | Route::SettingsJava {}
-            | Route::SettingsStorage {}
-            | Route::SettingsApis {}
-            | Route::SettingsLanguage {}
-            | Route::SettingsDeveloper {}
-            | Route::SettingsChangelog {}
-    )
-}
-
-fn is_cluster_route(route: &Route) -> bool {
-    matches!(
-        route,
-        Route::ClusterOverview { .. }
-            | Route::ClusterLogs { .. }
-            | Route::ProcessLogs { .. }
-            | Route::ClusterScreenshots { .. }
-            | Route::ClusterMods { .. }
-            | Route::ClusterShaders { .. }
-            | Route::ClusterTextures { .. }
-            | Route::ClusterWorlds { .. }
-            | Route::ClusterDataPacks { .. }
-            | Route::ClusterSettings { .. }
-    )
-}
-
-/// Checks if it should go back to home or somewhere else
-fn escape_exits_section(route: &Route) -> bool {
-    is_cluster_route(route) || is_sidebar_route(route)
+    Slide,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum EscapeAction {
     /// The root screen has nothing above it so Escape must not walk history
     Ignore,
-    ExitSection,
+    HomeStack,
     Back,
 }
 
 fn escape_action(route: &Route) -> EscapeAction {
     if matches!(route, Route::Home {}) {
+        EscapeAction::HomeStack
+    } else if WorkspaceDialog::for_route(route).is_some() {
         EscapeAction::Ignore
-    } else if escape_exits_section(route) {
-        EscapeAction::ExitSection
     } else {
         EscapeAction::Back
     }
 }
 
-/// Escape belongs to whatever the user is typing in before it belongs to the
-/// router so a search field does not throw the page away mid-word
-fn is_text_entry(role: AccessibilityRole) -> bool {
-    matches!(
-        role,
-        AccessibilityRole::TextInput
-            | AccessibilityRole::MultilineTextInput
-            | AccessibilityRole::SearchInput
-            | AccessibilityRole::PasswordInput
-    )
-}
-
 fn enter_kind(from: &Route, to: &Route) -> Enter {
-    if (is_sidebar_route(from) && is_sidebar_route(to))
-        || (is_cluster_route(from) && is_cluster_route(to))
+    if WorkspaceDialog::for_route(to).is_some()
         || (matches!(from, Route::Browser { .. }) && matches!(to, Route::Browser { .. }))
     {
         Enter::None
+    } else if matches!(to, Route::Browser { .. }) {
+        // Slide once on entry. Keeping the results opaque avoids compositing the whole grid.
+        Enter::Slide
     } else if hides_overlay(from) {
         Enter::Up
     } else {
@@ -104,20 +56,23 @@ pub struct AnimatedAppOutlet;
 impl Component for AnimatedAppOutlet {
     fn render(&self) -> impl IntoElement {
         let mut router = use_animated_router::<Route>();
+        let home_stack = crate::components::use_home_stack();
 
         let route = use_route::<Route>();
-        let at_home = matches!(&route, Route::Home {});
+        let page = super::use_app_page();
+        let dialog = WorkspaceDialog::for_route(&route);
+        let at_home = matches!(&page, Route::Home {});
         let escape = escape_action(&route);
 
-        let mut origin_route = use_state(|| route.clone());
-        let mut last_route = use_state(|| route.clone());
+        let mut origin_route = use_state(|| page.clone());
+        let mut last_route = use_state(|| page.clone());
 
-        use_side_effect_with_deps(&route, move |current| {
+        use_side_effect_with_deps(&page, move |current| {
             let prev = last_route.peek().clone();
-            if !(is_sidebar_route(&prev) && is_sidebar_route(current)) {
+            if prev != *current {
                 origin_route.set(prev);
+                last_route.set(current.clone());
             }
-            last_route.set(current.clone());
         });
 
         let back_title = origin_route.read().title();
@@ -131,7 +86,8 @@ impl Component for AnimatedAppOutlet {
 
         let on_global_key = move |e: Event<KeyboardEventData>| {
             if e.code == Code::KeyO
-                && e.modifiers.contains(Modifiers::ctrl_or_meta() | Modifiers::SHIFT)
+                && e.modifiers
+                    .contains(Modifiers::ctrl_or_meta() | Modifiers::SHIFT)
             {
                 if let Ok(dir) = oneclient_common::paths::logs_dir() {
                     crate::platform::open_path(&dir.to_string_lossy());
@@ -143,26 +99,34 @@ impl Component for AnimatedAppOutlet {
                 return;
             }
 
-            if is_text_entry(focused_node.peek().role()) {
+            if crate::ui::is_text_entry(focused_node.peek().role()) {
                 focused_id.peek().request_unfocus();
                 return;
             }
 
             match escape {
                 EscapeAction::Ignore => {}
-                EscapeAction::ExitSection => {
-                    let _ = RouterContext::get().push(Route::Home {});
+                EscapeAction::HomeStack => {
+                    if let Some(stack) = home_stack {
+                        stack.back_to_home();
+                    }
                 }
                 EscapeAction::Back => navigate_back(at_home),
             }
         };
 
         let on_global_pointer = move |e: Event<PointerEventData>| {
-            if pointer_claims.any() {
+            if dialog.is_some() || pointer_claims.any() {
                 return;
             }
             match e.button() {
-                Some(MouseButton::Back) => navigate_back(at_home),
+                Some(MouseButton::Back) => {
+                    if at_home && home_stack.is_some_and(|stack| stack.back_to_home()) {
+                        e.stop_propagation();
+                    } else {
+                        navigate_back(at_home);
+                    }
+                }
                 Some(MouseButton::Forward) => {
                     let router = RouterContext::get();
                     if router.can_go_forward() {
@@ -181,15 +145,28 @@ impl Component for AnimatedAppOutlet {
         });
         let mut last_to = use_state(|| None::<Route>);
 
-        let (_, to, is_transition) = match &*router.read() {
-            AnimatedRouterContext::FromTo(from, to) => (enter_kind(from, to), to.clone(), true),
+        let transition_kind = |from: &Route, to: &Route| {
+            if WorkspaceDialog::for_route(from).is_some() && last_route.peek().eq(to) {
+                Enter::None
+            } else {
+                enter_kind(from, to)
+            }
+        };
+        let (entrance, to, is_transition) = match &*router.read() {
+            AnimatedRouterContext::FromTo(from, to) => {
+                (transition_kind(from, to), to.clone(), true)
+            }
             AnimatedRouterContext::In(to) => (Enter::None, to.clone(), false),
         };
 
         if last_to.peek().as_ref() != Some(&to) {
             last_to.set(Some(to.clone()));
             if is_transition {
-                anim.run(AnimDirection::Forward);
+                if entrance == Enter::None {
+                    router.write().settle();
+                } else {
+                    anim.run(AnimDirection::Forward);
+                }
             }
         }
 
@@ -206,12 +183,12 @@ impl Component for AnimatedAppOutlet {
         }
 
         let kind = match &*router.read() {
-            AnimatedRouterContext::FromTo(from, to) => enter_kind(from, to),
+            AnimatedRouterContext::FromTo(from, to) => transition_kind(from, to),
             AnimatedRouterContext::In(_) => Enter::None,
         };
 
-        let is_home = matches!(to, Route::Home {});
-        let show_overlay = !hides_overlay(&to);
+        let is_home = matches!(page, Route::Home {});
+        let show_overlay = !hides_overlay(&page);
 
         let p = if anim_finished {
             1.0
@@ -228,10 +205,17 @@ impl Component for AnimatedAppOutlet {
                 Enter::None => (0., 1.),
                 Enter::Up => ((1. - p) * 48., p),
                 Enter::Fade => ((1. - p) * 22., p),
+                Enter::Slide => ((1. - p) * 32., 1.),
             }
         };
 
-        let overlay = show_overlay.then(|| appshell_overlay(chrome_opacity));
+        // Home's scroll stack fades the regular page backdrop in as the versions page rises
+        let overlay = if is_home {
+            let stacked = home_stack.map_or(0., |stack| *stack.progress.read());
+            (stacked > 0.001).then(|| appshell_overlay(stacked))
+        } else {
+            show_overlay.then(|| appshell_overlay(chrome_opacity))
+        };
 
         let back = (!is_home).then(|| {
             rect()
@@ -246,6 +230,9 @@ impl Component for AnimatedAppOutlet {
             .margin(Gaps::new(theme::NAVBAR_HEIGHT_PX, 0., 0., 0.))
             .overflow(Overflow::Clip)
             .layer(Layer::Relative(3))
+            .maybe(dialog.is_some(), |el| {
+                el.a11y_builder(|node| node.set_hidden())
+            })
             .maybe_child(back)
             .child(
                 rect()
@@ -256,7 +243,7 @@ impl Component for AnimatedAppOutlet {
                         0.,
                         content_dy,
                         content_opacity,
-                        Outlet::<Route>::new(),
+                        RoutedPage(page.clone()),
                     )),
             );
 
@@ -266,8 +253,15 @@ impl Component for AnimatedAppOutlet {
             .overflow(Overflow::Clip)
             .on_global_key_down(on_global_key)
             .on_global_pointer_up(on_global_pointer)
-            .maybe_child(overlay)
+            // Always occupy the slot: inserting the overlay ahead of `column` shifts its
+            // index and remounts the page, which resets Home's scroll stack mid-scroll
+            .child(overlay.map_or_else(|| rect().into_element(), IntoElement::into_element))
             .child(column)
+            .maybe_child(dialog.map(|kind| WorkspacePopup {
+                kind,
+                route,
+                origin: page,
+            }))
     }
 }
 
@@ -276,16 +270,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn browse_animates_on_entry_and_stays_still_for_in_place_changes() {
+        let browse = |cluster_id, package_type: &str| Route::Browser {
+            cluster_id,
+            package_type: package_type.into(),
+            pick_cluster: true,
+            in_instance: false,
+        };
+        let mods = browse(1, "mod");
+        for from in [
+            Route::Home {},
+            Route::SettingsAppearance {},
+            Route::Clusters {},
+        ] {
+            assert!(enter_kind(&from, &mods) == Enter::Slide);
+        }
+        for to in [mods.clone(), browse(2, "mod"), browse(1, "shader")] {
+            assert!(enter_kind(&mods, &to) == Enter::None);
+        }
+    }
+
+    #[test]
     fn escape_action_per_route() {
-        assert_eq!(escape_action(&Route::Home {}), EscapeAction::Ignore);
+        assert_eq!(escape_action(&Route::Home {}), EscapeAction::HomeStack);
         assert_eq!(
             escape_action(&Route::ClusterSettings { cluster_id: 1 }),
-            EscapeAction::ExitSection
+            EscapeAction::Ignore
         );
-        assert_eq!(
-            escape_action(&Route::SettingsJava {}),
-            EscapeAction::ExitSection
-        );
+        assert_eq!(escape_action(&Route::SettingsJava {}), EscapeAction::Ignore);
         assert_eq!(escape_action(&Route::Clusters {}), EscapeAction::Back);
     }
 }

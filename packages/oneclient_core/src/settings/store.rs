@@ -7,6 +7,8 @@ use oneclient_events::EventBus;
 use super::launcher::LauncherSettings;
 use oneclient_cluster::GameSettingsProfile;
 
+static SETTINGS_WRITE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 #[tracing::instrument(level = "debug", skip(notify))]
 pub async fn load_settings(notify: Option<&EventBus>) -> LauncherSettings {
     match async {
@@ -106,6 +108,11 @@ fn salvaged_settings(value: serde_json::Value) -> LauncherSettings {
 
 #[tracing::instrument(level = "debug", skip(settings))]
 pub async fn save_settings(settings: &LauncherSettings) -> LauncherResult<()> {
+    let _guard = SETTINGS_WRITE.lock().await;
+    write_settings(settings).await
+}
+
+async fn write_settings(settings: &LauncherSettings) -> LauncherResult<()> {
     let path = paths::settings_file()?;
 
     let data = serde_json::to_string_pretty(settings)?;
@@ -118,11 +125,44 @@ pub async fn save_settings_and_apply(
     services: &crate::LauncherServices,
     settings: &LauncherSettings,
 ) -> LauncherResult<()> {
-    save_settings(settings).await?;
+    let _guard = SETTINGS_WRITE.lock().await;
+    write_settings_and_apply(services, settings).await
+}
+
+async fn write_settings_and_apply(
+    services: &crate::LauncherServices,
+    settings: &LauncherSettings,
+) -> LauncherResult<()> {
+    write_settings(settings).await?;
     let config = super::net_config(settings);
     oneclient_polyplus::set_base_url(&config.plus_api_url);
     services.requester.set_config(config);
     Ok(())
+}
+
+/// Take the snapshot only after the previous save is finished. An older pending
+/// task cannot overwrite a newer launcher edit with an outdated snapshot.
+async fn with_current_settings<T>(
+    settings: &RwLock<LauncherSettings>,
+    write: impl AsyncFnOnce(&LauncherSettings) -> T,
+) -> T {
+    let _guard = SETTINGS_WRITE.lock().await;
+    let snapshot = settings.read().clone();
+    write(&snapshot).await
+}
+
+pub async fn save_current_settings(settings: &RwLock<LauncherSettings>) -> LauncherResult<()> {
+    with_current_settings(settings, write_settings).await
+}
+
+pub async fn save_current_settings_and_apply(
+    services: &crate::LauncherServices,
+    settings: &RwLock<LauncherSettings>,
+) -> LauncherResult<()> {
+    with_current_settings(settings, async |snapshot| {
+        write_settings_and_apply(services, snapshot).await
+    })
+    .await
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
@@ -135,13 +175,42 @@ pub async fn save_global_profile(
         lock.global_game_settings = global;
     }
 
-    let snapshot = settings.read().clone();
-    save_settings(&snapshot).await
+    save_current_settings(settings).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn delayed_save_cannot_overwrite_a_later_theme_selection() {
+        let settings = RwLock::new(LauncherSettings::default());
+        let saved = std::sync::Mutex::new(Vec::new());
+        let (started, waiting_for_first) = tokio::sync::oneshot::channel();
+        let (finish_first, wait_for_edit) = tokio::sync::oneshot::channel();
+        let first = with_current_settings(&settings, async |snapshot| {
+            started.send(()).unwrap();
+            wait_for_edit.await.unwrap();
+            saved.lock().unwrap().push(snapshot.theme.clone());
+        });
+        let second = async {
+            waiting_for_first.await.unwrap();
+            settings.write().theme = "system:polyglass-dark".into();
+            let mut latest = std::pin::pin!(with_current_settings(&settings, async |snapshot| {
+                saved.lock().unwrap().push(snapshot.theme.clone());
+            }));
+            assert!(
+                std::future::poll_fn(|cx| {
+                    std::task::Poll::Ready(latest.as_mut().poll(cx).is_pending())
+                })
+                .await
+            );
+            finish_first.send(()).unwrap();
+            latest.await;
+        };
+        tokio::join!(first, second);
+        assert_eq!(*saved.lock().unwrap(), ["dark", "system:polyglass-dark"]);
+    }
 
     fn salvage(raw: &str) -> LauncherSettings {
         salvaged_settings(serde_json::from_str(raw).expect("valid json"))

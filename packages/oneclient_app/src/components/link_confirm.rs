@@ -1,7 +1,8 @@
 use freya::prelude::*;
 
 use crate::components::{
-    Button, CodeBlock, Icon, IconType, OVERLAY_BASE_LEVEL, OverlayPopup, copy_button,
+    Button, CodeBlock, Icon, IconType, OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, OverlayPopup,
+    copy_button,
 };
 use crate::hooks::{use_dispatch, use_link_confirm};
 use crate::i18n::t;
@@ -15,9 +16,10 @@ impl Component for ConfirmLinkOverlay {
     fn render(&self) -> impl IntoElement {
         let mut pending = use_link_confirm();
         let dispatch = use_dispatch();
-        let Some(url) = pending.read().clone() else {
+        let Some(request) = pending.request() else {
             return rect().into_element();
         };
+        let url = request.url;
 
         let open_url = url.clone();
         let (title, body) = if is_first_party(&url) {
@@ -33,7 +35,12 @@ impl Component for ConfirmLinkOverlay {
         };
 
         OverlayPopup::new()
-            .overlay_level(OVERLAY_BASE_LEVEL + 3)
+            .key(request.generation)
+            .overlay_level(if request.from_toast {
+                OVERLAY_MAX_LEVEL
+            } else {
+                OVERLAY_BASE_LEVEL + 3
+            })
             .on_close(move |_| pending.set(None))
             .child(
                 rect()

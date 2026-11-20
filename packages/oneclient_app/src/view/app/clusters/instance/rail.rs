@@ -4,12 +4,23 @@ use oneclient_common::parse_mc_version;
 
 use super::shell::RAIL_WIDTH;
 use crate::components::DynamicArt;
-use crate::theme::{rounded, text_size};
+use crate::theme::{colors, rounded, text_size};
 
-const HAIRLINE: Color = Color::from_argb(31, 255, 255, 255);
-const CHIP_BG: Color = Color::from_argb(26, 255, 255, 255);
-const SUB: Color = Color::from_argb(184, 213, 219, 255);
-const MUTED: Color = Color::from_argb(140, 213, 219, 255);
+fn rail_ink() -> Color {
+    if colors::is_light() {
+        colors::fg_primary()
+    } else {
+        Color::WHITE
+    }
+}
+
+fn secondary_ink() -> Color {
+    if colors::is_light() {
+        colors::fg_secondary()
+    } else {
+        Color::from_argb(184, 213, 219, 255)
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum RowState {
@@ -38,9 +49,9 @@ pub fn steps_card(rows: Vec<(&'static str, String, RowState)>) -> Element {
         rows.into_iter()
             .map(|(name, value, state)| {
                 let name_color = match state {
-                    RowState::Current => Color::WHITE,
-                    RowState::Done => SUB,
-                    RowState::Pending => MUTED,
+                    RowState::Current => rail_ink(),
+                    RowState::Done => secondary_ink(),
+                    RowState::Pending => secondary_ink().with_a(160),
                 };
                 row(name, &value, name_color)
             })
@@ -51,7 +62,7 @@ pub fn steps_card(rows: Vec<(&'static str, String, RowState)>) -> Element {
 pub fn facts_card(rows: Vec<(&'static str, String)>) -> Element {
     rows_list(
         rows.into_iter()
-            .map(|(name, value)| row(name, &value, SUB))
+            .map(|(name, value)| row(name, &value, secondary_ink()))
             .collect(),
     )
 }
@@ -88,7 +99,7 @@ fn row(name: &'static str, value: &str, name_color: Color) -> Element {
                 .font_weight(FontWeight::MEDIUM)
                 .max_lines(1)
                 .text_align(TextAlign::Right)
-                .color(Color::WHITE),
+                .color(rail_ink()),
         )
         .into_element()
 }
@@ -101,6 +112,11 @@ pub fn rail(parts: Rail) -> Element {
         card,
         tags,
     } = parts;
+    let backing = if colors::is_light() {
+        colors::page_elevated()
+    } else {
+        Color::from_rgb(11, 16, 19)
+    };
 
     rect()
         .width(Size::px(RAIL_WIDTH))
@@ -125,10 +141,10 @@ pub fn rail(parts: Rail) -> Element {
                 .background(
                     LinearGradient::new()
                         .angle(0.)
-                        .stop((Color::from_argb(77, 11, 16, 19), 0.))
-                        .stop((Color::from_argb(26, 11, 16, 19), 20.))
-                        .stop((Color::from_argb(204, 11, 16, 19), 56.))
-                        .stop((Color::from_argb(247, 11, 16, 19), 100.)),
+                        .stop((backing.with_a(77), 0.))
+                        .stop((backing.with_a(26), 20.))
+                        .stop((backing.with_a(204), 56.))
+                        .stop((backing.with_a(247), 100.)),
                 )
                 .child(
                     rect()
@@ -142,7 +158,7 @@ pub fn rail(parts: Rail) -> Element {
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .line_height(1.06)
                                 .max_lines(2)
-                                .color(Color::WHITE),
+                                .color(rail_ink()),
                         )
                         .child(
                             label()
@@ -150,7 +166,7 @@ pub fn rail(parts: Rail) -> Element {
                                 .font_size(text_size(13.))
                                 .line_height(1.45)
                                 .max_lines(3)
-                                .color(SUB),
+                                .color(secondary_ink()),
                         ),
                 )
                 .child(
@@ -168,7 +184,7 @@ pub fn rail(parts: Rail) -> Element {
                                     rect()
                                         .width(Size::fill())
                                         .height(Size::px(1.))
-                                        .background(HAIRLINE),
+                                        .background(rail_ink().with_a(31)),
                                 )
                                 .child(
                                     rect()
@@ -180,13 +196,13 @@ pub fn rail(parts: Rail) -> Element {
                                             rect()
                                                 .padding(Gaps::new_symmetric(3., 8.))
                                                 .corner_radius(rounded(6.))
-                                                .background(CHIP_BG)
+                                                .background(rail_ink().with_a(26))
                                                 .child(
                                                     label()
                                                         .text(tag.clone())
                                                         .font_size(text_size(11.))
                                                         .font_weight(FontWeight::MEDIUM)
-                                                        .color(Color::WHITE),
+                                                        .color(rail_ink()),
                                                 )
                                                 .into_element()
                                         })),

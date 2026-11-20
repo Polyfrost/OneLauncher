@@ -21,8 +21,8 @@ use crate::utils::format_size;
 
 use super::cluster_not_found;
 use super::folder_list::{
-    CardIcon, RowHeights, card_icon, confirm_dialog, content_box, folder_button, layout_toggle,
-    matches_search, notify_in_use, search_input, supports_datapacks, toolbar_panel,
+    CardIcon, RowHeights, card_icon, confirm_dialog, content_box, layout_toggle, matches_search,
+    notify_in_use, open_folder_action, search_input, supports_datapacks, toolbar_panel,
     use_game_folder_in_use,
 };
 use super::package_manager::{empty_hint, empty_shell, empty_title};
@@ -31,6 +31,8 @@ const LIST_ICON: f32 = 44.;
 const GRID_ICON: f32 = 40.;
 const LIST_PAD: f32 = 10.;
 const GRID_PAD: f32 = 14.;
+/// Search, layout toggle and the folder action fit on one row down to roughly here
+const TOOLBAR_STACK_W: f32 = 520.;
 
 const WORLD_ROWS: RowHeights = RowHeights {
     list: LIST_ICON + 2. * LIST_PAD,
@@ -123,9 +125,14 @@ impl Component for ClusterWorlds {
             )
         };
 
-        let mut controls = vec![search_input(search)];
-        controls.extend(saves.map(folder_button));
-        controls.push(layout_toggle(layout));
+        let controls = vec![
+            layout_toggle(layout),
+            open_folder_action(
+                saves,
+                t("oneclient.cluster.folder.tip.worlds").to_string(),
+                false,
+            ),
+        ];
 
         let menu_overlay = menu.read().clone().map(|(x, y, info)| {
             let open_world = info.folder_name.clone();
@@ -190,7 +197,11 @@ impl Component for ClusterWorlds {
         });
 
         cluster_content()
-            .child(toolbar_panel(None, controls))
+            .child(toolbar_panel(
+                vec![search_input(search)],
+                controls,
+                TOOLBAR_STACK_W,
+            ))
             .child(content_box(
                 worlds.len(),
                 card_layout,

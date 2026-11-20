@@ -4,6 +4,7 @@ use freya::engine::prelude::{Paint, SamplingOptions, SkData, SkImage, SkRect};
 use freya::prelude::*;
 use freya::query::QueryStateData;
 use freya::router::*;
+use freya_core::integration::ACCESSIBILITY_ROOT_ID;
 use skia_safe::canvas::SrcRectConstraint;
 use skia_safe::sampling_options::CubicResampler;
 
@@ -20,14 +21,14 @@ use oneclient_core::clusters::Cluster;
 use oneclient_core::images::BACKGROUND_IMAGE_EDGE;
 use oneclient_db::models::ClusterId;
 
+use crate::components::upload_mclogs::use_mclogs_feedback;
 use crate::hooks::{
     ActiveClusterState, BROWSER_COMPAT_DEFAULT, BrowserCompatState, BrowserStateStore,
-    BrowserTypeState, DataPackWorldState, settled_or_loading, use_active_cluster_id,
-    use_clusters, use_current_account, use_dispatch, use_game_snapshot, use_launcher,
-    use_provide_active_cluster, use_provide_browser_compat, use_provide_browser_state,
-    use_provide_browser_type, use_provide_datapack_world, use_splash, use_upload_log,
+    BrowserTypeState, DataPackWorldState, settled_or_loading, use_active_cluster_id, use_clusters,
+    use_current_account, use_dispatch, use_game_snapshot, use_launcher, use_provide_active_cluster,
+    use_provide_browser_compat, use_provide_browser_state, use_provide_browser_type,
+    use_provide_datapack_world, use_splash, use_upload_log,
 };
-use crate::components::upload_mclogs::use_mclogs_feedback;
 use crate::theme::{colors, rounded, text_size};
 use crate::utils::home_cluster;
 use oneclient_events::LaunchStage;
@@ -42,7 +43,27 @@ impl Component for AppShell {
         let active_cluster = use_state(|| None::<ClusterId>);
         use_provide_active_cluster(ActiveClusterState(active_cluster));
         use_provide_lobby();
-        use_provide_home_stack();
+        let home_stack = use_provide_home_stack();
+        super::ArtworkBrand::provide();
+        let list_wheel = crate::components::PageWheelInput::provide();
+        let route = use_route::<Route>();
+        let page = super::workspace_dialog::provide_app_page(&route);
+        let primary_list = match &page {
+            Route::Browser { .. } => Some(crate::components::PrimaryList::Browse),
+            Route::Wardrobe {} => Some(crate::components::PrimaryList::Wardrobe),
+            _ => None,
+        };
+        let window = Platform::get().current_window();
+        let scale = window.scale_factor;
+        let focused_id = window.focused_accessibility_id;
+        let wheel_claims = crate::hooks::use_overlay_claims();
+        let key_claims = wheel_claims.clone();
+        let at_home = matches!(route, Route::Home {});
+        let on_page_key = move |event: Event<KeyboardEventData>| {
+            home_stack.handle_page_key(&event, !at_home || key_claims.any());
+        };
+        let on_root_page_key = on_page_key.clone();
+        use_side_effect_with_deps(&page, move |_| list_wheel.clear());
 
         let browser_compat = use_state(|| BROWSER_COMPAT_DEFAULT);
         use_provide_browser_compat(BrowserCompatState(browser_compat));
@@ -95,6 +116,30 @@ impl Component for AppShell {
             .height(Size::fill())
             .color(colors::fg_primary())
             .overflow(Overflow::Clip)
+            // Descendant controls can consume paging keys before they reach the shell.
+            .on_key_down(on_page_key)
+            .on_global_key_down(move |event: Event<KeyboardEventData>| {
+                if *focused_id.peek() == ACCESSIBILITY_ROOT_ID {
+                    on_root_page_key(event);
+                }
+            })
+            // Lists consume their own wheel events. Over the navbar or heading, send the
+            // unhandled gesture to the current page's main list when a modal is not open.
+            .on_wheel(move |event: Event<WheelEventData>| {
+                if let Some(list) = primary_list
+                    && !wheel_claims.any()
+                    && event.delta_y != 0.
+                    && event.source.is_device()
+                {
+                    let delta = crate::components::normalize_wheel_delta(
+                        event.delta_y,
+                        event.source,
+                        *scale.peek(),
+                    );
+                    list_wheel.forward(list, delta, event.source == WheelSource::Line);
+                    event.stop_propagation();
+                }
+            })
             .on_global_file_hover(move |_| drop_hovering.set(true))
             .on_global_file_hover_cancelled(move |_| drop_hovering.set(false))
             .on_file_drop(move |e: Event<FileEventData>| {
@@ -214,22 +259,26 @@ impl Component for LaunchErrorDialog {
 
 pub(crate) fn appshell_overlay(alpha: f32) -> Rect {
     let alpha = alpha.clamp(0., 1.);
-    let scale = |a: u8| (f32::from(a) * alpha).round() as u8;
-    let top = if colors::is_light() { 215 } else { 100 };
-
-    rect()
+    let overlay = rect()
         .width(Size::fill())
         .height(Size::fill())
         .position(Position::new_absolute())
         .interactive(false)
-        .layer(Layer::Relative(2))
+        .layer(Layer::Relative(2));
+    let theme = colors::active_theme();
+    if theme.colors.light || theme.liquid_glass {
+        return overlay.background(colors::page().with_a((255. * alpha).round() as u8));
+    }
+
+    let scale = |a: u8| (f32::from(a) * alpha).round() as u8;
+    overlay
         .child(
             rect()
                 .height(Size::px(200.))
                 .width(Size::fill())
                 .background(
                     LinearGradient::new()
-                        .stop((colors::shade().with_a(scale(top)), 0.))
+                        .stop((colors::shade().with_a(scale(100)), 0.))
                         .stop((colors::page().with_a(scale(255)), 95.0)),
                 ),
         )
@@ -290,7 +339,13 @@ pub struct AppHomeBackground;
 
 impl Component for AppHomeBackground {
     fn render(&self) -> impl IntoElement {
-        let parallax_enabled = use_settings_snapshot().settings.dynamic_background_enabled;
+        let route = super::use_app_page();
+        let stack = crate::components::use_home_stack();
+        let on_home = matches!(route, Route::Home {})
+            && !stack.is_some_and(|stack| *stack.on_versions.read());
+        let show_art = on_home || !colors::active_theme().liquid_glass;
+        let parallax_enabled =
+            use_settings_snapshot().settings.dynamic_background_enabled && show_art;
         let clusters_query = use_clusters();
         let active_id = use_active_cluster_id();
         let launcher = use_launcher();
@@ -334,6 +389,7 @@ impl Component for AppHomeBackground {
 
         ParallaxArt {
             art_bytes,
+            shade_brand: on_home && colors::active_theme().liquid_glass,
             fade_opacity,
             parallax_enabled,
         }
@@ -343,6 +399,7 @@ impl Component for AppHomeBackground {
 
 #[derive(PartialEq, Clone)]
 pub struct ParallaxArt {
+    pub shade_brand: bool,
     pub art_bytes: Bytes,
     pub fade_opacity: f32,
     pub parallax_enabled: bool,
@@ -354,26 +411,27 @@ impl Component for ParallaxArt {
         let mut target = use_state(|| (0f32, 0f32));
         let mut current = use_state(|| (0f32, 0f32));
 
+        let ticker = use_hook(RenderingTicker::get);
         let mut anim_task = use_state(|| None::<OwnedTaskHandle>);
         use_side_effect_with_deps(&self.parallax_enabled, move |enabled| {
             if *enabled {
+                let ticker = ticker.clone();
                 let handle = spawn(async move {
                     let window = Platform::get().current_window();
 
-                    const FRAME: std::time::Duration = std::time::Duration::from_millis(33);
-                    const STEP: f32 = 0.12;
-                    const SETTLE: f32 = 0.002;
-
+                    let mut last = std::time::Instant::now();
                     loop {
+                        ticker.tick().await;
+                        let now = std::time::Instant::now();
+                        let dt = now.duration_since(last).as_secs_f32().min(1. / 15.);
+                        last = now;
                         let (tx, ty) = *target.peek();
                         let (cx, cy) = *current.peek();
-
-                        if (tx - cx).abs() > SETTLE || (ty - cy).abs() > SETTLE {
-                            current.set((cx + (tx - cx) * STEP, cy + (ty - cy) * STEP));
+                        if (tx - cx).abs() > 0.002 || (ty - cy).abs() > 0.002 {
+                            let step = 1. - (-3.9 * dt).exp();
+                            current.set((cx + (tx - cx) * step, cy + (ty - cy) * step));
                             window.request_redraw();
                         }
-
-                        tokio::time::sleep(FRAME).await;
                     }
                 });
                 anim_task.set(Some(handle.owned()));
@@ -399,6 +457,9 @@ impl Component for ParallaxArt {
         };
 
         let parallax_enabled = self.parallax_enabled;
+        let brand = super::ArtworkBrand::get();
+        let bounds = self.shade_brand.then(|| *brand.bounds.read()).flatten();
+        let brand_paint = use_hook(super::artwork_brand::contrast_paint);
         let fade_opacity = self.fade_opacity;
 
         let render_cb = RenderCallback::new(move |ctx: &mut FillRenderContext| {
@@ -424,30 +485,7 @@ impl Component for ParallaxArt {
                 (0.0, 0.0)
             };
 
-            let canvas_aspect = w / h;
-            let img_aspect = iw / ih;
-            let (mut crop_w, mut crop_h) = if img_aspect > canvas_aspect {
-                (ih * canvas_aspect, ih)
-            } else {
-                (iw, iw / canvas_aspect)
-            };
-
-            const SCALE: f32 = 1.10;
-            crop_w /= SCALE;
-            crop_h /= SCALE;
-
-            const STRENGTH: f32 = 0.01;
-            let pan_x = cx * w * 0.5 * STRENGTH * (crop_w / w);
-            let pan_y = cy * h * 0.5 * STRENGTH * (crop_h / h);
-            let ccx = iw * 0.5 - pan_x;
-            let ccy = ih * 0.5 - pan_y;
-
-            let src = SkRect::new(
-                ccx - crop_w * 0.5,
-                ccy - crop_h * 0.5,
-                ccx + crop_w * 0.5,
-                ccy + crop_h * 0.5,
-            );
+            let src = super::artwork_brand::artwork_crop(iw, ih, w, h, (cx, cy));
             let dst = SkRect::new(0.0, 0.0, w, h);
 
             let mut paint = Paint::default();
@@ -460,6 +498,9 @@ impl Component for ParallaxArt {
                 sampling,
                 &paint,
             );
+            if let Some(area) = bounds {
+                super::artwork_brand::draw_contrast(canvas, area, &brand_paint);
+            }
         });
 
         rect()
@@ -467,7 +508,7 @@ impl Component for ParallaxArt {
             .height(Size::fill())
             .overflow(Overflow::Clip)
             .position(Position::new_absolute())
-            .background(colors::art_backdrop())
+            .background(colors::page())
             .interactive(false)
             .on_sized(move |e: Event<SizedEventData>| {
                 let (sw, sh) = (e.area.width(), e.area.height());
@@ -480,6 +521,7 @@ impl Component for ParallaxArt {
                 el.on_capture_global_pointer_move(move |e: Event<PointerEventData>| {
                     let (sw, sh) = *size.peek();
                     if sw > 0.0 && sh > 0.0 {
+                        Platform::get().current_window().request_redraw();
                         let loc = e.global_location();
                         target.set((
                             (loc.x as f32 / sw) * 2.0 - 1.0,
@@ -493,7 +535,7 @@ impl Component for ParallaxArt {
                     .expanded()
                     .position(Position::new_absolute())
                     .layer(Layer::Relative(1))
-                    .child(gradient_overlay_radial()),
+                    .child(home_art_shading()),
             )
             .child(
                 rect()
@@ -519,11 +561,19 @@ fn decode_background_image(bytes: &Bytes) -> Option<SkImage> {
     Some(img.make_raster_image(None, None).unwrap_or(img))
 }
 
-const VIGNETTE_SPOTLIGHT_SHADER: &str = r#"
+const HOME_ART_SHADING_SHADER: &str = r#"
 uniform float2 iResolution;
+uniform float localContrast;
 
 half4 main(float2 fragCoord) {
     float2 uv = fragCoord / iResolution;
+    if (localContrast > 0.5) {
+        // Keep the illustration at full color beyond the text and action area.
+        float reach = clamp(iResolution.x * 0.72, 870.0, 1250.0);
+        float left = 1.0 - smoothstep(0.34, 1.0, fragCoord.x / reach);
+        float middle = 1.0 - smoothstep(0.12, 0.46, abs(uv.y - 0.44));
+        return half4(0.0, 0.0, 0.0, 0.72 * left * middle);
+    }
 
     float2 center = float2(0.80, 0.45);
     float2 distVec = uv - center;
@@ -553,25 +603,27 @@ half4 main(float2 fragCoord) {
 }
 "#;
 
-fn gradient_overlay_radial() -> impl IntoElement {
+fn home_art_shading() -> impl IntoElement {
     let effect = use_hook(|| {
-        freya::engine::prelude::RuntimeEffect::make_for_shader(VIGNETTE_SPOTLIGHT_SHADER, None)
+        freya::engine::prelude::RuntimeEffect::make_for_shader(HOME_ART_SHADING_SHADER, None)
             .expect("Failed to compile vignette shader")
     });
 
+    let theme = colors::active_theme();
+    let local_contrast = theme.colors.light || theme.liquid_glass;
     rect()
         .width(Size::fill())
         .height(Size::fill())
         .position(Position::new_absolute())
         .background(ShaderFill::new(
-            VIGNETTE_SPOTLIGHT_SHADER,
+            HOME_ART_SHADING_SHADER,
             effect,
             move |effect, bounds| {
                 let w = bounds.width();
                 let h = bounds.height();
 
                 #[rustfmt::skip]
-                let uniforms: [f32; 2] = [w, h];
+                let uniforms: [f32; 3] = [w, h, if local_contrast { 1. } else { 0. }];
 
                 let bytes = unsafe {
                     std::slice::from_raw_parts(

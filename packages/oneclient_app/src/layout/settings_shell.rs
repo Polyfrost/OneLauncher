@@ -17,13 +17,16 @@ use crate::components::{
 use crate::hooks::{latest_changelog_version, use_changelog, use_settings_snapshot};
 use crate::i18n::{t, tf};
 use crate::routes::Route;
-use crate::theme::{colors, rounded, text_size};
+use crate::theme::{colors, glass, rounded, text_size};
+
+use super::workspace_rail;
 use crate::use_dispatch;
 
-const SIDEBAR_WIDTH_PX: f32 = 225.;
-const ITEM_HEIGHT_PX: f32 = 33.;
-const SEARCH_WIDTH_PX: f32 = 256.;
-const SEARCH_MIN_WIDTH_PX: f32 = 120.;
+const SIDEBAR_WIDTH_PX: f32 = 184.;
+/// One gutter on every side of the modal body, so the rail and content card sit evenly
+const BODY_GUTTER_PX: f32 = 16.;
+/// Matches the search field height so the content title lines up with it
+const TITLE_ROW_PX: f32 = 36.;
 const SEARCH_RESULTS_MAX: usize = 12;
 
 thread_local! {
@@ -186,32 +189,39 @@ impl Component for SettingsShell {
         let changelog_unread = has_unread_changelog();
 
         let search = use_state(String::new);
-        let header_width = use_state(|| 0f32);
         let query = SearchQuery::new(&search.read());
         let scroll = use_scroll_controller(ScrollConfig::default);
         SETTINGS_SCROLL_CONTROLLER.with(|cell| *cell.borrow_mut() = Some(scroll));
 
-        let anim = use_animation(|conf| {
-            conf.on_creation(OnCreation::Run);
+        let animate = crate::motion::use_animations_enabled();
+        let anim = use_animation(|_| {
             AnimNum::new(0., 1.)
-                .time(340)
+                .time(220)
                 .ease(Ease::Out)
                 .function(Function::Cubic)
         });
         let mut last_route = use_state(|| route.clone());
         if *last_route.peek() != route {
             last_route.set(route.clone());
-            anim.run(AnimDirection::Forward);
+            if animate {
+                anim.run(AnimDirection::Forward);
+            }
         }
-        let p = anim.get().value();
+        // The dialog moves as one piece on open. Only subsequent category changes move the content.
+        let p = if animate && *anim.has_run_yet().read() {
+            anim.get().value()
+        } else {
+            1.
+        };
 
         let children: Vec<Element> = if query.is_empty() {
-            const SHIFT_PX: f32 = 46.;
+            const SHIFT_PX: f32 = 16.;
             vec![
                 rect()
                     .width(Size::fill())
-                    .offset_x(-(1.0 - p) * SHIFT_PX)
+                    .offset_y((1.0 - p) * SHIFT_PX)
                     .opacity(p)
+                    .padding(Gaps::new(0., 0., 32., 0.))
                     .child(Outlet::<Route>::new())
                     .into_element(),
             ]
@@ -224,27 +234,24 @@ impl Component for SettingsShell {
             .width(Size::fill())
             .height(Size::fill())
             .overflow(Overflow::Clip)
-            .padding(Gaps::new(0., 40., 40., 32.))
-            .spacing(40.)
-            .child(sidebar(active, changelog_unread))
+            .padding(Gaps::new_all(BODY_GUTTER_PX))
+            .spacing(BODY_GUTTER_PX)
+            .child(sidebar(active, changelog_unread, search))
             .child(
                 rect()
                     .vertical()
                     .width(Size::flex(1.0))
                     .height(Size::fill())
                     .overflow(Overflow::Clip)
-                    .spacing(24.)
-                    .child(content_header(
-                        active.label().to_string(),
-                        search,
-                        header_width,
-                    ))
+                    .spacing(12.)
+                    .child(content_header(active.label().to_string()))
                     .child(
                         ScrollArea::new()
                             .width(Size::fill())
                             .height(Size::flex(1.0))
                             .show_scrollbar(true)
                             .scrollbar_gutter(true)
+                            .bottom_fade(colors::page_elevated())
                             .spacing(4.)
                             .scroll_controller(scroll)
                             .on_ctx(|ctx| {
@@ -256,45 +263,29 @@ impl Component for SettingsShell {
     }
 }
 
-fn content_header(title: String, search: State<String>, mut width: State<f32>) -> impl IntoElement {
-    let search_width = search_width_for(*width.read());
-
+fn content_header(title: String) -> impl IntoElement {
     rect()
         .horizontal()
         .width(Size::fill())
-        .content(Content::Flex)
+        .height(Size::px(TITLE_ROW_PX))
         .cross_align(Alignment::Center)
-        .spacing(12.)
-        .on_sized(move |event: Event<SizedEventData>| {
-            let next = event.data().area.width();
-            if (*width.peek() - next).abs() > 0.5 {
-                width.set(next);
-            }
-        })
         .child(
             label()
                 .text(title)
-                .font_size(text_size(30.))
+                .font_size(text_size(22.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .max_lines(1)
-                .width(Size::flex(1.0))
+                .width(Size::fill())
                 .color(colors::fg_primary()),
         )
-        .child(search_box(search, search_width))
 }
 
-fn search_width_for(header_width: f32) -> f32 {
-    if header_width <= 0. {
-        return SEARCH_WIDTH_PX;
-    }
-    (header_width * 0.45).clamp(SEARCH_MIN_WIDTH_PX, SEARCH_WIDTH_PX)
-}
-
-fn search_box(mut search: State<String>, width: f32) -> impl IntoElement {
+fn search_box(mut search: State<String>) -> impl IntoElement {
     let has_query = !search.read().trim().is_empty();
     let base = TextInput::new(search)
         .placeholder(t("oneclient.layout.settings.search.placeholder"))
-        .width(Size::px(width))
+        .compact()
+        .width(Size::fill())
         .leading(
             Icon::new(IconType::SearchMd)
                 .size(16.)
@@ -445,44 +436,85 @@ fn has_unread_changelog() -> bool {
     }
 }
 
-fn sidebar(active: SettingsTab, changelog_unread: bool) -> impl IntoElement {
-    rect()
-        .vertical()
-        .width(Size::px(SIDEBAR_WIDTH_PX))
-        .min_width(Size::px(SIDEBAR_WIDTH_PX))
-        .height(Size::fill())
-        .overflow(Overflow::Clip)
-        .padding(Gaps::new(16., 0., 0., 0.))
-        .content(Content::Flex)
+fn sidebar(active: SettingsTab, changelog_unread: bool, search: State<String>) -> impl IntoElement {
+    let groups = groups();
+    let tabs: Vec<_> = groups
+        .iter()
+        .flat_map(|group| group.tabs.iter().copied())
+        .collect();
+    let track = glass::use_vertical_pill_track(tabs.len());
+    let lens = colors::active_theme().liquid_glass.then_some(track);
+    let selected = tabs.iter().position(|tab| *tab == active);
+
+    workspace_rail::surface(SIDEBAR_WIDTH_PX)
+        .map(lens, |el, track| {
+            track.events(el, move |index| {
+                if Some(index) != selected
+                    && let Some(route) = tabs[index].route()
+                {
+                    workspace_rail::select(&route);
+                }
+            })
+        })
         .child(
-            ScrollArea::new()
+            rect()
+                .width(Size::fill())
+                .padding(Gaps::new(0., 0., 8., 0.))
+                .child(search_box(search)),
+        )
+        .child(
+            rect()
                 .width(Size::fill())
                 .height(Size::flex(1.0))
-                .spacing(16.)
-                .children(groups().into_iter().map(|group| {
-                    rect()
-                        .vertical()
+                .map(lens, |el, track| track.viewport(el))
+                .child(
+                    ScrollArea::new()
                         .width(Size::fill())
-                        .spacing(6.)
+                        .height(Size::fill())
+                        .scrollbar_gutter(true)
+                        .bottom_fade(colors::page_elevated())
+                        .padding(Gaps::new(0., 0., 5., 0.))
                         .child(
-                            rect().padding(Gaps::new(0., 0., 2., 6.)).child(
-                                label()
-                                    .text(group.label)
-                                    .font_size(text_size(11.))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .color(colors::fg_secondary()),
-                            ),
-                        )
-                        .children(group.tabs.iter().map(|tab| {
-                            SidebarItem {
-                                tab: *tab,
-                                active: *tab == active,
-                                has_dot: matches!(tab, SettingsTab::Changelog) && changelog_unread,
-                            }
-                            .into_element()
-                        }))
-                        .into_element()
-                })),
+                            rect()
+                                .vertical()
+                                .width(Size::fill())
+                                .spacing(10.)
+                                .maybe_child(lens.map(|track| track.indicator(selected)))
+                                .children(groups.into_iter().scan(0, move |index, group| {
+                                    let rows = group.tabs.iter().filter_map(|tab| {
+                                        let route = tab.route()?;
+                                        let tab_row = workspace_rail::Tab {
+                                            label: tab.label(),
+                                            icon: tab.icon(),
+                                            route,
+                                            active: *tab == active,
+                                            has_dot: *tab == SettingsTab::Changelog
+                                                && changelog_unread,
+                                            lens: lens.map(|track| (track, *index)),
+                                        };
+                                        *index += 1;
+                                        Some(tab_row.into_element())
+                                    });
+                                    Some(
+                                        rect()
+                                            .vertical()
+                                            .width(Size::fill())
+                                            .spacing(workspace_rail::ROW_GAP)
+                                            .child(
+                                                rect().padding(Gaps::new(4., 0., 3., 10.)).child(
+                                                    label()
+                                                        .text(group.label)
+                                                        .font_size(text_size(11.))
+                                                        .font_weight(FontWeight::MEDIUM)
+                                                        .color(colors::fg_secondary()),
+                                                ),
+                                            )
+                                            .children(rows)
+                                            .into_element(),
+                                    )
+                                })),
+                        ),
+                ),
         )
         .child(SidebarInfo::new())
 }
@@ -539,6 +571,9 @@ impl Component for SidebarInfo {
             .collect::<Vec<_>>()
             .join("\n");
 
+        let mut display_items = items;
+        display_items[2] = Cow::Owned(self.cpu_kind.replace("(R)", "").replace("(TM)", ""));
+
         let copy_to_clipboard = move |_| {
             if let Err(err) = Clipboard::set(text.clone()) {
                 tracing::warn!("clipboard copy failed: {err:?}");
@@ -564,103 +599,28 @@ impl Component for SidebarInfo {
                 .vertical()
                 .width(Size::fill())
                 .spacing(4.)
-                .font_size(text_size(12.))
-                .padding(Gaps::new(15., 0., 0., 0.))
+                .font_size(text_size(11.))
+                .padding(Gaps::new(8., 10., 7., 10.))
                 .color(colors::fg_secondary())
-                .children(
-                    items
-                        .into_iter()
-                        .map(|item| label().text(item).into_element()),
+                .child(
+                    rect()
+                        .width(Size::fill())
+                        .height(Size::px(1.))
+                        .margin(Gaps::new(0., 0., 3., 0.))
+                        .background(colors::component_border()),
                 )
+                .children(display_items.into_iter().map(|item| {
+                    label()
+                        .text(item)
+                        .width(Size::fill())
+                        .max_lines(1)
+                        .text_overflow(TextOverflow::Ellipsis)
+                        .into_element()
+                }))
                 .cursor(CursorIcon::Pointer)
                 .on_press(copy_to_clipboard),
         )
     }
-}
-
-#[derive(PartialEq)]
-struct SidebarItem {
-    tab: SettingsTab,
-    active: bool,
-    has_dot: bool,
-}
-
-impl Component for SidebarItem {
-    fn render(&self) -> impl IntoElement {
-        let mut hovering = use_state(|| false);
-
-        let a11y_id = use_a11y();
-        let focus = use_focus(a11y_id);
-
-        let tab = self.tab;
-        let active = self.active;
-        let route = tab.route();
-
-        let background = if active {
-            colors::page_elevated()
-        } else if *hovering.read() {
-            colors::ghost_overlay()
-        } else {
-            Color::TRANSPARENT
-        };
-
-        let has_dot = self.has_dot;
-
-        let mut el = rect()
-            .horizontal()
-            .content(Content::Flex)
-            .width(Size::fill())
-            .height(Size::px(ITEM_HEIGHT_PX))
-            .cross_align(Alignment::Center)
-            .spacing(10.)
-            .padding(Gaps::new_symmetric(0., 12.))
-            .corner_radius(rounded(7.))
-            .background(background)
-            .a11y_id(a11y_id)
-            .a11y_focusable(true)
-            .a11y_role(AccessibilityRole::Button)
-            .cursor(CursorIcon::Pointer)
-            .on_pointer_enter(move |_| *hovering.write() = true)
-            .on_pointer_leave(move |_| *hovering.write() = false)
-            .map(route, |el, route| {
-                el.on_press(move |_| {
-                    let _ = RouterContext::get().replace(route.clone());
-                })
-            });
-
-        if focus().is_focused() {
-            el = el.border(
-                Border::new()
-                    .fill(colors::brand())
-                    .width(1.)
-                    .alignment(BorderAlignment::Inner),
-            );
-        }
-
-        el.child(Icon::new(tab.icon()).size(18.).color(colors::fg_primary()))
-            .child(
-                rect()
-                    .horizontal()
-                    .width(Size::flex(1.0))
-                    .cross_align(Alignment::Center)
-                    .spacing(6.)
-                    .child(
-                        label()
-                            .text(tab.label())
-                            .font_size(text_size(14.))
-                            .color(colors::fg_primary()),
-                    )
-                    .maybe_child(has_dot.then(notification_dot)),
-            )
-    }
-}
-
-fn notification_dot() -> impl IntoElement {
-    rect()
-        .width(Size::px(4.))
-        .height(Size::px(4.))
-        .corner_radius(rounded(2.))
-        .background(colors::brand())
 }
 
 #[cfg(test)]

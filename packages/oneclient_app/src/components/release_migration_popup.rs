@@ -9,7 +9,6 @@ use oneclient_content::packages::release_migration::{
     ReleaseMigrationSkip, SkipReason, WAITLIST_DAYS,
 };
 use oneclient_content::packages::{CachedPackageMeta, ProviderId};
-use oneclient_core::clusters::Cluster;
 
 use crate::components::{
     Button, Dropdown, DynamicArt, Icon, IconType, OverlayPopup, ScrollArea, checkbox_labeled,
@@ -79,10 +78,6 @@ fn blocked_by_route(route: &Route) -> bool {
             | Route::OnboardingBundles {}
             | Route::OnboardingSummary {}
     )
-}
-
-fn cluster_title(cluster: &Cluster) -> String {
-    cluster.name.clone()
 }
 
 fn selection_key(package: &ReleaseMigrationPackage, source_id: i64) -> SelectionKey {
@@ -305,7 +300,7 @@ fn art_panel(
                         .width(Size::fill())
                         .child(
                             label()
-                                .text(cluster_title(target))
+                                .text(crate::utils::instance_display_name(target))
                                 .font_size(text_size(32.))
                                 .font_weight(FontWeight::BOLD)
                                 .max_lines(1)
@@ -433,13 +428,12 @@ fn content_panel(
 ) -> impl IntoElement {
     let close = dispatch.clone();
     let picker_dispatch = dispatch.clone();
-    let source_title = prompt.source().map(cluster_title).unwrap_or_default();
+    let source_title = prompt
+        .source()
+        .map(crate::utils::instance_display_name)
+        .unwrap_or_default();
 
-    let target_title = if prompt.target.user_created {
-        prompt.target.name.as_str()
-    } else {
-        prompt.target.mc_version.as_str()
-    };
+    let target_title = crate::utils::instance_display_name(&prompt.target);
     let subtitle = tf(
         "oneclient.components.release_migration.subtitle",
         &[&target_title, &source_title],
@@ -516,8 +510,15 @@ fn content_panel(
 
 fn source_picker(prompt: &ReleaseMigrationPrompt, dispatch: crate::Actions) -> impl IntoElement {
     let sources: Vec<i64> = prompt.sources.iter().map(|cluster| cluster.id).collect();
-    let options: Vec<String> = prompt.sources.iter().map(cluster_title).collect();
-    let selected = prompt.source().map(cluster_title).unwrap_or_default();
+    let options: Vec<String> = prompt
+        .sources
+        .iter()
+        .map(crate::utils::instance_display_name)
+        .collect();
+    let selected = prompt
+        .source()
+        .map(crate::utils::instance_display_name)
+        .unwrap_or_default();
 
     rect()
         .horizontal()
@@ -654,7 +655,10 @@ fn package_list(
     wont_open: State<bool>,
     deps_open: State<bool>,
 ) -> impl IntoElement {
-    let source_title = prompt.source().map(cluster_title).unwrap_or_default();
+    let source_title = prompt
+        .source()
+        .map(crate::utils::instance_display_name)
+        .unwrap_or_default();
 
     let message = match (prompt.plan(), plan) {
         (Some(ReleasePlanState::Loading) | None, _) => {
@@ -1197,7 +1201,7 @@ fn footer(
     if target_running {
         migrate = migrate.tooltip(tf(
             "oneclient.components.release_migration.close_target",
-            &[&prompt.target.name],
+            &[&crate::utils::instance_display_name(&prompt.target)],
         ));
     }
 

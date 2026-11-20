@@ -2,7 +2,7 @@ use super::*;
 
 use crate::components::ScrollArea;
 use crate::i18n::t;
-use crate::theme::{colors, rounded, text_size};
+use crate::theme::{colors, text_size};
 use crate::ui::border_all_color;
 use crate::utils::capitalize;
 
@@ -10,13 +10,19 @@ use crate::utils::capitalize;
 pub(super) struct CategorySidebar {
     pub(super) categories: Vec<String>,
     pub(super) selected: State<Vec<String>>,
+    pub(super) fade_surface: Color,
 }
 
 impl Component for CategorySidebar {
     fn render(&self) -> impl IntoElement {
         let selected = self.selected;
-        let list = rect().vertical().width(Size::fill()).spacing(1.).children(
-            self.categories.clone().into_iter().map(move |cat| {
+        // Bottom inset lets the last category scroll clear of the window edge the list now runs to
+        let list = rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(1.)
+            .padding(Gaps::new(0., 0., SCROLL_END_INSET, 0.))
+            .children(self.categories.clone().into_iter().map(move |cat| {
                 let is_selected = selected.read().contains(&cat);
                 let mut selected = selected;
                 let cat_for_press = cat.clone();
@@ -38,26 +44,34 @@ impl Component for CategorySidebar {
                 }
                 .key(cat)
                 .into_element()
-            }),
-        );
+            }));
 
         rect()
             .vertical()
             .width(Size::fill())
             .height(Size::flex(1.0))
-            .spacing(8.)
+            .spacing(12.)
             .child(
-                label()
-                    .text(t("oneclient.browser.index.categories"))
-                    .font_size(text_size(11.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .letter_spacing(1.4)
-                    .color(colors::fg_secondary()),
+                // Same height as the results toolbar so the first category lines up with the first card
+                rect()
+                    .width(Size::fill())
+                    .height(Size::px(PICKER_H))
+                    .padding(Gaps::new(0., 0., 0., 11.))
+                    .cross_align(Alignment::Center)
+                    .child(
+                        label()
+                            .text(t("oneclient.browser.index.categories"))
+                            .font_size(text_size(11.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .letter_spacing(1.4)
+                            .color(colors::fg_secondary()),
+                    ),
             )
             .child(
                 ScrollArea::new()
                     .width(Size::fill())
                     .height(Size::flex(1.0))
+                    .bottom_fade(self.fade_surface)
                     .children([list.into_element()]),
             )
     }
@@ -100,7 +114,8 @@ impl Component for CategoryRow {
             .height(Size::px(29.))
             .cross_align(Alignment::Center)
             .padding(Gaps::new_symmetric(0., 10.))
-            .corner_radius(rounded(8.))
+            .corner_radius(control_radius(29., 8.))
+            .overflow(Overflow::Clip)
             .maybe(selected, |el| {
                 el.background(colors::brand().with_a(40))
                     .border(border_all_color(1., colors::brand().with_a(115)))
@@ -119,7 +134,9 @@ impl Component for CategoryRow {
                 label()
                     .text(capitalize(&self.name))
                     .font_size(text_size(12.))
+                    .width(Size::fill())
                     .max_lines(1)
+                    .text_overflow(TextOverflow::Ellipsis)
                     .font_weight(if selected {
                         FontWeight::MEDIUM
                     } else {

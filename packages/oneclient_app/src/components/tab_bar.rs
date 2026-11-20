@@ -27,11 +27,6 @@ impl TabItem {
         self
     }
 
-    pub fn accent(mut self, color: Color) -> Self {
-        self.accent = Some(color);
-        self
-    }
-
     pub fn on_press(mut self, handler: impl Into<EventHandler<Event<PressEventData>>>) -> Self {
         self.on_press = Some(handler.into());
         self

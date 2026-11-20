@@ -12,6 +12,7 @@ use crate::AppAssets;
 use colors::Palette;
 
 pub mod colors;
+pub mod glass;
 
 pub const NAVBAR_HEIGHT_PX: f32 = 80.;
 pub const HOME_PADDING_PX: f32 = 48.;
@@ -22,7 +23,14 @@ const PIXEL_BOOST_MAX: f32 = 2.5;
 const PIXEL_BOOST_END: f32 = 17.;
 const PIXEL_BOOST_RANGE: f32 = 8.;
 
-const BUILTIN_THEMES: [&str; 4] = ["dark", "light", "minecraft-dark", "minecraft-light"];
+const BUILTIN_THEMES: [&str; 6] = [
+    "dark",
+    "light",
+    "polyglass-dark",
+    "polyglass-light",
+    "minecraft-dark",
+    "minecraft-light",
+];
 
 thread_local! {
     static THEMES: RefCell<Vec<Rc<Theme>>> =
@@ -45,6 +53,8 @@ pub struct Theme {
     pub pixel_font_size: Option<f32>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pixel_icons: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub liquid_glass: bool,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub font_files: BTreeMap<String, Vec<PathBuf>>,
     pub colors: Palette,
@@ -127,7 +137,8 @@ pub fn theme_display_name(id: &str) -> String {
     }
 }
 
-/// Whether an ID names an installed theme or a complete system pair.
+/// Whether `id` names an installed theme or a system pairing of one, so outside requests (the
+/// in-game client) can't leave the launcher on a theme it would silently swap for the default
 pub fn is_known(id: &str) -> bool {
     let id = system_pair(id).map_or_else(|| id.to_string(), |(dark, _)| dark);
     THEMES.with_borrow(|themes| themes.iter().any(|theme| theme.id == id))
@@ -399,4 +410,30 @@ pub fn load_fonts() -> Vec<(Cow<'static, str>, Bytes)> {
     }
 
     fonts
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn built_in_styles_keep_their_palette_and_system_pair() {
+        for (dark, light, family, glass) in [
+            ("dark", "light", "Polyfrost", false),
+            ("polyglass-dark", "polyglass-light", "PolyGlass", true),
+            ("minecraft-dark", "minecraft-light", "Minecraft", false),
+        ] {
+            let system = system_theme_id(dark);
+            assert!(is_known(&system));
+            assert_eq!(system_aware(&system, true), dark);
+            assert_eq!(system_aware(&system, false), light);
+            for id in [dark, light] {
+                let theme = resolve_theme(id);
+                assert_eq!(family_name(&theme.name), family);
+                assert_eq!(theme.liquid_glass, glass);
+            }
+        }
+        assert_eq!(system_aware("system", false), "light");
+        assert_eq!(resolve_theme("amoled").id, "dark");
+    }
 }

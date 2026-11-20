@@ -23,8 +23,8 @@ use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 /// The shader scales the model off `res.y` alone so height makes the player bigger width only needs to clear the arms
-const MODEL_WIDTH_PX: f32 = 160.;
-const MODEL_HEIGHT_PX: f32 = 264.;
+const MODEL_WIDTH_PX: f32 = 136.;
+const MODEL_HEIGHT_PX: f32 = 208.;
 
 const AVATAR_SIZE_PX: f32 = 36.;
 
@@ -83,44 +83,43 @@ impl Component for SettingsAccounts {
             closing_offline.set(true);
         };
 
-        let mut rows: Vec<Element> = accounts
-            .iter()
-            .map(|account| {
-                AccountRow {
-                    id: account.id,
-                    username: account.username.clone(),
-                    kind: account.kind,
-                    expires: account.expires,
-                    signed_out: account.needs_sign_in(),
-                    is_default: Some(account.id) == default_id,
-                    set_default,
-                    remove,
-                    refresh,
-                    sign_in: msa.clone(),
-                }
-                .into_element()
-            })
-            .collect();
-        if rows.is_empty() {
-            rows.push(empty_state());
-        }
-
         settings_page()
-            .child(hero(
-                default_account,
-                has_microsoft,
-                msa.pending,
-                msa.error.clone(),
-                move |_| show_offline.set(true),
-                {
-                    let msa = msa.clone();
-                    move |_| msa.start()
-                },
-            ))
-            .child(section_header(t(
-                "oneclient.settings.accounts.section.your_accounts",
-            )))
-            .children(rows)
+            .maybe_child(default_account.map(hero))
+            .child(
+                rect()
+                    .vertical()
+                    .width(Size::fill())
+                    .spacing(10.)
+                    .child(section_header(t(
+                        "oneclient.settings.accounts.section.your_accounts",
+                    )))
+                    .children(accounts.iter().map(|account| {
+                        AccountRow {
+                            id: account.id,
+                            username: account.username.clone(),
+                            kind: account.kind,
+                            expires: account.expires,
+                            signed_out: account.needs_sign_in(),
+                            is_default: Some(account.id) == default_id,
+                            set_default,
+                            remove,
+                            refresh,
+                            sign_in: msa.clone(),
+                        }
+                        .into_element()
+                    }))
+                    .maybe_child(accounts.is_empty().then(empty_state))
+                    .child(account_actions(
+                        has_microsoft,
+                        msa.pending,
+                        msa.error.clone(),
+                        move |_| show_offline.set(true),
+                        {
+                            let msa = msa.clone();
+                            move |_| msa.start()
+                        },
+                    )),
+            )
             .maybe_child(show_offline.read().then(|| {
                 offline_dialog(
                     username,
@@ -135,24 +134,11 @@ impl Component for SettingsAccounts {
     }
 }
 
-fn hero(
-    account: Option<MinecraftAccount>,
-    has_microsoft: bool,
-    microsoft_pending: bool,
-    error: Option<String>,
-    on_open_offline: impl FnMut(Event<PressEventData>) + 'static,
-    on_add_microsoft: impl FnMut(Event<PressEventData>) + 'static,
-) -> impl IntoElement {
-    let (name, subtitle) = match &account {
-        Some(account) if account.needs_sign_in() => (
-            account.username.clone(),
-            t("oneclient.settings.accounts.hero.signed_out"),
-        ),
-        Some(account) => (account.username.clone(), kind_label(account.kind)),
-        None => (
-            t("oneclient.settings.accounts.hero.no_account").to_string(),
-            t("oneclient.settings.accounts.hero.no_account_hint"),
-        ),
+fn hero(account: MinecraftAccount) -> Element {
+    let subtitle = if account.needs_sign_in() {
+        t("oneclient.settings.accounts.hero.signed_out")
+    } else {
+        kind_label(account.kind)
     };
 
     rect()
@@ -164,88 +150,88 @@ fn hero(
         .padding(Gaps::new_all(16.))
         .corner_radius(rounded(12.))
         .background(colors::page_elevated())
-        .child(model_frame(account.as_ref().map(|account| account.id)))
+        .child(model_frame(account.id))
         .child(
             rect()
                 .vertical()
                 .width(Size::flex(1.0))
-                .spacing(16.)
+                .spacing(4.)
                 .child(
-                    rect()
-                        .vertical()
-                        .width(Size::fill())
-                        .spacing(2.)
-                        .child(
-                            label()
-                                .text(t("oneclient.settings.accounts.hero.active_account"))
-                                .font_size(text_size(11.))
-                                .font_weight(FontWeight::MEDIUM)
-                                .color(colors::fg_secondary()),
-                        )
-                        .child(
-                            label()
-                                .text(name)
-                                .font_size(text_size(24.))
-                                .font_weight(FontWeight::SEMI_BOLD)
-                                .max_lines(1)
-                                .color(colors::fg_primary()),
-                        )
-                        .child(
-                            label()
-                                .text(subtitle)
-                                .font_size(text_size(12.))
-                                .color(colors::fg_secondary()),
-                        ),
+                    label()
+                        .text(t("oneclient.settings.accounts.hero.active_account"))
+                        .font_size(text_size(11.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .color(colors::fg_secondary()),
                 )
                 .child(
-                    rect()
-                        .vertical()
-                        .width(Size::fill())
-                        .spacing(8.)
-                        .child(
-                            // The two buttons overflow the ~245px beside the model at the 800px minimum so they wrap
-                            rect()
-                                .horizontal()
-                                .width(Size::fill())
-                                .content(Content::wrap_spacing(8.))
-                                .spacing(8.)
-                                .child(
-                                    Button::new()
-                                        .primary()
-                                        .enabled(!microsoft_pending)
-                                        .on_press(on_add_microsoft)
-                                        .child(Icon::new(IconType::Globe01).size(16.))
-                                        .text(if microsoft_pending {
-                                            t("oneclient.settings.accounts.signing_in")
-                                        } else {
-                                            t("oneclient.settings.accounts.add_microsoft")
-                                        }),
-                                )
-                                .child(
-                                    Button::new()
-                                        .secondary()
-                                        .enabled(has_microsoft)
-                                        .on_press(on_open_offline)
-                                        .child(Icon::new(IconType::Plus).size(16.))
-                                        .text(t("oneclient.settings.accounts.add_offline")),
-                                ),
-                        )
-                        .map(error, |el, msg| {
-                            el.child(hint_line(IconType::AlertTriangle, msg, colors::danger()))
-                        })
-                        .maybe(!has_microsoft, |el| {
-                            el.child(hint_line(
-                                IconType::InfoCircle,
-                                t("oneclient.settings.accounts.microsoft_required").to_string(),
-                                colors::fg_secondary(),
-                            ))
-                        }),
+                    label()
+                        .text(account.username)
+                        .font_size(text_size(24.))
+                        .font_weight(FontWeight::SEMI_BOLD)
+                        .max_lines(1)
+                        .color(colors::fg_primary()),
+                )
+                .child(
+                    label()
+                        .text(subtitle)
+                        .font_size(text_size(12.))
+                        .color(colors::fg_secondary()),
                 ),
         )
         .into_element()
 }
 
-fn model_frame(id: Option<Uuid>) -> impl IntoElement {
+fn account_actions(
+    has_microsoft: bool,
+    microsoft_pending: bool,
+    error: Option<String>,
+    on_open_offline: impl FnMut(Event<PressEventData>) + 'static,
+    on_add_microsoft: impl FnMut(Event<PressEventData>) + 'static,
+) -> impl IntoElement {
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(8.)
+        .child(
+            rect()
+                .horizontal()
+                .width(Size::fill())
+                .content(Content::wrap_spacing(8.))
+                .spacing(8.)
+                .child(
+                    Button::new()
+                        .primary()
+                        .enabled(!microsoft_pending)
+                        .on_press(on_add_microsoft)
+                        .child(Icon::new(IconType::Globe01).size(16.))
+                        .text(if microsoft_pending {
+                            t("oneclient.settings.accounts.signing_in")
+                        } else {
+                            t("oneclient.settings.accounts.add_microsoft")
+                        }),
+                )
+                .child(
+                    Button::new()
+                        .secondary()
+                        .enabled(has_microsoft)
+                        .on_press(on_open_offline)
+                        .child(Icon::new(IconType::Plus).size(16.))
+                        .text(t("oneclient.settings.accounts.add_offline")),
+                ),
+        )
+        .map(error, |el, msg| {
+            el.child(hint_line(IconType::AlertTriangle, msg, colors::danger()))
+        })
+        .maybe(!has_microsoft, |el| {
+            el.child(hint_line(
+                IconType::InfoCircle,
+                t("oneclient.settings.accounts.microsoft_required").to_string(),
+                colors::fg_secondary(),
+            ))
+        })
+}
+
+fn model_frame(id: Uuid) -> impl IntoElement {
     rect()
         .vertical()
         .cross_align(Alignment::Center)
@@ -259,26 +245,19 @@ fn model_frame(id: Option<Uuid>) -> impl IntoElement {
                 .corner_radius(rounded(12.))
                 .background(colors::component_bg())
                 .border(border_all_color(1., colors::component_border()))
-                .child(match id {
-                    Some(id) => PlayerModel::new(id)
+                .child(
+                    PlayerModel::new(id)
                         .yaw(-0.5)
                         .width(Size::fill())
-                        .height(Size::fill())
-                        .into_element(),
-                    None => Icon::new(IconType::Users01)
-                        .size(28.)
-                        .color(colors::fg_secondary())
-                        .into_element(),
-                }),
+                        .height(Size::fill()),
+                ),
         )
-        .maybe_child(id.map(|_| {
+        .child(
             label()
                 .text(t("oneclient.settings.accounts.drag_to_rotate"))
                 .font_size(text_size(10.))
-                .color(colors::fg_secondary())
-                .into_element()
-        }))
-        .into_element()
+                .color(colors::fg_secondary()),
+        )
 }
 
 fn mutation_err_text<M>(mutation: &UseMutation<M>) -> Option<String>

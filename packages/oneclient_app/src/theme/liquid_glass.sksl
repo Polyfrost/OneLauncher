@@ -1,0 +1,85 @@
+uniform shader backdrop;
+uniform float2 size;
+uniform float radius;
+uniform float band;
+uniform float refraction;
+uniform float dispersion;
+uniform float vibrance;
+uniform half4 tint;
+uniform float ink;
+uniform float navbarBacking;
+uniform float2 contour;
+uniform float3 finger;
+
+half4 refractedSample(float2 p) {
+    // The selector sits inside another glass control. Bending its upper and lower
+    // rims back into the selector makes them look like a second selection.
+    if (ink == 0.0) p.y = clamp(p.y, 0.5, size.y - 0.5);
+    return backdrop.eval(p);
+}
+
+half4 main(float2 point) {
+    float2 centered = point - size * 0.5;
+    float2 corner = abs(centered) - size * 0.5 + radius;
+    float2 outside = max(corner, float2(0.0));
+    float distance = length(outside) + min(max(corner.x, corner.y), 0.0) - radius;
+    float2 axis = corner.x > corner.y ? float2(1.0, 0.0) : float2(0.0, 1.0);
+    float2 normal = (length(outside) > 0.001 ? normalize(outside) : axis) * sign(centered);
+
+    // Match the curved band in Minecraft's OneConfig glass. The face only diffuses the scene.
+    // Concentrate displacement at the lip and let it taper into a clear, undistorted face.
+    float t = clamp(1.0 + distance / band, 0.0, 1.0);
+    t *= mix(0.50, 1.0, t);
+    // Refract a view ray through the curved edge (air to glass, index ≈1.5).
+    // Scale to unit displacement at grazing incidence so the sample radius stays bounded.
+    float cosI = sqrt(max(0.0, 1.0 - t * t));
+    float cosT = sqrt(1.0 - (4.0 / 9.0) * t * t);
+    float bend = t * (cosT - (2.0 / 3.0) * cosI) * 1.341641;
+    float2 offset = normal * band * refraction * bend;
+    half4 scene = refractedSample(point + offset);
+    if (bend > 0.02) {
+        float spread = dispersion * bend;
+        scene.r = refractedSample(point + offset * (1.0 + spread)).r;
+        scene.b = refractedSample(point + offset * (1.0 - spread)).b;
+    }
+    // Tinting flattens colour; give a little back so the surface reads as glass, not fog.
+    half grey = dot(scene.rgb, half3(0.2126, 0.7152, 0.0722));
+    scene.rgb = clamp(mix(half3(grey), scene.rgb, half(vibrance)), half3(0.0), half3(scene.a));
+    // Give foreground text a readable base as the live scene moves behind the panel.
+    // The separate selector only adds its own clear lens to this adaptive surface.
+    half coverage = tint.a;
+    if (ink != 0.0 && coverage > 0.0) {
+        float luma = dot(scene.rgb, half3(0.2126, 0.7152, 0.0722));
+        float contrastRisk = ink < 0.0 ? 1.0 - smoothstep(0.10, 0.78, luma)
+                                       : smoothstep(0.14, 0.90, luma);
+        coverage = mix(coverage, max(coverage, mix(0.36, 0.72, smoothstep(0.22, 0.54, coverage))), half(contrastRisk));
+        if (navbarBacking > 0.5) {
+            // The same response across the whole face: backing follows the luminance of the
+            // art behind each point, never the position on the card, so it cannot read as a
+            // wash running from one side to the other.
+            coverage = tint.a + half(contrastRisk * 0.13);
+        }
+    }
+    half4 glass = half4(tint.rgb * coverage, coverage) + scene * (1.0 - coverage);
+
+    // One hairline follows the surface normal: bright where it faces the light, a faint
+    // shade where it turns away. Both live on the same line, so the edge never doubles.
+    float angle = dot(normal, float2(-0.57, -0.82));
+    float facing = max(angle, 0.0);
+    float away = max(-angle, 0.0);
+    float2 toFinger = finger.xy - point;
+    float reach = 46.0;
+    float lift = 14.0;
+    float incidence = max(0.55 * dot(normal, toFinger) + 0.84 * lift, 0.0);
+    float local = finger.z * 0.78 * incidence * incidence
+        / (dot(toFinger, toFinger) + lift * lift)
+        / (1.0 + dot(toFinger, toFinger) / (reach * reach));
+    float line = 1.0 - smoothstep(0.45, 1.15, abs(distance + 0.7));
+    float lit = min(0.85, contour.x * (0.16 + 0.84 * facing * facing + 0.30 * away * away) + local);
+    half shade = half(contour.y * (1.0 - facing * facing) * line);
+    // The lip gathers a trace of light as it thickens; it fades to nothing on the face.
+    half glow = half(mix(0.06, 0.19, navbarBacking) * bend * (0.35 + 0.65 * facing) * contour.x);
+    glass.rgb = min(glass.rgb * (1.0 - shade) + half3(glass.a) * glow, half3(glass.a));
+    glass.rgb = mix(glass.rgb, half3(glass.a), half(lit * line));
+    return glass;
+}

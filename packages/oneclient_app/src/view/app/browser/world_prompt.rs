@@ -15,8 +15,7 @@ pub(crate) struct WorldInstallPrompt {
     pub cluster_id: i64,
     pub provider: ProviderId,
     pub project_id: String,
-    pub pending: State<Option<String>>,
-    pub incompatible: IncompatibleMode,
+    pub pending: State<Option<(String, IncompatibleMode)>>,
 }
 
 impl Component for WorldInstallPrompt {
@@ -25,7 +24,6 @@ impl Component for WorldInstallPrompt {
         let provider = self.provider;
         let project_id = self.project_id.clone();
         let mut pending = self.pending;
-        let incompatible = self.incompatible;
 
         let dispatch = use_dispatch();
         let mut remembered = use_datapack_world();
@@ -74,7 +72,8 @@ impl Component for WorldInstallPrompt {
 
         let install_world = world.clone();
         let install = move |_| {
-            let (Some(world), Some(version_id)) = (install_world.clone(), pending.read().clone())
+            let (Some(world), Some((version_id, incompatible))) =
+                (install_world.clone(), pending.read().clone())
             else {
                 return;
             };

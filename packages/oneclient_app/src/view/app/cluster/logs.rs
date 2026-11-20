@@ -9,7 +9,7 @@ use oneclient_core::{LogFileInfo, LogKind, LogLevel, LogTrim};
 use crate::components::upload_mclogs::UploadToMclogs;
 use crate::components::{
     Button, Icon, IconType, LogViewer, OVERLAY_BASE_LEVEL, OverlayPopup, ScrollArea, Segment,
-    SegmentedControl, TextInput, open_folder_button,
+    SegmentedControl, TextInput,
 };
 use crate::hooks::{
     ClusterLogsQuery, LogAction, UploadLogKeys, UseLogAction, UseUploadLog,
@@ -259,6 +259,38 @@ impl Component for ClusterLogs {
                 .collect(),
         );
 
+        if !running && try_cluster_logs(&logs_query).is_some_and(|files| files.is_empty()) {
+            use super::folder_list::folder_button;
+            use super::package_manager::{empty_hint, empty_shell, empty_title};
+            return cluster_content()
+                .child(
+                    empty_shell(IconType::Terminal)
+                        .child(empty_title(category.read().empty_label()))
+                        .child(empty_hint(category.read().empty_note()))
+                        .child(rect().height(Size::px(8.)))
+                        .child(
+                            rect()
+                                .horizontal()
+                                .spacing(8.)
+                                .maybe_child(folder.map(|folder| {
+                                    folder_button(folder, t("oneclient.layout.cluster.logs_folder"))
+                                }))
+                                .child(
+                                    Button::new()
+                                        .small()
+                                        .secondary()
+                                        .on_press(move |_| {
+                                            spawn(async {
+                                                invalidate_logs_queries().await;
+                                            });
+                                        })
+                                        .text(t("oneclient.common.refresh")),
+                                ),
+                        ),
+                )
+                .into_element();
+        }
+
         let body = rect()
             .vertical()
             .width(Size::fill())
@@ -362,7 +394,9 @@ fn top_bar(
                 .color(colors::fg_secondary()),
         )
         .child(rect().width(Size::flex(1.0)))
-        .maybe_child(folder.map(open_folder_button))
+        .maybe_child(folder.map(|folder| {
+            super::folder_list::folder_button(folder, t("oneclient.layout.cluster.logs_folder"))
+        }))
         .maybe_child(dump_button)
         .child(
             Button::new()

@@ -12,8 +12,8 @@ use crate::components::{Icon, IconType};
 use crate::hooks::{Actions, use_dispatch};
 use crate::i18n::t;
 use crate::theme::{
-    Theme, colors, counterpart, family_name, light_variant, resolve_theme, rounded, rounded_px,
-    system_pair, system_theme_id, text_size, themes,
+    Theme, colors, counterpart, family_name, glass, light_variant, resolve_theme, rounded,
+    rounded_px, system_pair, system_theme_id, text_size, themes,
 };
 use crate::ui::border_all_color;
 
@@ -254,7 +254,12 @@ pub(crate) fn theme_mode_picker(theme_id: &str, dispatch: &Actions) -> impl Into
     let (family, mode) = split_theme(theme_id);
     let choices = MODES.map(|option| compose_theme(&family, option).is_some());
     let radio = RadioGroup::use_options(choices);
+    let can_switch = choices.iter().filter(|&&available| available).count() > 1;
+    let theme = colors::active_theme();
+    let glass = theme.liquid_glass;
+    let track = glass::use_pill_track(3);
     let selected = MODES.iter().position(|&option| option == mode);
+    let indicator = glass.then(|| track.indicator(selected));
     let select = {
         let dispatch = dispatch.clone();
         move |index: usize| {
@@ -281,19 +286,28 @@ pub(crate) fn theme_mode_picker(theme_id: &str, dispatch: &Actions) -> impl Into
         let pointer_radio = radio.clone();
         let available = choices[index];
         let active = selected == Some(index);
+        let lit = if glass {
+            track.highlights(index, active)
+        } else {
+            active
+        };
         let a11y_id = radio.id(index);
         let focus = use_focus(a11y_id);
         let segment = rect()
             .width(Size::flex(1.))
             .height(Size::px(HEIGHT))
             .center()
-            .corner_radius(rounded(7.));
+            .corner_radius(if glass {
+                CornerRadius::new_all(HEIGHT / 2.)
+            } else {
+                rounded(7.)
+            });
         radio
             .accessibility(segment, index, selected)
-            .maybe(active, |el| el.background(colors::brand()))
+            .maybe(active && !glass, |el| el.background(colors::brand()))
             .a11y_alt(text)
             .maybe(radio_focus_visible(focus(), active), |el| {
-                let stroke = if active {
+                let stroke = if active && !glass {
                     colors::on_brand()
                 } else {
                     colors::fg_primary()
@@ -303,11 +317,22 @@ pub(crate) fn theme_mode_picker(theme_id: &str, dispatch: &Actions) -> impl Into
             .maybe(available, |el| {
                 radio.keyboard(
                     el.cursor(CursorIcon::Pointer)
-                        .on_press(move |_| pointer_radio.activate(index, &select)),
+                        .on_press(move |event: Event<PressEventData>| {
+                            if !glass
+                                || !can_switch
+                                || !matches!(
+                                    event.data(),
+                                    PressEventData::Mouse(_) | PressEventData::Touch(_)
+                                )
+                            {
+                                pointer_radio.activate(index, &select);
+                            }
+                        }),
                     index,
                     key_select,
                 )
             })
+            .maybe(glass, |el| track.option(el, index, available && can_switch))
             .child(
                 label()
                     .text(text.to_string())
@@ -315,8 +340,10 @@ pub(crate) fn theme_mode_picker(theme_id: &str, dispatch: &Actions) -> impl Into
                     .font_weight(FontWeight::MEDIUM)
                     .color(if !available {
                         colors::fg_secondary().with_a(138)
-                    } else if active {
+                    } else if active && !glass {
                         colors::on_brand()
+                    } else if lit {
+                        colors::fg_primary()
                     } else {
                         colors::fg_primary().with_a(190)
                     }),
@@ -325,7 +352,11 @@ pub(crate) fn theme_mode_picker(theme_id: &str, dispatch: &Actions) -> impl Into
     });
 
     rect()
-        .background(colors::component_bg())
+        .background(if glass {
+            colors::component_bg().with_a(148)
+        } else {
+            colors::component_bg()
+        })
         .horizontal()
         .width(Size::fill())
         .content(Content::Flex)
@@ -333,8 +364,20 @@ pub(crate) fn theme_mode_picker(theme_id: &str, dispatch: &Actions) -> impl Into
         .a11y_alt(t("oneclient.settings.appearance.mode"))
         .spacing(4.)
         .padding(4.)
-        .corner_radius(rounded(10.))
+        .corner_radius(if glass {
+            CornerRadius::new_all(21.)
+        } else {
+            rounded(10.)
+        })
         .border(border_all_color(1., quiet_outline()))
+        .maybe(glass && can_switch, |el| {
+            let radio = radio.clone();
+            let select = select.clone();
+            track.events(el.overflow(Overflow::Clip), move |index| {
+                radio.activate(index, &select);
+            })
+        })
+        .maybe_child(indicator)
         .children(segments)
 }
 
@@ -379,8 +422,10 @@ impl Component for StyleCard {
         let pixel = theme.pixel_font_size.is_some_and(|step| step > 0.);
         let blurb = if pixel {
             t("oneclient.onboarding.preferences.style.minecraft")
-        } else {
+        } else if theme.liquid_glass {
             t("oneclient.onboarding.preferences.style.polyglass")
+        } else {
+            t("oneclient.onboarding.preferences.style.polyfrost")
         };
         let name = family_name(&theme.name);
 
@@ -552,58 +597,52 @@ fn miniature(theme: &Theme, pixel: bool, dense: bool) -> Element {
             .text_overflow(TextOverflow::Ellipsis)
             .color(color)
     };
-    // The pixel font draws visibly smaller at the same size, so it runs a step larger to
-    // read the same as PolyGlass
+    // The pixel font draws smaller at the same point size.
     let (title_size, body_size, meta_size) = if pixel {
         (14., 13., 11.)
     } else {
         (13., 12., 10.)
     };
 
+    let header_ink = palette.text.0;
     let top_bar = rect()
         .horizontal()
         .width(Size::fill())
         .cross_align(Alignment::Center)
         .spacing(6.)
-        .child(theme_icon(theme, "icon-logo", 13., palette.text.0))
+        .child(theme_icon(theme, "icon-logo", 13., header_ink))
         .child(
-            text("OneClient", title_size, palette.text.0).font_weight(if pixel {
+            text("OneClient", title_size, header_ink).font_weight(if pixel {
                 FontWeight::NORMAL
             } else {
                 FontWeight::BOLD
             }),
         );
 
-    let instance = rect()
+    let instance =
+        glass::panel(
+            rect().corner_radius(radius(8.)),
+            theme,
+            8. * theme.radius_scale,
+            palette.card.0,
+        )
         .horizontal()
         .width(Size::fill())
         .height(Size::flex(1.))
         .content(Content::Flex)
         .cross_align(Alignment::Center)
-        .spacing(10.)
-        .padding(if dense {
-            Gaps::new(3., 4., 3., 10.)
-        } else {
-            Gaps::new_symmetric(0., 10.)
+        .spacing(6.)
+        // Keeps the labels and the Play button off the panel's rounded edge
+        .padding(Gaps::new_symmetric(0., if dense { 7. } else { 9. }))
+        .maybe(!theme.liquid_glass, |el| {
+            el.border(border_all_color(1., palette.border.0))
         })
-        .corner_radius(radius(8.))
-        .background(palette.card.0)
-        .border(border_all_color(1., palette.border.0))
-        .maybe_child((!dense).then(|| {
-            rect()
-                .width(Size::px(30.))
-                .height(Size::px(30.))
-                .center()
-                .corner_radius(radius(6.))
-                .background(palette.accent.0.with_a(60))
-                .child(theme_icon(theme, "cube-01", 16., palette.accent.0))
-                .into_element()
-        }))
         .child(
             rect()
                 .vertical()
                 .width(Size::flex(1.))
-                .spacing(3.)
+                .overflow(Overflow::Clip)
+                .spacing(if pixel { 1. } else { 2. })
                 .child(text("Survival", body_size, palette.text.0))
                 .maybe_child((!dense).then(|| {
                     text("26.1 Fabric", meta_size, palette.text_secondary.0).into_element()
@@ -612,30 +651,36 @@ fn miniature(theme: &Theme, pixel: bool, dense: bool) -> Element {
         .child(play_button(theme, pixel, dense));
 
     rect()
-        .vertical()
+        .background(palette.page.0)
         .width(Size::fill())
         .height(Size::px(if dense {
             PREVIEW_HEIGHT_DENSE
         } else {
             PREVIEW_HEIGHT
         }))
-        .content(Content::Flex)
-        .padding(if dense { 10. } else { 12. })
-        .spacing(if dense { 6. } else { 8. })
-        .background(palette.page.0)
-        .child(top_bar)
-        .child(instance)
+        .child(
+            rect()
+                .vertical()
+                .width(Size::fill())
+                .height(Size::fill())
+                .content(Content::Flex)
+                .padding(if dense { 7. } else { 9. })
+                .spacing(if dense { 6. } else { 8. })
+                .child(top_bar)
+                .child(instance),
+        )
         .into_element()
 }
 
 /// Same accent button the launcher draws; the theme's corner scale squares it off for Minecraft
 fn play_button(theme: &Theme, pixel: bool, dense: bool) -> Element {
+    let radius = 7. * theme.radius_scale;
     rect()
-        .width(Size::px(if dense { 50. } else { 56. }))
+        .corner_radius(CornerRadius::new_all(radius))
+        .background(theme.colors.accent.0)
+        .width(Size::px(42.))
         .height(Size::px(if dense { 20. } else { 26. }))
         .center()
-        .corner_radius(CornerRadius::new_all(7. * theme.radius_scale))
-        .background(theme.colors.accent.0)
         .child(
             label()
                 .text("Play")
@@ -699,11 +744,22 @@ mod tests {
         use accesskit::{Action, ActionRequest, TreeId};
         use freya_testing::TestingRunner;
 
-        type Fixture = (State<Option<usize>>, State<Vec<AccessibilityId>>);
+        type Fixture = (
+            State<Option<usize>>,
+            State<Vec<AccessibilityId>>,
+            State<bool>,
+        );
 
         fn app() -> impl IntoElement {
-            let (selected, ids) = use_consume::<Fixture>();
+            crate::hooks::use_provide_station(|| {
+                let mut app = crate::state::AppState::default();
+                app.settings.settings.animations_enabled = false;
+                app
+            });
+            let (selected, ids, glass) = use_consume::<Fixture>();
             let radio = RadioGroup::use_options([true, false, true]);
+            let drag_radio = radio.clone();
+            let track = glass::use_pill_track(3);
             let kebab = use_a11y();
             use_hook(|| {
                 let mut ids = ids;
@@ -714,6 +770,7 @@ mod tests {
                 selected.set(Some(index));
             };
             let checked = selected();
+            let glass = glass();
             rect()
                 .horizontal()
                 .on_global_key_down(|event: Event<KeyboardEventData>| {
@@ -723,19 +780,29 @@ mod tests {
                     rect()
                         .horizontal()
                         .a11y_role(AccessibilityRole::RadioGroup)
+                        .maybe(glass, |el| {
+                            track.events(el, move |index| drag_radio.activate(index, select))
+                        })
                         .children((0..3).map(|index| {
-                            let radio_button = radio.accessibility(
-                                rect().width(Size::px(32.)).height(Size::px(24.)),
-                                index,
-                                checked,
-                            );
+                            let radio_button = radio
+                                .accessibility(
+                                    rect().width(Size::px(32.)).height(Size::px(24.)),
+                                    index,
+                                    checked,
+                                )
+                                .maybe(glass, |el| track.option(el, index, index != 1));
                             if index == 1 {
                                 return radio_button;
                             }
                             let pointer_radio = radio.clone();
                             radio.clone().keyboard(
-                                radio_button
-                                    .on_press(move |_| pointer_radio.activate(index, select)),
+                                radio_button.on_press(move |event: Event<PressEventData>| {
+                                    if !glass
+                                        || matches!(event.data(), PressEventData::Accessibility(_))
+                                    {
+                                        pointer_radio.activate(index, select);
+                                    }
+                                }),
                                 index,
                                 select,
                             )
@@ -752,12 +819,16 @@ mod tests {
                 )
         }
 
-        let (mut runner, (selected, ids)) = TestingRunner::new(
+        let (mut runner, (selected, ids, mut glass)) = TestingRunner::new(
             app,
             (240., 160.).into(),
             |runner| {
                 runner.provide_root_context(|| -> Fixture {
-                    (State::create(None), State::create(vec![]))
+                    (
+                        State::create(None),
+                        State::create(vec![]),
+                        State::create(false),
+                    )
                 })
             },
             1.,
@@ -828,5 +899,14 @@ mod tests {
         assert!(request_at(&mut runner, Action::Click, 0));
         assert_focus(&runner, 0);
         runner.run_in(|| assert_eq!(*selected.peek(), Some(0)));
+
+        runner.run_in(|| glass.set(true));
+        runner.poll_n(Duration::ZERO, 3);
+        runner.press_cursor((16., 12.));
+        runner.move_cursor((80., 12.));
+        runner.release_cursor((80., 12.));
+        runner.poll_n(Duration::ZERO, 3);
+        assert_focus(&runner, 2);
+        runner.run_in(|| assert_eq!(*selected.peek(), Some(2)));
     }
 }

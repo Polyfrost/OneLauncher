@@ -411,7 +411,7 @@ impl Component for ClusterList {
         if clusters.is_empty() {
             return list.child(
                 label()
-                    .text("No clusters in the database.")
+                    .text("No instances in the database.")
                     .font_size(text_size(13.))
                     .color(colors::fg_secondary()),
             );
@@ -604,7 +604,7 @@ impl Component for ClusterUpdateSimulator {
             .spacing(10.)
             .child(
                 label()
-                    .text("Builds the same notification the bundle sync sends: one \"View changes\" action carrying every changed cluster, opened into the changes modal. Anything listed under Optional also raises the \"Optional mods available\" prompt, exactly as the real sync does. Optional mods are not installed, so they are independent of Added rather than a subset of it.")
+                    .text("Builds the same notification the bundle sync sends: one \"View changes\" action carrying every changed instance, opened into the changes modal. Anything listed under Optional also raises the \"Optional mods available\" prompt, exactly as the real sync does. Optional mods are not installed, so they are independent of Added rather than a subset of it.")
                     .font_size(text_size(13.))
                     .color(colors::fg_secondary()),
             )
@@ -654,7 +654,7 @@ impl Component for ClusterUpdateSimulator {
                 Button::new()
                     .primary()
                     .child(Icon::new(IconType::DownloadCloud02).size(16.))
-                    .text("Simulate Cluster Update")
+                    .text("Simulate Instance Update")
                     .on_press(move |_| {
                         let summary = ClusterUpdateSummary {
                             cluster_id: cluster_id.read().trim().parse().unwrap_or(1),
@@ -923,7 +923,7 @@ impl Component for ReleaseMigrationSimulator {
             .spacing(10.)
             .child(
                 label()
-                    .text("\"Simulate\" opens the real migration modal with the chosen cluster as the new release and the real compatibility check against every other cluster with the same loader; closing it changes nothing. \"Fake Plan\" skips the check and fills the same modal with made-up packages, so the UI can be reviewed when no cluster has anything to migrate. \"Queue as New Version\" adds the chosen version to the pending list exactly as a new manifest entry would, then runs the startup check, so the real one-time flow can be tested.")
+                    .text("\"Simulate\" opens the real migration modal with the chosen instance as the new release and the real compatibility check against every other instance with the same loader; closing it changes nothing. \"Fake Plan\" skips the check and fills the same modal with made-up packages, so the UI can be reviewed when no instance has anything to migrate. \"Queue as New Version\" adds the chosen version to the pending list exactly as a new manifest entry would, then runs the startup check, so the real one-time flow can be tested.")
                     .font_size(text_size(13.))
                     .color(colors::fg_secondary()),
             )
@@ -1437,7 +1437,7 @@ impl Component for CorruptionSimulator {
             .spacing(10.)
             .child(
                 label()
-                    .text("Damages the real installation so the repair paths can be exercised. Everything here is repairable by \"Verify Files\" in cluster settings, or by launching - which is the point.")
+                    .text("Damages the real installation so the repair paths can be exercised. Everything here is repairable by \"Verify Files\" in instance settings, or by launching - which is the point.")
                     .font_size(text_size(13.))
                     .color(colors::fg_secondary()),
             )
@@ -1449,7 +1449,7 @@ impl Component for CorruptionSimulator {
                     .spacing(12.)
                     .child(
                         label()
-                            .text("Cluster (for mods)")
+                            .text("Instance (for mods)")
                             .font_size(text_size(13.))
                             .color(colors::fg_secondary()),
                     )
@@ -1610,7 +1610,7 @@ fn crash_dialog_button(
                     .clusters
                     .get(target)
                     .await
-                    .map_or_else(|_| format!("Cluster {target}"), |cluster| cluster.name);
+                    .map_or_else(|_| format!("Instance {target}"), |instance| instance.name);
 
                 state
                     .services

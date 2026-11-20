@@ -22,6 +22,7 @@ use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 use super::index::override_summary;
+use super::install_target::{BrowseInstallPicker, InstallRequest};
 use super::{
     EnableButton, EnableVariant, Installed, InstalledVersion, ModpackInstancePrompt,
     ModpackLoaderPrompt, ModpackVersionPrompt, PackageBanner, Thumbnail, WorldInstallPrompt,
@@ -46,7 +47,7 @@ struct Installer {
     dispatch: crate::Actions,
     cluster_id: i64,
     provider: ProviderId,
-    world_prompt: Option<State<Option<String>>>,
+    world_prompt: Option<State<Option<(String, IncompatibleMode)>>>,
     modpack: bool,
     installed: Option<Installed>,
     project_name: String,
@@ -57,10 +58,23 @@ struct Installer {
     add_to_cluster: bool,
     cluster_name: Option<String>,
     incompatible: IncompatibleMode,
+    browse_request: Option<State<Option<InstallRequest>>>,
 }
 
 impl Installer {
     fn install_latest(&self, project_id: String, version_id: String, version_label: String) {
+        if let Some(mut request) = self.browse_request {
+            request.set(Some(InstallRequest {
+                project_id,
+                project_name: self.project_name.clone(),
+                version: None,
+            }));
+            return;
+        }
+        if let Some(mut prompt) = self.world_prompt {
+            prompt.set(Some((version_id, IncompatibleMode::Ask)));
+            return;
+        }
         if let Some(mut prompt) = self.loader_prompt {
             prompt.set(true);
             return;
@@ -72,6 +86,14 @@ impl Installer {
     }
 
     fn install(&self, project_id: String, version_id: String, version_label: String) {
+        if let Some(mut request) = self.browse_request {
+            request.set(Some(InstallRequest {
+                project_id,
+                project_name: self.project_name.clone(),
+                version: Some((version_id, version_label)),
+            }));
+            return;
+        }
         if let Some(installed) = self
             .installed
             .as_ref()
@@ -112,7 +134,7 @@ impl Installer {
         }
 
         match self.world_prompt {
-            Some(mut prompt) => prompt.set(Some(version_id)),
+            Some(mut prompt) => prompt.set(Some((version_id, IncompatibleMode::Ask))),
             None => self.dispatch.install_package(
                 self.cluster_id,
                 self.provider,
@@ -194,6 +216,7 @@ pub struct BrowserPackage {
     pub package_type: String,
     pub package_id: String,
     pub add_to_cluster: bool,
+    pub in_instance: bool,
 }
 
 impl Component for BrowserPackage {
@@ -207,12 +230,13 @@ impl Component for BrowserPackage {
         let versions_page = use_state(|| 0usize);
         let dispatch = use_dispatch();
         let confirm = use_link_confirm();
-        let world_prompt = use_state(|| None::<String>);
+        let world_prompt = use_state(|| None::<(String, IncompatibleMode)>);
         let bundled_warning = use_state(|| None::<PendingBundledInstall>);
         let modpack_prompt = use_state(|| false);
         let loader_prompt = use_state(|| false);
         let chosen_loader = use_state(|| None::<GameLoader>);
         let import_prompt = use_state(|| false);
+        let mut browse_request = use_state(|| None::<InstallRequest>);
         let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
         let is_datapack = content_type == ContentType::DataPack;
         let add_to_cluster = self.add_to_cluster && content_type == ContentType::Modpack;
@@ -291,6 +315,7 @@ impl Component for BrowserPackage {
             add_to_cluster,
             cluster_name: cluster.as_ref().map(|c| c.name.clone()),
             incompatible,
+            browse_request: (cluster_id == 0 && !is_modpack_type).then_some(browse_request),
         };
 
         let remove_id = project.as_ref().map(|p| p.id.clone());
@@ -422,7 +447,11 @@ impl Component for BrowserPackage {
             .width(Size::fill())
             .height(Size::fill())
             .overflow(Overflow::Clip)
-            .padding(Gaps::new(0., 40., 40., 40.))
+            .padding(if self.in_instance {
+                Gaps::new(16., 18., 14., 18.)
+            } else {
+                Gaps::new(0., 40., 40., 40.)
+            })
             .child(
                 ScrollArea::new()
                     .width(Size::fill())
@@ -432,12 +461,23 @@ impl Component for BrowserPackage {
                     .children([row]),
             )
             .maybe_child(remove_dialog)
+            .maybe_child(
+                browse_request
+                    .read()
+                    .clone()
+                    .map(|install| BrowseInstallPicker {
+                        provider,
+                        content_type,
+                        package_type: self.package_type.clone(),
+                        install,
+                        on_close: (move |()| browse_request.set(None)).into(),
+                    }),
+            )
             .maybe_child(world_prompt.read().is_some().then(|| WorldInstallPrompt {
                 cluster_id,
                 provider,
                 project_id: project_id.clone(),
                 pending: world_prompt,
-                incompatible,
             }))
             .maybe_child(loader_prompt.read().then(|| ModpackLoaderPrompt {
                 options: loaders.clone(),

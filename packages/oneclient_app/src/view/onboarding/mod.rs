@@ -130,7 +130,11 @@ pub(crate) fn onboarding_compact() -> bool {
 /// Narrow or short windows, where steps should tighten up to keep their choices on screen
 pub(crate) fn onboarding_dense() -> bool {
     let size = *Platform::get().current_window().root_size.read();
-    size.width < COMPACT_PAGE_WIDTH || size.height < SHORT_PAGE_HEIGHT
+    onboarding_needs_scroll(size.width, size.height)
+}
+
+fn onboarding_needs_scroll(width: f32, height: f32) -> bool {
+    width < COMPACT_PAGE_WIDTH || height < SHORT_PAGE_HEIGHT
 }
 
 pub(crate) fn onboarding_page(
@@ -140,7 +144,9 @@ pub(crate) fn onboarding_page(
 ) -> impl IntoElement {
     // Below this width the illustration would squeeze the step into a sliver, so it drops out
     // and the step takes the whole width, scrolling if it is still too tall
-    let compact = onboarding_compact();
+    let size = *Platform::get().current_window().root_size.read();
+    let compact = size.width < COMPACT_PAGE_WIDTH;
+    let scrollable = onboarding_needs_scroll(size.width, size.height);
 
     let body = if compact {
         ScrollView::new()
@@ -155,6 +161,26 @@ pub(crate) fn onboarding_page(
             )
             .into_element()
     } else {
+        let content = rect()
+            .vertical()
+            .width(Size::fill())
+            .padding(Gaps::new(48., 80., 40., 24.))
+            .child(content);
+        let details = if scrollable {
+            ScrollView::new()
+                .width(Size::flex(1.0))
+                .height(Size::fill())
+                .child(content)
+                .into_element()
+        } else {
+            rect()
+                .width(Size::flex(1.0))
+                .height(Size::fill())
+                .vertical()
+                .main_align(Alignment::Center)
+                .child(content)
+                .into_element()
+        };
         rect()
             .horizontal()
             .width(Size::fill())
@@ -168,16 +194,7 @@ pub(crate) fn onboarding_page(
                     .padding(Gaps::new_all(48.))
                     .child(illustration),
             )
-            .child(
-                rect()
-                    .vertical()
-                    .width(Size::flex(1.0))
-                    .height(Size::fill())
-                    .main_align(Alignment::Center)
-                    .padding(Gaps::new(48., 80., 40., 24.))
-                    .spacing(24.)
-                    .child(content),
-            )
+            .child(details)
             .into_element()
     };
 
@@ -188,7 +205,7 @@ pub(crate) fn onboarding_page(
         .content(Content::Flex)
         .child(onboarding_slide(body))
         // Marks where scrolled content ends so it doesn't look cut off under the buttons
-        .maybe_child(compact.then(|| {
+        .maybe_child(scrollable.then(|| {
             rect()
                 .width(Size::fill())
                 .height(Size::px(1.))
@@ -383,6 +400,13 @@ pub(crate) fn step_heading(title: &str, subtitle: &str) -> impl IntoElement {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn onboarding_keeps_content_scrollable_in_wide_short_windows() {
+        assert!(onboarding_needs_scroll(1240., 600.));
+        assert!(onboarding_needs_scroll(820., 900.));
+        assert!(!onboarding_needs_scroll(1240., 900.));
+    }
 
     fn flow(has_migration: bool, picks_location: bool) -> Vec<Route> {
         let mut routes = vec![Route::OnboardingWelcome {}];

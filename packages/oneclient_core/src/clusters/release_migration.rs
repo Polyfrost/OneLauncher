@@ -87,7 +87,7 @@ pub async fn record_new_versions(state: &LauncherState) -> LauncherResult<()> {
         return Ok(());
     }
 
-    let updated = {
+    {
         let mut settings = state.settings.write();
         for target in &added {
             let key = target.key();
@@ -95,10 +95,9 @@ pub async fn record_new_versions(state: &LauncherState) -> LauncherResult<()> {
                 settings.pending_release_migrations.push(key);
             }
         }
-        settings.clone()
-    };
+    }
 
-    crate::settings::store::save_settings(&updated).await
+    crate::settings::store::save_current_settings(&state.settings).await
 }
 
 #[tracing::instrument(skip(state))]

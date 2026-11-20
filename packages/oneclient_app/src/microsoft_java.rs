@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use freya::prelude::spawn_in_window;
 use oneclient_common::Patch;
-use oneclient_core::settings::store::save_settings_and_apply;
+use oneclient_core::settings::store::save_current_settings_and_apply;
 use oneclient_core::{LauncherState, ProfileUpdate};
 use oneclient_db::models::ClusterId;
 use oneclient_events::{Choice, Prompt, Signal};
@@ -276,16 +276,15 @@ fn already_migrated(state: &Arc<LauncherState>) -> bool {
 }
 
 async fn mark_migrated(state: &Arc<LauncherState>) {
-    let snapshot = {
+    {
         let mut settings = state.settings.write();
         if settings.microsoft_java_migrated {
             return;
         }
         settings.microsoft_java_migrated = true;
-        settings.clone()
-    };
+    }
 
-    if let Err(err) = save_settings_and_apply(&state.services, &snapshot).await {
+    if let Err(err) = save_current_settings_and_apply(&state.services, &state.settings).await {
         tracing::warn!("could not record the Microsoft Java migration: {err:#}");
     }
 }

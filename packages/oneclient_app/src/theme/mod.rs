@@ -127,6 +127,12 @@ pub fn theme_display_name(id: &str) -> String {
     }
 }
 
+/// Whether an ID names an installed theme or a complete system pair.
+pub fn is_known(id: &str) -> bool {
+    let id = system_pair(id).map_or_else(|| id.to_string(), |(dark, _)| dark);
+    THEMES.with_borrow(|themes| themes.iter().any(|theme| theme.id == id))
+}
+
 pub fn resolve_theme(id: &str) -> Rc<Theme> {
     let id = match id {
         "amoled" | "grey" => "dark",

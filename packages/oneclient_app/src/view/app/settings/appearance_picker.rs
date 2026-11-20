@@ -1,17 +1,19 @@
-//! Style (PolyGlass / Minecraft) and theme (System / Dark / Light) pickers, shared by the
+//! Style and theme (System / Dark / Light) pickers, shared by the
 //! onboarding Appearance step and Settings > Appearance so the two stay identical
 
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
+use accesskit::Toggled;
 use freya::prelude::*;
 
+use super::appearance::ThemeFileMenu;
 use crate::AppAssets;
 use crate::components::{Icon, IconType};
-use crate::hooks::Actions;
+use crate::hooks::{Actions, use_dispatch};
 use crate::i18n::t;
 use crate::theme::{
-    Theme, colors, counterpart, family_name, light_variant, resolve_theme, rounded, system_pair,
-    system_theme_id, text_size, themes,
+    Theme, colors, counterpart, family_name, light_variant, resolve_theme, rounded, rounded_px,
+    system_pair, system_theme_id, text_size, themes,
 };
 use crate::ui::border_all_color;
 
@@ -20,6 +22,118 @@ pub(crate) enum Mode {
     System,
     Dark,
     Light,
+}
+
+#[derive(Clone, PartialEq)]
+pub(super) struct RadioGroup {
+    options: Rc<[(AccessibilityId, bool)]>,
+}
+
+impl RadioGroup {
+    pub(super) fn use_options(available: impl IntoIterator<Item = bool>) -> Self {
+        let ids = use_hook(|| Rc::new(RefCell::new(Vec::new())));
+        let mut ids = ids.borrow_mut();
+        let options = available
+            .into_iter()
+            .enumerate()
+            .map(|(index, available)| {
+                if index == ids.len() {
+                    ids.push(AccessibilityId::new_unique());
+                }
+                (ids[index], available)
+            })
+            .collect();
+        Self { options }
+    }
+
+    pub(super) fn id(&self, index: usize) -> AccessibilityId {
+        self.options[index].0
+    }
+
+    pub(super) fn accessibility(
+        &self,
+        element: Rect,
+        index: usize,
+        selected: Option<usize>,
+    ) -> Rect {
+        let available = self.options[index].1;
+        let tab_stop = selected
+            .filter(|&i| self.options[i].1)
+            .or_else(|| self.options.iter().position(|&(_, available)| available));
+        element
+            .a11y_id(self.id(index))
+            .a11y_role(AccessibilityRole::RadioButton)
+            .a11y_focusable(available)
+            .a11y_builder(|node| {
+                node.set_toggled(Toggled::from(selected == Some(index)));
+                if !available {
+                    node.set_disabled();
+                }
+            })
+            // Freya includes only the member whose ID matches the group in Tab
+            // traversal, but assistive technology can still focus any enabled radio.
+            .map(tab_stop, |element, stop| {
+                element.a11y_member_of(self.id(stop))
+            })
+    }
+
+    pub(super) fn activate(&self, index: usize, select: impl FnOnce(usize)) {
+        if self.options[index].1 {
+            self.id(index).request_focus();
+            select(index);
+        }
+    }
+
+    /// Apply after `on_press` because Freya stores one handler per event.
+    pub(super) fn keyboard(
+        self,
+        element: Rect,
+        index: usize,
+        select: impl Fn(usize) + 'static,
+    ) -> Rect {
+        element.on_key_down(move |event: Event<KeyboardEventData>| {
+            if event.is_press_event() {
+                self.activate(index, &select);
+                return;
+            }
+            if !event.modifiers.is_empty() {
+                return;
+            }
+            let forward = match event.key {
+                Key::Named(NamedKey::ArrowRight | NamedKey::ArrowDown) => true,
+                Key::Named(NamedKey::ArrowLeft | NamedKey::ArrowUp) => false,
+                _ => return,
+            };
+            event.prevent_default();
+            event.stop_propagation();
+            if let Some(next) =
+                next_radio(index, self.options.len(), forward, |i| self.options[i].1)
+            {
+                self.activate(next, &select);
+            }
+        })
+    }
+}
+
+fn next_radio(
+    index: usize,
+    count: usize,
+    forward: bool,
+    available: impl Fn(usize) -> bool,
+) -> Option<usize> {
+    (1..count)
+        .map(|step| {
+            if forward {
+                (index + step) % count
+            } else {
+                (index + count - step) % count
+            }
+        })
+        .find(|&next| available(next))
+}
+
+pub(super) fn radio_focus_visible(focus: Focus, selected: bool) -> bool {
+    focus == Focus::Keyboard || (focus.is_focused() && !selected)
 }
 
 /// Splits a theme id into the family (named by its dark variant) and the light/dark/system mode
@@ -36,15 +150,30 @@ pub(crate) fn split_theme(id: &str) -> (String, Mode) {
     }
 }
 
-fn compose_theme(dark: &str, mode: Mode) -> String {
+fn compose_theme(family: &str, mode: Mode) -> Option<String> {
+    id_for_mode(
+        family,
+        resolve_theme(family).colors.light,
+        light_variant(family),
+        mode,
+    )
+}
+
+fn id_for_mode(
+    family: &str,
+    light_only: bool,
+    light_variant: Option<String>,
+    mode: Mode,
+) -> Option<String> {
     match mode {
-        Mode::System => system_theme_id(dark),
-        Mode::Dark => dark.to_string(),
-        Mode::Light => light_variant(dark).unwrap_or_else(|| dark.to_string()),
+        Mode::System => light_variant.map(|_| system_theme_id(family)),
+        Mode::Dark => (!light_only).then(|| family.to_string()),
+        Mode::Light if light_only => Some(family.to_string()),
+        Mode::Light => light_variant,
     }
 }
 
-/// Built-in families that have both a dark and a light variant (PolyGlass, Minecraft)
+/// Built-in families that have both a dark and a light variant.
 fn style_families() -> Vec<Rc<Theme>> {
     themes()
         .into_iter()
@@ -75,7 +204,9 @@ fn quiet_outline() -> Color {
 }
 
 /// The style cards for `theme_id`; `dense` trims the previews for short windows
-pub(crate) fn style_picker(theme_id: &str, dense: bool, dispatch: &Actions) -> impl IntoElement {
+///
+/// Settings also exposes the file actions for each displayed preview.
+pub(crate) fn style_picker(theme_id: &str, dense: bool, manage: bool) -> impl IntoElement {
     let (family, mode) = split_theme(theme_id);
     // System previews follow whichever variant the OS has the launcher showing right now
     let show_light = match mode {
@@ -84,74 +215,107 @@ pub(crate) fn style_picker(theme_id: &str, dense: bool, dispatch: &Actions) -> i
         Mode::System => colors::is_light(),
     };
 
-    let cards = style_families().into_iter().map(|dark| {
-        let preview = if show_light {
-            light_variant(&dark.id)
-                .map(|id| resolve_theme(&id))
-                .unwrap_or_else(|| dark.clone())
-        } else {
-            dark.clone()
-        };
-        let selected = dark.id == family;
-        let picked = dark.id.clone();
-        let dispatch = dispatch.clone();
-        style_card(&preview, selected, dense, move || {
-            let picked = picked.clone();
-            dispatch.edit_settings(|settings| {
-                let (_, mode) = split_theme(&settings.theme);
-                settings.theme = compose_theme(&picked, mode);
-            });
-        })
+    let styles = style_families();
+    let selected_index = styles.iter().position(|theme| theme.id == family);
+    let families: Rc<[String]> = styles.iter().map(|theme| theme.id.clone()).collect();
+    let radio = RadioGroup::use_options(styles.iter().map(|_| true));
+    let cards = styles.into_iter().enumerate().map(|(index, dark)| {
+        let preview = show_light
+            .then(|| light_variant(&dark.id))
+            .flatten()
+            .unwrap_or_else(|| dark.id.clone());
+        StyleCard {
+            selected_index,
+            index,
+            families: families.clone(),
+            radio: radio.clone(),
+            preview,
+            dense,
+            manage,
+        }
+        .into_element()
     });
 
     rect()
         .horizontal()
         .width(Size::fill())
         .content(Content::Flex)
-        .spacing(16.)
+        .a11y_role(AccessibilityRole::RadioGroup)
+        .a11y_alt(t("oneclient.settings.appearance.style"))
+        .spacing(if dense { 10. } else { 12. })
         .children(cards)
 }
 
 /// Handlers read the live setting at press time instead of capturing this render's picks: a
 /// press can reach a closure from an earlier render, which would apply a stale combination
 pub(crate) fn theme_mode_picker(theme_id: &str, dispatch: &Actions) -> impl IntoElement {
-    let (_, mode) = split_theme(theme_id);
+    const MODES: [Mode; 3] = [Mode::System, Mode::Dark, Mode::Light];
+    const HEIGHT: f32 = 34.;
+    let (family, mode) = split_theme(theme_id);
+    let choices = MODES.map(|option| compose_theme(&family, option).is_some());
+    let radio = RadioGroup::use_options(choices);
+    let selected = MODES.iter().position(|&option| option == mode);
+    let select = {
+        let dispatch = dispatch.clone();
+        move |index: usize| {
+            dispatch.edit_settings(|settings| {
+                let (family, _) = split_theme(&settings.theme);
+                if let Some(id) = compose_theme(&family, MODES[index]) {
+                    settings.theme = id;
+                }
+            });
+        }
+    };
+
     let segments = [
-        (
-            Mode::System,
-            t("oneclient.settings.appearance.theme.system"),
-        ),
-        (Mode::Dark, t("oneclient.settings.appearance.theme.dark")),
-        (Mode::Light, t("oneclient.settings.appearance.theme.light")),
+        t("oneclient.settings.appearance.theme.system"),
+        t("oneclient.settings.appearance.theme.dark"),
+        t("oneclient.settings.appearance.theme.light"),
     ]
     .into_iter()
-    .map(|(option, text)| {
-        let dispatch = dispatch.clone();
-        let active = option == mode;
-        rect()
+    .enumerate()
+    .map(|(index, text)| {
+        let select = select.clone();
+        let key_select = select.clone();
+        let radio = radio.clone();
+        let pointer_radio = radio.clone();
+        let available = choices[index];
+        let active = selected == Some(index);
+        let a11y_id = radio.id(index);
+        let focus = use_focus(a11y_id);
+        let segment = rect()
             .width(Size::flex(1.))
-            .height(Size::px(34.))
+            .height(Size::px(HEIGHT))
             .center()
-            .corner_radius(rounded(7.))
-            .background(if active {
-                colors::brand()
-            } else {
-                Color::TRANSPARENT
+            .corner_radius(rounded(7.));
+        radio
+            .accessibility(segment, index, selected)
+            .maybe(active, |el| el.background(colors::brand()))
+            .a11y_alt(text)
+            .maybe(radio_focus_visible(focus(), active), |el| {
+                let stroke = if active {
+                    colors::on_brand()
+                } else {
+                    colors::fg_primary()
+                };
+                el.border(border_all_color(2., stroke).alignment(BorderAlignment::Inner))
             })
-            .cursor(CursorIcon::Pointer)
-            .a11y_role(AccessibilityRole::Button)
-            .on_press(move |_| {
-                dispatch.edit_settings(|settings| {
-                    let (family, _) = split_theme(&settings.theme);
-                    settings.theme = compose_theme(&family, option);
-                });
+            .maybe(available, |el| {
+                radio.keyboard(
+                    el.cursor(CursorIcon::Pointer)
+                        .on_press(move |_| pointer_radio.activate(index, &select)),
+                    index,
+                    key_select,
+                )
             })
             .child(
                 label()
                     .text(text.to_string())
                     .font_size(text_size(13.))
                     .font_weight(FontWeight::MEDIUM)
-                    .color(if active {
+                    .color(if !available {
+                        colors::fg_secondary().with_a(138)
+                    } else if active {
                         colors::on_brand()
                     } else {
                         colors::fg_primary().with_a(190)
@@ -161,13 +325,15 @@ pub(crate) fn theme_mode_picker(theme_id: &str, dispatch: &Actions) -> impl Into
     });
 
     rect()
+        .background(colors::component_bg())
         .horizontal()
         .width(Size::fill())
         .content(Content::Flex)
+        .a11y_role(AccessibilityRole::RadioGroup)
+        .a11y_alt(t("oneclient.settings.appearance.mode"))
         .spacing(4.)
         .padding(4.)
         .corner_radius(rounded(10.))
-        .background(colors::component_bg())
         .border(border_all_color(1., quiet_outline()))
         .children(segments)
 }
@@ -175,101 +341,162 @@ pub(crate) fn theme_mode_picker(theme_id: &str, dispatch: &Actions) -> impl Into
 const CARD_RING: f32 = 2.;
 const PREVIEW_HEIGHT: f32 = 104.;
 const PREVIEW_HEIGHT_DENSE: f32 = 64.;
-/// Fixed so the two fonts can't give the cards different heights and shift the page
-const FOOTER_HEIGHT: f32 = 62.;
+/// Fixed so the fonts can't give the cards different heights and shift the page; tall enough
+/// for the name over a two-line blurb with air above and below
+const FOOTER_HEIGHT: f32 = 76.;
 const FOOTER_HEIGHT_DENSE: f32 = 40.;
+const FOOTER_PAD_X: f32 = 12.;
 
 /// A card per style: a miniature launcher drawn in that style's own colors, font, corners and
-/// icons, above its name, a one-line description and a selection mark
-fn style_card(
-    theme: &Theme,
-    selected: bool,
+/// icons, above its name, a short description and a selection mark
+#[derive(PartialEq)]
+struct StyleCard {
+    index: usize,
+    /// The dark id for each displayed style family.
+    families: Rc<[String]>,
+    radio: RadioGroup,
+    /// Variant the miniature is drawn with
+    preview: String,
+    selected_index: Option<usize>,
     dense: bool,
-    mut on_press: impl FnMut() + 'static,
-) -> Element {
-    let pixel = theme.pixel_font_size.is_some_and(|step| step > 0.);
-    let blurb = if pixel {
-        t("oneclient.onboarding.preferences.style.minecraft")
-    } else {
-        t("oneclient.onboarding.preferences.style.polyglass")
-    };
+    manage: bool,
+}
 
-    let footer = rect()
-        .horizontal()
-        .width(Size::fill())
-        .height(Size::px(if dense {
-            FOOTER_HEIGHT_DENSE
-        } else {
-            FOOTER_HEIGHT
-        }))
-        .content(Content::Flex)
-        .cross_align(Alignment::Center)
-        .spacing(10.)
-        .padding(Gaps::new_symmetric(0., 14.))
-        .background(if selected {
-            colors::brand().with_a(40)
-        } else {
-            Color::TRANSPARENT
-        })
-        .child(
-            rect()
-                .vertical()
-                .width(Size::flex(1.))
-                .spacing(3.)
-                .child(
-                    label()
-                        .text(family_name(&theme.name))
-                        .max_lines(1)
-                        .font_size(text_size(14.))
-                        .font_weight(FontWeight::SEMI_BOLD)
-                        .color(colors::fg_primary()),
-                )
-                .maybe_child((!dense).then(|| {
-                    label()
-                        .text(blurb.to_string())
-                        .width(Size::fill())
-                        .max_lines(1)
-                        .text_overflow(TextOverflow::Ellipsis)
-                        .font_size(text_size(12.))
-                        .color(colors::fg_secondary())
-                        .into_element()
-                })),
-        )
-        .child(selection_mark(selected));
+impl Component for StyleCard {
+    fn render(&self) -> impl IntoElement {
+        let theme = resolve_theme(&self.preview);
+        let theme: &Theme = &theme;
+        let (selected, dense) = (self.selected_index == Some(self.index), self.dense);
+        let dispatch = use_dispatch();
+        let index = self.index;
+        let radio = self.radio.clone();
+        let pointer_radio = radio.clone();
+        let a11y_id = radio.id(index);
+        let focus = use_focus(a11y_id);
+        let show_focus = radio_focus_visible(focus(), selected);
+        let ringed = selected || show_focus;
 
-    // Children paint over a border, so the ring sits outside a clipped inner body
-    rect()
-        .width(Size::flex(1.))
-        .padding(CARD_RING)
-        .corner_radius(rounded(12.))
-        .border(border_all_color(
-            if selected { CARD_RING } else { 1. },
-            if selected {
-                colors::brand()
+        let pixel = theme.pixel_font_size.is_some_and(|step| step > 0.);
+        let blurb = if pixel {
+            t("oneclient.onboarding.preferences.style.minecraft")
+        } else {
+            t("oneclient.onboarding.preferences.style.polyglass")
+        };
+        let name = family_name(&theme.name);
+
+        let footer = rect()
+            .horizontal()
+            .width(Size::fill())
+            .height(Size::px(if dense {
+                FOOTER_HEIGHT_DENSE
             } else {
-                quiet_outline()
-            },
-        ))
-        .cursor(CursorIcon::Pointer)
-        .a11y_role(AccessibilityRole::Button)
-        .on_press(move |_| on_press())
-        .child(
-            rect()
-                .vertical()
-                .width(Size::fill())
-                .corner_radius(rounded(12. - CARD_RING))
-                .overflow(Overflow::Clip)
-                .background(colors::card())
-                .child(miniature(theme, pixel, dense))
-                .child(
-                    rect()
-                        .width(Size::fill())
-                        .height(Size::px(1.))
-                        .background(colors::component_border()),
+                FOOTER_HEIGHT
+            }))
+            .content(Content::Flex)
+            .cross_align(Alignment::Center)
+            .spacing(10.)
+            .padding(Gaps::new_symmetric(0., FOOTER_PAD_X))
+            .background(if selected {
+                colors::brand().with_a(40)
+            } else {
+                Color::TRANSPARENT
+            })
+            .child(
+                // Sized by its text and centred by the row, a fixed height here let a wrapped
+                // blurb spill onto the card edge
+                rect()
+                    .vertical()
+                    .width(Size::flex(1.))
+                    .overflow(Overflow::Clip)
+                    .spacing(2.)
+                    .child(
+                        label()
+                            .text(name.clone())
+                            .width(Size::fill())
+                            .max_lines(1)
+                            .text_overflow(TextOverflow::Ellipsis)
+                            .font_size(text_size(13.))
+                            .font_weight(FontWeight::SEMI_BOLD)
+                            .color(colors::fg_primary()),
+                    )
+                    .maybe_child((!dense).then(|| {
+                        label()
+                            .text(blurb.to_string())
+                            .width(Size::fill())
+                            .max_lines(2)
+                            .line_height(1.3)
+                            .text_overflow(TextOverflow::Ellipsis)
+                            .font_size(text_size(11.))
+                            .color(colors::fg_secondary())
+                            .into_element()
+                    })),
+            )
+            .child(selection_mark(selected));
+
+        // Children paint over a border, so the rim sits outside a clipped inner body. The body
+        // always starts right where the rim ends: a thin rim is inset by a margin instead of
+        // being left floating a pixel off the body, which read as a doubled outline
+        let rim = if ringed { CARD_RING } else { 1. };
+        let outer_radius = rounded_px(12.);
+        let families = self.families.clone();
+        let select = move |picked: usize| {
+            dispatch.edit_settings(|settings| {
+                let (_, mode) = split_theme(&settings.theme);
+                if let Some(id) = compose_theme(&families[picked], mode) {
+                    settings.theme = id;
+                }
+            });
+        };
+        let key_select = select.clone();
+
+        let card = rect()
+            .width(Size::fill())
+            .margin(Gaps::new_all(CARD_RING - rim))
+            .padding(rim)
+            .corner_radius(CornerRadius::new_all(outer_radius - (CARD_RING - rim)))
+            .border(
+                border_all_color(
+                    rim,
+                    if show_focus {
+                        colors::fg_primary()
+                    } else if selected {
+                        colors::brand()
+                    } else {
+                        quiet_outline()
+                    },
                 )
-                .child(footer),
-        )
-        .into_element()
+                .alignment(BorderAlignment::Inner),
+            )
+            .cursor(CursorIcon::Pointer)
+            .a11y_alt(name)
+            .on_press(move |_| pointer_radio.activate(index, &select))
+            .child(
+                rect()
+                    .vertical()
+                    .width(Size::fill())
+                    .corner_radius(CornerRadius::new_all((outer_radius - CARD_RING).max(0.)))
+                    .overflow(Overflow::Clip)
+                    .background(colors::card())
+                    .child(miniature(theme, pixel, dense))
+                    .child(
+                        rect()
+                            .width(Size::fill())
+                            .height(Size::px(1.))
+                            .background(colors::component_border()),
+                    )
+                    .child(footer),
+            );
+
+        let card = radio.accessibility(card, index, self.selected_index);
+        rect()
+            .width(Size::flex(1.))
+            .child(radio.keyboard(card, index, key_select))
+            .maybe_child(self.manage.then(|| ThemeFileMenu {
+                id: theme.id.clone(),
+                name: theme.name.clone(),
+                custom: None,
+            }))
+    }
 }
 
 fn selection_mark(selected: bool) -> Element {
@@ -422,4 +649,184 @@ fn play_button(theme: &Theme, pixel: bool, dense: bool) -> Element {
                 .color(Color::WHITE),
         )
         .into_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unpaired_themes_only_offer_their_installed_mode() {
+        for (light_only, own_mode) in [(false, Mode::Dark), (true, Mode::Light)] {
+            for mode in [Mode::Dark, Mode::Light, Mode::System] {
+                assert_eq!(
+                    id_for_mode("custom", light_only, None, mode),
+                    (mode == own_mode).then(|| "custom".to_string()),
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn paired_themes_offer_each_mode() {
+        for (mode, id) in [
+            (Mode::Dark, "custom-dark"),
+            (Mode::Light, "custom-light"),
+            (Mode::System, "system:custom-dark"),
+        ] {
+            assert_eq!(
+                id_for_mode("custom-dark", false, Some("custom-light".into()), mode).as_deref(),
+                Some(id),
+            );
+        }
+    }
+
+    #[test]
+    fn arrows_wrap_and_skip_unavailable_radio_options() {
+        let choices = [true, false, true, false];
+        let available = |i: usize| choices[i];
+        assert_eq!(next_radio(0, choices.len(), true, available), Some(2));
+        assert_eq!(next_radio(0, choices.len(), false, available), Some(2));
+        assert_eq!(next_radio(2, choices.len(), true, available), Some(0));
+        assert_eq!(next_radio(2, choices.len(), false, available), Some(0));
+        assert_eq!(next_radio(0, 3, true, |i| i == 0), None);
+    }
+
+    #[test]
+    fn radio_keyboard_focus_roves_and_preserves_activation() {
+        use std::time::Duration;
+
+        use accesskit::{Action, ActionRequest, TreeId};
+        use freya_testing::TestingRunner;
+
+        type Fixture = (State<Option<usize>>, State<Vec<AccessibilityId>>);
+
+        fn app() -> impl IntoElement {
+            let (selected, ids) = use_consume::<Fixture>();
+            let radio = RadioGroup::use_options([true, false, true]);
+            let kebab = use_a11y();
+            use_hook(|| {
+                let mut ids = ids;
+                ids.set((0..3).map(|i| radio.id(i)).chain([kebab]).collect());
+            });
+            let select = move |index| {
+                let mut selected = selected;
+                selected.set(Some(index));
+            };
+            let checked = selected();
+            rect()
+                .horizontal()
+                .on_global_key_down(|event: Event<KeyboardEventData>| {
+                    assert_ne!(event.key, Key::Named(NamedKey::ArrowDown));
+                })
+                .child(
+                    rect()
+                        .horizontal()
+                        .a11y_role(AccessibilityRole::RadioGroup)
+                        .children((0..3).map(|index| {
+                            let radio_button = radio.accessibility(
+                                rect().width(Size::px(32.)).height(Size::px(24.)),
+                                index,
+                                checked,
+                            );
+                            if index == 1 {
+                                return radio_button;
+                            }
+                            let pointer_radio = radio.clone();
+                            radio.clone().keyboard(
+                                radio_button
+                                    .on_press(move |_| pointer_radio.activate(index, select)),
+                                index,
+                                select,
+                            )
+                        })),
+                )
+                .child(
+                    rect()
+                        .width(Size::px(28.))
+                        .height(Size::px(24.))
+                        .a11y_id(kebab)
+                        .a11y_role(AccessibilityRole::Button)
+                        .a11y_alt("Theme options")
+                        .a11y_focusable(true),
+                )
+        }
+
+        let (mut runner, (selected, ids)) = TestingRunner::new(
+            app,
+            (240., 160.).into(),
+            |runner| {
+                runner.provide_root_context(|| -> Fixture {
+                    (State::create(None), State::create(vec![]))
+                })
+            },
+            1.,
+        );
+        runner.poll_n(Duration::ZERO, 3);
+        let focus_next = |runner: &mut TestingRunner| {
+            runner.run_in(|| {
+                Platform::get()
+                    .current_window()
+                    .send(UserEvent::FocusAccessibilityNode(
+                        AccessibilityFocusStrategy::Forward(
+                            AccessibilityFocusMovement::OutsideGroup,
+                        ),
+                    ));
+            });
+            runner.sync_and_update();
+        };
+        let assert_focus = |runner: &TestingRunner, index: usize| {
+            runner.run_in(|| assert!(ids.peek()[index].is_focused()));
+        };
+        let press = |runner: &mut TestingRunner, key| {
+            runner.press_key(key);
+            runner.poll_n(Duration::ZERO, 3);
+        };
+        let request_at = |runner: &mut TestingRunner, action, index: usize| {
+            let target_node = runner.run_in(|| ids.peek()[index]);
+            let accepted = runner.send_accessibility_action(ActionRequest {
+                action,
+                target_node,
+                target_tree: TreeId::ROOT,
+                data: None,
+            });
+            runner.poll_n(Duration::ZERO, 3);
+            accepted
+        };
+
+        focus_next(&mut runner);
+        assert_focus(&runner, 0);
+        press(&mut runner, Key::Named(NamedKey::Enter));
+        runner.run_in(|| assert_eq!(*selected.peek(), Some(0)));
+
+        press(&mut runner, Key::Named(NamedKey::ArrowRight));
+        assert_focus(&runner, 2);
+        runner.run_in(|| assert_eq!(*selected.peek(), Some(2)));
+        focus_next(&mut runner);
+        assert_focus(&runner, 3);
+        focus_next(&mut runner);
+        assert_focus(&runner, 2);
+
+        press(&mut runner, Key::Named(NamedKey::ArrowDown));
+        assert_focus(&runner, 0);
+        runner.run_in(|| assert_eq!(*selected.peek(), Some(0)));
+
+        runner.click_cursor((80., 12.));
+        runner.poll_n(Duration::ZERO, 3);
+        assert_focus(&runner, 2);
+        runner.run_in(|| assert_eq!(*selected.peek(), Some(2)));
+        press(&mut runner, Key::Named(NamedKey::ArrowLeft));
+        assert_focus(&runner, 0);
+        runner.run_in(|| assert_eq!(*selected.peek(), Some(0)));
+
+        assert!(!request_at(&mut runner, Action::Focus, 1));
+        assert!(request_at(&mut runner, Action::Focus, 2));
+        assert_focus(&runner, 2);
+        runner.run_in(|| assert_eq!(*selected.peek(), Some(0)));
+        press(&mut runner, Key::Character(" ".into()));
+        runner.run_in(|| assert_eq!(*selected.peek(), Some(2)));
+        assert!(request_at(&mut runner, Action::Click, 0));
+        assert_focus(&runner, 0);
+        runner.run_in(|| assert_eq!(*selected.peek(), Some(0)));
+    }
 }

@@ -2179,6 +2179,7 @@
   "oneclient.settings.appearance.language_hint": "Looking to change your language?",
   "oneclient.settings.appearance.mode": "Theme",
   "oneclient.settings.appearance.style": "Style",
+  "oneclient.settings.appearance.theme.actions": "%s options",
   "oneclient.settings.appearance.theme.dark": "Dark",
   "oneclient.settings.appearance.theme.delete_failed": "Couldn't delete the theme",
   "oneclient.settings.appearance.theme.duplicate": "Duplicate",

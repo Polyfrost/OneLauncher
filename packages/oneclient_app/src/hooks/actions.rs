@@ -37,7 +37,7 @@ use oneclient_content::packages::{LiveSync, LocalImportReport};
 use oneclient_core::BUNDLE_APPLY_BUDGET;
 use oneclient_core::relocate::RelocationPlan;
 use oneclient_core::settings::LauncherSettings;
-use oneclient_core::settings::store::{save_global_profile, save_settings_and_apply};
+use oneclient_core::settings::store::{save_current_settings_and_apply, save_global_profile};
 use oneclient_db::models::ClusterId;
 use oneclient_events::{Answer, Level};
 use tokio::sync::mpsc;
@@ -247,8 +247,7 @@ impl Actions {
                 guard.settings.error = None;
             }
 
-            let settings = state.settings.read().clone();
-            let result = save_settings_and_apply(&state.services, &settings).await;
+            let result = save_current_settings_and_apply(&state.services, &state.settings).await;
 
             let mut guard = actions.station.clone().write_channel(AppChannel::Settings);
             guard.settings.error = result.err().map(|err| err.to_string());
@@ -274,11 +273,13 @@ impl Actions {
         Some(updated)
     }
 
-    fn persist(&self, settings: LauncherSettings) {
+    fn persist(&self) {
         let actions = self.clone();
         spawn_in_window(async move {
             let Ok(state) = launcher::state() else { return };
-            if let Err(err) = save_settings_and_apply(&state.services, &settings).await {
+            if let Err(err) =
+                save_current_settings_and_apply(&state.services, &state.settings).await
+            {
                 actions.set_settings_error(Some(err.to_string()));
             }
         });
@@ -295,21 +296,7 @@ impl Actions {
         if let Ok(state) = launcher::state() {
             state.discord.set_enabled(updated.discord_enabled);
         }
-        self.persist(updated);
-    }
-
-    pub fn set_settings(&self, settings: LauncherSettings) {
-        let Some(updated) = self.mutate_settings(|s| {
-            let pending = std::mem::take(&mut s.pending_release_migrations);
-            *s = settings;
-            s.pending_release_migrations = pending;
-        }) else {
-            return;
-        };
-        if let Ok(state) = launcher::state() {
-            state.discord.set_enabled(updated.discord_enabled);
-        }
-        self.persist(updated);
+        self.persist();
     }
 
     /// Not persisted the next real save carries the seen versions along
@@ -332,8 +319,8 @@ impl Actions {
             }
         });
 
-        if let (true, Some(updated)) = (changed, updated) {
-            self.persist(updated);
+        if changed && updated.is_some() {
+            self.persist();
         }
     }
 
@@ -351,48 +338,59 @@ impl Actions {
             }
         });
 
-        if let (true, Some(updated)) = (changed, updated) {
-            self.persist(updated);
+        if changed && updated.is_some() {
+            self.persist();
         }
     }
 
     pub fn mark_onboarding_seen(&self) {
-        if let Some(updated) = self.mutate_settings(|settings| settings.seen_onboarding = true) {
-            self.persist(updated);
+        if self
+            .mutate_settings(|settings| settings.seen_onboarding = true)
+            .is_some()
+        {
+            self.persist();
         }
     }
 
     pub fn skip_microsoft_java(&self) {
-        if let Some(updated) = self.mutate_settings(|settings| settings.skip_microsoft_java = true)
+        if self
+            .mutate_settings(|settings| settings.skip_microsoft_java = true)
+            .is_some()
         {
-            self.persist(updated);
+            self.persist();
         }
     }
 
     pub fn reset_onboarding(&self) {
-        if let Some(updated) = self.mutate_settings(|settings| {
-            settings.seen_onboarding = false;
-            settings.accepted_tos_version = 0;
-            settings.accepted_privacy_version = 0;
-            settings.seen_versions.clear();
-        }) {
-            self.persist(updated);
+        if self
+            .mutate_settings(|settings| {
+                settings.seen_onboarding = false;
+                settings.accepted_tos_version = 0;
+                settings.accepted_privacy_version = 0;
+                settings.seen_versions.clear();
+            })
+            .is_some()
+        {
+            self.persist();
         }
     }
 
     pub fn accept_tos(&self, terms_version: u32, privacy_version: u32) {
         let mut was_declined = false;
 
-        let Some(updated) = self.mutate_settings(|settings| {
-            was_declined = settings.declined_tos;
-            settings.accepted_tos_version = terms_version;
-            settings.accepted_privacy_version = privacy_version;
-            settings.declined_tos = false;
-        }) else {
+        if self
+            .mutate_settings(|settings| {
+                was_declined = settings.declined_tos;
+                settings.accepted_tos_version = terms_version;
+                settings.accepted_privacy_version = privacy_version;
+                settings.declined_tos = false;
+            })
+            .is_none()
+        {
             return;
-        };
+        }
 
-        self.persist(updated);
+        self.persist();
 
         if was_declined {
             self.notify(t("oneclient.actions.tos_accepted.title"))
@@ -411,12 +409,15 @@ impl Actions {
             guard.social_popped_notice = false;
         }
 
-        if let Some(updated) = self.mutate_settings(|settings| {
-            settings.declined_tos = true;
-            settings.accepted_tos_version = 0;
-            settings.accepted_privacy_version = 0;
-        }) {
-            self.persist(updated);
+        if self
+            .mutate_settings(|settings| {
+                settings.declined_tos = true;
+                settings.accepted_tos_version = 0;
+                settings.accepted_privacy_version = 0;
+            })
+            .is_some()
+        {
+            self.persist();
         }
     }
 

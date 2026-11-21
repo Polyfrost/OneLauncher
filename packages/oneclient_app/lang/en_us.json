@@ -1593,6 +1593,7 @@
   "oneclient.components.microsoft_login.title": "Sign in to Microsoft",
   "oneclient.components.microsoft_login.waiting": "Waiting for you to finish signing in...",
   "oneclient.components.microsoft_login.what_you_can_do": "What you can do:",
+  "oneclient.components.markdown.watch_on": "Watch on %s",
   "oneclient.components.modpack_confirm.add": "Add",
   "oneclient.components.modpack_confirm.add_anyway": "Add anyway",
   "oneclient.components.modpack_confirm.content.configs_only": "Configs and settings only",

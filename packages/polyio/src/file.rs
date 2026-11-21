@@ -567,6 +567,10 @@ pub async fn copy_replacing(
     match copy(from, to).await {
         Err(IOError::PathIOError { source, .. })
             if source.kind() == std::io::ErrorKind::PermissionDenied && to.is_file() => {}
+        Ok(written) => {
+            make_writable(to).await;
+            return Ok(written);
+        }
         other => return other,
     }
 
@@ -599,6 +603,7 @@ pub async fn copy_replacing(
         });
     }
 
+    make_writable(to).await;
     Ok(written)
 }
 
@@ -659,6 +664,30 @@ pub async fn copy(
             source: e,
             path: from.to_string_lossy().to_string(),
         })
+}
+
+async fn make_writable(path: &Path) {
+    let Ok(meta) = tokio::fs::metadata(path).await else {
+        return;
+    };
+    let mut perms = meta.permissions();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if perms.mode() & 0o200 != 0 {
+            return;
+        }
+        perms.set_mode(perms.mode() | 0o200);
+    }
+    #[cfg(not(unix))]
+    {
+        if !perms.readonly() {
+            return;
+        }
+        #[allow(clippy::permissions_set_readonly_false)]
+        perms.set_readonly(false);
+    }
+    tokio::fs::set_permissions(path, perms).await.ok();
 }
 
 #[tracing::instrument(

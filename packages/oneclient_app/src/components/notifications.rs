@@ -489,6 +489,7 @@ pub(crate) fn run_action(
             dispatch.close_notification_center();
             dispatch.show_chat(*group_id);
         }
+        NotificationActionKind::UndoInstall(undo) => dispatch.undo_install(undo.clone(), None),
     }
 }
 

@@ -1,14 +1,10 @@
 use std::time::Duration;
 
-use freya::animation::{
-    AnimNum, Ease, Function, OnChange, OnCreation, use_animation_with_dependencies,
-};
 use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_common::domain::GameLoader;
 use oneclient_common::parse_mc_version;
 use oneclient_common::search::normalize_query;
-use oneclient_content::packages::types::ProjectSummary;
 use oneclient_content::packages::types::{SearchSide, SearchSort};
 use oneclient_content::packages::{ContentType, ProviderId};
 use oneclient_core::VersionMetadata;
@@ -30,14 +26,14 @@ use crate::hooks::{
 };
 use crate::i18n::{t, tf};
 use crate::routes::Route;
-use crate::theme::{colors, rounded, text_size};
+use crate::theme::{colors, text_size};
 use crate::ui::grid_columns_for_width;
 use crate::view::app::cluster::supports_datapacks;
 use crate::view::app::clusters::ClusterPickerButton;
 
 use super::{
-    EnableButton, EnableVariant, InstallSource, Installed, ModpackVersionPrompt, PackageBanner,
-    Thumbnail, WorldInstallPrompt, installed_map, minecraft_choices, preferred_version,
+    EnableButton, EnableVariant, InstallSource, Installed, ModpackVersionPrompt, Thumbnail,
+    WorldInstallPrompt, control_radius, installed_map, minecraft_choices, preferred_version,
 };
 use crate::utils::abbreviate_number;
 
@@ -55,18 +51,26 @@ const SCROLLBAR_GUTTER: f32 = 18.;
 const CATEGORY_SIDEBAR_W: f32 = 196.;
 const PROVIDER_LABELS_W: f32 = 900.;
 const WIDE_SEARCH_W: f32 = 780.;
-const SEARCH_W: f32 = 260.;
-const SEARCH_COMPACT_W: f32 = 170.;
-const CARD_H: f32 = 226.;
-const BANNER_H: f32 = 74.;
-const CARD_ICON: f32 = 46.;
-/// How far the package icon drops past the banner into the card body
-const CARD_ICON_OVERHANG: f32 = 14.;
+const SEARCH_W: f32 = 340.;
+const SEARCH_COMPACT_W: f32 = 190.;
+const CARD_H: f32 = 164.;
+/// Icon, title and provider band at the top of each card.
+const BANNER_H: f32 = 64.;
+const CARD_ICON: f32 = 44.;
 const MAX_CARD_W: f32 = 300.;
 const LIST_ROW_H: f32 = 78.;
 const GRID_SPACING: f32 = 16.;
 const LIST_SPACING: f32 = 8.;
 const SEARCH_DEBOUNCE_MS: u64 = 250;
+/// Results column narrower than this drops secondary text and tightens the toolbar
+const COMPACT_RESULTS_W: f32 = 620.;
+/// Breathing room under the last row, the lists run to the window edge instead of stopping at a dead band
+const SCROLL_END_INSET: f32 = 20.;
+const PAGER_BOTTOM_INSET: f32 = 10.;
+const PICKER_H: f32 = 30.;
+const VIEW_TOGGLE_W: f32 = 68.;
+/// Below this the result count would only ever show as a stub
+const SUMMARY_MIN_W: f32 = 150.;
 
 fn sorts() -> [(SearchSort, &'static str); 4] {
     [
@@ -383,32 +387,37 @@ impl Component for BrowserBody {
             GRID_SPACING,
         );
 
-        let fade_dep = (current_page, packages.is_empty(), pending, mode);
-        let fade = use_animation_with_dependencies(&fade_dep, |conf, _| {
-            conf.on_creation(OnCreation::Run);
-            conf.on_change(OnChange::Rerun);
-            AnimNum::new(0., 1.)
-                .time(240)
-                .ease(Ease::Out)
-                .function(Function::Cubic)
-        });
-        let fade_opacity = fade.read().value();
+        let results_width = *grid_width.read();
+        let compact = results_width > 0. && results_width < COMPACT_RESULTS_W;
+        let end_inset = if (packages.is_empty() && !pending) || pages.is_some() {
+            0.
+        } else {
+            SCROLL_END_INSET
+        };
 
+        let fade_surface = if self.in_instance {
+            colors::page_elevated()
+        } else {
+            colors::page()
+        };
         let sa = ScrollArea::new()
-            .reset_key(current_page as u64)
-            .padding(Gaps::new(0., SCROLLBAR_GUTTER, 0., 0.));
+            .bottom_fade(fade_surface)
+            .maybe(!self.in_instance, |el| {
+                el.primary_list(crate::components::PrimaryList::Browse)
+            })
+            .reset_key((current_page as u64) * 2 + u64::from(mode == ViewLayout::Grid))
+            .padding(Gaps::new(0., SCROLLBAR_GUTTER, end_inset, 0.));
 
         let pkg = package_type.clone();
         let ovr = overridden.clone();
         let results = if !packages.is_empty() {
             match mode {
                 ViewLayout::Grid => {
-                    let rows: Vec<Vec<ProjectSummary>> =
-                        packages.chunks(cols).map(|c| c.to_vec()).collect();
+                    let rows = packages.len().div_ceil(cols);
 
-                    sa.lazy(rows.len(), CARD_H, GRID_SPACING, move |i| {
+                    sa.lazy(rows, CARD_H, GRID_SPACING, move |i| {
                         grid_row(
-                            rows[i].clone(),
+                            packages[i * cols..((i + 1) * cols).min(packages.len())].to_vec(),
                             cluster_id,
                             &pkg,
                             &installed,
@@ -427,6 +436,7 @@ impl Component for BrowserBody {
                         &installed,
                         cluster_modpacks,
                         ovr.clone(),
+                        compact,
                     )
                     .into_element()
                 }),
@@ -509,6 +519,7 @@ impl Component for BrowserBody {
                                 el.child(CategorySidebar {
                                     categories: all_categories,
                                     selected: selected_categories,
+                                    fade_surface,
                                 })
                             }),
                     )
@@ -528,13 +539,14 @@ impl Component for BrowserBody {
                                 loader_filterable.then_some(loader),
                                 side_filterable.then_some(side),
                                 view_mode,
+                                results_width,
                             ))
                             .child(
                                 rect()
                                     .width(Size::fill())
                                     .height(Size::flex(1.0))
+                                    .cross_align(Alignment::Center)
                                     .child(results)
-                                    .opacity(fade_opacity)
                                     .on_sized(move |event: Event<SizedEventData>| {
                                         let w = event.data().area.width();
                                         if (w - *grid_width.peek()).abs() > 0.5 {
@@ -543,9 +555,20 @@ impl Component for BrowserBody {
                                     }),
                             )
                             .maybe_child(pages.map(|pages| {
-                                Pagination::new(page, pages)
-                                    .enabled(!pending)
-                                    .into_element()
+                                rect()
+                                    .width(Size::fill())
+                                    .main_align(Alignment::Center)
+                                    .padding(Gaps::new(
+                                        0.,
+                                        SCROLLBAR_GUTTER,
+                                        PAGER_BOTTOM_INSET,
+                                        0.,
+                                    ))
+                                    .child(
+                                        Pagination::new(page, pages)
+                                            .window(if compact { 3 } else { 5 })
+                                            .enabled(!pending),
+                                    )
                             })),
                     ),
             )
@@ -575,12 +598,29 @@ fn header(
         SEARCH_COMPACT_W
     };
 
+    let providers = SegmentedControl::new(provider)
+        .no_tint()
+        .static_indicator()
+        .segments(ProviderId::REMOTE_PROVIDERS.iter().map(move |provider| {
+            let mut segment = Segment::new(*provider)
+                .icon(IconType::from(*provider))
+                .tooltip(provider.to_string());
+            if curseforge_blocked && *provider == ProviderId::CurseForge {
+                segment = segment
+                    .disabled(true)
+                    .tooltip(t("oneclient.browser.index.curseforge_blocked"));
+            }
+            if show_provider_labels {
+                segment.label(provider.to_string())
+            } else {
+                segment
+            }
+        }));
+
     rect()
-        .horizontal()
+        .vertical()
         .width(Size::fill())
-        .cross_align(Alignment::End)
         .spacing(12.)
-        .content(Content::Flex)
         .on_sized(move |event: Event<SizedEventData>| {
             let w = event.data().area.width();
             if (w - *header_width.peek()).abs() > 0.5 {
@@ -589,8 +629,11 @@ fn header(
         })
         .child(
             rect()
-                .vertical()
-                .spacing(10.)
+                .horizontal()
+                .width(Size::fill())
+                .content(Content::Flex)
+                .cross_align(Alignment::Center)
+                .spacing(12.)
                 .child(
                     label()
                         .text(tf(
@@ -599,52 +642,35 @@ fn header(
                         ))
                         .font_size(text_size(32.))
                         .font_weight(FontWeight::BOLD)
+                        .width(Size::flex(1.))
+                        .max_lines(1)
+                        .text_overflow(TextOverflow::Ellipsis)
                         .color(colors::fg_primary()),
                 )
+                .child(providers),
+        )
+        .child(
+            rect()
+                .horizontal()
+                .width(Size::fill())
+                .cross_align(Alignment::Center)
+                .spacing(10.)
                 .child(
-                    rect()
-                        .horizontal()
-                        .cross_align(Alignment::End)
-                        .spacing(8.)
-                        .maybe_child(match picker {
-                            Some(picker) => Some(picker.into_element()),
-                            // Without the picker the cluster is fixed so the same pill is read-only
-                            None => {
-                                target.map(|(verb, name)| target_pill(verb, &name).into_element())
-                            }
-                        })
-                        .maybe_child(override_button),
-                ),
-        )
-        .child(rect().width(Size::flex(1.0)))
-        .child(
-            SegmentedControl::new(provider)
-                .no_tint()
-                .segments(ProviderId::REMOTE_PROVIDERS.iter().map(move |provider| {
-                    let mut segment = Segment::new(*provider).icon(IconType::from(*provider));
-                    if curseforge_blocked && *provider == ProviderId::CurseForge {
-                        segment = segment
-                            .disabled(true)
-                            .tooltip(t("oneclient.browser.index.curseforge_blocked"));
-                    }
-                    if show_provider_labels {
-                        segment.label(provider.to_string())
-                    } else {
-                        segment
-                    }
-                }))
-                .into_element(),
-        )
-        .child(
-            TextInput::new(query)
-                .width(Size::px(search_width))
-                .placeholder(t("oneclient.browser.index.search"))
-                .leading(
-                    Icon::new(IconType::SearchMd)
-                        .size(14.)
-                        .color(colors::fg_secondary())
-                        .into_element(),
-                ),
+                    TextInput::new(query)
+                        .width(Size::px(search_width))
+                        .placeholder(t("oneclient.browser.index.search"))
+                        .leading(
+                            Icon::new(IconType::SearchMd)
+                                .size(14.)
+                                .color(colors::fg_secondary())
+                                .into_element(),
+                        ),
+                )
+                .maybe_child(match picker {
+                    Some(picker) => Some(picker.into_element()),
+                    None => target.map(|(verb, name)| target_pill(verb, &name).into_element()),
+                })
+                .maybe_child(override_button),
         )
 }
 
@@ -656,7 +682,7 @@ fn target_pill(verb: &'static str, name: &str) -> impl IntoElement {
         .height(Size::px(30.))
         .spacing(6.)
         .padding(Gaps::new_symmetric(0., 10.))
-        .corner_radius(rounded(6.))
+        .corner_radius(control_radius(30., 6.))
         .background(colors::ghost_overlay())
         .child(
             label()
@@ -673,6 +699,7 @@ fn target_pill(verb: &'static str, name: &str) -> impl IntoElement {
         )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn results_toolbar(
     total: usize,
     current_page: usize,
@@ -682,10 +709,19 @@ fn results_toolbar(
     loader: Option<State<Option<GameLoader>>>,
     side: Option<State<Option<SearchSide>>>,
     view_mode: State<ViewLayout>,
+    width: f32,
 ) -> impl IntoElement {
+    const SPACING: f32 = 8.;
+    let compact = width > 0. && width < COMPACT_RESULTS_W;
+    let (sort_w, filter_w) = if compact { (124., 108.) } else { (132., 132.) };
+    let filters = usize::from(side.is_some()) + usize::from(loader.is_some());
+    let controls = VIEW_TOGGLE_W + SPACING + sort_w + filters as f32 * (filter_w + SPACING);
+    // A count squeezed to a few letters is worse than none, the pager still says where you are
+    let room_for_summary = width <= 0. || width - controls - SPACING >= SUMMARY_MIN_W;
+
     // Blank rather than a stale count while a page is in flight
     let summary = match (pending, pages) {
-        (false, Some(pages)) => tf(
+        (false, Some(pages)) if room_for_summary => tf(
             "oneclient.browser.index.summary",
             &[
                 &abbreviate_number(total as u64),
@@ -699,31 +735,55 @@ fn results_toolbar(
     rect()
         .horizontal()
         .width(Size::fill())
+        .height(Size::px(PICKER_H))
         .cross_align(Alignment::Center)
-        .spacing(8.)
+        .spacing(SPACING)
         .content(Content::Flex)
         .child(
+            // Owns the flexible space so it truncates instead of sliding under the pickers
             label()
                 .text(summary)
+                .width(Size::flex(1.0))
+                .max_lines(1)
+                .text_overflow(TextOverflow::Ellipsis)
                 .font_size(text_size(12.))
                 .color(colors::fg_primary().with_a(140)),
         )
-        .child(rect().width(Size::flex(1.0)))
-        .maybe_child(side.map(|side| SidePicker { side }))
-        .maybe_child(loader.map(|loader| LoaderPicker { loader }))
-        .child(SortPicker { sort })
+        .maybe_child(side.map(|side| SidePicker {
+            side,
+            width: filter_w,
+        }))
+        .maybe_child(loader.map(|loader| LoaderPicker {
+            loader,
+            width: filter_w,
+        }))
+        .child(SortPicker {
+            sort,
+            width: sort_w,
+        })
         .child(
             SegmentedControl::new(view_mode)
+                .static_indicator()
+                .height(PICKER_H)
                 .equal_width(30.)
                 .icon_size(15.)
-                .segment(Segment::new(ViewLayout::Grid).icon(IconType::DotsGrid))
-                .segment(Segment::new(ViewLayout::List).icon(IconType::LayoutTop)),
+                .segment(
+                    Segment::new(ViewLayout::Grid)
+                        .icon(IconType::DotsGrid)
+                        .tooltip(t("oneclient.clusters.page.layout.grid")),
+                )
+                .segment(
+                    Segment::new(ViewLayout::List)
+                        .icon(IconType::LayoutTop)
+                        .tooltip(t("oneclient.clusters.page.layout.list")),
+                ),
         )
 }
 
 #[derive(PartialEq)]
 struct SortPicker {
     sort: State<SearchSort>,
+    width: f32,
 }
 
 impl Component for SortPicker {
@@ -738,8 +798,8 @@ impl Component for SortPicker {
             .map_or(t("oneclient.browser.index.sort.relevance"), |(_, l)| *l);
 
         Dropdown::new(selected, labels)
-            .width(Size::px(132.))
-            .height(Size::px(30.))
+            .width(Size::px(self.width))
+            .height(Size::px(PICKER_H))
             .leading(
                 Icon::new(IconType::Sliders04)
                     .size(13.)
@@ -756,6 +816,7 @@ impl Component for SortPicker {
 #[derive(PartialEq)]
 struct LoaderPicker {
     loader: State<Option<GameLoader>>,
+    width: f32,
 }
 
 impl Component for LoaderPicker {
@@ -770,8 +831,8 @@ impl Component for LoaderPicker {
             .map_or(t("oneclient.browser.index.loader.any"), |(_, l)| *l);
 
         Dropdown::new(selected, labels)
-            .width(Size::px(132.))
-            .height(Size::px(30.))
+            .width(Size::px(self.width))
+            .height(Size::px(PICKER_H))
             .on_select(move |idx: usize| {
                 if let Some((picked, _)) = loaders().get(idx) {
                     loader.set(*picked);
@@ -783,6 +844,7 @@ impl Component for LoaderPicker {
 #[derive(PartialEq)]
 struct SidePicker {
     side: State<Option<SearchSide>>,
+    width: f32,
 }
 
 impl Component for SidePicker {
@@ -797,8 +859,8 @@ impl Component for SidePicker {
             .map_or(t("oneclient.browser.index.side.any"), |(_, l)| *l);
 
         Dropdown::new(selected, labels)
-            .width(Size::px(132.))
-            .height(Size::px(30.))
+            .width(Size::px(self.width))
+            .height(Size::px(PICKER_H))
             .tooltip(t("oneclient.browser.index.side.tooltip"))
             .on_select(move |idx: usize| {
                 if let Some((picked, _)) = sides().get(idx) {
@@ -917,7 +979,7 @@ impl Component for ClusterPicker {
             .margin(Gaps::new(4., 0., 0., 0.))
             .child(ClusterPickerButton {
                 label: selected,
-                selected: Some(self.cluster_id),
+                selected: (self.cluster_id > 0).then_some(self.cluster_id),
                 only: None,
                 width: Size::px(240.),
                 height: 28.,

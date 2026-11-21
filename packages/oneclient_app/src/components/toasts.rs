@@ -424,6 +424,7 @@ fn action_row(
     let review_icon = match review_kind {
         Some(NotificationActionKind::OpenUrl(_)) => IconType::LinkExternal01,
         Some(NotificationActionKind::OpenChat(_)) => IconType::MessageTextSquare01,
+        Some(NotificationActionKind::UndoInstall(_)) => IconType::RefreshCcw02,
         _ => IconType::Eye,
     };
     rect()
@@ -447,6 +448,9 @@ fn action_row(
                 .primary()
                 .width(Size::flex(1.0))
                 .on_press(move |_| match &review_kind {
+                    Some(NotificationActionKind::UndoInstall(undo)) => {
+                        dispatch.undo_install(undo.clone(), Some(id));
+                    }
                     Some(kind) => {
                         super::notifications::run_action(&dispatch, confirm_link, kind, true)
                     }

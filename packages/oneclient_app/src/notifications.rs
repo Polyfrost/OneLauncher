@@ -33,6 +33,8 @@ pub enum NotificationActionKind {
     /// Routed through the link confirm popup rather than opened straight away
     OpenUrl(String),
     OpenChat(Option<i32>),
+    /// Takes back exactly what one install added, once
+    UndoInstall(crate::install::InstallUndo),
 }
 
 /// Carries core updates whole not a display projection the modal's Update button

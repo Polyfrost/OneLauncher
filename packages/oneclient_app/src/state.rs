@@ -285,7 +285,7 @@ pub struct RelocationState {
 /// In-flight installs so the button that started one stays disabled until it lands
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct InstallState {
-    pending: HashSet<(i64, ProviderId, String)>,
+    pending: HashMap<(i64, ProviderId, String), usize>,
     missing_lookups: HashSet<(i64, String)>,
     missing_found: HashMap<(i64, String), String>,
     pub flagged: Option<FlaggedInstallPrompt>,
@@ -303,6 +303,7 @@ pub struct IncompatibleInstallPrompt {
     pub version_id: String,
     pub name: String,
     pub allow_flagged: bool,
+    pub world: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -369,12 +370,21 @@ impl InstallState {
     }
 
     pub fn begin(&mut self, cluster_id: i64, provider: ProviderId, project_id: String) {
-        self.pending.insert((cluster_id, provider, project_id));
+        *self
+            .pending
+            .entry((cluster_id, provider, project_id))
+            .or_default() += 1;
     }
 
     pub fn finish(&mut self, cluster_id: i64, provider: ProviderId, project_id: &str) {
-        self.pending
-            .remove(&(cluster_id, provider, project_id.to_string()));
+        let key = (cluster_id, provider, project_id.to_string());
+        if let std::collections::hash_map::Entry::Occupied(mut entry) = self.pending.entry(key) {
+            if *entry.get() == 1 {
+                entry.remove();
+            } else {
+                *entry.get_mut() -= 1;
+            }
+        }
     }
 
     #[must_use]
@@ -404,13 +414,13 @@ impl InstallState {
 
     #[must_use]
     pub fn cluster_installing(&self, cluster_id: i64) -> bool {
-        self.pending.iter().any(|(id, _, _)| *id == cluster_id)
+        self.pending.keys().any(|(id, _, _)| *id == cluster_id)
     }
 
     #[must_use]
     pub fn is_installing(&self, cluster_id: i64, provider: ProviderId, project_id: &str) -> bool {
         self.pending
-            .contains(&(cluster_id, provider, project_id.to_string()))
+            .contains_key(&(cluster_id, provider, project_id.to_string()))
     }
 }
 

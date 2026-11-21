@@ -1500,12 +1500,13 @@ impl Actions {
                 .map(|target| target.project_id.clone());
 
             match found {
-                Ok(Some(target)) => actions.install_package(
+                Ok(Some(target)) => actions.start_install(
                     cluster_id,
                     ProviderId::Modrinth,
                     target.project_id,
                     target.version_id,
                     None,
+                    false,
                     IncompatibleMode::Refuse,
                 ),
                 Ok(None) => state
@@ -1635,7 +1636,8 @@ impl Actions {
         world: Option<String>,
         incompatible: IncompatibleMode,
     ) {
-        self.start_install(
+        // The browser's own install: the toast offers Undo for a new package
+        self.start_install_with(
             cluster_id,
             provider,
             project_id.into(),
@@ -1643,12 +1645,13 @@ impl Actions {
             world,
             false,
             incompatible,
+            true,
         );
     }
 
     pub fn install_flagged_anyway(&self, prompt: FlaggedInstallPrompt) {
         self.dismiss_flagged_install();
-        self.start_install(
+        self.start_install_with(
             prompt.cluster_id,
             prompt.provider,
             prompt.project_id,
@@ -1656,19 +1659,21 @@ impl Actions {
             None,
             true,
             prompt.incompatible,
+            true,
         );
     }
 
     pub fn install_incompatible_anyway(&self, prompt: IncompatibleInstallPrompt) {
         self.dismiss_incompatible_install();
-        self.start_install(
+        self.start_install_with(
             prompt.cluster_id,
             prompt.provider,
             prompt.project_id,
             prompt.version_id,
-            None,
+            prompt.world,
             prompt.allow_flagged,
             IncompatibleMode::Allow,
+            true,
         );
     }
 
@@ -1688,6 +1693,7 @@ impl Actions {
             .flagged = None;
     }
 
+    /// Installs started by the launcher itself, never offered an Undo
     #[allow(clippy::too_many_arguments)]
     fn start_install(
         &self,
@@ -1698,6 +1704,30 @@ impl Actions {
         world: Option<String>,
         allow_flagged: bool,
         incompatible: IncompatibleMode,
+    ) {
+        self.start_install_with(
+            cluster_id,
+            provider,
+            project_id,
+            version_id,
+            world,
+            allow_flagged,
+            incompatible,
+            false,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn start_install_with(
+        &self,
+        cluster_id: ClusterId,
+        provider: ProviderId,
+        project_id: String,
+        version_id: String,
+        world: Option<String>,
+        allow_flagged: bool,
+        incompatible: IncompatibleMode,
+        offer_undo: bool,
     ) {
         if self.refuse_during_update_check(cluster_id) {
             return;
@@ -1731,7 +1761,7 @@ impl Actions {
                 let version_id = version_id.clone();
                 let world = world.clone();
                 async move {
-                    crate::install::install_package(
+                    crate::install::install_package_with(
                         &state,
                         provider,
                         &project_id,
@@ -1740,6 +1770,7 @@ impl Actions {
                         world,
                         allow_flagged,
                         incompatible,
+                        offer_undo,
                     )
                     .await
                 }
@@ -1757,6 +1788,7 @@ impl Actions {
                         version_id: version_id.clone(),
                         name,
                         allow_flagged,
+                        world: world.clone(),
                     });
                     app.installs.finish(cluster_id, provider, &project_id);
                     return;
@@ -1809,7 +1841,16 @@ impl Actions {
                 level: Level::Info,
                 icon: Some(IconType::Download01),
                 progress: None,
-                actions: Vec::new(),
+                actions: install
+                    .undo
+                    .iter()
+                    .map(|undo| NotificationAction {
+                        label: t("oneclient.actions.undo.label").to_string(),
+                        kind: crate::notifications::NotificationActionKind::UndoInstall(
+                            undo.clone(),
+                        ),
+                    })
+                    .collect(),
                 toast_only: true,
             },
             Err(err) => NotificationSpec {
@@ -1851,6 +1892,114 @@ impl Actions {
                 .events
                 .signal(oneclient_events::Signal::ClustersChanged);
         }
+    }
+
+    /// Takes back the links a Browse install added, with a retry when removal fails.
+    pub fn undo_install(&self, undo: crate::install::InstallUndo, toast_id: Option<u64>) {
+        let cluster_id = undo.cluster_id;
+        if self.refuse_during_update_check(cluster_id) {
+            return;
+        }
+        let Ok(state) = launcher::state() else { return };
+        // Before anything is marked busy so a repeat press has no effect at all
+        if !undo.claim() {
+            return;
+        }
+        let actions = self.clone();
+        if let Some(id) = toast_id {
+            self.dismiss_toast(id);
+        }
+
+        {
+            let mut channel = self.station.clone().write_channel(AppChannel::Installs);
+            for package in &undo.packages {
+                channel
+                    .installs
+                    .begin(cluster_id, package.provider, package.project_id.clone());
+            }
+        }
+
+        spawn_in_window(async move {
+            let finish = |actions: &Actions| {
+                let mut channel = actions
+                    .station
+                    .clone()
+                    .write_channel(AppChannel::Installs);
+                for package in &undo.packages {
+                    channel
+                        .installs
+                        .finish(cluster_id, package.provider, &package.project_id);
+                }
+            };
+
+            let report = off_ui({
+                let state = state.clone();
+                let undo = undo.clone();
+                async move { crate::install::undo_install(&state, &undo).await }
+            })
+            .await;
+
+            if !report.removed.is_empty() {
+                super::invalidate_cluster_content_queries().await;
+                state
+                    .services
+                    .events
+                    .signal(oneclient_events::Signal::ClustersChanged);
+            }
+
+            finish(&actions);
+            actions.notify_undo(&report, undo);
+        });
+    }
+
+    fn notify_undo(&self, report: &crate::install::UndoReport, undo: crate::install::InstallUndo) {
+        if let Some(err) = &report.error {
+            undo.release();
+            self.notify(t("oneclient.actions.undo.failed"))
+                .body(err.clone())
+                .error()
+                .toast_only()
+                .action(NotificationAction {
+                    label: t("oneclient.actions.undo.label").to_string(),
+                    kind: crate::notifications::NotificationActionKind::UndoInstall(undo),
+                })
+                .send();
+            return;
+        }
+
+        if !report.target_removed {
+            self.notify(t("oneclient.actions.undo.nothing.title"))
+                .body(tf("oneclient.actions.undo.nothing.body", &[&report.target]))
+                .toast_only()
+                .send();
+            return;
+        }
+
+        let dependencies = report.removed.len() - 1;
+        let mut body = match dependencies {
+            0 => tf("oneclient.actions.undo.done.body", &[&report.target]),
+            1 => tf(
+                "oneclient.actions.undo.done.with_dependencies.one",
+                &[&report.target, &1],
+            ),
+            count => tf(
+                "oneclient.actions.undo.done.with_dependencies.other",
+                &[&report.target, &count],
+            ),
+        };
+        if !report.kept.is_empty() {
+            body.push(' ');
+            body.push_str(&tf(
+                "oneclient.actions.undo.done.kept",
+                &[&report.kept.join(", ")],
+            ));
+        }
+
+        self.notify(t("oneclient.actions.undo.done.title"))
+            .body(body)
+            .icon(IconType::Trash01)
+            .toast_only()
+            .send();
     }
 
     /// Shares the installs channel with [`Self::install_package`] so every row's

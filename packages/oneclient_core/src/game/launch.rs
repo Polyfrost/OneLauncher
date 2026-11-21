@@ -23,6 +23,7 @@ use crate::game::{DirBusy, GameError};
 use crate::settings::GameSettingsProfile;
 use crate::state::{LauncherServices, LauncherState};
 use oneclient_auth::MinecraftAccount;
+use oneclient_common::domain::GameLoader;
 use oneclient_common::paths;
 use oneclient_content::bundles::BUNDLE_APPLY_BUDGET;
 use oneclient_discord::Presence;
@@ -406,6 +407,15 @@ async fn start(
 
     if !dedicated {
         crate::game::link_cluster_logs(&cluster, &cwd).await;
+    }
+
+    if matches!(cluster.mc_loader, GameLoader::Fabric | GameLoader::Ornithe) {
+        crate::game::fabric::drop_stale_remapped_jars(
+            &cwd,
+            &cluster.mc_version,
+            version_info.libraries.iter().map(|lib| lib.name.as_str()),
+        )
+        .await;
     }
 
     let client_jar = paths::versions_dir()?
@@ -1013,12 +1023,16 @@ pub async fn repair_cluster(state: &Arc<LauncherState>, cluster_id: i64) {
 }
 
 fn base_command(profile: &GameSettingsProfile, java_path: &str) -> (Command, Option<String>) {
-    let Some(wrapper) = profile
+    let wrapper = profile
         .hook_wrapper
         .as_deref()
         .map(str::trim)
-        .filter(|hook| !hook.is_empty())
-    else {
+        .filter(|hook| !hook.is_empty());
+    #[cfg(target_os = "linux")]
+    let gamemode = gamemode_wrapper(profile, wrapper);
+    #[cfg(target_os = "linux")]
+    let wrapper = gamemode.as_deref().or(wrapper);
+    let Some(wrapper) = wrapper else {
         return (Command::new(java_path), None);
     };
 
@@ -1031,6 +1045,26 @@ fn base_command(profile: &GameSettingsProfile, java_path: &str) -> (Command, Opt
     command.args(split);
     command.arg(java_path);
     (command, Some(program.to_string()))
+}
+
+#[cfg(target_os = "linux")]
+fn gamemode_wrapper(profile: &GameSettingsProfile, wrapper: Option<&str>) -> Option<String> {
+    let enabled = profile
+        .os_extra
+        .as_ref()
+        .is_none_or(|extra| extra.enable_gamemode != Some(false));
+    if !enabled || wrapper.is_some_and(|w| w.split_whitespace().any(|p| p.ends_with("gamemoderun")))
+    {
+        return None;
+    }
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .any(|dir| dir.join("gamemoderun").is_file())
+        .then_some(())?;
+    Some(match wrapper {
+        Some(wrapper) => format!("gamemoderun {wrapper}"),
+        None => "gamemoderun".to_string(),
+    })
 }
 
 fn command_line(command: &std::process::Command, main_class: &str) -> String {

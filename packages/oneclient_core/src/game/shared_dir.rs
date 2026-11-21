@@ -456,11 +456,21 @@ async fn adopt_into_global(own_root: &Path, global_root: &Path) {
 
         while let Ok(Some(entry)) = entries.next_entry().await {
             let name = entry.file_name();
-            let dest = shared.join(&name);
-
-            if polyio::symlink_metadata(&dest).await.is_ok() {
+            if entry.file_type().await.is_ok_and(|t| t.is_symlink())
+                && polyio::symlink_metadata(shared.join(&name)).await.is_ok()
+            {
+                if polyio::remove_file(entry.path()).await.is_err() {
+                    polyio::remove_symlink_dir(entry.path()).await.ok();
+                }
                 continue;
             }
+            if same_file(&entry.path(), &shared.join(&name)).await
+                || is_note(&name.to_string_lossy())
+            {
+                polyio::remove_file(entry.path()).await.ok();
+                continue;
+            }
+            let dest = free_name(&shared, &name).await;
 
             if let Err(err) = move_entry(&entry.path(), &dest).await {
                 tracing::warn!(
@@ -470,6 +480,48 @@ async fn adopt_into_global(own_root: &Path, global_root: &Path) {
                 );
             }
         }
+    }
+}
+
+async fn same_file(a: &Path, b: &Path) -> bool {
+    if let (Ok(ca), Ok(cb)) = (
+        tokio::fs::canonicalize(a).await,
+        tokio::fs::canonicalize(b).await,
+    ) && ca == cb
+    {
+        return false;
+    }
+    let same_size = match (tokio::fs::metadata(a).await, tokio::fs::metadata(b).await) {
+        (Ok(ma), Ok(mb)) => ma.is_file() && mb.is_file() && ma.len() == mb.len(),
+        _ => false,
+    };
+    if !same_size {
+        return false;
+    }
+    match (polyio::sha1_file(a).await, polyio::sha1_file(b).await) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
+}
+
+async fn free_name(dir: &Path, name: &std::ffi::OsStr) -> PathBuf {
+    let first = dir.join(name);
+    if polyio::symlink_metadata(&first).await.is_err() {
+        return first;
+    }
+    let path = Path::new(name);
+    let stem = path.file_stem().unwrap_or(name).to_string_lossy();
+    let ext = path
+        .extension()
+        .map(|ext| format!(".{}", ext.to_string_lossy()))
+        .unwrap_or_default();
+    let mut n = 2;
+    loop {
+        let candidate = dir.join(format!("{stem} ({n}){ext}"));
+        if polyio::symlink_metadata(&candidate).await.is_err() {
+            return candidate;
+        }
+        n += 1;
     }
 }
 
@@ -498,7 +550,7 @@ async fn ensure_global_links(game_dir: &Path, global_root: &Path) {
             }
 
             Ok(meta) if meta.is_dir() => {
-                if polyio::remove_dir_all(&link).await.is_err() {
+                if polyio::remove_dir(&link).await.is_err() {
                     tracing::warn!(
                         dir = %link.display(),
                         "cannot clear the cluster's own pack folder; leaving it unlinked"
@@ -969,7 +1021,7 @@ async fn import_added(
 ) -> bool {
     let mut changed = false;
     for name in added {
-        let Some(Ok(row)) = adopt_file(
+        let Some(Ok(_)) = adopt_file(
             services,
             cluster,
             &dir.join(name),
@@ -981,12 +1033,6 @@ async fn import_added(
             continue;
         };
         tracing::info!(file = %name, "registered a mod added by hand");
-        if row.file_name != *name
-            && let Err(err) =
-                artifact_dao::link_cluster_artifact(&services.db, cluster.id, &row.hash, name).await
-        {
-            tracing::warn!(file = %name, error = %err, "failed to keep the added mod's name");
-        }
         changed = true;
     }
 
@@ -2385,12 +2431,22 @@ async fn adopt_file(
 
     let imported =
         PackageStore::import_local_file(path, content_type, cluster.id, &services.content()).await;
-    if let Err(err) = &imported {
-        tracing::warn!(
+    match &imported {
+        Ok(row) => {
+            if let Some(name) = path.file_name().and_then(|n| n.to_str())
+                && row.file_name != name
+                && let Err(err) =
+                    artifact_dao::link_cluster_artifact(&services.db, cluster.id, &row.hash, name)
+                        .await
+            {
+                tracing::warn!(file = name, error = %err, "failed to keep the added file's name");
+            }
+        }
+        Err(err) => tracing::warn!(
             file = %path.display(),
             error = %err,
             "failed to register manually-added content"
-        );
+        ),
     }
     Some(imported)
 }
@@ -3690,6 +3746,112 @@ mod tests {
                 .is_file()
         );
         assert!(!stashed.exists());
+    }
+
+    #[tokio::test]
+    async fn a_same_named_pack_is_kept_beside_the_shared_one() {
+        let root = polyio::testing::ScratchDir::new("adopt_clash");
+        let (own, global) = (root.path().join("own"), root.path().join("global"));
+        polyio::create_dir_all(own.join("resourcepacks"))
+            .await
+            .unwrap();
+        polyio::create_dir_all(global.join("resourcepacks"))
+            .await
+            .unwrap();
+        polyio::write(own.join("resourcepacks/pack.zip"), b"mine".as_slice())
+            .await
+            .unwrap();
+        polyio::write(global.join("resourcepacks/pack.zip"), b"ours".as_slice())
+            .await
+            .unwrap();
+
+        adopt_into_global(&own, &global).await;
+
+        assert_eq!(
+            std::fs::read(global.join("resourcepacks/pack (2).zip")).unwrap(),
+            b"mine"
+        );
+        assert_eq!(
+            std::fs::read(global.join("resourcepacks/pack.zip")).unwrap(),
+            b"ours"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_same_named_pack_link_is_dropped() {
+        let root = polyio::testing::ScratchDir::new("adopt_link_clash");
+        let (own, global) = (root.path().join("own"), root.path().join("global"));
+        polyio::create_dir_all(own.join("resourcepacks"))
+            .await
+            .unwrap();
+        polyio::create_dir_all(global.join("resourcepacks"))
+            .await
+            .unwrap();
+        let cached = root.path().join("cached.zip");
+        polyio::write(&cached, b"mine".as_slice()).await.unwrap();
+        std::os::unix::fs::symlink(&cached, own.join("resourcepacks/pack.zip")).unwrap();
+        polyio::write(global.join("resourcepacks/pack.zip"), b"ours".as_slice())
+            .await
+            .unwrap();
+
+        adopt_into_global(&own, &global).await;
+
+        assert!(!global.join("resourcepacks/pack (2).zip").exists());
+        assert!(
+            own.join("resourcepacks/pack.zip")
+                .symlink_metadata()
+                .is_err()
+        );
+        assert!(cached.exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_copy_of_a_linked_shared_pack_is_dropped() {
+        let root = polyio::testing::ScratchDir::new("adopt_linked_copy");
+        let (own, global) = (root.path().join("own"), root.path().join("global"));
+        polyio::create_dir_all(own.join("resourcepacks"))
+            .await
+            .unwrap();
+        polyio::create_dir_all(global.join("resourcepacks"))
+            .await
+            .unwrap();
+        let cached = root.path().join("cached.zip");
+        polyio::write(&cached, b"mine".as_slice()).await.unwrap();
+        std::os::unix::fs::symlink(&cached, global.join("resourcepacks/pack.zip")).unwrap();
+        polyio::write(own.join("resourcepacks/pack.zip"), b"mine".as_slice())
+            .await
+            .unwrap();
+
+        adopt_into_global(&own, &global).await;
+
+        assert!(!global.join("resourcepacks/pack (2).zip").exists());
+        assert!(!own.join("resourcepacks/pack.zip").exists());
+        assert!(cached.exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_pack_the_shared_link_points_at_is_kept() {
+        let root = polyio::testing::ScratchDir::new("adopt_link_to_own");
+        let (own, global) = (root.path().join("own"), root.path().join("global"));
+        polyio::create_dir_all(own.join("resourcepacks"))
+            .await
+            .unwrap();
+        polyio::create_dir_all(global.join("resourcepacks"))
+            .await
+            .unwrap();
+        let mine = own.join("resourcepacks/pack.zip");
+        polyio::write(&mine, b"mine".as_slice()).await.unwrap();
+        std::os::unix::fs::symlink(&mine, global.join("resourcepacks/pack.zip")).unwrap();
+
+        adopt_into_global(&own, &global).await;
+
+        assert_eq!(
+            std::fs::read(global.join("resourcepacks/pack (2).zip")).unwrap(),
+            b"mine"
+        );
     }
 
     #[tokio::test]

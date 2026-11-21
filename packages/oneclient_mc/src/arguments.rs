@@ -60,7 +60,13 @@ pub fn java_arguments(
 
     let custom = split_custom_args(&custom_args);
 
-    parsed.extend(performance_flags(java_major, java_arch, mem_max, &custom));
+    parsed.extend(performance_flags(
+        java_major,
+        java_arch,
+        mem_max,
+        oneclient_common::total_ram_mb(),
+        &custom,
+    ));
 
     if java_major >= 21 {
         parsed.push("--add-modules=jdk.incubator.vector".to_string());
@@ -74,6 +80,8 @@ pub fn java_arguments(
 
 const ZGC_MIN_HEAP_MB: u32 = 8192;
 
+const ZGC_RAM_PER_HEAP: u32 = 3;
+
 const INITIAL_HEAP_MB: u32 = 512;
 
 #[must_use]
@@ -81,14 +89,18 @@ pub fn performance_flags(
     java_major: u32,
     java_arch: &str,
     mem_max: u32,
+    total_ram_mb: u32,
     custom_args: &[String],
 ) -> Vec<String> {
     let mut flags = vec![format!("-Xms{}M", mem_max.min(INITIAL_HEAP_MB))];
 
     let collector_chosen = custom_args.iter().any(|arg| is_collector_flag(arg));
 
-    let use_zgc =
-        !collector_chosen && java_major >= 21 && is_64_bit(java_arch) && mem_max >= ZGC_MIN_HEAP_MB;
+    let use_zgc = !collector_chosen
+        && java_major >= 21
+        && is_64_bit(java_arch)
+        && mem_max >= ZGC_MIN_HEAP_MB
+        && total_ram_mb / ZGC_RAM_PER_HEAP >= mem_max;
     let use_g1 = !collector_chosen && !use_zgc && java_major >= 8;
 
     if (use_zgc || use_g1) && java_major == 24 {
@@ -657,7 +669,7 @@ mod tests {
     }
 
     fn flags(java_major: u32, java_arch: &str, mem_max: u32) -> Vec<String> {
-        performance_flags(java_major, java_arch, mem_max, &[])
+        performance_flags(java_major, java_arch, mem_max, 65536, &[])
     }
 
     fn custom(args: &str) -> Vec<String> {
@@ -727,6 +739,18 @@ mod tests {
     }
 
     #[test]
+    fn a_large_heap_without_spare_ram_gets_g1() {
+        for (mem, total) in [(8192, 16384), (8806, 17408), (12288, 32000)] {
+            let flags = performance_flags(25, "amd64", mem, total, &[]);
+            assert!(
+                !flags.iter().any(|f| f.contains("UseZGC")),
+                "{mem}M on {total}M"
+            );
+            assert!(flags.contains(&"-XX:+UseG1GC".to_string()));
+        }
+    }
+
+    #[test]
     fn the_collector_is_selected_but_not_sized() {
         for mem in [2048, 4096, 8192, 16384] {
             let flags = flags(17, "amd64", mem);
@@ -751,7 +775,7 @@ mod tests {
             "-XX:+UseShenandoahGC",
             "-XX:-UseG1GC",
         ] {
-            let flags = performance_flags(21, "amd64", 16384, &custom(arg));
+            let flags = performance_flags(21, "amd64", 16384, 65536, &custom(arg));
             assert!(
                 !flags.iter().any(|f| is_collector_flag(f)),
                 "{arg} should leave the collector entirely to the user"
@@ -770,7 +794,7 @@ mod tests {
 
     #[test]
     fn unrelated_custom_arguments_leave_the_collector_alone() {
-        let flags = performance_flags(21, "amd64", 4096, &custom("-Dfoo=bar -Xss1M"));
+        let flags = performance_flags(21, "amd64", 4096, 65536, &custom("-Dfoo=bar -Xss1M"));
         assert!(flags.contains(&"-XX:+UseG1GC".to_string()));
     }
 

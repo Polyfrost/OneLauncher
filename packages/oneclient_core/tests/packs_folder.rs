@@ -8,6 +8,9 @@ use oneclient_core::clusters::{
     install_modpack_instance, prepare_modpack,
 };
 use oneclient_core::game::materialize_content;
+use tokio::sync::Mutex;
+
+static SHARED_DIR: Mutex<()> = Mutex::const_new(());
 
 fn pack(tag: &str) -> Vec<u8> {
     let mut bytes = b"PK\x05\x06".to_vec();
@@ -19,6 +22,7 @@ fn pack(tag: &str) -> Vec<u8> {
 
 #[tokio::test]
 async fn packs_survive_hand_edits_and_dedicated_clusters_keep_their_own() {
+    let _shared_dir = SHARED_DIR.lock().await;
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
     let global = state.settings.read().global_game_settings.clone();
     let ctx = state.services.content();
@@ -397,4 +401,47 @@ async fn packs_survive_hand_edits_and_dedicated_clusters_keep_their_own() {
             .contains(&("both.zip".to_owned(), true)),
         "the shared cluster's pack is left alone"
     );
+}
+
+#[tokio::test]
+async fn a_renamed_pack_already_in_the_cache_keeps_its_name() {
+    let _shared_dir = SHARED_DIR.lock().await;
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let global = state.settings.read().global_game_settings.clone();
+    let ctx = state.services.content();
+    let cluster = state
+        .clusters
+        .create(
+            &global,
+            CreateClusterOptions::new("Renamed", "1.21.1", GameLoader::Fabric),
+        )
+        .await
+        .unwrap();
+
+    let incoming = cluster.dir().unwrap().join("incoming");
+    std::fs::create_dir_all(&incoming).unwrap();
+    let original = incoming.join("renamed.zip");
+    std::fs::write(&original, pack("mine")).unwrap();
+    oneclient_content::packages::store::cache_local_file(
+        &original,
+        ContentType::ResourcePack,
+        &ctx,
+    )
+    .await
+    .unwrap();
+
+    let shared_dir = paths::shared_minecraft_dir().unwrap();
+    let packs = shared_dir.join("resourcepacks");
+    std::fs::create_dir_all(&packs).unwrap();
+    std::fs::write(packs.join("renamed (2).zip"), pack("mine")).unwrap();
+
+    materialize_content(&state.services, &cluster, &shared_dir, false, false)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        std::fs::read(packs.join("renamed (2).zip")).unwrap(),
+        pack("mine")
+    );
+    assert!(!packs.join("renamed.zip").exists());
 }

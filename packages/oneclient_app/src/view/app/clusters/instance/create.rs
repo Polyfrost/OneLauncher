@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use freya::prelude::*;
-use oneclient_common::GameLoader;
 use freya::router::RouterContext;
+use oneclient_common::GameLoader;
 use oneclient_core::GameVersionKind;
 use oneclient_core::clusters::{ClusterKind, ModpackSource, PackChoices};
 
@@ -15,8 +15,8 @@ use super::shell::{Shell, shell};
 use super::steps;
 use crate::Route;
 use crate::hooks::{
-    ClusterAction, ExternalImportJob, settled_or_loading, use_active_cluster_id, use_cluster_mutation, use_clusters,
-    use_dispatch,
+    ClusterAction, ExternalImportJob, settled_or_loading, use_active_cluster_id,
+    use_cluster_mutation, use_clusters, use_dispatch,
 };
 use crate::i18n::{t, tf};
 use crate::utils::default_cluster;
@@ -236,8 +236,8 @@ impl Component for CreateInstanceModal {
         let pick_pack = modpack_flow && picks.step == Step::ImportMode;
         let bundle_step = improving && picks.step == Step::Bundles;
         let no_targets = picks.improve_targets.as_ref().is_some_and(Vec::is_empty);
-        let finishes = (bundle_step && picks.last_bundle_page())
-            || (import_step && improving && no_targets);
+        let finishes =
+            (bundle_step && picks.last_bundle_page()) || (import_step && improving && no_targets);
         let checked = picks.import_screening.is_some();
         let check_failed = picks.import_screening_error.is_some();
         let finishing = picks.finishing;
@@ -314,10 +314,7 @@ impl Component for CreateInstanceModal {
             title: title.to_string(),
             subtitle,
             body: steps::body(wizard, &picks),
-            scrolls_itself: matches!(
-                picks.step,
-                Step::Folder | Step::Version | Step::Import
-            ),
+            scrolls_itself: matches!(picks.step, Step::Folder | Step::Version | Step::Import),
             note: if off_invite {
                 t("oneclient.clusters.instance.create.invite_mismatch").to_string()
             } else {
@@ -330,7 +327,9 @@ impl Component for CreateInstanceModal {
             }
             .to_string(),
             primary_label: match (modpack_step, origin) {
-                _ if finishing && !check_failed => t("oneclient.clusters.instance.create.checking_mods").to_string(),
+                _ if finishing && !check_failed => {
+                    t("oneclient.clusters.instance.create.checking_mods").to_string()
+                }
                 _ if finishes && check_failed && modpack_flow => {
                     t("oneclient.clusters.instance.create.install_unchecked").to_string()
                 }
@@ -514,6 +513,7 @@ fn start_modpack(
                 cluster_id,
                 package_type: MODPACK_BROWSE_TYPE.to_string(),
                 pick_cluster: true,
+                in_instance: false,
             });
         }
         ModpackOrigin::File => {

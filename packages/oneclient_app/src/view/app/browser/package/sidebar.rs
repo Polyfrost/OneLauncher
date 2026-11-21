@@ -4,6 +4,7 @@ use oneclient_content::packages::ProviderId;
 use oneclient_content::packages::types::{ProjectDetail, ProjectMember, VersionSummary};
 
 use crate::components::{Button, Icon, IconType};
+use crate::hooks::LinkConfirmState;
 use crate::i18n::{t, tf};
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
@@ -15,7 +16,7 @@ pub(super) fn sidebar(
     project: Option<ProjectDetail>,
     latest_version: Option<VersionSummary>,
     installer: Installer,
-    confirm: State<Option<String>>,
+    confirm: LinkConfirmState,
     installed: Option<Installed>,
     installing: bool,
     waiting: bool,
@@ -184,7 +185,7 @@ struct ProviderTag {
     text: String,
     provider: ProviderId,
     url: Option<String>,
-    confirm: State<Option<String>>,
+    confirm: LinkConfirmState,
 }
 
 impl Component for ProviderTag {
@@ -252,7 +253,7 @@ fn card_spaced(title: &str, rows: Vec<Element>, spacing: f32) -> impl IntoElemen
         .into_element()
 }
 
-fn authors_card(project: &ProjectDetail, confirm: State<Option<String>>) -> impl IntoElement {
+fn authors_card(project: &ProjectDetail, confirm: LinkConfirmState) -> impl IntoElement {
     let rows: Vec<Element> = if project.members.is_empty() {
         vec![author_row(
             &ProjectMember {
@@ -273,7 +274,7 @@ fn authors_card(project: &ProjectDetail, confirm: State<Option<String>>) -> impl
     card(t("oneclient.browser.package.sidebar.authors"), rows)
 }
 
-fn author_row(member: &ProjectMember, confirm: State<Option<String>>) -> Element {
+fn author_row(member: &ProjectMember, confirm: LinkConfirmState) -> Element {
     AuthorRow {
         name: member.name.clone(),
         role: member.role.clone(),
@@ -290,7 +291,7 @@ struct AuthorRow {
     role: String,
     url: Option<String>,
     avatar_url: Option<String>,
-    confirm: State<Option<String>>,
+    confirm: LinkConfirmState,
 }
 
 impl Component for AuthorRow {
@@ -416,7 +417,7 @@ fn detail_row(icon: IconType, key: &str, value: &str) -> Element {
         .into_element()
 }
 
-fn links_card(links: &[(String, String)], confirm: State<Option<String>>) -> impl IntoElement {
+fn links_card(links: &[(String, String)], confirm: LinkConfirmState) -> impl IntoElement {
     let rows: Vec<Element> = links
         .iter()
         .map(|(lbl, url)| link_row(lbl.clone(), url.clone(), confirm))
@@ -424,7 +425,7 @@ fn links_card(links: &[(String, String)], confirm: State<Option<String>>) -> imp
     card_spaced(t("oneclient.browser.package.sidebar.links"), rows, 2.)
 }
 
-fn link_row(label_text: String, url: String, confirm: State<Option<String>>) -> Element {
+fn link_row(label_text: String, url: String, confirm: LinkConfirmState) -> Element {
     LinkRow {
         label_text,
         url,
@@ -437,7 +438,7 @@ fn link_row(label_text: String, url: String, confirm: State<Option<String>>) -> 
 struct LinkRow {
     label_text: String,
     url: String,
-    confirm: State<Option<String>>,
+    confirm: LinkConfirmState,
 }
 
 impl Component for LinkRow {

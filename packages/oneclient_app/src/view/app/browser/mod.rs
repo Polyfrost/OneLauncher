@@ -3,7 +3,7 @@ mod package;
 
 pub use index::Browser;
 use index::state_key;
-pub(crate) use index::{browsable_type, encode_package_id};
+pub(crate) use index::encode_package_id;
 
 mod modpack_prompt;
 mod world_prompt;

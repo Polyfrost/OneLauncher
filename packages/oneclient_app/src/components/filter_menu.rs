@@ -1,10 +1,9 @@
 use freya::animation::{AnimNum, Ease, OnCreation, use_animation};
 use freya::prelude::*;
 
-use crate::components::{
-    Button, Icon, IconType, OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, use_open_level,
-};
-use crate::hooks::use_overlay_claim;
+use super::overlay_popup::{EscapeOwner, use_transient_escape};
+use crate::components::{Button, Icon, IconType, OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL};
+use crate::hooks::use_overlay_claim_when;
 use crate::i18n::t;
 use crate::theme::{colors, rounded, text_size};
 
@@ -68,6 +67,12 @@ impl FilterMenu {
 impl Component for FilterMenu {
     fn render(&self) -> impl IntoElement {
         let mut open = use_state(|| false);
+        let requested_open = open();
+        let (visible, escape) = use_transient_escape(OVERLAY_MAX_LEVEL, requested_open);
+        use_overlay_claim_when(visible);
+        if requested_open && !visible {
+            open.set(false);
+        }
 
         let icon_color = if self.active {
             colors::brand()
@@ -90,10 +95,11 @@ impl Component for FilterMenu {
                     })
                     .child(Icon::new(IconType::Sliders04).size(16.).color(icon_color)),
             )
-            .maybe_child(open().then(|| {
+            .maybe_child(visible.then(|| {
                 FilterPanel {
                     sections: self.sections.clone(),
                     on_close: (move |()| open.set(false)).into(),
+                    escape,
                 }
                 .into_element()
             }))
@@ -104,15 +110,14 @@ impl Component for FilterMenu {
 struct FilterPanel {
     sections: Vec<FilterSection>,
     on_close: EventHandler<()>,
+    escape: EscapeOwner,
 }
 
 impl Component for FilterPanel {
     fn render(&self) -> impl IntoElement {
-        use_overlay_claim();
-        use_open_level(OVERLAY_MAX_LEVEL);
-
         let backdrop_close = self.on_close.clone();
         let key_close = self.on_close.clone();
+        let escape = self.escape;
 
         let a11y_id = use_a11y();
 
@@ -122,31 +127,31 @@ impl Component for FilterPanel {
         });
         let progress = fade.read().value();
 
-        let mut panel = rect()
-            .vertical()
-            .width(Size::fill())
-            .spacing(4.)
-            .padding(Gaps::new_all(8.))
-            .opacity(progress)
-            .offset_y((progress - 1.0) * 6.)
-            .corner_radius(rounded(10.))
-            .background(colors::page_elevated().with_a(230))
-            .backdrop_blur(12.)
-            .border(crate::ui::border_all_color(1., colors::component_border()))
-            .shadow(Shadow::from((
-                0.,
-                8.,
-                32.,
-                0.,
-                Color::from_argb(120, 0, 0, 0),
-            )))
-            .a11y_id(a11y_id)
-            .a11y_role(AccessibilityRole::Dialog)
-            .on_global_key_down(move |e: Event<KeyboardEventData>| {
-                if e.key == Key::Named(NamedKey::Escape) {
-                    key_close.call(());
-                }
-            });
+        let theme = colors::active_theme();
+        let mut panel =
+            crate::theme::glass::popup_panel(rect(), 10., colors::page_elevated().with_a(230))
+                .vertical()
+                .width(Size::fill())
+                .spacing(4.)
+                .padding(Gaps::new_all(8.))
+                .opacity(progress)
+                .offset_y((progress - 1.0) * 6.)
+                .maybe(!theme.liquid_glass, |el| el.backdrop_blur(12.))
+                .border(crate::ui::border_all_color(1., colors::component_border()))
+                .shadow(Shadow::from((
+                    0.,
+                    8.,
+                    32.,
+                    0.,
+                    Color::from_argb(120, 0, 0, 0),
+                )))
+                .a11y_id(a11y_id)
+                .a11y_role(AccessibilityRole::Dialog)
+                .on_global_key_down(move |e: Event<KeyboardEventData>| {
+                    if e.key == Key::Named(NamedKey::Escape) && escape.is_topmost() {
+                        key_close.call(());
+                    }
+                });
 
         for section in &self.sections {
             panel = panel.child(section_label(section.title));

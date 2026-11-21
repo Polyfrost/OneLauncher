@@ -1,0 +1,16 @@
+{
+  "name": "PolyGlass Light",
+  "liquid_glass": true,
+  "radius_scale": 1.3,
+  "colors": {
+    "light": true,
+    "page": "#F0F1F3",
+    "page_elevated": "#FAFBFD",
+    "card": "#FAFBFFA6",
+    "component": "#E5E7EB",
+    "border": "#181B2729",
+    "text": "#16181D",
+    "text_secondary": "#484C56",
+    "accent": "#3452DB"
+  }
+}

@@ -166,14 +166,21 @@ pub struct Browser {
     pub package_type: String,
     /// Entered from the navbar so the cluster to install into is picked here
     pub pick_cluster: bool,
+    pub in_instance: bool,
 }
 
 impl Component for Browser {
     fn render(&self) -> impl IntoElement {
         let mut last_type = use_browser_type();
-        use_side_effect_with_deps(&self.package_type, move |package_type| {
-            last_type.set_if_modified(package_type.clone());
-        });
+        let in_instance = self.in_instance;
+        use_side_effect_with_deps(
+            &(self.package_type.clone(), in_instance),
+            move |(package_type, in_instance)| {
+                if !in_instance {
+                    last_type.set_if_modified(package_type.clone());
+                }
+            },
+        );
 
         let redirect = use_cluster(self.cluster_id)
             .filter(Cluster::lacks_mod_loader)
@@ -183,6 +190,7 @@ impl Component for Browser {
                 cluster_id: self.cluster_id,
                 package_type,
                 pick_cluster: self.pick_cluster,
+                in_instance,
             });
         use_side_effect_with_deps(&redirect, move |redirect: &Option<Route>| {
             if let Some(route) = redirect.clone() {
@@ -194,12 +202,14 @@ impl Component for Browser {
             cluster_id: self.cluster_id,
             package_type: self.package_type.clone(),
             pick_cluster: self.pick_cluster,
+            in_instance,
             key: DiffKey::None,
         }
         .key((
             self.cluster_id,
             self.package_type.as_str(),
             self.pick_cluster,
+            in_instance,
         ))
     }
 }
@@ -209,6 +219,7 @@ struct BrowserBody {
     cluster_id: i64,
     package_type: String,
     pick_cluster: bool,
+    in_instance: bool,
     key: DiffKey,
 }
 
@@ -442,8 +453,12 @@ impl Component for BrowserBody {
             .width(Size::fill())
             .height(Size::fill())
             .overflow(Overflow::Clip)
-            .padding(Gaps::new(0., 40., 40., 40.))
-            .spacing(18.)
+            .padding(if self.in_instance {
+                Gaps::new(16., 18., 14., 18.)
+            } else {
+                Gaps::new(0., 40., 0., 40.)
+            })
+            .spacing(if self.in_instance { 12. } else { 18. })
             .child(header(
                 &package_type,
                 cluster
@@ -474,11 +489,11 @@ impl Component for BrowserBody {
                 query,
                 controls_width,
             ))
-            .child(TypePicker {
+            .maybe_child((!self.in_instance).then(|| TypePicker {
                 cluster_id,
                 package_type: package_type.clone(),
                 pick_cluster: self.pick_cluster,
-            })
+            }))
             .child(
                 rect()
                     .horizontal()
@@ -843,6 +858,7 @@ impl Component for TypePicker {
                     cluster_id,
                     package_type: slug.to_string(),
                     pick_cluster,
+                    in_instance: false,
                 };
                 tab.on_press(move |_| {
                     let _ = RouterContext::get().push(route.clone());
@@ -921,6 +937,7 @@ impl Component for ClusterPicker {
                         cluster_id: cluster.id,
                         package_type: to_type,
                         pick_cluster: true,
+                        in_instance: false,
                     });
                 })
                 .into(),

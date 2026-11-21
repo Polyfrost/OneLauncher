@@ -194,6 +194,7 @@ pub struct BrowserPackage {
     pub package_type: String,
     pub package_id: String,
     pub add_to_cluster: bool,
+    pub in_instance: bool,
 }
 
 impl Component for BrowserPackage {
@@ -422,7 +423,11 @@ impl Component for BrowserPackage {
             .width(Size::fill())
             .height(Size::fill())
             .overflow(Overflow::Clip)
-            .padding(Gaps::new(0., 40., 40., 40.))
+            .padding(if self.in_instance {
+                Gaps::new(16., 18., 14., 18.)
+            } else {
+                Gaps::new(0., 40., 40., 40.)
+            })
             .child(
                 ScrollArea::new()
                     .width(Size::fill())

@@ -11,12 +11,14 @@ use oneclient_events::{CrashFix, CrashRemedy, GameCrash};
 use crate::Route;
 use crate::components::upload_mclogs::UploadToMclogs;
 use crate::components::{Button, Icon, IconType, OVERLAY_BASE_LEVEL, OverlayPopup, ScrollArea};
-use crate::hooks::{use_cluster, use_dispatch, use_link_confirm, use_log_action, use_upload_log};
-use crate::view::app::cluster::logs::{Confirm, confirm_overlay};
+use crate::hooks::{
+    LinkConfirmState, use_cluster, use_dispatch, use_link_confirm, use_log_action, use_upload_log,
+};
 use crate::i18n::{t, tf};
 use crate::theme;
 use crate::theme::{colors, rounded, text_size};
 use crate::utils::format_durations;
+use crate::view::app::cluster::logs::{Confirm, confirm_overlay};
 
 mod markup;
 mod mods;
@@ -105,13 +107,9 @@ impl Component for CrashDialog {
                             .child(actions(&crash, dispatch, log_path.clone(), upload_confirm)),
                     ),
             )
-            .maybe_child(
-                (*upload_confirm.read())
-                    .zip(log_path)
-                    .map(|(kind, path)| {
-                        confirm_overlay(kind, upload_confirm, action, upload, path).into_element()
-                    }),
-            )
+            .maybe_child((*upload_confirm.read()).zip(log_path).map(|(kind, path)| {
+                confirm_overlay(kind, upload_confirm, action, upload, path).into_element()
+            }))
     }
 }
 
@@ -175,7 +173,7 @@ impl Block<'_> {
         }
     }
 
-    fn element(&self, crash: &GameCrash, confirm: State<Option<String>>) -> Element {
+    fn element(&self, crash: &GameCrash, confirm: LinkConfirmState) -> Element {
         match self {
             Self::Suspects => suspects_card(crash),
             Self::Cause(cause) => cause_card(cause),
@@ -209,7 +207,7 @@ fn blocks(crash: &GameCrash) -> Vec<Block<'_>> {
     blocks
 }
 
-fn body(crash: &GameCrash, confirm: State<Option<String>>) -> impl IntoElement {
+fn body(crash: &GameCrash, confirm: LinkConfirmState) -> impl IntoElement {
     let elements = blocks(crash)
         .into_iter()
         .map(|block| block.element(crash, confirm));
@@ -357,7 +355,7 @@ fn suspects_card(crash: &GameCrash) -> Element {
         .into_element()
 }
 
-fn fixes_section(crash: &GameCrash, confirm: State<Option<String>>) -> Element {
+fn fixes_section(crash: &GameCrash, confirm: LinkConfirmState) -> Element {
     let mut cards: Vec<Element> = crash
         .fixes
         .iter()
@@ -386,7 +384,7 @@ fn fixes_section(crash: &GameCrash, confirm: State<Option<String>>) -> Element {
         .into_element()
 }
 
-fn fix_card(fix: &CrashFix, game_dir: Option<&str>, confirm: State<Option<String>>) -> Element {
+fn fix_card(fix: &CrashFix, game_dir: Option<&str>, confirm: LinkConfirmState) -> Element {
     let resolved = resolve_placeholders(&fix.text, game_dir);
     let links = links_in(&resolved);
 
@@ -457,7 +455,7 @@ fn fix_line(line: &str, content_w: f32) -> Element {
     text.into_element()
 }
 
-fn link_chip(url: String, mut confirm: State<Option<String>>) -> impl IntoElement {
+fn link_chip(url: String, mut confirm: LinkConfirmState) -> impl IntoElement {
     let target = url.clone();
 
     Button::new()
@@ -468,7 +466,7 @@ fn link_chip(url: String, mut confirm: State<Option<String>>) -> impl IntoElemen
         .text(host_of(&url))
 }
 
-fn discord_card(mut confirm: State<Option<String>>) -> impl IntoElement {
+fn discord_card(mut confirm: LinkConfirmState) -> impl IntoElement {
     rect()
         .horizontal()
         .width(Size::fill())

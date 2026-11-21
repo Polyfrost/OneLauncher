@@ -1,0 +1,16 @@
+{
+  "name": "PolyGlass Dark",
+  "liquid_glass": true,
+  "radius_scale": 1.3,
+  "colors": {
+    "light": false,
+    "page": "#181A1F",
+    "page_elevated": "#22252C",
+    "card": "#16181D8C",
+    "component": "#30333B",
+    "border": "#FFFFFF25",
+    "text": "#F6F6F8",
+    "text_secondary": "#C4C5CD",
+    "accent": "#405CFA"
+  }
+}

@@ -45,16 +45,16 @@ use tokio::sync::mpsc;
 use crate::components::IconType;
 use crate::hooks::{GraphicsBackendQuery, PackageUpdatesQuery};
 use crate::i18n::{t, tf};
+use crate::install::IncompatibleMode;
 use crate::launcher::off_ui;
 use crate::notifications::{
     BundleChoices, ClusterUpdateSummary, NotificationAction, NotificationSpec, OptionalModRef,
     OptionalModsGroup, OptionalModsOutcome, PackageUpdateGroup, PendingPrompt,
 };
 use crate::state::{
-    AppChannel, AppState, AsyncStatus, FlaggedInstallPrompt, IncompatibleInstallPrompt, MissingModInstall,
-    RelocationState,
+    AppChannel, AppState, AsyncStatus, FlaggedInstallPrompt, IncompatibleInstallPrompt,
+    MissingModInstall, RelocationState,
 };
-use crate::install::IncompatibleMode;
 use crate::{invalidate_java_queries, launcher};
 
 pub static COPIES_REQUEST: Mutex<Option<(i64, Vec<String>)>> = Mutex::new(None);
@@ -128,7 +128,7 @@ fn clusters_pinned_to_java(
                 .find(|cluster| {
                     cluster.setting_profile_name.as_deref() == Some(profile.name.as_str())
                 })
-                .map_or_else(|| profile.name.clone(), |cluster| cluster.name.clone())
+                .map_or_else(|| profile.name.clone(), crate::utils::instance_display_name)
         })
         .collect()
 }
@@ -909,9 +909,9 @@ impl Actions {
         });
     }
 
-    pub fn open_cluster_update(&self, summaries: Vec<ClusterUpdateSummary>) {
+    pub fn open_cluster_update(&self, summaries: Vec<ClusterUpdateSummary>, from_toast: bool) {
         self.with_engine(|state| {
-            state.notifications.open_cluster_update(summaries);
+            state.notifications.open_cluster_update(summaries, from_toast);
             state.center_open = false;
         });
     }
@@ -1030,6 +1030,7 @@ impl Actions {
                 let mut installed = 0usize;
                 let mut applied: Vec<ClusterId> = Vec::new();
                 for cluster_id in &clusters {
+                    let _mutation = oneclient_content::packages::package_mutation_guard().await;
                     match oneclient_core::apply_bundle_updates_with(
                         *cluster_id,
                         state.bundles.as_ref(),
@@ -1559,6 +1560,7 @@ impl Actions {
             let imported = off_ui({
                 let state = state.clone();
                 async move {
+                    let _mutation = oneclient_content::packages::package_mutation_guard().await;
                     let report = oneclient_content::packages::PackageStore::import_local_files(
                         &files,
                         cluster_id,
@@ -1892,6 +1894,7 @@ impl Actions {
                 return;
             };
 
+            let _mutation = oneclient_content::packages::package_mutation_guard().await;
             let events = state.services.events.clone();
             match oneclient_core::delete_artifact(cluster_id, &hash, &state.services.content())
                 .await
@@ -1937,6 +1940,7 @@ impl Actions {
                 let state = state.clone();
                 let bundle_name = bundle_name.clone();
                 async move {
+                    let _mutation = oneclient_content::packages::package_mutation_guard().await;
                     oneclient_core::install_bundle(
                         cluster_id,
                         &bundle_name,
@@ -1977,6 +1981,7 @@ impl Actions {
             let result = match off_ui({
                 let state = state.clone();
                 async move {
+                    let _mutation = oneclient_content::packages::package_mutation_guard().await;
                     oneclient_core::apply_bundle_updates(
                         cluster_id,
                         state.bundles.as_ref(),
@@ -2233,6 +2238,7 @@ impl Actions {
             failures = match off_ui({
                 let state = state.clone();
                 async move {
+                    let _mutation = oneclient_content::packages::package_mutation_guard().await;
                     oneclient_core::apply_bundle_updates(
                         cluster_id,
                         state.bundles.as_ref(),
@@ -3244,14 +3250,14 @@ mod tests {
         }
     }
 
-    fn cluster(id: i64, name: &str, profile_name: Option<&str>) -> Cluster {
+    fn cluster(id: i64, name: &str, profile_name: Option<&str>, user_created: bool) -> Cluster {
         Cluster {
             id,
             name: name.into(),
             folder_name: name.into(),
             setting_profile_name: profile_name.map(Into::into),
             mc_version: "26.2".into(),
-            mc_loader: oneclient_common::domain::GameLoader::default(),
+            mc_loader: oneclient_common::domain::GameLoader::Fabric,
             mc_loader_version: None,
             stage: ClusterStage::default(),
             created_at: None,
@@ -3259,7 +3265,7 @@ mod tests {
             overall_played: Duration::ZERO,
             linked_modpack_hash: None,
             kind: oneclient_db::models::ClusterKind::OneClient,
-            user_created: false,
+            user_created,
             description: None,
             tags: Vec::new(),
             cover_path: None,
@@ -3271,7 +3277,7 @@ mod tests {
     #[test]
     fn a_runtime_nobody_pinned_is_free_to_go() {
         let profiles = vec![profile("26.2 Fabric", None)];
-        let clusters = vec![cluster(1, "26.2 Fabric", Some("26.2 Fabric"))];
+        let clusters = vec![cluster(1, "26.2 Fabric", Some("26.2 Fabric"), false)];
 
         assert!(clusters_pinned_to_java(&profiles, &clusters, JDK_25).is_empty());
     }
@@ -3279,11 +3285,11 @@ mod tests {
     #[test]
     fn a_pinned_runtime_is_reported_under_its_cluster_name() {
         let profiles = vec![profile("26.2 Fabric", Some(JDK_25))];
-        let clusters = vec![cluster(1, "26.2 Fabric", Some("26.2 Fabric"))];
+        let clusters = vec![cluster(1, "26.2 Fabric", Some("26.2 Fabric"), false)];
 
         assert_eq!(
             clusters_pinned_to_java(&profiles, &clusters, JDK_25),
-            vec!["26.2 Fabric".to_string()],
+            vec!["26.2 OneClient Fabric".to_string()],
         );
     }
 
@@ -3294,8 +3300,8 @@ mod tests {
             profile("25 pinned", Some(JDK_25)),
         ];
         let clusters = vec![
-            cluster(1, "Old pack", Some("21 pinned")),
-            cluster(2, "New pack", Some("25 pinned")),
+            cluster(1, "Old pack", Some("21 pinned"), true),
+            cluster(2, "New pack", Some("25 pinned"), true),
         ];
 
         assert_eq!(
@@ -3308,8 +3314,8 @@ mod tests {
     fn every_cluster_holding_the_runtime_is_named() {
         let profiles = vec![profile("a", Some(JDK_25)), profile("b", Some(JDK_25))];
         let clusters = vec![
-            cluster(1, "Alpha", Some("a")),
-            cluster(2, "Beta", Some("b")),
+            cluster(1, "Alpha", Some("a"), true),
+            cluster(2, "Beta", Some("b"), true),
         ];
 
         assert_eq!(

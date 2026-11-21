@@ -213,7 +213,10 @@ async fn set_up_bundles(
 
     let session = oneclient_events::GroupedProgressSession::start(
         &state.services.events,
-        tf("oneclient.mutations.setting_up", &[&cluster.name]),
+        tf(
+            "oneclient.mutations.setting_up",
+            &[&crate::utils::instance_display_name(cluster)],
+        ),
     );
     let mut failure = None;
     if let Err(err) = oneclient_content::bundles::install_cluster_bundles(
@@ -361,6 +364,21 @@ impl MutationCapability for ClusterMutation {
             }
         };
         let mut created = None;
+        let _package_mutation = if matches!(
+            keys,
+            ClusterAction::SetArtifactEnabled { .. }
+                | ClusterAction::RemoveArtifact { .. }
+                | ClusterAction::RemoveBundlePackageFromDisk { .. }
+                | ClusterAction::DeleteBundledArtifact { .. }
+                | ClusterAction::SetBundlePackageEnabled { .. }
+                | ClusterAction::SetDirTarget { .. }
+                | ClusterAction::DeleteSharedGroup { .. }
+                | ClusterAction::DeleteInstance { .. }
+        ) {
+            Some(oneclient_content::packages::package_mutation_guard().await)
+        } else {
+            None
+        };
         let result = match keys {
             ClusterAction::SetArtifactEnabled { cluster_id, .. }
             | ClusterAction::RemoveArtifact { cluster_id, .. }
@@ -823,7 +841,7 @@ impl MutationCapability for ClusterMutation {
                             .clusters
                             .get(cluster_id)
                             .await
-                            .map(|cluster| cluster.name)
+                            .map(|cluster| crate::utils::instance_display_name(&cluster))
                             .unwrap_or_default();
                         let session = oneclient_events::GroupedProgressSession::start(
                             &state.services.events,

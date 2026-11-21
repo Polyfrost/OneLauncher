@@ -122,7 +122,7 @@ async fn blocker_name(cluster: &Cluster, block: LaunchBlock) -> Option<String> {
 
     Some(state.clusters.get(block.cluster_id()).await.map_or_else(
         |_| t("oneclient.layout.pending_launch.another_version").to_string(),
-        |other| other.name,
+        |other| crate::utils::instance_display_name(&other),
     ))
 }
 
@@ -147,22 +147,23 @@ fn report_already_open(
         t("oneclient.layout.pending_launch.already_starting")
     };
 
+    let instance_name = crate::utils::instance_display_name(cluster);
     let body = match (blocker, running) {
         (None, true) => tf(
             "oneclient.layout.pending_launch.open_already",
-            &[&cluster.name],
+            &[&instance_name],
         ),
         (None, false) => tf(
             "oneclient.layout.pending_launch.on_its_way",
-            &[&cluster.name],
+            &[&instance_name],
         ),
         (Some(other), true) => tf(
             "oneclient.layout.pending_launch.blocked_running",
-            &[&other, &cluster.name],
+            &[&other, &instance_name],
         ),
         (Some(other), false) => tf(
             "oneclient.layout.pending_launch.blocked_starting",
-            &[&other, &cluster.name],
+            &[&other, &instance_name],
         ),
     };
 

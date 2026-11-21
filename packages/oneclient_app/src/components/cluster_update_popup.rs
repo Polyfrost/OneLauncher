@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use freya::{prelude::*, router::RouterContext};
 use oneclient_content::packages::{CachedPackageMeta, ProviderId};
 
-use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea, TabBar, TabItem};
+use crate::components::{
+    Button, Icon, IconType, OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, OverlayPopup, ScrollArea,
+    TabBar, TabItem,
+};
 use crate::hooks::{
     package_meta_batch, use_dispatch, use_notifications_snapshot, use_package_meta_batch,
 };
@@ -95,12 +98,12 @@ impl Component for ClusterUpdatePopup {
         let dispatch = use_dispatch();
         let active = use_state(|| UpdateTab::Updates);
 
-        let summaries = snapshot.cluster_update.clone();
+        let review = snapshot.cluster_update;
 
         // Hooks must run unconditionally so query every provider before the early return below
-        let all_items: Vec<&ClusterUpdateItem> = summaries
+        let all_items: Vec<&ClusterUpdateItem> = review
             .iter()
-            .flatten()
+            .flat_map(|review| &review.summaries)
             .flat_map(|s| {
                 s.updated
                     .iter()
@@ -126,20 +129,26 @@ impl Component for ClusterUpdatePopup {
             }
         }
 
-        let Some(summaries) = summaries.filter(|s| !s.is_empty()) else {
+        let Some(review) = review else {
             return rect().into_element();
         };
 
         let close = dispatch.clone();
 
         OverlayPopup::new()
+            .key(review.generation)
+            .overlay_level(if review.from_toast {
+                OVERLAY_MAX_LEVEL
+            } else {
+                OVERLAY_BASE_LEVEL
+            })
             .on_close(move |_| close.close_cluster_update())
             .child(
                 rect()
                     .width(Size::window_percent(100.))
                     .height(Size::window_percent(100.))
                     .center()
-                    .child(dialog(&summaries, &meta, active, dispatch)),
+                    .child(dialog(&review.summaries, &meta, active, dispatch)),
             )
             .into_element()
     }

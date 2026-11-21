@@ -97,11 +97,20 @@ fn open_package(
     id: &str,
     add_to_cluster: bool,
 ) {
-    let _ = RouterContext::get().push(Route::BrowserPackage {
+    let router = RouterContext::get();
+    let in_instance = matches!(
+        router.current::<Route>(),
+        Route::Browser {
+            in_instance: true,
+            ..
+        }
+    );
+    let _ = router.push(Route::BrowserPackage {
         cluster_id,
         package_type: package_type.to_string(),
         package_id: encode_package_id(provider, id),
         add_to_cluster,
+        in_instance,
     });
 }
 

@@ -1115,6 +1115,7 @@ impl Component for WardrobeBody {
 
         let mut anchors_state = anchors;
         let grid = ScrollArea::new()
+            .primary_list(crate::components::PrimaryList::Wardrobe)
             .width(Size::fill())
             .height(Size::flex(1.0))
             .scroll_controller(scroll)
@@ -1211,26 +1212,24 @@ impl Component for WardrobeBody {
                     .content(Content::Flex)
                     .spacing(16.)
                     .child(
-                        rect()
-                            .horizontal()
-                            .width(Size::fill())
-                            .content(Content::Flex)
-                            .cross_align(Alignment::Center)
-                            .child(
-                                label()
-                                    .text(t("oneclient.wardrobe.title"))
-                                    .width(Size::flex(1.0))
-                                    .font_size(text_size(24.))
-                                    .font_weight(FontWeight::SEMI_BOLD)
-                                    .color(colors::fg_primary()),
-                            )
-                            .child(StoreSearch {
-                                data: data.clone(),
-                                query,
-                                shared,
-                                suggest: data.plus_available()
-                                    && current_section == Section::Cosmetics,
-                            }),
+                        label()
+                            .text(t("oneclient.wardrobe.title"))
+                            .font_size(text_size(24.))
+                            .font_weight(FontWeight::SEMI_BOLD)
+                            .color(colors::fg_primary()),
+                    )
+                    .child(
+                        TextInput::new(query)
+                            .placeholder(t("oneclient.wardrobe.search"))
+                            .compact()
+                            .width(Size::px(260.))
+                            .max_width(Size::fill())
+                            .leading(
+                                Icon::new(IconType::SearchMd)
+                                    .size(14.)
+                                    .color(colors::fg_secondary())
+                                    .into_element(),
+                            ),
                     )
                     .child(
                         rect()

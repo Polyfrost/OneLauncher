@@ -835,7 +835,7 @@ mod tests {
     fn crash(cluster_id: i64, title: &str) -> oneclient_events::GameCrash {
         oneclient_events::GameCrash {
             cluster_id,
-            cluster_name: format!("Cluster {cluster_id}"),
+            cluster_name: format!("Instance {cluster_id}"),
             title: title.to_string(),
             exit: String::new(),
             played_secs: 0,

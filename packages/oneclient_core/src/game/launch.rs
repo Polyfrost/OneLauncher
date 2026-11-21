@@ -23,6 +23,7 @@ use crate::game::{DirBusy, GameError};
 use crate::settings::GameSettingsProfile;
 use crate::state::{LauncherServices, LauncherState};
 use oneclient_auth::MinecraftAccount;
+use oneclient_common::domain::GameLoader;
 use oneclient_common::paths;
 use oneclient_content::bundles::BUNDLE_APPLY_BUDGET;
 use oneclient_discord::Presence;
@@ -406,6 +407,15 @@ async fn start(
 
     if !dedicated {
         crate::game::link_cluster_logs(&cluster, &cwd).await;
+    }
+
+    if matches!(cluster.mc_loader, GameLoader::Fabric | GameLoader::Ornithe) {
+        crate::game::fabric::drop_stale_remapped_jars(
+            &cwd,
+            &cluster.mc_version,
+            version_info.libraries.iter().map(|lib| lib.name.as_str()),
+        )
+        .await;
     }
 
     let client_jar = paths::versions_dir()?

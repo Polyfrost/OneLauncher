@@ -1021,7 +1021,7 @@ async fn import_added(
 ) -> bool {
     let mut changed = false;
     for name in added {
-        let Some(Ok(row)) = adopt_file(
+        let Some(Ok(_)) = adopt_file(
             services,
             cluster,
             &dir.join(name),
@@ -1033,12 +1033,6 @@ async fn import_added(
             continue;
         };
         tracing::info!(file = %name, "registered a mod added by hand");
-        if row.file_name != *name
-            && let Err(err) =
-                artifact_dao::link_cluster_artifact(&services.db, cluster.id, &row.hash, name).await
-        {
-            tracing::warn!(file = %name, error = %err, "failed to keep the added mod's name");
-        }
         changed = true;
     }
 
@@ -2437,12 +2431,22 @@ async fn adopt_file(
 
     let imported =
         PackageStore::import_local_file(path, content_type, cluster.id, &services.content()).await;
-    if let Err(err) = &imported {
-        tracing::warn!(
+    match &imported {
+        Ok(row) => {
+            if let Some(name) = path.file_name().and_then(|n| n.to_str())
+                && row.file_name != name
+                && let Err(err) =
+                    artifact_dao::link_cluster_artifact(&services.db, cluster.id, &row.hash, name)
+                        .await
+            {
+                tracing::warn!(file = name, error = %err, "failed to keep the added file's name");
+            }
+        }
+        Err(err) => tracing::warn!(
             file = %path.display(),
             error = %err,
             "failed to register manually-added content"
-        );
+        ),
     }
     Some(imported)
 }

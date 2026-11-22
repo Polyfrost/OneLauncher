@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use freya::prelude::*;
@@ -12,7 +13,9 @@ use crate::hooks::{
 use crate::i18n::t;
 use crate::layout::cluster_content;
 use crate::theme::{colors, text_size};
-use crate::view::app::cluster::logs::{Confirm, LevelFilter, confirm_overlay, viewer_controls};
+use crate::view::app::cluster::logs::{
+    Confirm, LevelFilter, confirm_overlay, use_thread_dump, viewer_controls,
+};
 
 use super::cluster_not_found;
 
@@ -31,6 +34,9 @@ impl Component for ProcessLogs {
         let level = use_state(|| LevelFilter::All);
         let confirm = use_state(|| None::<Confirm>);
         let search_id = use_a11y();
+        let thread_dump = use_thread_dump(self.cluster_id);
+        let mut dump_confirm = use_state(|| None::<Confirm>);
+        let mut dump_path = use_state(PathBuf::new);
 
         let game = use_game_snapshot();
         let Some(_cluster) = use_cluster(self.cluster_id) else {
@@ -38,6 +44,12 @@ impl Component for ProcessLogs {
         };
 
         let active = game.stage(self.cluster_id).is_some();
+        let dump_button = game.is_running(self.cluster_id).then(|| {
+            thread_dump.button(move |path, prompt| {
+                dump_path.set(path);
+                dump_confirm.set(Some(prompt));
+            })
+        });
 
         let output_path = try_cluster_logs(&logs_query)
             .unwrap_or_default()
@@ -59,6 +71,7 @@ impl Component for ProcessLogs {
                     has_log,
                     output_path.clone().filter(|_| has_log),
                     search_id,
+                    dump_button,
                 ))
                 .into_element()
         } else {
@@ -72,6 +85,9 @@ impl Component for ProcessLogs {
                     .zip(output_path)
                     .map(|(kind, path)| confirm_overlay(kind, confirm, action, upload, path)),
             )
+            .maybe_child((*dump_confirm.read()).map(|kind| {
+                confirm_overlay(kind, dump_confirm, action, upload, dump_path.read().clone())
+            }))
             .into_element()
     }
 }

@@ -70,6 +70,76 @@ pub enum Confirm {
     UploadTooLong,
 }
 
+#[derive(Clone, Copy)]
+pub struct ThreadDump {
+    cluster_id: i64,
+    current_cluster: State<i64>,
+    dumping: State<bool>,
+}
+
+pub fn use_thread_dump(cluster_id: i64) -> ThreadDump {
+    ThreadDump {
+        cluster_id,
+        current_cluster: use_reactive(&cluster_id),
+        dumping: use_state(|| false),
+    }
+}
+
+impl ThreadDump {
+    pub fn button(self, on_dumped: impl FnMut(PathBuf, Confirm) + Clone + 'static) -> Element {
+        let Self {
+            cluster_id,
+            current_cluster,
+            mut dumping,
+        } = self;
+        let dispatch = use_dispatch();
+
+        Button::new()
+            .secondary()
+            .enabled(!dumping())
+            .tooltip(t("oneclient.cluster.logs.thread_dump.tooltip"))
+            .on_press(move |_| {
+                let dispatch = dispatch.clone();
+                let mut on_dumped = on_dumped.clone();
+                dumping.set(true);
+                spawn(async move {
+                    let result = off_ui(async move {
+                        let state = crate::launcher::state()?;
+                        let path = oneclient_core::game::thread_dump(&state, cluster_id).await?;
+                        let too_long = oneclient_core::log_exceeds_upload_limit(&path)
+                            .await
+                            .unwrap_or_default();
+                        Ok::<_, oneclient_core::LauncherError>((path, too_long))
+                    })
+                    .await;
+                    dumping.set(false);
+                    match result {
+                        Ok(_) if *current_cluster.peek() != cluster_id => {}
+                        Ok((path, too_long)) => {
+                            invalidate_logs_queries().await;
+                            on_dumped(
+                                path,
+                                if too_long {
+                                    Confirm::UploadTooLong
+                                } else {
+                                    Confirm::Upload
+                                },
+                            );
+                        }
+                        Err(err) => dispatch
+                            .notify(t("oneclient.cluster.logs.thread_dump.failed"))
+                            .body(err.to_string())
+                            .error()
+                            .send(),
+                    }
+                });
+            })
+            .child(Icon::new(IconType::Terminal).size(15.))
+            .text(t("oneclient.cluster.logs.thread_dump"))
+            .into_element()
+    }
+}
+
 /// A crash report buried among thirty rotated `.log.gz` files is one nobody finds
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Category {
@@ -132,10 +202,8 @@ impl Component for ClusterLogs {
         let mut selected = use_state(PathBuf::new);
         let search_id = use_a11y();
         let open_game_output = use_hook(try_consume_root_context::<OpenGameOutput>);
-        let dispatch = use_dispatch();
-        let mut dumping = use_state(|| false);
+        let thread_dump = use_thread_dump(cluster_id);
         let running = use_game_snapshot().is_running(cluster_id);
-        let current_cluster = use_reactive(&cluster_id);
 
         // Reads `category` too so switching the picker re-picks a file instead of keeping a stale selection
         use_side_effect(move || {
@@ -207,48 +275,11 @@ impl Component for ClusterLogs {
         let upload_path = selected_info.as_ref().map(|info| info.path.clone());
 
         let dump_button = running.then(|| {
-            Button::new()
-                .secondary()
-                .enabled(!dumping())
-                .tooltip(t("oneclient.cluster.logs.thread_dump.tooltip"))
-                .on_press(move |_| {
-                    let dispatch = dispatch.clone();
-                    dumping.set(true);
-                    spawn(async move {
-                        let result = off_ui(async move {
-                            let state = crate::launcher::state()?;
-                            let path =
-                                oneclient_core::game::thread_dump(&state, cluster_id).await?;
-                            let too_long = oneclient_core::log_exceeds_upload_limit(&path)
-                                .await
-                                .unwrap_or_default();
-                            Ok::<_, oneclient_core::LauncherError>((path, too_long))
-                        })
-                        .await;
-                        dumping.set(false);
-                        match result {
-                            Ok(_) if *current_cluster.peek() != cluster_id => {}
-                            Ok((path, too_long)) => {
-                                invalidate_logs_queries().await;
-                                category.set(Category::Logs);
-                                selected.set(path);
-                                confirm.set(Some(if too_long {
-                                    Confirm::UploadTooLong
-                                } else {
-                                    Confirm::Upload
-                                }));
-                            }
-                            Err(err) => dispatch
-                                .notify(t("oneclient.cluster.logs.thread_dump.failed"))
-                                .body(err.to_string())
-                                .error()
-                                .send(),
-                        }
-                    });
-                })
-                .child(Icon::new(IconType::Terminal).size(15.))
-                .text(t("oneclient.cluster.logs.thread_dump"))
-                .into_element()
+            thread_dump.button(move |path, prompt| {
+                category.set(Category::Logs);
+                selected.set(path);
+                confirm.set(Some(prompt));
+            })
         });
 
         let lines = try_log_content(&content_query).unwrap_or_default();
@@ -281,6 +312,7 @@ impl Component for ClusterLogs {
                     has_log,
                     upload_path,
                     search_id,
+                    None,
                 )),
             ));
 
@@ -393,6 +425,7 @@ pub fn viewer_header(
     has_log: bool,
     upload_path: Option<PathBuf>,
     search_id: AccessibilityId,
+    extra_action: Option<Element>,
 ) -> impl IntoElement {
     rect()
         .vertical()
@@ -408,6 +441,7 @@ pub fn viewer_header(
                     has_log,
                     upload_path,
                     search_id,
+                    extra_action,
                 )),
         )
         .child(
@@ -426,6 +460,7 @@ pub fn viewer_controls(
     has_log: bool,
     upload_path: Option<PathBuf>,
     search_id: AccessibilityId,
+    extra_action: Option<Element>,
 ) -> impl IntoElement {
     let on_key_down = move |e: Event<KeyboardEventData>| {
         let find = matches!(&e.key, Key::Character(c) if c.as_str().eq_ignore_ascii_case("f"))
@@ -478,6 +513,7 @@ pub fn viewer_controls(
                 )
                 .into_element(),
         )
+        .maybe_child(extra_action)
         .child(UploadToMclogs::new(upload_path, confirm))
         .into_element()
 }

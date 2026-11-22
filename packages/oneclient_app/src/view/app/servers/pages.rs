@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use freya::prelude::*;
 
 use super::settings::{ConfirmRow, whitelist_row};
-use super::{DASH, card, card_head, fmt_bytes};
+use super::{DASH, card, card_head};
 use crate::components::{Button, Icon, IconType, ScrollArea, open_folder_button};
 use crate::hooks::{
     settled_or_loading, use_server, use_server_files, use_server_hub, use_server_run,
@@ -12,6 +12,7 @@ use crate::i18n::{t, tf};
 use crate::servers::{self, ServerStatus};
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::centered_note;
+use crate::utils::format_size;
 use crate::view::app::settings::settings_row;
 
 fn page(children: Vec<Element>) -> Element {
@@ -145,7 +146,7 @@ impl Component for ServerWorlds {
         let size = if world_size == 0 {
             DASH.to_string()
         } else {
-            fmt_bytes(world_size)
+            format_size(world_size)
         };
 
         page(vec![
@@ -277,7 +278,7 @@ impl Component for ServerBackups {
             children.push(file_row(
                 IconType::ClockRewind,
                 backup.created.format("%Y-%m-%d %H:%M").to_string(),
-                fmt_bytes(backup.size),
+                format_size(backup.size),
                 actions,
             ));
         }

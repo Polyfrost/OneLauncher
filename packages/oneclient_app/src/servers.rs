@@ -525,6 +525,8 @@ pub fn start(station: Station, id: String) {
                 #[cfg(windows)]
                 kill_with_launcher::adopt(&child);
                 if let Some(pid) = child.id() {
+                    // Registered while the file lock is held, so a queued world operation sees it
+                    PIDS.lock().unwrap().insert(id.clone(), pid);
                     servers::write_pid(&dir, pid).await;
                 }
                 Ok::<_, oneclient_core::LauncherError>((child, server))
@@ -549,9 +551,6 @@ pub fn start(station: Station, id: String) {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         STDIN.lock().unwrap().insert(id.clone(), cmd_tx);
         let pid = child.id();
-        if let Some(pid) = pid {
-            PIDS.lock().unwrap().insert(id.clone(), pid);
-        }
         write(station, &id, |live| live.pid = pid);
         tokio::spawn(drive(id.clone(), child, tx, cmd_rx));
 
@@ -1016,20 +1015,24 @@ pub fn backup(id: String, quiet: bool) {
         tokio::pin!(confirmed);
         confirmed.as_mut().enable();
         let running = send_command(&id, "save-off");
-        if running {
+        let flushed = !running || {
             send_command(&id, "save-all flush");
-            if tokio::time::timeout(SAVE_WAIT, confirmed).await.is_err() {
-                tracing::warn!("server {id} never confirmed the save, backing up what is on disk");
-            }
-        }
-        let result = off_ui({
-            let id = id.clone();
-            async move {
-                let server = servers::load_server(&id).await?;
-                servers::create_backup(&server.dir()?, server.backups_kept).await
-            }
-        })
-        .await;
+            tokio::time::timeout(SAVE_WAIT, confirmed).await.is_ok()
+        };
+        let result = if flushed {
+            off_ui({
+                let id = id.clone();
+                async move {
+                    let server = servers::load_server(&id).await?;
+                    servers::create_backup(&server.dir()?, server.backups_kept).await
+                }
+            })
+            .await
+        } else {
+            Err(oneclient_core::LauncherError::Server(
+                "the server did not confirm saving the world in time, no backup was made".into(),
+            ))
+        };
         if running {
             send_command(&id, "save-on");
         }
@@ -1237,6 +1240,39 @@ pub fn update_software(station: Station, id: String, mc_version: Option<String>)
     });
 }
 
+/// Swaps the jar the server starts with for a picked one, then reinstalls around it
+pub fn use_custom_jar(station: Station, id: String, jar: std::path::PathBuf) {
+    if station.peek().servers.status(&id) != ServerStatus::Stopped {
+        return;
+    }
+    write(station, &id, |live| live.status = ServerStatus::Installing);
+    spawn_in_window(async move {
+        let prepared = off_ui({
+            let id = id.clone();
+            async move {
+                let _files = hold(&FILES, &id).await;
+                ensure_stopped(&id)?;
+                let mut server = servers::load_server(&id).await?;
+                servers::use_custom_jar(&mut server, &jar).await?;
+                servers::save_server(&server).await?;
+                Ok::<_, oneclient_core::LauncherError>(server)
+            }
+        })
+        .await;
+        match prepared {
+            Ok(server) => {
+                let prepare = Prepare::redo(&server);
+                install(station, server, prepare, None);
+            }
+            Err(err) => {
+                write(station, &id, |live| live.status = ServerStatus::Stopped);
+                notify_error(t("oneclient.servers.settings.jar.failed"), err);
+                invalidate_server(&id).await;
+            }
+        }
+    });
+}
+
 pub fn delete_server(id: String) {
     if !stopped_or_warn(&id) {
         return;
@@ -1400,6 +1436,16 @@ where
     });
 }
 
+/// Start registers its process under the file lock, so checking after taking it closes the race
+fn ensure_stopped(id: &str) -> oneclient_core::LauncherResult<()> {
+    if PIDS.lock().unwrap().contains_key(id) {
+        return Err(oneclient_core::LauncherError::Server(
+            "the server is running, stop it first".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub fn reset_world(id: String, keep: u32) {
     run(
         id.clone(),
@@ -1407,6 +1453,7 @@ pub fn reset_world(id: String, keep: u32) {
         async move {
             let _files = hold(&FILES, &id).await;
             let _backups = hold(&BACKUPS, &id).await;
+            ensure_stopped(&id)?;
             servers::reset_world(&servers::server_dir(&id)?, keep).await
         },
     );
@@ -1419,6 +1466,7 @@ pub fn restore_backup(id: String, backup: std::path::PathBuf) {
         async move {
             let _files = hold(&FILES, &id).await;
             let _backups = hold(&BACKUPS, &id).await;
+            ensure_stopped(&id)?;
             let server = servers::load_server(&id).await?;
             servers::restore_backup(&server.dir()?, &backup, server.backups_kept).await
         },

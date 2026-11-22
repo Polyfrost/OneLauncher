@@ -7,7 +7,7 @@ use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_common::domain::ProviderId;
 use oneclient_common::search::SearchQuery;
-use oneclient_core::servers::{ModUpdate, ServerMod};
+use oneclient_core::servers::{ModUpdate, Platform, ServerMod};
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
@@ -311,7 +311,9 @@ impl Component for ServerMods {
             })
             .collect();
 
-        let body: Element = if !modded {
+        let body: Element = if server.platform == Platform::Custom {
+            centered_note(t("oneclient.servers.mods.custom"))
+        } else if !modded {
             centered_note(t("oneclient.servers.mods.vanilla"))
         } else if mods.is_empty() {
             centered_note(t(if plugins {

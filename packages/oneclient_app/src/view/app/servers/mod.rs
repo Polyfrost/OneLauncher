@@ -129,20 +129,7 @@ pub fn fmt_uptime(started: Instant) -> String {
     }
 }
 
-pub fn fmt_bytes(bytes: u64) -> String {
-    const GB: f64 = 1024. * 1024. * 1024.;
-    const MB: f64 = 1024. * 1024.;
-    let b = bytes as f64;
-    if b >= GB {
-        format!("{:.1} GB", b / GB)
-    } else if b >= MB {
-        format!("{:.0} MB", b / MB)
-    } else {
-        format!("{:.0} KB", b / 1024.)
-    }
-}
-
-pub const DASH: &str = "\u{2014}";
+pub const DASH: &str = "-";
 
 pub fn head(live: &crate::servers::ServerLive, name: &str, size: f32) -> Element {
     let uuid = live.uuids.get(name).cloned().unwrap_or_default();

@@ -230,6 +230,15 @@ pub async fn install_server(
             .await?;
             vec!["-jar".into(), PAPER_JAR.into(), "nogui".into()]
         }
+        (Platform::Custom, _) => {
+            let jar = server
+                .custom_jar
+                .clone()
+                .filter(|jar| dir.join(jar).is_file())
+                .ok_or_else(|| fail("the server jar is missing, pick one in the server settings"))?;
+            step(progress, format_args!("Using {jar}"));
+            jar_launch(&jar)
+        }
         (Platform::Loader, GameLoader::Vanilla) => {
             step(progress, format_args!("Downloading {SERVER_JAR}"));
             download(
@@ -364,9 +373,42 @@ pub async fn platform_available(
     mc_version: &str,
 ) -> bool {
     match platform {
-        Platform::Loader => true,
+        Platform::Loader | Platform::Custom => true,
         Platform::Paper => paper_jar(state, mc_version).await.is_ok(),
     }
+}
+
+fn jar_launch(jar: &str) -> Vec<String> {
+    vec!["-jar".into(), jar.into(), "nogui".into()]
+}
+
+/// Copies a server jar the user picked into the folder and makes the server run it.
+/// The next install records how to start it, nothing is downloaded for it
+pub async fn use_custom_jar(server: &mut LocalServer, source: &Path) -> LauncherResult<()> {
+    let name = source
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| name.to_ascii_lowercase().ends_with(".jar"))
+        .ok_or_else(|| fail("pick a .jar file"))?
+        .to_string();
+    let target = server.dir()?.join(&name);
+    // Picking the jar that is already in the folder must not copy it onto itself
+    let same = match (
+        tokio::fs::canonicalize(source).await,
+        tokio::fs::canonicalize(&target).await,
+    ) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    };
+    if !same {
+        tokio::fs::copy(source, &target).await?;
+    }
+    server.platform = Platform::Custom;
+    server.loader = GameLoader::Vanilla;
+    server.loader_version = None;
+    server.custom_jar = Some(name);
+    server.launch.clear();
+    Ok(())
 }
 
 const ORNITHE_META: &str = "https://meta.ornithemc.net/v3/versions/gen2/fabric-loader";
@@ -710,6 +752,8 @@ pub async fn copy_from_instance(
 ) -> LauncherResult<(usize, usize)> {
     let mods = dir.join("mods");
     tokio::fs::create_dir_all(&mods).await?;
+    // Picks up mods added or removed by hand so the links match the instance folder
+    crate::game::sync_cluster_mods(state, cluster_id).await;
     let ctx = state.services.content();
     let linked =
         oneclient_content::packages::PackageStore::list_linked_artifacts(cluster_id, &ctx).await?;
@@ -1489,6 +1533,27 @@ async fn unpack_mrpack(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn custom_jar_is_stored_and_launched_without_managed_content() {
+        let mut server = LocalServer::new(
+            "Purpur".into(),
+            super::super::ServerKind::Scratch,
+            "1.21.4".into(),
+            GameLoader::Vanilla,
+        );
+        server.platform = Platform::Custom;
+        server.custom_jar = Some("purpur-1.21.4.jar".into());
+        let stored: LocalServer =
+            serde_json::from_slice(&serde_json::to_vec(&server).unwrap()).unwrap();
+        assert_eq!(stored.platform, Platform::Custom);
+        assert_eq!(stored.custom_jar.as_deref(), Some("purpur-1.21.4.jar"));
+        assert!(!stored.takes_content() && !stored.plugins());
+        assert_eq!(
+            jar_launch(stored.custom_jar.as_deref().unwrap()),
+            ["-jar", "purpur-1.21.4.jar", "nogui"]
+        );
+    }
 
     #[test]
     fn forge_installer_url_accepts_both_version_styles() {

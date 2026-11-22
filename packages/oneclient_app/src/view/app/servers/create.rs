@@ -87,6 +87,7 @@ struct Form {
     loading: State<bool>,
     icon: State<Option<PathBuf>>,
     folder: State<Option<PathBuf>>,
+    jar: State<Option<PathBuf>>,
     source: State<Option<Source>>,
     memory: State<String>,
     port: State<String>,
@@ -136,6 +137,7 @@ impl Component for CreateServerModal {
             loading: use_state(|| false),
             icon: use_state(|| None),
             folder: use_state(|| None),
+            jar: use_state(|| None),
             source: use_state(|| None),
             memory: use_state(|| DEFAULT_MEMORY_MB.to_string()),
             port: use_state(|| DEFAULT_PORT.to_string()),
@@ -334,6 +336,9 @@ impl Component for CreateServerModal {
             (Step::Type, ServerKind::Scratch) => t("oneclient.servers.create.note.scratch"),
             (Step::Type, ServerKind::Modpack) => t("oneclient.servers.create.note.modpack"),
             (Step::Type, ServerKind::Import) => t("oneclient.servers.create.note.import"),
+            (Step::Details, _) if platform == Platform::Custom => {
+                t("oneclient.servers.create.note.details.jar")
+            }
             (Step::Details, _) => t("oneclient.servers.create.note.details"),
             _ => "",
         };
@@ -464,6 +469,9 @@ impl Component for CreateServerModal {
                 let icon = (kind == ServerKind::Modpack)
                     .then(|| form.icon.read().clone())
                     .flatten();
+                let jar = (platform == Platform::Custom)
+                    .then(|| form.jar.read().clone())
+                    .flatten();
                 close_done.call(());
                 spawn_in_window(async move {
                     let name = server.name.clone();
@@ -476,6 +484,18 @@ impl Component for CreateServerModal {
                                     .await;
                                 if let Err(err) = saved {
                                     tracing::warn!(%err, "could not use the modpack icon for the server");
+                                }
+                            }
+                            // A failed copy shows up as a failed install, fixable from the settings
+                            if let Some(jar) = jar {
+                                let (back, copied) = off_ui(async move {
+                                    let copied = servers::use_custom_jar(&mut server, &jar).await;
+                                    (server, copied)
+                                })
+                                .await;
+                                server = back;
+                                if let Err(err) = copied {
+                                    tracing::warn!(%err, "could not copy the custom server jar");
                                 }
                             }
                             runtime::install(station, server, prepare, Some(port));
@@ -929,6 +949,46 @@ impl Component for LoaderStep {
             );
         }
 
+        {
+            let selected = platform == Platform::Custom;
+            let picked = form.jar.read().as_ref().and_then(|path| {
+                path.file_name()
+                    .map(|name| name.to_string_lossy().to_string())
+            });
+            let (mut jar, mut platform_state) = (form.jar, form.platform);
+            cards.push(cell_card(CellCard {
+                id: "custom-jar".to_string(),
+                title: platform_name(Platform::Custom).to_string(),
+                blurb: t("oneclient.servers.create.loader.jar.blurb").to_string(),
+                meta: picked,
+                corner: Some(
+                    Icon::new(IconType::File02)
+                        .size(22.)
+                        .color(if selected {
+                            colors::fg_primary()
+                        } else {
+                            colors::fg_secondary()
+                        })
+                        .into_element(),
+                ),
+                selected,
+                checkbox: false,
+                on_press: (move |()| {
+                    spawn(async move {
+                        if let Some(handle) = rfd::AsyncFileDialog::new()
+                            .add_filter(t("oneclient.servers.create.loader.jar.filter"), &["jar"])
+                            .pick_file()
+                            .await
+                        {
+                            jar.set(Some(handle.path().to_path_buf()));
+                            platform_state.set(Platform::Custom);
+                        }
+                    });
+                })
+                .into(),
+            }));
+        }
+
         fixed_grid(cards, 2, 124., 10.)
     }
 }
@@ -937,6 +997,7 @@ fn platform_name(platform: Platform) -> &'static str {
     match platform {
         Platform::Loader => "",
         Platform::Paper => "Paper",
+        Platform::Custom => t("oneclient.servers.create.loader.jar.title"),
     }
 }
 

@@ -16,7 +16,7 @@ pub use install::{
     ImportGuess, PackInfo, Progress, copy_from_instance, detect_import, download_pack,
     add_blocked_files, install_server, java_for, pack_icon, platform_available,
     read_pack, step_line,
-    supports_loader, unpack_pack,
+    supports_loader, unpack_pack, use_custom_jar,
 };
 pub use mods::{
     ModSource, ModUpdate, ServerMod, check_mod_updates, identify_mods, install_mod, list_mods,

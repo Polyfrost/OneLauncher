@@ -28,6 +28,8 @@ pub enum Platform {
     #[default]
     Loader,
     Paper,
+    /// A server jar the user picked, started as-is without managed content
+    Custom,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -70,6 +72,9 @@ pub struct LocalServer {
     /// What follows the JVM flags on the command line, set once the server is installed
     #[serde(default)]
     pub launch: Vec<String>,
+    /// File name of the picked jar inside the server folder, for `Platform::Custom`
+    #[serde(default)]
+    pub custom_jar: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -105,6 +110,7 @@ impl LocalServer {
             source_path: None,
             prepared: false,
             launch: Vec::new(),
+            custom_jar: None,
             created_at: Utc::now(),
         }
     }
@@ -120,12 +126,16 @@ impl LocalServer {
 
     #[must_use]
     pub fn plugins(&self) -> bool {
-        self.platform != Platform::Loader
+        self.platform == Platform::Paper
     }
 
     #[must_use]
     pub fn takes_content(&self) -> bool {
-        self.plugins() || self.loader.is_modded()
+        match self.platform {
+            Platform::Loader => self.loader.is_modded(),
+            Platform::Paper => true,
+            Platform::Custom => false,
+        }
     }
 
     #[must_use]
@@ -138,6 +148,7 @@ impl LocalServer {
         match self.platform {
             Platform::Loader => self.loader.to_string(),
             Platform::Paper => "Paper".to_string(),
+            Platform::Custom => "Custom".to_string(),
         }
     }
 }

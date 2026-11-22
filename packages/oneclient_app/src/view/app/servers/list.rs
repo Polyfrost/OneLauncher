@@ -5,7 +5,7 @@ use freya::router::RouterContext;
 use oneclient_core::servers::LocalServer;
 
 use super::create::CreateServerModal;
-use super::{DASH, fmt_bytes, fmt_uptime, loader_label, server_icon, status_label, version_art};
+use super::{DASH, fmt_uptime, loader_label, server_icon, status_label, version_art};
 use crate::Route;
 use crate::components::{
     ART_PREVIEW_EDGE, Avatar, Button, ContextMenu, Icon, IconType, ScrollArea, open_menu_at,
@@ -17,6 +17,7 @@ use crate::i18n::t;
 use crate::servers::{self, ServerLive, ServerStatus};
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, centered_note};
+use crate::utils::format_size;
 
 const CARD_MIN_W: f32 = 280.;
 const CARD_H: f32 = 384.;
@@ -162,10 +163,10 @@ impl Component for ServerCard {
         let world_size = run
             .map(|r| r.world_size)
             .filter(|size| *size > 0)
-            .map_or_else(|| DASH.to_string(), fmt_bytes);
-        let allocated = fmt_bytes(u64::from(self.server.memory_mb) * 1024 * 1024);
+            .map_or_else(|| DASH.to_string(), format_size);
+        let allocated = format_size(u64::from(self.server.memory_mb) * 1024 * 1024);
         let memory = match live.memory_bytes.filter(|_| live.status.is_live()) {
-            Some(used) => fmt_bytes(used),
+            Some(used) => format_size(used),
             None => allocated,
         };
 

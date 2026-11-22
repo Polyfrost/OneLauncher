@@ -95,6 +95,7 @@ impl Component for VersionRow {
         let loaders = settled_or_loading(&use_version_loaders(target.clone())).unwrap_or_default();
         let available = match server.platform {
             Platform::Paper => paper == Some(true),
+            Platform::Custom => true,
             Platform::Loader => {
                 server.loader == GameLoader::Vanilla || loaders.contains(&server.loader)
             }
@@ -183,6 +184,40 @@ pub(super) fn update_row(server: &LocalServer, stopped: bool) -> Option<Element>
         )
         .into_element(),
     )
+}
+
+pub(super) fn jar_row(server: &LocalServer, stopped: bool) -> Element {
+    let station = use_dispatch().station();
+    let id = server.id.clone();
+    let description = match &server.custom_jar {
+        Some(jar) if server.platform == Platform::Custom => {
+            tf("oneclient.servers.settings.jar.current", &[jar])
+        }
+        _ => t("oneclient.servers.settings.jar.description").to_string(),
+    };
+    settings_row(
+        IconType::File02,
+        t("oneclient.servers.settings.jar.title"),
+        description,
+        Button::new()
+            .small()
+            .secondary()
+            .enabled(stopped)
+            .on_press(move |_| {
+                let id = id.clone();
+                spawn(async move {
+                    if let Some(file) = rfd::AsyncFileDialog::new()
+                        .add_filter(t("oneclient.servers.create.loader.jar.filter"), &["jar"])
+                        .pick_file()
+                        .await
+                    {
+                        servers::use_custom_jar(station, id, file.path().to_path_buf());
+                    }
+                });
+            })
+            .text(t("oneclient.servers.settings.jar.choose")),
+    )
+    .into_element()
 }
 
 pub(super) fn java_row(server: &LocalServer) -> Element {

@@ -2,7 +2,7 @@ use freya::prelude::*;
 use freya::router::RouterContext;
 
 use super::console::ConsolePanel;
-use super::{DASH, card, card_head, fmt_bytes, fmt_uptime, head, list_preview, player_head};
+use super::{DASH, card, card_head, fmt_uptime, head, list_preview, player_head};
 use crate::Route;
 use crate::components::{Button, Icon, IconType, ScrollArea, copy_button};
 use crate::hooks::{
@@ -13,6 +13,7 @@ use crate::i18n::{t, tf};
 use crate::servers::{self, ServerLive, ServerStatus};
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, centered_note};
+use crate::utils::format_size;
 use oneclient_core::servers::LocalServer;
 
 const PORT_GUIDE: &str =
@@ -250,7 +251,7 @@ fn stats(live: &ServerLive, files: &ServerFiles, world_size: u64, max_players: &
             tile(
                 t("oneclient.servers.stats.memory"),
                 live.memory_bytes
-                    .map_or_else(|| DASH.to_string(), fmt_bytes),
+                    .map_or_else(|| DASH.to_string(), format_size),
                 None,
                 false,
                 None,
@@ -268,7 +269,7 @@ fn stats(live: &ServerLive, files: &ServerFiles, world_size: u64, max_players: &
                 if world_size == 0 {
                     DASH.to_string()
                 } else {
-                    fmt_bytes(world_size)
+                    format_size(world_size)
                 },
                 None,
                 false,

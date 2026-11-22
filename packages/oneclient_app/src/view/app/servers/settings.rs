@@ -392,6 +392,12 @@ impl Component for ServerSettings {
             "",
             super::software::java_row(&server),
         ));
+        software.push((
+            Section::Software,
+            t("oneclient.servers.settings.jar.title"),
+            t("oneclient.servers.settings.jar.description"),
+            super::software::jar_row(&server, stopped),
+        ));
         if !server.plugins() && server.loader.is_modded() {
             software.push((
                 Section::Software,

@@ -31,7 +31,7 @@ impl JavaRuntimeProvider for GraalVmRuntimeProvider {
         net: &RequestClient,
     ) -> JavaResult<Vec<JavaPackage>> {
         let Some(platform) = GRAALVM_PLATFORM else {
-            tracing::debug!("Oracle publishes no GraalVM build for this platform; listing nothing");
+            tracing::debug!("Oracle publishes no GraalVM build for this platform. Listing nothing");
             return Ok(Vec::new());
         };
 
@@ -85,7 +85,7 @@ async fn resolve_package(
         tracing::debug!(
             major,
             status = status.as_u16(),
-            "GraalVM checksum file is unavailable; skipping the major"
+            "GraalVM checksum file is unavailable. Skipping the major"
         );
         return Ok(None);
     }
@@ -93,7 +93,7 @@ async fn resolve_package(
     let Some(hex) = parse_checksum(&body) else {
         tracing::debug!(
             major,
-            "GraalVM checksum file is malformed; skipping the major"
+            "GraalVM checksum file is malformed. Skipping the major"
         );
         return Ok(None);
     };

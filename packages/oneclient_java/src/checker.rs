@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, time::Duration};
 
 use async_tempfile::TempDir;
 use tokio::sync::OnceCell;
@@ -6,6 +6,10 @@ use tokio::sync::OnceCell;
 use crate::error::{JavaError, JavaResult};
 
 const JAVA_INFO_CLASS: &[u8] = include_bytes!("../assets/java/JavaInfo.class");
+
+/// A probe that outlives this is treated as a broken install so a stuck
+/// executable or wrapper cannot block runtime listing
+const PROBE_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JavaCheckInfo {
@@ -28,7 +32,8 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
         .arg("JavaInfo")
         .env_remove("_JAVA_OPTIONS")
         .env_remove("JAVA_TOOL_OPTIONS")
-        .env_remove("JDK_JAVA_OPTIONS");
+        .env_remove("JDK_JAVA_OPTIONS")
+        .kill_on_drop(true);
     oneclient_common::process::no_window(command.as_std_mut());
     oneclient_common::process::strip_appimage_env(command.as_std_mut());
 
@@ -41,13 +46,16 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
 
     tracing::debug!("running command: {} {}", program, args.join(" "));
 
-    let output = command
-        .output()
-        .await
-        .map_err(|e| JavaError::RuntimeCheckError {
-            source: e,
-            path: absolute_path.clone(),
-        })?;
+    let Ok(output) = tokio::time::timeout(PROBE_TIMEOUT, command.output()).await else {
+        tracing::warn!(path = %absolute_path, "java probe timed out, killed it");
+        return Err(JavaError::InvalidJavaPath {
+            path: absolute_path,
+        });
+    };
+    let output = output.map_err(|e| JavaError::RuntimeCheckError {
+        source: e,
+        path: absolute_path.clone(),
+    })?;
 
     let java_info = String::from_utf8_lossy(&output.stdout);
 

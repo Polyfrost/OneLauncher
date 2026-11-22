@@ -10,8 +10,8 @@ mod updates;
 
 pub use error::BundleError;
 pub use install::{
-    clusters_sharing_artifact, clusters_sharing_global_folders, delete_artifact, effective_enabled,
-    enabled_bundle_bytes,
+    can_undo_artifact, clusters_sharing_artifact, clusters_sharing_global_folders, delete_artifact,
+    detach_undo_artifacts, effective_enabled, enabled_bundle_bytes,
     enabled_bundle_projects, extract_bundle_overrides_for_cluster, heal_bundle_activity,
     inherit_bundle_choices, install_bundle, install_cluster_bundles, install_enabled_bundle_files,
     install_package_from_bundle, list_cluster_bundle_overrides, on_user_disable_artifact,

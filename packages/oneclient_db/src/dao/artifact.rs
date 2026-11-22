@@ -466,6 +466,22 @@ pub async fn list_cluster_dependency_edges(
 	.await
 }
 
+/// Every provider identity for each linked file. A release shared between
+/// providers or re-published under another version may be a dependency by any of these IDs.
+pub async fn list_cluster_release_identities(
+    pool: &SqlitePool,
+    cluster_id: i64,
+) -> Result<Vec<crate::models::ClusterReleaseIdentityRow>, sqlx::Error> {
+    sqlx::query_as::<_, crate::models::ClusterReleaseIdentityRow>(
+        "SELECT ca.hash, pr.provider, pr.project_id, pr.version_id
+         FROM cluster_artifacts ca JOIN provider_releases pr ON pr.hash = ca.hash
+         WHERE ca.cluster_id = ?",
+    )
+    .bind(cluster_id)
+    .fetch_all(pool)
+    .await
+}
+
 /// The cluster's releases whose dependency list has never been recorded.
 ///
 /// Everything installed before the dependency table existed lands here, which
@@ -594,21 +610,99 @@ pub async fn link_cluster_artifact(
     hash: &str,
     cluster_file_name: &str,
 ) -> Result<ClusterArtifactRow, sqlx::Error> {
-    sqlx::query_as!(
-        ClusterArtifactRow,
-        r#"
-		INSERT INTO cluster_artifacts (cluster_id, hash, cluster_file_name, enabled)
-		VALUES (?, ?, ?, 1)
-		ON CONFLICT(cluster_id, hash) DO UPDATE SET
-			cluster_file_name = excluded.cluster_file_name
-		RETURNING cluster_id, hash, cluster_file_name, enabled, seen_status
-		"#,
-        cluster_id,
-        hash,
-        cluster_file_name
+    link_cluster_artifact_recording_addition(pool, cluster_id, hash, cluster_file_name)
+        .await
+        .map(|(link, _)| link)
+}
+
+/// Returns the timestamp only when this operation created the link.
+pub async fn link_cluster_artifact_recording_addition(
+    pool: &SqlitePool,
+    cluster_id: i64,
+    hash: &str,
+    cluster_file_name: &str,
+) -> Result<(ClusterArtifactRow, Option<String>), sqlx::Error> {
+    // Undo identifies a manual link by its timestamp. An upsert leaves it alone,
+    // while unlinking and reinstalling the same hash must give it a new identity.
+    use std::sync::atomic::{AtomicI64, Ordering};
+    static LAST_LINK: AtomicI64 = AtomicI64::new(0);
+    let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+    let previous = LAST_LINK.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |last| {
+        Some(now.max(last + 1))
+    }).unwrap_or_else(|last| last);
+    let added_at = chrono::DateTime::from_timestamp_nanos(now.max(previous + 1))
+        .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true);
+
+    let (cluster_id, hash, cluster_file_name, enabled, seen_status, stored_added_at) =
+        sqlx::query_as::<_, (i64, String, String, i64, i64, Option<String>)>(
+            r#"
+            INSERT INTO cluster_artifacts (cluster_id, hash, cluster_file_name, enabled, added_at)
+            VALUES (?, ?, ?, 1, ?)
+            ON CONFLICT(cluster_id, hash) DO UPDATE SET
+                cluster_file_name = excluded.cluster_file_name
+            RETURNING cluster_id, hash, cluster_file_name, enabled, seen_status, added_at
+            "#,
+        )
+        .bind(cluster_id)
+        .bind(hash)
+        .bind(cluster_file_name)
+        .bind(&added_at)
+        .fetch_one(pool)
+        .await?;
+
+    Ok((
+        ClusterArtifactRow { cluster_id, hash, cluster_file_name, enabled, seen_status },
+        stored_added_at.filter(|stored| stored == &added_at),
+    ))
+}
+
+pub async fn matches_manual_artifact_link(
+    pool: &SqlitePool,
+    cluster_id: i64,
+    hash: &str,
+    added_at: &str,
+) -> Result<bool, sqlx::Error> {
+    let found = sqlx::query_scalar::<_, i64>(
+        "SELECT 1 FROM cluster_artifacts WHERE cluster_id = ? AND hash = ? AND added_at = ?
+         AND bundle_name IS NULL AND package_id IS NULL",
     )
-    .fetch_one(pool)
-    .await
+    .bind(cluster_id)
+    .bind(hash)
+    .bind(added_at)
+    .fetch_optional(pool)
+    .await?;
+    Ok(found.is_some())
+}
+
+/// Removes a dependency group atomically. If any link changed ownership or was
+/// replaced since the plan, keep every link so no remaining package is broken.
+pub async fn unlink_unchanged_manual_artifacts(
+    pool: &SqlitePool,
+    cluster_id: i64,
+    artifacts: &[(&str, &str)],
+) -> Result<Option<Vec<ClusterArtifactRow>>, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let mut links = Vec::with_capacity(artifacts.len());
+    for (hash, added_at) in artifacts {
+        let removed = sqlx::query_as::<_, ClusterArtifactRow>(
+            "DELETE FROM cluster_artifacts WHERE cluster_id = ? AND hash = ? AND added_at = ?
+             AND bundle_name IS NULL AND package_id IS NULL
+             RETURNING cluster_id, hash, cluster_file_name, enabled, seen_status",
+        )
+        .bind(cluster_id)
+        .bind(hash)
+        .bind(added_at)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let Some(removed) = removed else {
+            tx.rollback().await?;
+            return Ok(None);
+        };
+        links.push(removed);
+    }
+    tx.commit().await?;
+    Ok(Some(links))
 }
 
 /// `DISTINCT` is required `provider_releases` is keyed by version so one
@@ -887,6 +981,104 @@ mod tests {
         .await
         .expect("insert cluster")
         .id
+    }
+
+    #[tokio::test]
+    async fn undo_can_remove_only_the_original_manual_link() {
+        let pool = pool().await;
+        let cluster_id = seed_cluster(&pool).await;
+        let hash = "undo_hash";
+        let file = "example.jar";
+        insert_artifact(&pool, hash, 0, "a/example.jar", file, None)
+            .await
+            .unwrap();
+
+        let (_, original) = link_cluster_artifact_recording_addition(&pool, cluster_id, hash, file)
+            .await
+            .unwrap();
+        let original = original.unwrap();
+        let (_, upsert) = link_cluster_artifact_recording_addition(&pool, cluster_id, hash, file)
+            .await
+            .unwrap();
+        assert_eq!(upsert, None);
+
+        unlink_cluster_artifact(&pool, cluster_id, hash).await.unwrap();
+        let (_, replacement) = link_cluster_artifact_recording_addition(&pool, cluster_id, hash, file)
+            .await
+            .unwrap();
+        let replacement = replacement.unwrap();
+        assert_ne!(original, replacement);
+        assert!(
+            unlink_unchanged_manual_artifacts(&pool, cluster_id, &[(hash, &original)])
+                .await.unwrap().is_none()
+        );
+
+        crate::dao::cluster_bundle::track_bundle_artifact(&pool, cluster_id, hash, "bundle", "v1", "pkg")
+            .await.unwrap();
+        assert!(
+            unlink_unchanged_manual_artifacts(&pool, cluster_id, &[(hash, &replacement)])
+                .await.unwrap().is_none()
+        );
+        crate::dao::cluster_bundle::clear_bundle_tracking(&pool, cluster_id, hash)
+            .await.unwrap();
+        assert!(
+            unlink_unchanged_manual_artifacts(&pool, cluster_id, &[(hash, &replacement)])
+                .await.unwrap().is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_changed_link_rolls_back_the_entire_undo_group() {
+        let pool = pool().await;
+        let cluster_id = seed_cluster(&pool).await;
+        let mut links = Vec::new();
+
+        for hash in ["first", "second"] {
+            let file = format!("{hash}.jar");
+            insert_artifact(&pool, hash, 0, &file, &file, None)
+                .await
+                .unwrap();
+            let (_, stamp) = link_cluster_artifact_recording_addition(
+                &pool, cluster_id, hash, &file,
+            ).await.unwrap();
+            links.push((hash, stamp.unwrap()));
+        }
+
+        assert!(unlink_unchanged_manual_artifacts(
+            &pool, cluster_id, &[("first", &links[0].1), ("second", "stale")],
+        ).await.unwrap().is_none());
+
+        for (hash, stamp) in &links {
+            assert!(matches_manual_artifact_link(&pool, cluster_id, hash, stamp).await.unwrap());
+        }
+        let candidates: Vec<_> = links.iter().map(|(hash, stamp)| (*hash, stamp.as_str())).collect();
+        assert_eq!(unlink_unchanged_manual_artifacts(&pool, cluster_id, &candidates)
+            .await.unwrap().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn dependency_resolution_sees_all_provider_and_version_aliases() {
+        let pool = pool().await;
+        let cluster_id = seed_cluster(&pool).await;
+        let hash = "same_file";
+        insert_artifact(&pool, hash, 0, "mod.jar", "mod.jar", None).await.unwrap();
+        link_cluster_artifact(&pool, cluster_id, hash, "mod.jar").await.unwrap();
+        let releases = [(0, "modrinth-project", "first-version"),
+                        (0, "modrinth-project", "second-version"),
+                        (1, "curseforge-project", "other-version")];
+        for (provider, project, version) in releases {
+            upsert_provider_release(
+                &pool, provider, project, version, hash, "Mod", version, None, "[]", "[]",
+            ).await.unwrap();
+        }
+
+        let identities = list_cluster_release_identities(&pool, cluster_id).await.unwrap();
+        let mut actual = identities.iter().map(|identity| {
+            assert_eq!(identity.hash, hash);
+            (identity.provider, identity.project_id.as_str(), identity.version_id.as_str())
+        }).collect::<Vec<_>>();
+        actual.sort_unstable();
+        assert_eq!(actual, releases);
     }
 
     #[tokio::test]

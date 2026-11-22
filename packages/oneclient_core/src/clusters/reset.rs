@@ -97,9 +97,9 @@ pub async fn reset_cluster(
         None
     };
 
-    super::modpack_import::drop_imported_modpacks(state, &cluster).await;
-
     {
+        let _mutation = oneclient_content::packages::package_mutation_guard().await;
+        super::modpack_import::drop_imported_modpacks(state, &cluster).await;
         let _mods_sync = crate::game::lock_mods_sync(cluster_id).await;
 
         flag_dao::set(

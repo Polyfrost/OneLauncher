@@ -1995,6 +1995,7 @@
   "oneclient.onboarding.bundles.load_failed": "Couldn't load bundles: %s",
   "oneclient.onboarding.bundles.loading": "Loading bundles...",
   "oneclient.onboarding.bundles.mod.author": "by %s",
+  "oneclient.onboarding.bundles.opt_in.versions": "What versions do you play %s on?",
   "oneclient.onboarding.bundles.subtitle": "Everything you need is already included. Pick anything extra you want.",
   "oneclient.onboarding.bundles.title": "Mods",
   "oneclient.onboarding.language.choose": "Choose your preferred language",

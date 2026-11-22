@@ -279,6 +279,47 @@ pub(crate) fn choice_row_sized(
         .into_element()
 }
 
+pub(crate) fn version_chip(
+    text: &str,
+    active: bool,
+    on_press: impl FnMut(()) + 'static,
+) -> Element {
+    let mut on_press = on_press;
+    let (bg, border, fg) = if active {
+        (
+            colors::brand().with_a(38),
+            colors::brand(),
+            colors::fg_primary(),
+        )
+    } else {
+        (
+            Color::TRANSPARENT,
+            colors::component_border(),
+            colors::fg_secondary(),
+        )
+    };
+
+    rect()
+        .horizontal()
+        .height(Size::px(32.))
+        .center()
+        .padding(Gaps::new_symmetric(0., 14.))
+        .corner_radius(rounded(999.))
+        .background(bg)
+        .border(border_all_color(1.5, border))
+        .a11y_role(AccessibilityRole::Button)
+        .cursor(CursorIcon::Pointer)
+        .on_press(move |_| on_press(()))
+        .child(
+            label()
+                .text(text.to_string())
+                .font_size(text_size(13.))
+                .font_weight(FontWeight::MEDIUM)
+                .color(fg),
+        )
+        .into_element()
+}
+
 pub(crate) fn step_heading(title: &str, subtitle: &str) -> impl IntoElement {
     rect()
         .vertical()

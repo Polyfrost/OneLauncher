@@ -18,7 +18,7 @@ use crate::view::app::{
     BUNDLE_CARD_H, BUNDLE_COLUMNS, CellCard, bundle_blurb, cell_card, file_keys, package_names,
 };
 use crate::view::onboarding::{
-    bundle_taken, is_default_file, onboarding_nav, onboarding_slide, step_heading,
+    bundle_taken, is_default_file, onboarding_nav, onboarding_slide, step_heading, version_chip,
 };
 
 const FPS_WARNING_BUNDLE: &str = "SkyBlock";
@@ -92,32 +92,38 @@ fn fps_warning_banner() -> Element {
 #[derive(Clone)]
 struct BundleGroup {
     display_name: String,
-    members: Vec<(i64, BundleArchive)>,
+    /// (cluster id, minecraft version, archive), one per instance offering this bundle
+    members: Vec<(i64, String, BundleArchive)>,
 }
 
 impl BundleGroup {
     fn taken(&self, selected: &HashSet<String>) -> bool {
         self.members
             .iter()
-            .any(|(cluster_id, archive)| bundle_taken(*cluster_id, archive, selected))
+            .any(|(cluster_id, _, archive)| bundle_taken(*cluster_id, archive, selected))
     }
 
     fn toggled(&self, selected: &HashSet<String>) -> HashSet<String> {
-        let taken = self.taken(selected);
+        let on = !self.taken(selected);
         let mut next = selected.clone();
-        for (cluster_id, archive) in &self.members {
-            let visible = file_keys(*cluster_id, archive, |_| true);
-            if taken {
-                for key in &visible {
-                    next.remove(key);
-                }
-                continue;
-            }
-            let defaults = file_keys(*cluster_id, archive, is_default_file);
-            next.extend(if defaults.is_empty() { visible } else { defaults });
+        for (cluster_id, _, archive) in &self.members {
+            set_member(*cluster_id, archive, on, &mut next);
         }
         next
     }
+}
+
+/// Turning a version off also drops its optional mods so it reads as unpicked
+fn set_member(cluster_id: i64, archive: &BundleArchive, on: bool, next: &mut HashSet<String>) {
+    let visible = file_keys(cluster_id, archive, |_| true);
+    if !on {
+        for key in &visible {
+            next.remove(key);
+        }
+        return;
+    }
+    let defaults = file_keys(cluster_id, archive, is_default_file);
+    next.extend(if defaults.is_empty() { visible } else { defaults });
 }
 
 fn bundle_groups(clusters: &[ClusterBundles]) -> Vec<BundleGroup> {
@@ -125,7 +131,11 @@ fn bundle_groups(clusters: &[ClusterBundles]) -> Vec<BundleGroup> {
     for cb in clusters {
         for archive in &cb.archives {
             let name = bundle_display_name(archive);
-            let member = (cb.cluster.id, archive.clone());
+            let member = (
+                cb.cluster.id,
+                cb.cluster.mc_version.clone(),
+                archive.clone(),
+            );
             match groups.iter_mut().find(|g| g.display_name == name) {
                 Some(group) => group.members.push(member),
                 None => groups.push(BundleGroup {
@@ -134,6 +144,9 @@ fn bundle_groups(clusters: &[ClusterBundles]) -> Vec<BundleGroup> {
                 }),
             }
         }
+    }
+    for group in &mut groups {
+        group.members.sort_by(|a, b| a.1.cmp(&b.1));
     }
     groups
 }
@@ -148,6 +161,64 @@ fn toggle_group(
     selected.set(next);
 }
 
+fn toggle_member(
+    mut selected: State<HashSet<String>>,
+    mut user_touched: State<bool>,
+    cluster_id: i64,
+    archive: &BundleArchive,
+) {
+    let mut next = selected.peek().clone();
+    let on = !bundle_taken(cluster_id, archive, &next);
+    set_member(cluster_id, archive, on, &mut next);
+    user_touched.set(true);
+    selected.set(next);
+}
+
+const CHIPS_PER_ROW: usize = 4;
+
+/// Per-version control for a picked bundle offered by more than one instance
+fn version_picker(
+    group: &BundleGroup,
+    selected_set: &HashSet<String>,
+    selected: State<HashSet<String>>,
+    user_touched: State<bool>,
+) -> Element {
+    let rows: Vec<Element> = group
+        .members
+        .chunks(CHIPS_PER_ROW)
+        .map(|chunk| {
+            rect()
+                .horizontal()
+                .spacing(8.)
+                .children(chunk.iter().map(|(cluster_id, version, archive)| {
+                    let active = bundle_taken(*cluster_id, archive, selected_set);
+                    let cluster_id = *cluster_id;
+                    let archive = archive.clone();
+                    version_chip(version, active, move |()| {
+                        toggle_member(selected, user_touched, cluster_id, &archive)
+                    })
+                }))
+                .into_element()
+        })
+        .collect();
+
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(8.)
+        .child(
+            label()
+                .text(tf(
+                    "oneclient.onboarding.bundles.opt_in.versions",
+                    &[&group.display_name],
+                ))
+                .font_size(text_size(13.))
+                .color(colors::fg_secondary()),
+        )
+        .children(rows)
+        .into_element()
+}
+
 fn group_card(
     group: &BundleGroup,
     selected_set: &HashSet<String>,
@@ -155,7 +226,7 @@ fn group_card(
     selected: State<HashSet<String>>,
     user_touched: State<bool>,
 ) -> Element {
-    let archive = &group.members[0].1;
+    let archive = &group.members[0].2;
     let offered = || archive.manifest.files.iter().filter(|f| is_default_file(f));
     let count = offered().count();
     let toggle = group.clone();
@@ -199,7 +270,7 @@ impl Component for OnboardingBundlePicker {
         };
 
         let groups = bundle_groups(&clusters);
-        let shown: Vec<BundleArchive> = groups.iter().map(|g| g.members[0].1.clone()).collect();
+        let shown: Vec<BundleArchive> = groups.iter().map(|g| g.members[0].2.clone()).collect();
 
         let mut mr_ids = Vec::new();
         let mut cf_ids = Vec::new();
@@ -219,6 +290,11 @@ impl Component for OnboardingBundlePicker {
             .iter()
             .map(|g| group_card(g, &selected_set, &names, selected, user_touched))
             .collect();
+        let version_pickers: Vec<Element> = groups
+            .iter()
+            .filter(|g| g.members.len() > 1 && g.taken(&selected_set))
+            .map(|g| version_picker(g, &selected_set, selected, user_touched))
+            .collect();
         let fps_warning = groups.iter().any(|g| {
             g.display_name.eq_ignore_ascii_case(FPS_WARNING_BUNDLE) && g.taken(&selected_set)
         });
@@ -235,6 +311,7 @@ impl Component for OnboardingBundlePicker {
                         .then(fps_warning_banner)
                         .into_iter()
                         .chain([fixed_grid(cards, BUNDLE_COLUMNS, BUNDLE_CARD_H, GRID_GAP)])
+                        .chain(version_pickers)
                         .collect::<Vec<_>>(),
                 )
                 .into_element()
@@ -318,5 +395,20 @@ mod tests {
 
         on.insert(pkg_key(1, name, "sb-opt"));
         assert!(groups[0].toggled(&on).is_empty());
+    }
+
+    #[test]
+    fn a_version_can_be_dropped_without_touching_the_others() {
+        let groups = bundle_groups(&catalog());
+        let name = "OneClient 1.21.11 Fabric [SkyBlock]";
+        let mut on = groups[0].toggled(&HashSet::new());
+        on.insert(pkg_key(2, name, "sb-opt"));
+
+        set_member(1, &groups[0].members[0].2, false, &mut on);
+        assert_eq!(
+            on,
+            HashSet::from([pkg_key(2, name, "sb-a"), pkg_key(2, name, "sb-opt")])
+        );
+        assert!(groups[0].taken(&on));
     }
 }

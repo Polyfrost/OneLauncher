@@ -38,6 +38,9 @@ pub enum GameError {
     #[error("this instance is being reset; wait for the reset to finish before launching it")]
     Resetting,
 
+    #[error("the problem mod search is switching this instance's mods; launch it again once that finishes")]
+    Diagnosing,
+
     #[error(
         "this instance's last reset didn't finish; run Reset Instance again from its settings before launching it"
     )]

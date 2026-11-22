@@ -436,9 +436,25 @@ fn banner_text(status: &BisectStatus, game_active: bool) -> (String, String) {
                         tf("oneclient.cluster.bisect.banner.running.partner", &[&together])
                     )
                 };
-                let testing = status.count(BisectRole::Testing);
-                let waiting = status.count(BisectRole::Waiting);
-                let cleared = status.count(BisectRole::Cleared);
+                let part = |role, one, other| {
+                    let n = status.count(role);
+                    tf(if n == 1 { one } else { other }, &[&n])
+                };
+                let testing = part(
+                    BisectRole::Testing,
+                    "oneclient.cluster.bisect.banner.running.testing.one",
+                    "oneclient.cluster.bisect.banner.running.testing.other",
+                );
+                let cleared = part(
+                    BisectRole::Cleared,
+                    "oneclient.cluster.bisect.banner.running.cleared.one",
+                    "oneclient.cluster.bisect.banner.running.cleared.other",
+                );
+                let waiting = part(
+                    BisectRole::Waiting,
+                    "oneclient.cluster.bisect.banner.running.off.one",
+                    "oneclient.cluster.bisect.banner.running.off.other",
+                );
                 format!(
                     "{found}{}",
                     tf(
@@ -557,7 +573,8 @@ fn halted_details(status: &BisectStatus, idle: bool, mutation: UseMutation<Bisec
 fn panel_frame(
     title: String,
     body: Option<String>,
-    content: Element,
+    top: Option<Element>,
+    content: ScrollArea,
     footer: Vec<Element>,
     mut panel: State<Panel>,
 ) -> Element {
@@ -592,12 +609,8 @@ fn panel_frame(
                                 .color(colors::fg_secondary())
                                 .into_element()
                         }))
-                        .child(
-                            ScrollArea::new()
-                                .width(Size::fill())
-                                .height(Size::window_percent(55.))
-                                .child(content),
-                        )
+                        .maybe_child(top)
+                        .child(content.width(Size::fill()).height(Size::window_percent(55.)))
                         .child(
                             rect()
                                 .horizontal()
@@ -626,6 +639,9 @@ fn choice_label(choice: BisectChoice) -> String {
     }
     .to_string()
 }
+
+/// Fits the name line, the role line and the choice buttons
+const MANAGE_ROW_H: f32 = 44.;
 
 fn manage_panel(
     status: &BisectStatus,
@@ -705,7 +721,11 @@ fn manage_panel(
         );
     }
 
-    for m in &status.mods {
+    // Packs can hold hundreds of mods, so only the rows in view are built
+    let mods = std::rc::Rc::new(status.mods.clone());
+    let count = mods.len();
+    let render = move |i: usize| {
+        let m = &mods[i];
         let locked = matches!(m.role, BisectRole::Problem | BisectRole::Found);
         let choices = [
             BisectChoice::Search,
@@ -730,10 +750,10 @@ fn manage_panel(
                 .text(choice_label(choice));
             if selected { button.primary() } else { button.ghost() }.into_element()
         });
-        rows.push(
-            rect()
+        rect()
                 .horizontal()
                 .width(Size::fill())
+                .height(Size::fill())
                 .cross_align(Alignment::Center)
                 .spacing(8.)
                 .padding(Gaps::new_symmetric(6., 10.))
@@ -760,19 +780,23 @@ fn manage_panel(
                         ),
                 )
                 .child(rect().horizontal().spacing(2.).children(choices))
-                .into_element(),
-        );
-    }
+                .into_element()
+    };
+
+    // The few mods that can't load wrap to any height, so they sit above the list
+    let top = (!rows.is_empty()).then(|| {
+        ScrollArea::new()
+            .width(Size::fill())
+            .max_height(Size::px(160.))
+            .child(rect().vertical().width(Size::fill()).spacing(6.).children(rows))
+            .into_element()
+    });
 
     panel_frame(
         t("oneclient.cluster.bisect.manage.title").to_string(),
         Some(t("oneclient.cluster.bisect.manage.body").to_string()),
-        rect()
-            .vertical()
-            .width(Size::fill())
-            .spacing(6.)
-            .children(rows)
-            .into_element(),
+        top,
+        ScrollArea::new().lazy(count, MANAGE_ROW_H, 6., render),
         Vec::new(),
         panel,
     )
@@ -857,7 +881,8 @@ fn history_panel(status: &BisectStatus, panel: State<Panel>) -> Element {
     panel_frame(
         t("oneclient.cluster.bisect.history.title").to_string(),
         None,
-        content,
+        None,
+        ScrollArea::new().child(content),
         Vec::new(),
         panel,
     )
@@ -993,12 +1018,14 @@ fn results_panel(status: &BisectStatus, panel: State<Panel>) -> Element {
     panel_frame(
         t("oneclient.cluster.bisect.results.title").to_string(),
         None,
-        rect()
-            .vertical()
-            .width(Size::fill())
-            .spacing(8.)
-            .children(blocks)
-            .into_element(),
+        None,
+        ScrollArea::new().child(
+            rect()
+                .vertical()
+                .width(Size::fill())
+                .spacing(8.)
+                .children(blocks),
+        ),
         Vec::new(),
         panel,
     )

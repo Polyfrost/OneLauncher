@@ -3,7 +3,7 @@ mod meta;
 mod resolve;
 mod version;
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -443,7 +443,7 @@ pub async fn start_bisect(
     progress: impl Fn(&str, u64, u64),
 ) -> LauncherResult<BisectStatus> {
     let _guard = OPS.lock().await;
-    ensure_idle(state, cluster_id)?;
+    let _busy = ensure_idle(state, cluster_id)?;
     let db = &state.services.db;
     if bisect_dao::is_active(db, cluster_id).await? {
         return Err(BisectError::AlreadyRunning.into());
@@ -572,7 +572,7 @@ pub async fn answer_bisect(
     answer: BisectAnswer,
 ) -> LauncherResult<BisectStatus> {
     let _guard = OPS.lock().await;
-    ensure_idle(state, cluster_id)?;
+    let _busy = ensure_idle(state, cluster_id)?;
     let mut session = load(state, cluster_id, true)
         .await?
         .ok_or(BisectError::NotRunning)?;
@@ -607,7 +607,7 @@ pub async fn answer_bisect(
 #[tracing::instrument(skip(state))]
 pub async fn skip_bisect_answer(state: &Arc<LauncherState>, cluster_id: i64) -> LauncherResult<()> {
     let _guard = OPS.lock().await;
-    ensure_idle(state, cluster_id)?;
+    let _busy = ensure_idle(state, cluster_id)?;
     bisect_dao::clear_suggestions(&state.services.db, cluster_id).await?;
     bisect_dao::set_pending_exit(&state.services.db, cluster_id, BisectExit::None).await?;
     state.services.events.signal(Signal::ClustersChanged);
@@ -620,7 +620,7 @@ pub async fn undo_bisect_answer(
     cluster_id: i64,
 ) -> LauncherResult<BisectStatus> {
     let _guard = OPS.lock().await;
-    ensure_idle(state, cluster_id)?;
+    let _busy = ensure_idle(state, cluster_id)?;
     let mut session = load(state, cluster_id, true)
         .await?
         .ok_or(BisectError::NotRunning)?;
@@ -639,7 +639,7 @@ pub async fn continue_bisect(
     cluster_id: i64,
 ) -> LauncherResult<BisectStatus> {
     let _guard = OPS.lock().await;
-    ensure_idle(state, cluster_id)?;
+    let _busy = ensure_idle(state, cluster_id)?;
     let mut session = load(state, cluster_id, true)
         .await?
         .ok_or(BisectError::NotRunning)?;
@@ -664,7 +664,7 @@ pub async fn reset_bisect(
     cluster_id: i64,
 ) -> LauncherResult<BisectStatus> {
     let _guard = OPS.lock().await;
-    ensure_idle(state, cluster_id)?;
+    let _busy = ensure_idle(state, cluster_id)?;
     let db = &state.services.db;
     let mut session = load(state, cluster_id, true)
         .await?
@@ -692,7 +692,7 @@ pub async fn set_bisect_mod_choice(
     choice: BisectChoice,
 ) -> LauncherResult<BisectStatus> {
     let _guard = OPS.lock().await;
-    ensure_idle(state, cluster_id)?;
+    let _busy = ensure_idle(state, cluster_id)?;
     let mut session = load(state, cluster_id, true)
         .await?
         .ok_or(BisectError::NotRunning)?;
@@ -719,7 +719,7 @@ pub async fn settle_unresolvable_mod(
     ignore: bool,
 ) -> LauncherResult<BisectStatus> {
     let _guard = OPS.lock().await;
-    ensure_idle(state, cluster_id)?;
+    let _busy = ensure_idle(state, cluster_id)?;
     let mut session = load(state, cluster_id, true)
         .await?
         .ok_or(BisectError::NotRunning)?;
@@ -800,7 +800,7 @@ pub async fn use_hidden_dependencies(
     accept: bool,
 ) -> LauncherResult<BisectStatus> {
     let _guard = OPS.lock().await;
-    ensure_idle(state, cluster_id)?;
+    let _busy = ensure_idle(state, cluster_id)?;
     let mut session = load(state, cluster_id, true)
         .await?
         .ok_or(BisectError::NotRunning)?;
@@ -824,7 +824,7 @@ pub async fn finish_bisect(
     disable: &[String],
 ) -> LauncherResult<()> {
     let _guard = OPS.lock().await;
-    ensure_idle(state, cluster_id)?;
+    let _busy = ensure_idle(state, cluster_id)?;
     let Some(session) = load(state, cluster_id, true).await? else {
         return Err(BisectError::NotRunning.into());
     };
@@ -896,9 +896,9 @@ pub async fn resume_unfinished_bisects(state: &Arc<LauncherState>) {
         Ok(clusters) => {
             for cluster_id in clusters {
                 let _guard = OPS.lock().await;
-                if ensure_idle(state, cluster_id).is_err() {
+                let Ok(_busy) = ensure_idle(state, cluster_id) else {
                     continue;
-                }
+                };
                 if let Err(err) = complete_finish(state, cluster_id).await {
                     tracing::warn!(cluster_id, error = %err, "could not finish restoring mods after a search");
                 }
@@ -911,9 +911,9 @@ pub async fn resume_unfinished_bisects(state: &Arc<LauncherState>) {
         Ok(clusters) => {
             for cluster_id in clusters {
                 let _guard = OPS.lock().await;
-                if ensure_idle(state, cluster_id).is_err() {
+                let Ok(_busy) = ensure_idle(state, cluster_id) else {
                     continue;
-                }
+                };
                 let upgraded = match load(state, cluster_id, true).await {
                     Ok(Some(session)) => fresh_round(state, session, 1).await,
                     Ok(None) => Err(BisectError::NotRunning.into()),
@@ -938,7 +938,7 @@ pub async fn keep_bisect_mods_on(
     hashes: &[String],
 ) -> LauncherResult<BisectStatus> {
     let _guard = OPS.lock().await;
-    ensure_idle(state, cluster_id)?;
+    let _busy = ensure_idle(state, cluster_id)?;
     let mut session = load(state, cluster_id, true)
         .await?
         .ok_or(BisectError::NotRunning)?;
@@ -970,7 +970,7 @@ pub async fn accept_bisect_suggestion(
     cluster_id: i64,
 ) -> LauncherResult<BisectStatus> {
     let _guard = OPS.lock().await;
-    ensure_idle(state, cluster_id)?;
+    let _busy = ensure_idle(state, cluster_id)?;
     let mut session = load(state, cluster_id, true)
         .await?
         .ok_or(BisectError::NotRunning)?;
@@ -1023,7 +1023,7 @@ pub async fn decline_bisect_suggestion(
     cluster_id: i64,
 ) -> LauncherResult<()> {
     let _guard = OPS.lock().await;
-    ensure_idle(state, cluster_id)?;
+    let _busy = ensure_idle(state, cluster_id)?;
     bisect_dao::clear_suggestions(&state.services.db, cluster_id).await?;
     state.services.events.signal(Signal::ClustersChanged);
     Ok(())
@@ -1428,11 +1428,32 @@ async fn artifact_path(state: &Arc<LauncherState>, hash: &str) -> Option<PathBuf
     }
 }
 
-fn ensure_idle(state: &Arc<LauncherState>, cluster_id: i64) -> Result<(), BisectError> {
+static SWITCHING: std::sync::Mutex<BTreeSet<i64>> = std::sync::Mutex::new(BTreeSet::new());
+
+/// Marks a cluster's mods as being switched until dropped, so a launch refuses to start meanwhile
+struct Switching(i64);
+
+impl Drop for Switching {
+    fn drop(&mut self) {
+        SWITCHING.lock().unwrap().remove(&self.0);
+    }
+}
+
+/// Whether a search is changing this cluster's mods right now
+#[must_use]
+pub fn is_switching(cluster_id: i64) -> bool {
+    SWITCHING.lock().unwrap().contains(&cluster_id)
+}
+
+/// Claims the cluster before checking for a game, while a launch marks itself active before
+/// checking `is_switching`, so the two can't both go ahead
+fn ensure_idle(state: &Arc<LauncherState>, cluster_id: i64) -> Result<Switching, BisectError> {
+    SWITCHING.lock().unwrap().insert(cluster_id);
+    let claim = Switching(cluster_id);
     if state.games.is_active(cluster_id) {
         Err(BisectError::GameRunning)
     } else {
-        Ok(())
+        Ok(claim)
     }
 }
 
@@ -1757,14 +1778,7 @@ async fn apply(
     for (hash, on) in &switches {
         if let Err(err) = PackageStore::set_artifact_enabled_to(cluster_id, hash, *on, &ctx).await {
             tracing::warn!(cluster_id, %hash, error = %err, "could not switch a mod for the search");
-            for (hash, on) in done.iter().rev() {
-                if let Err(err) =
-                    PackageStore::set_artifact_enabled_to(cluster_id, hash, !on, &ctx).await
-                {
-                    tracing::warn!(cluster_id, %hash, error = %err, "could not undo a switch for the search");
-                }
-            }
-            state.services.events.signal(Signal::ClustersChanged);
+            undo_switches(state, cluster_id, &done).await;
             return Err(BisectError::SwitchFailed {
                 name: session.name(hash),
                 direction: if *on { "on" } else { "off" },
@@ -1774,9 +1788,9 @@ async fn apply(
         }
         done.push((hash.clone(), *on));
     }
-    for (hash, on) in done {
-        if let Some(info) = session.linked.get_mut(&hash) {
-            info.enabled = on;
+    for (hash, on) in &done {
+        if let Some(info) = session.linked.get_mut(hash) {
+            info.enabled = *on;
         }
     }
 
@@ -1789,13 +1803,29 @@ async fn apply(
             testing: session.testing.contains(hash),
         })
         .collect();
-    bisect_dao::save(&state.services.db, cluster_id, &encode(&session.saved), &states).await?;
+    if let Err(err) =
+        bisect_dao::save(&state.services.db, cluster_id, &encode(&session.saved), &states).await
+    {
+        // The saved round still names the old mods, so the files go back to match it
+        undo_switches(state, cluster_id, &done).await;
+        return Err(err.into());
+    }
     session.pending_exit = BisectExit::None;
     session.retry_note = None;
     session.suggestions.clear();
 
     state.services.events.signal(Signal::ClustersChanged);
     Ok(describe(&session, catalog))
+}
+
+async fn undo_switches(state: &Arc<LauncherState>, cluster_id: i64, done: &[(String, bool)]) {
+    let ctx = state.services.content();
+    for (hash, on) in done.iter().rev() {
+        if let Err(err) = PackageStore::set_artifact_enabled_to(cluster_id, hash, !on, &ctx).await {
+            tracing::warn!(cluster_id, %hash, error = %err, "could not undo a switch for the search");
+        }
+    }
+    state.services.events.signal(Signal::ClustersChanged);
 }
 
 fn halted_groups(state: &State) -> Option<(Set, Set)> {

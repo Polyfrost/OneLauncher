@@ -213,3 +213,32 @@ async fn a_search_from_before_the_upgrade_restarts_and_still_restores_mods() {
         "a mod outside the old search is left alone"
     );
 }
+
+#[tokio::test]
+async fn a_first_round_that_cannot_be_saved_puts_the_mods_back() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = cluster_with_mods(&state, "Unsaved Round").await;
+    sqlx::query(
+        "CREATE TRIGGER fail_save BEFORE UPDATE OF search ON cluster_bisect_sessions
+         BEGIN SELECT RAISE(ABORT, 'save failed'); END",
+    )
+    .execute(&state.services.db)
+    .await
+    .unwrap();
+
+    assert!(
+        oneclient_core::start_bisect(&state, cluster_id, |_, _, _| {})
+            .await
+            .is_err()
+    );
+
+    assert!(enabled(&state, cluster_id, FOUND).await);
+    assert!(enabled(&state, cluster_id, KEPT).await);
+    assert!(!enabled(&state, cluster_id, WAS_OFF).await);
+    assert!(
+        oneclient_core::bisect_status(&state, cluster_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+}

@@ -233,7 +233,7 @@ impl JavaService {
             self.register_located(&located).await?;
             let usable: Vec<_> = located
                 .into_iter()
-                .filter(|(_, info)| !excluded(&info.os_arch, native_ok))
+                .filter(|(_, info)| !platform::wrong_arch_for_game(&info.os_arch, native_ok))
                 .collect();
 
             // A located runtime only displaces a recorded one by being a JDK
@@ -268,7 +268,10 @@ impl JavaService {
             .list_runtimes()
             .await?
             .into_iter()
-            .filter(|runtime| runtime.major == major && !excluded(&runtime.os_arch, native_ok))
+            .filter(|runtime| {
+                runtime.major == major
+                    && !platform::wrong_arch_for_game(&runtime.os_arch, native_ok)
+            })
             .collect();
 
         candidates.sort_by_key(|a| std::cmp::Reverse(pick_order(a, &preferred)));
@@ -525,13 +528,6 @@ fn runtime_arches(native_ok: bool) -> Vec<HostArch> {
     } else {
         vec![HostTarget::CURRENT.arch]
     }
-}
-
-fn excluded(os_arch: &str, native_ok: bool) -> bool {
-    let native = HostTarget::native();
-    !native_ok
-        && native != HostTarget::CURRENT
-        && HostArch::from_os_arch(os_arch) == Some(native.arch)
 }
 
 fn pick_order(runtime: &JavaRuntime, preferred: &JavaVendor) -> (bool, bool, bool, Vec<u32>) {

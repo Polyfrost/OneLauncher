@@ -110,6 +110,7 @@ fn entry_from_item(
             .filter(|name| !name.is_empty())
             .unwrap_or_else(|| item.fallback.clone()),
         file_name: item.fallback.clone(),
+        cluster_file_name: item.fallback.clone(),
         author: cached
             .map(|cached| cached.author.clone())
             .unwrap_or_default(),

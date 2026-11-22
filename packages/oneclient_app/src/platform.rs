@@ -98,6 +98,55 @@ pub fn open_path(path: &str) {
     open_target(path);
 }
 
+pub fn reveal_file(path: std::path::PathBuf) {
+    std::thread::spawn(move || {
+        if let Err(err) = select_in_file_manager(&path) {
+            tracing::debug!(%err, "failed to select {}, opening its folder", path.display());
+            if let Some(dir) = path.parent() {
+                open_target(&dir.to_string_lossy());
+            }
+        }
+    });
+}
+
+#[cfg(target_os = "windows")]
+fn select_in_file_manager(path: &std::path::Path) -> std::io::Result<()> {
+    use std::os::windows::process::CommandExt;
+
+    std::process::Command::new("explorer")
+        .raw_arg(format!("/select,\"{}\"", path.display()))
+        .spawn()
+        .map(drop)
+}
+
+#[cfg(target_os = "macos")]
+fn select_in_file_manager(path: &std::path::Path) -> std::io::Result<()> {
+    let status = std::process::Command::new("open").arg("-R").arg(path).status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!("open -R exited with {status}")))
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn select_in_file_manager(path: &std::path::Path) -> std::io::Result<()> {
+    let uri = url::Url::from_file_path(path)
+        .map_err(|()| std::io::Error::other("not an absolute path"))?;
+    zbus::blocking::Connection::session()
+        .and_then(|connection| {
+            connection.call_method(
+                Some("org.freedesktop.FileManager1"),
+                "/org/freedesktop/FileManager1",
+                Some("org.freedesktop.FileManager1"),
+                "ShowItems",
+                &(vec![uri.as_str()], ""),
+            )
+        })
+        .map(drop)
+        .map_err(std::io::Error::other)
+}
+
 fn has_allowed_scheme(url: &str) -> bool {
     let Some((scheme, _)) = url.split_once(':') else {
         return false;

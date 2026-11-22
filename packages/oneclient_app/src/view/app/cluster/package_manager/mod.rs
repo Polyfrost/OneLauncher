@@ -357,6 +357,9 @@ pub(crate) fn make_row(
         .map(|p| p.name.clone())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| fallback_name.clone());
+    let cluster_file_name = installed_info
+        .map(|i| i.cluster_file_name.clone())
+        .unwrap_or_else(|| fallback_name.clone());
     let file_name = installed_info
         .map(|i| i.file_name.clone())
         .unwrap_or(fallback_name);
@@ -379,6 +382,7 @@ pub(crate) fn make_row(
         github_url: None,
         name,
         file_name,
+        cluster_file_name,
         author,
         version,
         description,

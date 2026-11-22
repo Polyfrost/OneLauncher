@@ -72,12 +72,12 @@ impl Component for OnboardingPreferences {
                 .into_element()
             })
             .child(section(
-                t("oneclient.onboarding.preferences.style"),
-                style_picker(&settings.theme, dense, false),
-            ))
-            .child(section(
                 t("oneclient.onboarding.preferences.theme"),
                 theme_mode_picker(&settings.theme, &dispatch),
+            ))
+            .child(section(
+                t("oneclient.onboarding.preferences.style"),
+                style_picker(&settings.theme, dense, false),
             ))
             .child(section(
                 t("oneclient.onboarding.preferences.motion"),

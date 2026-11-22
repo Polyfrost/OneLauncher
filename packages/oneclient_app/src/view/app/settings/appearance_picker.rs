@@ -8,7 +8,7 @@ use freya::prelude::*;
 
 use super::appearance::ThemeFileMenu;
 use crate::AppAssets;
-use crate::components::{Icon, IconType};
+use crate::components::{Icon, IconType, open_menu_at};
 use crate::hooks::{Actions, use_dispatch};
 use crate::i18n::t;
 use crate::theme::{
@@ -150,7 +150,7 @@ pub(crate) fn split_theme(id: &str) -> (String, Mode) {
     }
 }
 
-fn compose_theme(family: &str, mode: Mode) -> Option<String> {
+pub(crate) fn compose_theme(family: &str, mode: Mode) -> Option<String> {
     id_for_mode(
         family,
         resolve_theme(family).colors.light,
@@ -173,26 +173,44 @@ fn id_for_mode(
     }
 }
 
-/// Built-in families that have both a dark and a light variant.
+/// Families with both a dark and a light variant, built-ins first, named by their dark id
 fn style_families() -> Vec<Rc<Theme>> {
     themes()
         .into_iter()
-        .filter(|theme| theme.is_builtin() && !theme.colors.light)
+        .filter(|theme| !theme.colors.light)
         .filter(|theme| light_variant(&theme.id).is_some())
         .collect()
 }
 
 pub(crate) fn section(title: &str, body: impl IntoElement) -> impl IntoElement {
+    section_with_action(title, None, body)
+}
+
+/// A section whose header row ends with `action`
+pub(crate) fn section_with_action(
+    title: &str,
+    action: Option<Element>,
+    body: impl IntoElement,
+) -> impl IntoElement {
     rect()
         .vertical()
         .width(Size::fill())
         .spacing(8.)
         .child(
-            label()
-                .text(title.to_string())
-                .font_size(text_size(14.))
-                .font_weight(FontWeight::MEDIUM)
-                .color(colors::fg_primary()),
+            rect()
+                .horizontal()
+                .width(Size::fill())
+                .content(Content::Flex)
+                .cross_align(Alignment::Center)
+                .child(
+                    label()
+                        .text(title.to_string())
+                        .width(Size::flex(1.))
+                        .font_size(text_size(14.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .color(colors::fg_primary()),
+                )
+                .maybe_child(action),
         )
         .child(body)
 }
@@ -206,6 +224,17 @@ fn quiet_outline() -> Color {
 /// The style cards for `theme_id`; `dense` trims the previews for short windows
 ///
 /// Settings also exposes the file actions for each displayed preview.
+/// Narrowest a style card gets before the list drops a column
+const STYLE_CARD_MIN_W: f32 = 280.;
+
+/// Two columns until the first layout pass reports the real width
+fn style_columns(width: f32, gap: f32) -> usize {
+    if width <= 0. {
+        return 2;
+    }
+    (((width + gap) / (STYLE_CARD_MIN_W + gap)).floor() as usize).max(1)
+}
+
 pub(crate) fn style_picker(theme_id: &str, dense: bool, manage: bool) -> impl IntoElement {
     let (family, mode) = split_theme(theme_id);
     // System previews follow whichever variant the OS has the launcher showing right now
@@ -235,21 +264,47 @@ pub(crate) fn style_picker(theme_id: &str, dense: bool, manage: bool) -> impl In
         }
         .into_element()
     });
+    let mut tiles = cards.collect::<Vec<_>>().into_iter();
+
+    let gap = if dense { 10. } else { 12. };
+    // As many equal columns as fit, so a wide window fills its row instead of leaving space
+    let mut width = use_state(|| 0f32);
+    let columns = style_columns(*width.read(), gap);
+    let rows = std::iter::from_fn(move || {
+        let row: Vec<Element> = tiles.by_ref().take(columns).collect();
+        if row.is_empty() {
+            return None;
+        }
+        let filler = columns - row.len();
+        Some(
+            rect()
+                .horizontal()
+                .width(Size::fill())
+                .content(Content::Flex)
+                .spacing(gap)
+                .children(row)
+                .children((0..filler).map(|_| rect().width(Size::flex(1.)).into_element()))
+                .into_element(),
+        )
+    });
 
     rect()
-        .horizontal()
+        .vertical()
         .width(Size::fill())
-        .content(Content::Flex)
+        .on_sized(move |event: Event<SizedEventData>| {
+            width.set_if_modified(event.data().area.width());
+        })
         .a11y_role(AccessibilityRole::RadioGroup)
         .a11y_alt(t("oneclient.settings.appearance.style"))
-        .spacing(if dense { 10. } else { 12. })
-        .children(cards)
+        .spacing(gap)
+        .children(rows)
 }
 
+/// Card-sized ghost button that creates a custom theme and opens it in the editor
 /// Handlers read the live setting at press time instead of capturing this render's picks: a
 /// press can reach a closure from an earlier render, which would apply a stale combination
 pub(crate) fn theme_mode_picker(theme_id: &str, dispatch: &Actions) -> impl IntoElement {
-    const MODES: [Mode; 3] = [Mode::System, Mode::Dark, Mode::Light];
+    const MODES: [Mode; 3] = [Mode::Light, Mode::Dark, Mode::System];
     const HEIGHT: f32 = 34.;
     let (family, mode) = split_theme(theme_id);
     let choices = MODES.map(|option| compose_theme(&family, option).is_some());
@@ -268,9 +323,9 @@ pub(crate) fn theme_mode_picker(theme_id: &str, dispatch: &Actions) -> impl Into
     };
 
     let segments = [
-        t("oneclient.settings.appearance.theme.system"),
-        t("oneclient.settings.appearance.theme.dark"),
         t("oneclient.settings.appearance.theme.light"),
+        t("oneclient.settings.appearance.theme.dark"),
+        t("oneclient.settings.appearance.theme.system"),
     ]
     .into_iter()
     .enumerate()
@@ -375,9 +430,13 @@ impl Component for StyleCard {
         let focus = use_focus(a11y_id);
         let show_focus = radio_focus_visible(focus(), selected);
         let ringed = selected || show_focus;
+        // Shared by the kebab button and a right-click anywhere on the card
+        let menu_at = use_state(|| None::<(f32, f32)>);
 
         let pixel = theme.pixel_font_size.is_some_and(|step| step > 0.);
-        let blurb = if pixel {
+        let blurb = if !theme.is_builtin() {
+            t("oneclient.onboarding.preferences.style.custom")
+        } else if pixel {
             t("oneclient.onboarding.preferences.style.minecraft")
         } else {
             t("oneclient.onboarding.preferences.style.polyglass")
@@ -490,11 +549,13 @@ impl Component for StyleCard {
         let card = radio.accessibility(card, index, self.selected_index);
         rect()
             .width(Size::flex(1.))
+            .maybe(self.manage, |el| el.on_secondary_down(open_menu_at(menu_at)))
             .child(radio.keyboard(card, index, key_select))
             .maybe_child(self.manage.then(|| ThemeFileMenu {
                 id: theme.id.clone(),
-                name: theme.name.clone(),
-                custom: None,
+                name: family_name(&theme.name),
+                custom: !theme.is_builtin(),
+                menu_at,
             }))
     }
 }

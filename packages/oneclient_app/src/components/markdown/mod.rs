@@ -5,6 +5,8 @@ use freya::prelude::*;
 use crate::theme::colors;
 use pulldown_cmark::HeadingLevel;
 
+mod embed;
+mod embed_card;
 mod image;
 mod parse;
 mod render;

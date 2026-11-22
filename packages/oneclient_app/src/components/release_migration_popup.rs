@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
+use accesskit::Toggled;
+
 use freya::prelude::*;
 use freya::router::use_route;
 use oneclient_common::domain::{ContentType, GameLoader};
@@ -633,6 +635,8 @@ fn tab_row(
             rect()
                 .padding(Gaps::new_symmetric(6., 4.))
                 .cursor(CursorIcon::Pointer)
+                .a11y_focusable(true)
+                .a11y_role(AccessibilityRole::Button)
                 .on_press(move |_| {
                     let mut set = excluded.write();
                     if any_selected {
@@ -677,6 +681,9 @@ fn tab_pill(text: String, active: bool, mut on_press: impl FnMut() + 'static) ->
             },
         ))
         .cursor(CursorIcon::Pointer)
+        .a11y_focusable(true)
+        .a11y_role(AccessibilityRole::Tab)
+        .a11y_builder(move |node| node.set_selected(active))
         .on_press(move |_| on_press())
         .child(
             label()
@@ -743,11 +750,18 @@ fn package_list(
     };
 
     if rows.is_empty() && skipped.is_empty() && dependencies.is_empty() {
-        return list_message(tf(
-            "oneclient.components.release_migration.nothing_compatible",
-            &[&source_title, &target_version],
-        ))
-        .into_element();
+        let message = if plan.packages.is_empty() && plan.dependencies.is_empty() {
+            tf(
+                "oneclient.components.release_migration.nothing_compatible",
+                &[&source_title, &target_version],
+            )
+        } else {
+            tf(
+                "oneclient.components.release_migration.nothing_in_tab",
+                &[&target_version],
+            )
+        };
+        return list_message(message).into_element();
     }
 
     let mut scroll = ScrollArea::new()
@@ -1361,6 +1375,10 @@ impl Component for MigrationRow {
             .cursor(CursorIcon::Pointer)
             .on_pointer_enter(move |_| hovered.set(true))
             .on_pointer_leave(move |_| hovered.set(false))
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::CheckBox)
+            .a11y_alt(self.name.clone())
+            .a11y_builder(move |node| node.set_toggled(Toggled::from(selected)))
             .on_press(move |_| {
                 let mut set = excluded.write();
                 if selected {

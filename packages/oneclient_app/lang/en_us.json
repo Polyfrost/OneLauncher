@@ -1729,6 +1729,7 @@
   "oneclient.components.release_migration.java": "Java %s",
   "oneclient.components.release_migration.not_now": "Not now",
   "oneclient.components.release_migration.nothing_compatible": "Nothing from %s has a %s version yet.",
+  "oneclient.components.release_migration.nothing_in_tab": "Nothing here has a %s version yet. Check the other tabs.",
   "oneclient.components.release_migration.provider.local": "Local",
   "oneclient.components.release_migration.reason.missing_dependency": "Depends on a package that can't migrate",
   "oneclient.components.release_migration.reason.no_build": "No %s build yet",

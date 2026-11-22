@@ -186,6 +186,7 @@ impl Component for OverlayPopup {
                     .a11y_focusable(true)
                     .a11y_auto_focus(true)
                     .a11y_role(AccessibilityRole::Dialog)
+                    .a11y_builder(|node| node.set_modal())
                     .layer(Layer::OverlayLevel(self.overlay_level))
                     .on_pointer_press(|e: Event<PointerEventData>| e.stop_propagation())
                     .on_global_key_down(move |e: Event<KeyboardEventData>| {

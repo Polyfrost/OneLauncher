@@ -299,11 +299,13 @@ impl Component for DataFolder {
         }
 
         if let Some(flagged) = onedrive.read().clone() {
+            let mut dismiss = onedrive;
             let mut back = onedrive;
             let mut proceed = onedrive;
             let mut confirm = pending;
             section = section.child(onedrive_warning(
                 &flagged.to,
+                move |()| dismiss.set(None),
                 move |()| {
                     back.set(None);
                     browse(pending, onedrive, error, checking);

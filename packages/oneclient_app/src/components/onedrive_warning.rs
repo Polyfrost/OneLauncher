@@ -7,15 +7,17 @@ use crate::i18n::t;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, path_block};
 
-/// Asked before the data folder goes into OneDrive, which syncs every file the launcher writes
+/// Asked before the data folder goes into OneDrive, which syncs every file the launcher writes.
+/// `on_dismiss` only closes the popup, `on_back` picks another folder
 pub fn onedrive_warning(
     folder: &Path,
+    on_dismiss: impl Into<EventHandler<()>>,
     on_back: impl Into<EventHandler<()>>,
     on_continue: impl Into<EventHandler<()>>,
 ) -> Element {
     let on_back = on_back.into();
     let on_continue = on_continue.into();
-    let close = on_back.clone();
+    let close = on_dismiss.into();
 
     let card = rect()
         .vertical()

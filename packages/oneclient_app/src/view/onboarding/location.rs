@@ -29,7 +29,8 @@ impl Component for OnboardingLocation {
         let mut warning = use_state(|| None::<String>);
         let mut error = use_state(|| None::<String>);
         let mut waiting = use_state(|| false);
-        let onedrive = use_state(|| None::<DataDirCheck>);
+        let mut onedrive = use_state(|| None::<DataDirCheck>);
+        let mut default_accepted = use_state(|| false);
 
         let answered = !launcher.needs_location;
         let settled = answered && launcher.ready;
@@ -44,9 +45,14 @@ impl Component for OnboardingLocation {
             return rect().into_element();
         }
 
-        let default_dir = oneclient_common::paths::config_dir()
+        let default_path = oneclient_common::paths::config_dir()
+            .ok()
+            .map(PathBuf::from);
+        let default_dir = default_path
+            .as_ref()
             .map(|dir| dir.display().to_string())
             .unwrap_or_default();
+        let default_flag = default_path.clone();
 
         let confirm = move |()| {
             if *waiting.peek() {
@@ -59,6 +65,20 @@ impl Component for OnboardingLocation {
             }
 
             let chosen = picked.peek().clone();
+
+            // The default folder can also be redirected into OneDrive, so it gets the same warning
+            if !answered
+                && chosen.is_none()
+                && !*default_accepted.peek()
+                && let Some(path) = default_flag.clone().filter(|p| data_dir::in_onedrive(p))
+            {
+                onedrive.set(Some(DataDirCheck {
+                    path,
+                    warning: None,
+                }));
+                return;
+            }
+
             let actions = actions.clone();
             let station = actions.station();
             let events = actions.events();
@@ -160,16 +180,23 @@ impl Component for OnboardingLocation {
         }
 
         if let Some(flagged) = onedrive.read().clone() {
+            let mut dismiss = onedrive;
             let mut back = onedrive;
             let mut proceed = onedrive;
+            let flagged_path = flagged.path.clone();
+            let default_path = default_path.clone();
             content = content.child(onedrive_warning(
                 &flagged.path,
+                move |()| dismiss.set(None),
                 move |()| {
                     back.set(None);
                     browse(picked, warning, error, onedrive);
                 },
                 move |()| {
-                    if let Some(checked) = proceed.write().take() {
+                    if Some(&flagged_path) == default_path.as_ref() {
+                        proceed.set(None);
+                        default_accepted.set(true);
+                    } else if let Some(checked) = proceed.write().take() {
                         error.set(None);
                         warning.set(checked.warning);
                         picked.set(Some(checked.path));

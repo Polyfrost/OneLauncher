@@ -43,6 +43,10 @@ impl Component for Home {
         // Where the stack is easing toward
         let mut target = use_state(|| 0f32);
         let mut viewport_h = use_state(|| 0f32);
+        // Window-space [min_x, min_y, max_x, max_y] of the stack, which only holds the
+        // versions page once it has settled there
+        let mut stack_area = use_state(|| [0f32; 4]);
+        let focused_node = Platform::get().current_window().focused_accessibility_node;
         let driving = use_state(|| false);
         let pass_all = use_state(|| false);
         let wheel_tick = use_state(|| 0u64);
@@ -122,6 +126,14 @@ impl Component for Home {
         // lands on controls that are scrolled out of view
         let settled_on_versions = is_open && vh > 0. && at >= vh - 0.5;
         let show_home = !settled_on_versions;
+        // Home unmounts here, so drop its focus (e.g. the clicked Versions tile) or Page Up
+        // would mistake it for focus inside the versions list
+        let focused_id = Platform::get().current_window().focused_accessibility_id;
+        use_side_effect_with_deps(&settled_on_versions, move |settled| {
+            if *settled {
+                focused_id.peek().request_unfocus();
+            }
+        });
         let show_versions = is_open || at > 0.5 || *target.read() > 0.5;
 
         rect()
@@ -129,7 +141,9 @@ impl Component for Home {
             .height(Size::fill())
             .overflow(Overflow::Clip)
             .on_sized(move |event: Event<SizedEventData>| {
-                let height = event.data().area.height();
+                let area = event.data().area;
+                stack_area.set_if_modified([area.min_x(), area.min_y(), area.max_x(), area.max_y()]);
+                let height = area.height();
                 if (height - *viewport_h.peek()).abs() > 0.5 {
                     viewport_h.set(height);
                     // Keep the settled page pinned through window resizes
@@ -146,10 +160,19 @@ impl Component for Home {
                     return;
                 }
                 let showing_versions = *open.peek();
+                // Page Up scrolls the versions list while something in it has focus
+                let focus_in_versions = {
+                    let node = focused_node.peek();
+                    let [x0, y0, x1, y1] = *stack_area.peek();
+                    node.role() != AccessibilityRole::Window
+                        && node.bounds().is_some_and(|b| {
+                            let (cx, cy) = ((b.x0 + b.x1) / 2., (b.y0 + b.y1) / 2.);
+                            (x0 as f64..x1 as f64).contains(&cx) && (y0 as f64..y1 as f64).contains(&cy)
+                        })
+                };
                 match e.key {
-                    Key::Named(NamedKey::Escape) | Key::Named(NamedKey::PageUp)
-                        if showing_versions =>
-                    {
+                    Key::Named(NamedKey::Escape) if showing_versions => open.set(false),
+                    Key::Named(NamedKey::PageUp) if showing_versions && !focus_in_versions => {
                         open.set(false)
                     }
                     Key::Named(NamedKey::PageDown) if !showing_versions => open.set(true),

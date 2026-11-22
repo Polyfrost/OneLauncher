@@ -540,6 +540,7 @@ impl Component for OtherVersionsTile {
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
+            .a11y_alt(Route::Clusters {}.title())
             .on_pointer_enter(move |_| {
                 *hovering.write() = true;
             })

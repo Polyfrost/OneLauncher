@@ -28,6 +28,7 @@ pub use modpack_import::{
     remove_imported_modpack,
 };
 pub(crate) use modpack_import::flag_pack_mods;
+pub(crate) use prepare::cluster_version_info;
 pub use prepare::{
     estimate_cluster_download, prepare_cluster, prepare_cluster_locked, required_java_major,
 };

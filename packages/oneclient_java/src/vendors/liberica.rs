@@ -38,12 +38,13 @@ impl JavaRuntimeProvider for LibericaRuntimeProvider {
     }
 
     #[tracing::instrument(level = "debug", skip(self, net))]
-    async fn list_packages(
+    async fn list_arch_packages(
         &self,
         major: Option<u32>,
+        arch: HostArch,
         net: &RequestClient,
     ) -> JavaResult<Vec<JavaPackage>> {
-        let url = liberica_url(major)?;
+        let url = liberica_url(major, arch)?;
         let releases = net
             .send_as::<Vec<LibericaRelease>>(Request::new(Method::GET, url))
             .await?;
@@ -86,15 +87,22 @@ impl JavaRuntimeProvider for LibericaRuntimeProvider {
     }
 }
 
-fn liberica_url(major: Option<u32>) -> JavaResult<Url> {
+fn liberica_url(major: Option<u32>, arch: HostArch) -> JavaResult<Url> {
     let mut url = Url::parse("https://api.bell-sw.com/v1/liberica/releases")?;
     {
         let mut q = url.query_pairs_mut();
         q.append_pair("os", LIBERICA_OS)
-            .append_pair("arch", LIBERICA_ARCH)
+            .append_pair("arch", liberica_arch(arch))
             // Kits only never a bare runtime image
             .append_pair("bundle-type", "jdk")
-            .append_pair("bitness", LIBERICA_BITNESS)
+            .append_pair(
+                "bitness",
+                HostTarget {
+                    arch,
+                    ..HostTarget::CURRENT
+                }
+                .bitness(),
+            )
             .append_pair("package-type", LIBERICA_PACKAGE)
             .append_pair("installation-type", "archive")
             .append_pair(
@@ -112,12 +120,12 @@ fn liberica_url(major: Option<u32>) -> JavaResult<Url> {
 
 /// Liberica takes architecture family and bitness as separate parameters so
 /// x86/x86_64 collapse to `x86` and both ARM variants to `arm`
-const LIBERICA_ARCH: &str = match HostTarget::CURRENT.arch {
-    HostArch::X86 | HostArch::X86_64 => "x86",
-    HostArch::Arm | HostArch::Aarch64 => "arm",
-};
-
-const LIBERICA_BITNESS: &str = HostTarget::CURRENT.bitness();
+const fn liberica_arch(arch: HostArch) -> &'static str {
+    match arch {
+        HostArch::X86 | HostArch::X86_64 => "x86",
+        HostArch::Arm | HostArch::Aarch64 => "arm",
+    }
+}
 
 const LIBERICA_OS: &str = match HostTarget::CURRENT.os {
     HostOs::Windows => "windows",
@@ -134,7 +142,7 @@ mod tests {
 
     #[test]
     fn only_kits_are_ever_requested() {
-        let url = liberica_url(Some(21)).expect("a valid url");
+        let url = liberica_url(Some(21), HostArch::X86_64).expect("a valid url");
 
         assert!(url.query().is_some_and(|q| q.contains("bundle-type=jdk")));
         assert!(!url.query().is_some_and(|q| q.contains("bundle-type=jre")));

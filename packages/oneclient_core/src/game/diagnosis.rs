@@ -18,13 +18,19 @@ const EXCERPT_AFTER: usize = 24;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CrashDiagnosis {
-    CorruptArchive { file: Option<String> },
+    CorruptArchive {
+        file: Option<String>,
+    },
     OutOfMemory,
     UnsupportedJava,
-    ModLoadFailure { problems: Vec<ModProblem> },
+    ModLoadFailure {
+        problems: Vec<ModProblem>,
+    },
     ModLinkage,
     GraphicsDriver,
-    NativeCrash { frame: Option<String> },
+    NativeCrash {
+        frame: Option<String>,
+    },
     /// Minecraft's own shutdown watchdog gave up waiting for the game to close
     /// and turned a slow shutdown into a crash report
     ShutdownTimeout,
@@ -168,10 +174,8 @@ const NATIVE_CRASH_MARKERS: [&str; 5] = [
 const PROBLEMATIC_FRAME_MARKER: &str = "Problematic frame:";
 
 /// The watchdog writes both of these into the report it saves
-const SHUTDOWN_WATCHDOG_MARKERS: [&str; 2] = [
-    "ClientShutdownWatchdog",
-    "Client watchdog shutdown details",
-];
+const SHUTDOWN_WATCHDOG_MARKERS: [&str; 2] =
+    ["ClientShutdownWatchdog", "Client watchdog shutdown details"];
 
 const GRAPHICS_MARKERS: [&str; 3] = [
     "org.lwjgl.LWJGLException: Pixel format not accelerated",

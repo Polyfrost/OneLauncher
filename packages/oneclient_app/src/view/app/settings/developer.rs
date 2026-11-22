@@ -21,6 +21,7 @@ impl Component for SettingsDeveloper {
         let settings = use_settings_snapshot().settings;
         let defaults = LauncherSettings::default();
         let dispatch = use_dispatch();
+        let nightly_dispatch = dispatch.clone();
 
         let log_debug = use_state({
             let v = settings.log_debug;
@@ -35,6 +36,20 @@ impl Component for SettingsDeveloper {
                 return;
             }
             dispatch.edit_settings(|settings| settings.log_debug = enabled);
+        });
+
+        let nightly_bundles = use_state({
+            let v = settings.nightly_bundles;
+            move || v
+        });
+        let mut first_nightly = use_state(|| true);
+        use_side_effect(move || {
+            let enabled = *nightly_bundles.read();
+            if *first_nightly.peek() {
+                first_nightly.set(false);
+                return;
+            }
+            nightly_dispatch.set_nightly_bundles(enabled);
         });
 
         let browser_compat = use_browser_compat();
@@ -61,6 +76,16 @@ impl Component for SettingsDeveloper {
                 t("oneclient.settings.developer.log_debug.title"),
                 t("oneclient.settings.developer.log_debug.description"),
                 resettable(toggle(log_debug), log_debug, defaults.log_debug),
+            ))
+            .child(settings_row(
+                IconType::Sliders04,
+                t("oneclient.settings.developer.nightly_bundles.title"),
+                t("oneclient.settings.developer.nightly_bundles.description"),
+                resettable(
+                    toggle(nightly_bundles),
+                    nightly_bundles,
+                    defaults.nightly_bundles,
+                ),
             ))
             .child(settings_row(
                 IconType::Terminal,
@@ -98,6 +123,17 @@ inventory::submit! {
         title: "oneclient.settings.developer.log_debug.title",
         description: "oneclient.layout.search.developer.log_debug.description",
         keywords: &["debug", "logs", "logging"],
+        route: Route::SettingsDeveloper {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "developer.nightly_bundles",
+        icon: IconType::Sliders04,
+        title: "oneclient.settings.developer.nightly_bundles.title",
+        description: "oneclient.layout.search.developer.nightly_bundles.description",
+        keywords: &["nightly", "stable", "bundles", "channel", "datastorage"],
         route: Route::SettingsDeveloper {},
     }
 }

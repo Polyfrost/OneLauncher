@@ -301,6 +301,24 @@ impl Actions {
         self.persist();
     }
 
+    /// Applies the net config before resyncing so the sync fetches the new channel
+    pub fn set_nightly_bundles(&self, enabled: bool) {
+        if self.mutate_settings(|s| s.nightly_bundles = enabled).is_none() {
+            return;
+        }
+        let actions = self.clone();
+        spawn_in_window(async move {
+            let Ok(state) = launcher::state() else { return };
+            if let Err(err) =
+                save_current_settings_and_apply(&state.services, &state.settings).await
+            {
+                actions.set_settings_error(Some(err.to_string()));
+                return;
+            }
+            actions.sync_bundles();
+        });
+    }
+
     /// Not persisted the next real save carries the seen versions along
     pub fn record_seen_version(&self, version: impl Into<String>) {
         let version = version.into();

@@ -1721,7 +1721,6 @@
   "oneclient.components.navbar.minimize": "Minimize",
   "oneclient.components.navbar.notifications": "Notifications",
   "oneclient.components.navbar.social": "Social",
-  "oneclient.components.navbar.versions": "Versions",
   "oneclient.components.navbar.wardrobe": "Wardrobe",
   "oneclient.components.notifications.clear_all": "Clear all",
   "oneclient.components.notifications.empty": "No notifications",

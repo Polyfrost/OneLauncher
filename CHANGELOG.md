@@ -1,3 +1,41 @@
+## 2.12.0 (2026-11-22)
+
+### Features
+
+- Add Oracle GraalVM as a Java runtime option by [Wyvest](https://github.com/Wyvest)
+- Configure settings with `ONECLIENT_SETTING_*` environment variables by [LynithDev](https://github.com/LynithDev)
+- Redesigned the auto-scroll button in live log viewers by [LynithDev](https://github.com/LynithDev)
+- Show previews for supported videos in mod descriptions. by [wSmoothie](https://github.com/wSmoothie)
+- Added a toggle to switch bundles between the stable and nightly channels by [LynithDev](https://github.com/LynithDev)
+- Add a Nix flake to package OneClient for NixOS by [Yuna404](https://github.com/Yuna404)
+- Redesigned the Appearance picker in onboarding and settings with separate Style and Theme choices, live style previews, custom themes with dark and light variants, theme import and a parallax preview by [wSmoothie](https://github.com/wSmoothie)
+- Warn when the launcher folder is inside OneDrive by [LynithDev](https://github.com/LynithDev)
+- Reordered wardrobe elements and added zoom to the cosmetic preview by [LynithDev](https://github.com/LynithDev)
+
+### Fixes
+
+- Reduced memory allocations when redacting game logs by [brxztfwf](https://github.com/brxztfwf)
+- Reduce launcher refreshes when Minecraft writes live logs by [brxztfwf](https://github.com/brxztfwf)
+- Redesigned how bisect tool works by [rozwader](https://github.com/rozwader)
+- Added bundle picker to the onboarding by [rozwader](https://github.com/rozwader)
+- Deleting a bundled mod also removes its file from the instance by [rozwader](https://github.com/rozwader)
+- Fix deleting bundle mods that were never installed by [Wyvest](https://github.com/Wyvest)
+- Fixed emojis that were being sent from ingame to launcher, not showing in launcher by [rozwader](https://github.com/rozwader)
+- Fix Windows on ARM not downloading an ARM JDK by [Wyvest](https://github.com/Wyvest)
+- Home now scrolls straight down into your versions, replacing the separate Versions tab by [wSmoothie](https://github.com/wSmoothie)
+- Reduced launcher background work when parallax is idle by [brxztfwf](https://github.com/brxztfwf)
+- Improved the launcher info shown at the top of the game output log by [LynithDev](https://github.com/LynithDev)
+- Warn before launching with Java 22 or newer on macOS 10.x by [LynithDev](https://github.com/LynithDev)
+- Keep live game log search responsive as new lines arrive by [brxztfwf](https://github.com/brxztfwf)
+- Redesigned migration in clusters (it was misleading) by [rozwader](https://github.com/rozwader)
+- Fixed mod copies modal colliding with other modals, added "X" button by [rozwader](https://github.com/rozwader)
+- Added outside click detection for screenshot viewer by [rozwader](https://github.com/rozwader)
+- Special chats now show their cooldowns by [rozwader](https://github.com/rozwader)
+- Removed url confirmation from update toast by [rozwader](https://github.com/rozwader)
+- "View in folder" opens the instance's folder instead of the package cache by [rozwader](https://github.com/rozwader)
+- Wait for the launcher to close before installing an update on Windows by [Wyvest](https://github.com/Wyvest)
+- Added a setting to force the Windows integrated GPU window frame fix on or off by [LynithDev](https://github.com/LynithDev)
+
 ## 2.11.0 (2026-11-15)
 
 ### Features

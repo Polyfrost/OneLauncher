@@ -8,6 +8,8 @@ pub struct NetConfig {
     /// Never has a trailing slash
     pub meta_url_base: String,
     pub plus_api_url: String,
+    /// Pulls bundles from DataStorageV2's nightly channel instead of stable
+    pub nightly_bundles: bool,
 }
 
 impl Default for NetConfig {
@@ -18,6 +20,7 @@ impl Default for NetConfig {
             metadata_api_url: constants::METADATA_API_URL.to_string(),
             meta_url_base: constants::META_URL_BASE.to_string(),
             plus_api_url: constants::PLUS_BACKEND_URL.to_string(),
+            nightly_bundles: false,
         }
     }
 }

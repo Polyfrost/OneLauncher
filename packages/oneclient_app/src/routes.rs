@@ -110,8 +110,8 @@ pub enum Route {
             #[layout(SettingsShell)]
                 #[route("/app/settings/appearance")]
                 SettingsAppearance {},
-                #[route("/app/settings/appearance/theme")]
-                SettingsThemeEditor {},
+                #[route("/app/settings/appearance/theme/:id")]
+                SettingsThemeEditor { id: String },
                 #[route("/app/settings/minecraft")]
                 SettingsMinecraft {},
                 #[route("/app/settings/accounts")]

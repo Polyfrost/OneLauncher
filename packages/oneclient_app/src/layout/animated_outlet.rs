@@ -21,7 +21,7 @@ fn is_sidebar_route(route: &Route) -> bool {
     matches!(
         route,
         Route::SettingsAppearance {}
-            | Route::SettingsThemeEditor {}
+            | Route::SettingsThemeEditor { .. }
             | Route::SettingsMinecraft {}
             | Route::SettingsAccounts {}
             | Route::SettingsLauncher {}

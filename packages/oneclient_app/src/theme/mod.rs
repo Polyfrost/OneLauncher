@@ -127,6 +127,12 @@ pub fn theme_display_name(id: &str) -> String {
     }
 }
 
+/// Whether an ID names an installed theme or a complete system pair.
+pub fn is_known(id: &str) -> bool {
+    let id = system_pair(id).map_or_else(|| id.to_string(), |(dark, _)| dark);
+    THEMES.with_borrow(|themes| themes.iter().any(|theme| theme.id == id))
+}
+
 pub fn resolve_theme(id: &str) -> Rc<Theme> {
     let id = match id {
         "amoled" | "grey" => "dark",
@@ -142,6 +148,44 @@ pub fn resolve_theme(id: &str) -> Rc<Theme> {
     })
 }
 
+fn unique(base: &str, sep: char, taken: impl Fn(&str) -> bool) -> String {
+    (1..)
+        .map(|n| match n {
+            1 => base.to_string(),
+            n => format!("{base}{sep}{n}"),
+        })
+        .find(|candidate| !taken(candidate))
+        .unwrap_or_default()
+}
+
+/// Theme names end in Dark or Light; `family_name` strips that back off
+pub fn variant_name(family: &str, light: bool) -> String {
+    let variant = if light { "Light" } else { "Dark" };
+    format!("{family} {variant}").trim().to_string()
+}
+
+/// Whether a family name is in use by any theme outside `except`
+pub fn family_taken(family: &str, except: &[&str]) -> bool {
+    THEMES.with_borrow(|themes| {
+        themes
+            .iter()
+            .any(|theme| !except.contains(&theme.id.as_str()) && family_name(&theme.name) == family)
+    })
+}
+
+/// The dark and light variants of the family `id` belongs to, dark first
+pub fn family_variants(id: &str) -> Vec<Rc<Theme>> {
+    let theme = resolve_theme(id);
+    let mut family: Vec<_> = counterpart(&theme.id)
+        .map(|other| resolve_theme(&other))
+        .into_iter()
+        .chain([theme])
+        .collect();
+    family.sort_by_key(|theme| theme.colors.light);
+    family
+}
+
+/// Writes a theme variant to its own file; a theme without a file gets a fresh id from its name
 pub async fn save_theme(mut theme: Theme) -> anyhow::Result<String> {
     let dir = oneclient_common::paths::themes_dir()?;
 
@@ -154,17 +198,9 @@ pub async fn save_theme(mut theme: Theme) -> anyhow::Result<String> {
             .collect();
         let slug = slug.trim_matches('-');
         let base = if slug.is_empty() { "custom" } else { slug };
-        let taken = |id: &str| THEMES.with_borrow(|themes| themes.iter().any(|t| t.id == id));
-        theme.id = (1..)
-            .map(|n| {
-                if n == 1 {
-                    base.to_string()
-                } else {
-                    format!("{base}-{n}")
-                }
-            })
-            .find(|id| !taken(id))
-            .unwrap_or_default();
+        theme.id = unique(base, '-', |id| {
+            THEMES.with_borrow(|themes| themes.iter().any(|t| t.id == id))
+        });
         theme.dir = Some(dir.clone());
     }
 
@@ -183,25 +219,103 @@ pub async fn save_theme(mut theme: Theme) -> anyhow::Result<String> {
     Ok(id)
 }
 
-pub async fn duplicate_theme(id: &str) -> anyhow::Result<String> {
-    let mut theme = (*resolve_theme(id)).clone();
-    theme.name = format!("{} Copy", theme.name);
-    theme.dir = None;
-    save_theme(theme).await
+/// Saves `variants` as a new family under a free name based on `family`; returns the dark id
+async fn add_family(variants: Vec<Theme>, family: &str) -> anyhow::Result<String> {
+    let family = unique(family.trim(), ' ', |name| family_taken(name, &[]));
+    let mut dark = None;
+    for mut theme in variants {
+        theme.name = variant_name(&family, theme.colors.light);
+        theme.dir = None;
+        let light = theme.colors.light;
+        let id = save_theme(theme).await?;
+        if !light {
+            dark = Some(id);
+        }
+    }
+    reload();
+    dark.ok_or_else(|| anyhow::anyhow!("theme has no dark variant"))
 }
 
+/// Copies the family `id` belongs to into a new custom family named after `family`
+pub async fn copy_family(id: &str, family: &str) -> anyhow::Result<String> {
+    let variants = family_variants(id)
+        .iter()
+        .map(|theme| (**theme).clone())
+        .collect();
+    add_family(variants, family).await
+}
+
+pub async fn duplicate_theme(id: &str) -> anyhow::Result<String> {
+    let family = family_name(&resolve_theme(id).name);
+    copy_family(id, &format!("{family} Copy")).await
+}
+
+/// Writes the whole family (dark then light) as a JSON array
 pub async fn export_theme(id: &str, path: &Path) -> anyhow::Result<()> {
-    let json = serde_json::to_vec_pretty(&*resolve_theme(id))?;
-    polyio::write(path, json).await?;
+    let family: Vec<Theme> = family_variants(id)
+        .iter()
+        .map(|theme| (**theme).clone())
+        .collect();
+    polyio::write(path, serde_json::to_vec_pretty(&family)?).await?;
     Ok(())
 }
 
+/// Accepts what `export_theme` writes, or a single variant from older exports
+pub fn parse_theme_file(json: &[u8]) -> anyhow::Result<Vec<Theme>> {
+    let variants = match serde_json::from_slice::<serde_json::Value>(json)? {
+        serde_json::Value::Array(items) => items
+            .into_iter()
+            .map(serde_json::from_value)
+            .collect::<Result<Vec<Theme>, _>>()?,
+        value => vec![serde_json::from_value(value)?],
+    };
+    anyhow::ensure!(
+        matches!(variants.as_slice(), [_] | [_, _])
+            && variants
+                .windows(2)
+                .all(|w| w[0].colors.light != w[1].colors.light),
+        "a theme file holds one dark and/or one light variant"
+    );
+    Ok(variants)
+}
+
+/// Imports a theme file as a new family, filling in a missing variant; returns the dark id
+pub async fn import_theme(path: &Path) -> anyhow::Result<String> {
+    let mut variants = parse_theme_file(&polyio::read(path).await?)?;
+    let family = family_name(&variants[0].name);
+    let family = if family.is_empty() {
+        crate::i18n::t("oneclient.settings.appearance.theme.new_name").to_string()
+    } else {
+        family
+    };
+    if let [only] = variants.as_slice() {
+        let light = !only.colors.light;
+        let base = THEMES.with_borrow(|themes| builtin_colors(themes.iter().map(|t| &**t), light));
+        variants.push(derived_variant(only, base, |_| false));
+    }
+    add_family(variants, &family).await
+}
+
+/// Removes every custom file of the family `id` belongs to
 pub async fn delete_theme(id: &str) -> anyhow::Result<()> {
     let dir = oneclient_common::paths::themes_dir()?;
-    polyio::remove_file(dir.join(format!("{id}.json"))).await?;
+    for theme in family_variants(id)
+        .iter()
+        .filter(|theme| !theme.is_builtin())
+    {
+        let path = dir.join(format!("{}.json", theme.id));
+        // A variant derived from a built-in has no file until it is saved
+        if path.exists() {
+            polyio::remove_file(path).await?;
+        }
+    }
+    reload();
+    Ok(())
+}
+
+fn reload() {
     THEMES.set(load_themes().into_iter().map(Rc::new).collect());
     colors::refresh_active();
-    Ok(())
 }
 
 pub fn pixel_font_size_of(family: &str) -> Option<f32> {
@@ -273,7 +387,52 @@ fn load_themes() -> Vec<Theme> {
         }
     }
 
+    fill_missing_variants(&mut themes);
     themes
+}
+
+/// Every family has a dark and a light variant. Older custom themes are a single file, so
+/// the missing side is derived in memory from the matching built-in and only written once
+/// it is saved from the editor
+fn fill_missing_variants(themes: &mut Vec<Theme>) {
+    let mut index = 0;
+    while index < themes.len() {
+        let theme = &themes[index];
+        let family = family_name(&theme.name);
+        let paired = themes.iter().any(|other| {
+            other.colors.light != theme.colors.light && family_name(&other.name) == family
+        });
+        if !theme.is_builtin() && !paired {
+            let base = builtin_colors(themes.iter(), !theme.colors.light);
+            let derived = derived_variant(theme, base, |id| themes.iter().any(|t| t.id == id));
+            themes.push(derived);
+        }
+        index += 1;
+    }
+}
+
+/// The first built-in palette for the light or dark side (PolyGlass)
+fn builtin_colors<'a>(mut themes: impl Iterator<Item = &'a Theme>, light: bool) -> Palette {
+    themes
+        .find(|theme| theme.is_builtin() && theme.colors.light == light)
+        .expect("built-in themes cover both sides")
+        .colors
+}
+
+/// The other variant of `theme`: its fonts and corners with the `base` colors
+fn derived_variant(theme: &Theme, base: Palette, taken: impl Fn(&str) -> bool) -> Theme {
+    let light = base.light;
+    let stem = ["-dark", "-light"]
+        .iter()
+        .find_map(|suffix| theme.id.strip_suffix(suffix))
+        .unwrap_or(&theme.id);
+    let suffix = if light { "light" } else { "dark" };
+    Theme {
+        id: unique(&format!("{stem}-{suffix}"), '-', taken),
+        name: variant_name(&family_name(&theme.name), light),
+        colors: base,
+        ..theme.clone()
+    }
 }
 
 pub fn font() -> String {
@@ -393,4 +552,98 @@ pub fn load_fonts() -> Vec<(Cow<'static, str>, Bytes)> {
     }
 
     fonts
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn builtin(id: &str) -> Theme {
+        let json = AppAssets::get_bytes(&format!("themes/{id}.json")).unwrap();
+        parse_theme(id, &json, None).unwrap()
+    }
+
+    fn custom(id: &str, name: &str, base: &str) -> Theme {
+        Theme {
+            id: id.into(),
+            name: name.into(),
+            radius_scale: 0.5,
+            dir: Some(PathBuf::from("themes")),
+            ..builtin(base)
+        }
+    }
+
+    #[test]
+    fn single_variant_custom_theme_loads_as_a_family() {
+        let mut themes = vec![
+            builtin("dark"),
+            builtin("light"),
+            custom("ocean", "Ocean", "dark"),
+            custom("sand-light", "Sand Light", "light"),
+        ];
+        fill_missing_variants(&mut themes);
+
+        let derived: Vec<_> = themes[4..]
+            .iter()
+            .map(|t| (t.id.as_str(), t.name.as_str()))
+            .collect();
+        assert_eq!(
+            derived,
+            [("ocean-light", "Ocean Light"), ("sand-dark", "Sand Dark")]
+        );
+        // Colors come from the built-in side, everything else from the original file
+        assert!(themes[4].colors == builtin("light").colors && themes[4].radius_scale == 0.5);
+        assert!(themes[5].colors == builtin("dark").colors && !themes[5].is_builtin());
+
+        // A complete family gets nothing new
+        fill_missing_variants(&mut themes);
+        assert_eq!(themes.len(), 6);
+    }
+
+    #[test]
+    fn modes_resolve_for_a_custom_family() {
+        THEMES.with_borrow_mut(|themes| {
+            themes.push(Rc::new(custom("test-reef-dark", "Test Reef Dark", "dark")));
+            themes.push(Rc::new(custom(
+                "test-reef-light",
+                "Test Reef Light",
+                "light",
+            )));
+        });
+        let system = system_theme_id("test-reef-dark");
+        assert_eq!(system_aware(&system, true), "test-reef-dark");
+        assert_eq!(system_aware(&system, false), "test-reef-light");
+        assert_eq!(
+            counterpart("test-reef-light").as_deref(),
+            Some("test-reef-dark")
+        );
+        let family: Vec<_> = family_variants("test-reef-light")
+            .iter()
+            .map(|t| t.id.clone())
+            .collect();
+        assert_eq!(family, ["test-reef-dark", "test-reef-light"]);
+        assert!(
+            family_taken("Test Reef", &[])
+                && !family_taken("Test Reef", &["test-reef-dark", "test-reef-light"])
+        );
+    }
+
+    #[test]
+    fn theme_files_must_hold_one_dark_and_or_one_light_variant() {
+        let dark = serde_json::to_value(builtin("dark")).unwrap();
+        let light = serde_json::to_value(builtin("light")).unwrap();
+        let file = |value: serde_json::Value| serde_json::to_vec(&value).unwrap();
+
+        assert_eq!(parse_theme_file(&file(dark.clone())).unwrap().len(), 1);
+        assert_eq!(
+            parse_theme_file(&file(serde_json::json!([dark, light])))
+                .unwrap()
+                .len(),
+            2
+        );
+        assert!(parse_theme_file(b"not json").is_err());
+        assert!(parse_theme_file(b"{\"name\": \"Broken\"}").is_err());
+        assert!(parse_theme_file(b"[]").is_err());
+        assert!(parse_theme_file(&file(serde_json::json!([dark, dark]))).is_err());
+    }
 }

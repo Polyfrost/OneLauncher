@@ -87,6 +87,7 @@ pub use button::{
 pub use charts::{BarChart, PieChart, ValueUnit, slice_color};
 pub use checkbox::checkbox_labeled;
 pub use cluster_menu::{ClusterContextMenu, ClusterMenuTarget};
+pub(crate) use cluster_menu::open_menu_at;
 pub use cluster_update_popup::ClusterUpdatePopup;
 pub use code_block::CodeBlock;
 pub use color_picker::ColorPicker;

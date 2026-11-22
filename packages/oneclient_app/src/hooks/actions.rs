@@ -57,6 +57,8 @@ use crate::state::{
 use crate::install::IncompatibleMode;
 use crate::{invalidate_java_queries, launcher};
 
+pub static COPIES_REQUEST: Mutex<Option<(i64, Vec<String>)>> = Mutex::new(None);
+
 /// Over-disabling is the cheaper mistake a dead button beats a second game
 const LAUNCH_HOLD: Duration = Duration::from_secs(2);
 
@@ -1530,6 +1532,7 @@ impl Actions {
         }
 
         let write = ClusterWrite::take(cluster_id);
+        let router = freya::router::RouterContext::try_get();
         spawn_in_window(async move {
             let _write = write;
             let Ok(state) = launcher::state() else { return };
@@ -1568,7 +1571,30 @@ impl Actions {
                         &report,
                         deferred && state.games.is_active(cluster_id),
                     );
+                    let imported: Vec<String> =
+                        report.imported.iter().map(|row| row.hash.clone()).collect();
+                    let duplicates = off_ui({
+                        let state = state.clone();
+                        async move { oneclient_core::game::shadowed_bundle_mods(&state, cluster_id).await }
+                    })
+                    .await;
+                    let copied = imported.iter().any(|hash| {
+                        duplicates.copies.contains_key(hash)
+                            || duplicates.copies.values().flatten().any(|copy| copy == hash)
+                    });
+                    // Set before the refetch so the mods list sees it when the new copies arrive
+                    if copied {
+                        *COPIES_REQUEST.lock().unwrap() = Some((cluster_id, imported));
+                    }
                     super::invalidate_cluster_queries().await;
+                    if copied {
+                        let mods = crate::routes::Route::ClusterMods { cluster_id };
+                        if let Some(router) = &router
+                            && router.current::<crate::routes::Route>() != mods
+                        {
+                            let _ = router.push(mods);
+                        }
+                    }
                 }
                 Err(err) => events
                     .notify(t("oneclient.actions.import_failed"))

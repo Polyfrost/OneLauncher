@@ -940,8 +940,13 @@ fn submit_draft(
     draft.set(String::new());
 }
 
+fn millis_until(until: Option<chrono::DateTime<chrono::FixedOffset>>) -> i64 {
+    until.map_or(0, |until| (until.to_utc() - chrono::Utc::now()).num_milliseconds().max(0))
+}
+
+/// Rounded up, so it only reaches 0 once the cooldown has actually ended
 fn seconds_until(until: Option<chrono::DateTime<chrono::FixedOffset>>) -> i64 {
-    until.map_or(0, |until| (until.to_utc() - chrono::Utc::now()).num_seconds().max(0))
+    (millis_until(until) + 999) / 1000
 }
 
 fn format_cooldown(seconds: i64) -> String {
@@ -1022,7 +1027,12 @@ impl Component for Composer {
             left.set(seconds_until(until));
             spawn(async move {
                 while *left.peek() > 0 && *armed.peek() == until {
-                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    // Wake on the next whole second left so the count and Send flip right on time
+                    let tick = match millis_until(until) % 1000 {
+                        0 => 1000,
+                        rest => rest,
+                    };
+                    tokio::time::sleep(std::time::Duration::from_millis(tick as u64)).await;
                     if *armed.peek() == until {
                         left.set(seconds_until(until));
                     }
@@ -1271,5 +1281,6 @@ mod tests {
         assert_eq!(format_cooldown(42), "42s");
         assert_eq!(seconds_until(None), 0);
         assert_eq!(seconds_until(Some(chrono::Utc::now().fixed_offset() - chrono::Duration::hours(1))), 0);
+        assert_eq!(seconds_until(Some(chrono::Utc::now().fixed_offset() + chrono::Duration::milliseconds(300))), 1);
     }
 }

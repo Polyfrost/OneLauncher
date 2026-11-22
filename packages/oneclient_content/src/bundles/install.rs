@@ -949,7 +949,8 @@ pub async fn install_enabled_bundle_files(
                 find_override(&overrides, &bundle_name, &package_id)
                     .or_else(|| find_user_suppression(&suppressors, &package_id)),
                 taken,
-            ) && !present.contains(file)
+            ) && find_user_suppression(&overrides, &package_id) != Some(OverrideType::Removed)
+                && !present.contains(file)
         })
         .cloned()
         .collect();
@@ -1243,6 +1244,9 @@ pub async fn set_bundle_package_enabled(
     set_bundle_package_override(cluster_id, bundle_name, package_id, override_type, ctx).await
 }
 
+/// Deleting unlinks every copy
+/// restoring one with no copy left only records the choice, the caller runs
+/// [`install_cluster_bundles`] to bring the files back
 #[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn set_bundle_package_removed(
     cluster_id: i64,
@@ -1261,12 +1265,20 @@ pub async fn set_bundle_package_removed(
         .into_iter()
         .filter(|row| row.package_id.as_deref() == Some(package_id))
         .collect();
-    let untracked = hash.filter(|hash| !copies.iter().any(|row| row.hash == *hash));
+    let mut untracked = hash.filter(|hash| !copies.iter().any(|row| row.hash == *hash));
+    if let Some(hash) = untracked
+        && artifact_dao::get_cluster_artifact(&ctx.db, cluster_id, hash)
+            .await?
+            .is_none()
+    {
+        untracked = None;
+    }
     let opted_in = opted_in_bundles(cluster_id, package_id, ctx).await?;
     let mut live = LiveSync::Skipped;
     if removed {
+        // Deleting drops the files, a restore reinstalls them from the bundle
         for hash in copies.iter().map(|row| row.hash.as_str()).chain(untracked) {
-            live = set_artifact_enabled_to(cluster_id, hash, false, ctx).await?;
+            detach_artifact(cluster_id, hash, ctx).await?;
         }
     } else if let Some(hash) = untracked {
         live = set_artifact_enabled_to(cluster_id, hash, true, ctx).await?;
@@ -1473,7 +1485,8 @@ pub async fn on_user_remove_artifact(
         clear_suppressing_overrides(cluster_id, &package_id, ctx).await?;
         withdraw_opt_ins(cluster_id, &package_id, opted_in, ctx).await?;
     }
-    handle_user_artifact_action(cluster_id, hash, ctx, OverrideType::Removed).await
+    handle_user_artifact_action(cluster_id, hash, ctx, OverrideType::Removed).await?;
+    detach_artifact(cluster_id, hash, ctx).await
 }
 
 /// The caller passes the value it wants

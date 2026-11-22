@@ -609,7 +609,9 @@ pub fn package_context_menu(
         );
     }
 
-    if let Some(on_bundled) = on_bundled.filter(|_| item.in_bundle() && item.opted_in) {
+    if let Some(on_bundled) =
+        on_bundled.filter(|_| item.in_bundle() && item.opted_in && !item.locked)
+    {
         menu = if item.deleted {
             menu.separator().action(
                 IconType::RefreshCcw02,

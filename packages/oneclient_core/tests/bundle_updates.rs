@@ -317,6 +317,60 @@ async fn deleting_a_bundled_mod_leaves_only_the_removal() {
             .map(|o| (o.bundle_name, o.override_type))
             .collect();
     assert_eq!(overrides, [(BUNDLE.to_string(), "removed".to_string())]);
+    assert!(
+        artifact_dao::get_cluster_artifact(&state.services.db, cluster_id, HASH)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        artifact_dao::get_artifact_by_hash(&state.services.db, HASH)
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn deleted_mod_is_not_re_added_by_another_bundle() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![managed_file(true)]))
+        .await
+        .unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        named_manifest(SHARED_BUNDLE, vec![managed_file(true), newly_shipped_file()]),
+    )
+    .await
+    .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    bundle_dao::save_override(
+        &state.services.db,
+        cluster_id,
+        SHARED_BUNDLE,
+        "newcomer",
+        OverrideType::Enabled,
+    )
+    .await
+    .unwrap();
+    let ctx = state.services.content();
+
+    on_user_remove_artifact(cluster_id, HASH, &ctx)
+        .await
+        .unwrap();
+
+    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &ctx)
+        .await
+        .unwrap();
+    let added: Vec<String> = check
+        .additions_available
+        .iter()
+        .map(|a| a.new_file.kind.package_id())
+        .collect();
+    assert!(
+        !added.iter().any(|id| id == PROJECT_ID),
+        "a deleted mod must not come back through another bundle: {added:?}"
+    );
 }
 
 #[tokio::test]
@@ -2803,6 +2857,37 @@ async fn linked(state: &LauncherState, cluster_id: i64, hash: &str) -> bool {
 }
 
 #[tokio::test]
+async fn launch_does_not_reinstall_a_mod_deleted_while_another_bundle_ships_it() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let body: Vec<u8> = (0..64 * 1024).map(|i| (i % 233) as u8).collect();
+    let sha1 = polyio::sha1_bytes(&body);
+    let size = body.len() as u64;
+    let (url, _) = serve_jar(body, None).await;
+    for name in [BUNDLE, SHARED_BUNDLE] {
+        seed_bundle_with_pack(
+            &state,
+            named_manifest(name, vec![github_mod_served(&url, &sha1, size)]),
+        )
+        .await;
+    }
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+    install_cluster_bundles(cluster_id, state.bundles.as_ref(), None, &ctx, None)
+        .await
+        .unwrap();
+    assert!(linked(&state, cluster_id, &sha1).await);
+
+    on_user_remove_artifact(cluster_id, &sha1, &ctx)
+        .await
+        .unwrap();
+    install_cluster_bundles(cluster_id, state.bundles.as_ref(), None, &ctx, None)
+        .await
+        .unwrap();
+
+    assert!(!linked(&state, cluster_id, &sha1).await);
+}
+
+#[tokio::test]
 async fn launch_install_stops_waiting_at_the_deadline() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
     let body: Vec<u8> = (0..64 * 1024).map(|i| (i % 239) as u8).collect();
@@ -3299,7 +3384,7 @@ async fn restoring_a_deleted_optional_mod_keeps_it_opted_in() {
     on_user_remove_artifact(cluster_id, HASH, &ctx)
         .await
         .unwrap();
-    on_user_enable_artifact(cluster_id, HASH, &ctx)
+    set_bundle_package_removed(cluster_id, BUNDLE, PROJECT_ID, Some(HASH), false, &ctx)
         .await
         .unwrap();
 
@@ -3315,7 +3400,7 @@ async fn restoring_a_deleted_optional_mod_keeps_it_opted_in() {
 }
 
 #[tokio::test]
-async fn deleting_a_row_without_a_hash_still_disables_the_installed_copy() {
+async fn deleting_a_row_without_a_hash_still_unlinks_the_installed_copy() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
     let cluster_id = cluster_with_tracked_mod(&state).await;
     let ctx = state.services.content();
@@ -3324,11 +3409,7 @@ async fn deleting_a_row_without_a_hash_still_disables_the_installed_copy() {
         .await
         .unwrap();
 
-    let artifact = artifact_dao::get_cluster_artifact(&state.services.db, cluster_id, HASH)
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(artifact.enabled, 0);
+    assert!(!linked(&state, cluster_id, HASH).await);
 }
 
 #[tokio::test]
@@ -3346,7 +3427,7 @@ async fn deleting_from_a_taken_bundle_survives_heal_when_a_declined_bundle_owns_
         .unwrap();
     heal(&state, cluster_id).await;
 
-    assert!(!cluster_mod_enabled(&state, cluster_id).await);
+    assert!(!linked(&state, cluster_id, HASH).await);
 }
 
 #[tokio::test]
@@ -3381,7 +3462,7 @@ async fn a_mod_deleted_under_another_bundle_takes_no_updates() {
 }
 
 #[tokio::test]
-async fn restoring_a_deleted_mod_switches_on_one_copy() {
+async fn restoring_a_mod_whose_copies_were_deleted_opts_back_in() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
     let cluster_id = cluster_with_tracked_mod(&state).await;
     track_other_sodium_copy(&state, cluster_id, BUNDLE).await;
@@ -3390,34 +3471,50 @@ async fn restoring_a_deleted_mod_switches_on_one_copy() {
     set_bundle_package_removed(cluster_id, BUNDLE, PROJECT_ID, None, true, &ctx)
         .await
         .unwrap();
+    for hash in [HASH, OTHER_COPY] {
+        assert!(!linked(&state, cluster_id, hash).await, "{hash} kept");
+    }
     set_bundle_package_removed(cluster_id, BUNDLE, PROJECT_ID, None, false, &ctx)
         .await
         .unwrap();
 
-    let mut enabled = 0;
-    for hash in [HASH, OTHER_COPY] {
-        let artifact = artifact_dao::get_cluster_artifact(&state.services.db, cluster_id, hash)
+    let overrides: Vec<(String, String)> =
+        bundle_dao::list_overrides(&state.services.db, cluster_id)
             .await
             .unwrap()
-            .unwrap();
-        enabled += artifact.enabled;
-    }
-    assert_eq!(enabled, 1);
+            .into_iter()
+            .filter(|o| o.package_id == PROJECT_ID)
+            .map(|o| (o.bundle_name, o.override_type))
+            .collect();
+    assert_eq!(overrides, [(BUNDLE.to_string(), "enabled".to_string())]);
 }
 
 #[tokio::test]
-async fn restoring_a_deleted_mod_switches_on_the_chosen_copy() {
+async fn restoring_a_mod_still_linked_switches_on_the_chosen_copy() {
     for chosen in [HASH, OTHER_COPY] {
         let state = oneclient_core::dev::ephemeral_state().await.unwrap();
         let cluster_id = cluster_with_tracked_mod(&state).await;
         track_other_sodium_copy(&state, cluster_id, BUNDLE).await;
         let ctx = state.services.content();
-
-        for removed in [true, false] {
-            set_bundle_package_removed(cluster_id, BUNDLE, PROJECT_ID, Some(chosen), removed, &ctx)
+        // A removal from before deleting dropped the files only switched them off
+        for hash in [HASH, OTHER_COPY] {
+            oneclient_content::bundles::set_artifact_enabled_to(cluster_id, hash, false, &ctx)
                 .await
                 .unwrap();
         }
+        bundle_dao::save_override(
+            &state.services.db,
+            cluster_id,
+            BUNDLE,
+            PROJECT_ID,
+            OverrideType::Removed,
+        )
+        .await
+        .unwrap();
+
+        set_bundle_package_removed(cluster_id, BUNDLE, PROJECT_ID, Some(chosen), false, &ctx)
+            .await
+            .unwrap();
 
         for hash in [HASH, OTHER_COPY] {
             let artifact = artifact_dao::get_cluster_artifact(&state.services.db, cluster_id, hash)
@@ -3434,7 +3531,7 @@ async fn restoring_a_deleted_mod_switches_on_the_chosen_copy() {
 }
 
 #[tokio::test]
-async fn restoring_a_deleted_mod_switches_on_a_chosen_untracked_copy() {
+async fn deleting_a_mod_unlinks_a_chosen_untracked_copy() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
     let cluster_id = cluster_with_tracked_mod(&state).await;
     let db = &state.services.db;
@@ -3453,19 +3550,70 @@ async fn restoring_a_deleted_mod_switches_on_a_chosen_untracked_copy() {
         .unwrap();
     let ctx = state.services.content();
 
-    for removed in [true, false] {
-        set_bundle_package_removed(cluster_id, BUNDLE, PROJECT_ID, Some(OTHER_COPY), removed, &ctx)
-            .await
-            .unwrap();
-    }
+    set_bundle_package_removed(cluster_id, BUNDLE, PROJECT_ID, Some(OTHER_COPY), true, &ctx)
+        .await
+        .unwrap();
 
     for hash in [HASH, OTHER_COPY] {
-        let artifact = artifact_dao::get_cluster_artifact(db, cluster_id, hash)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(artifact.enabled != 0, hash == OTHER_COPY, "{hash}");
+        assert!(!linked(&state, cluster_id, hash).await, "{hash} kept");
     }
+}
+
+#[tokio::test]
+async fn deleting_a_bundled_mod_removes_its_file_and_restoring_reinstalls_it() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let body: Vec<u8> = (0..64 * 1024).map(|i| (i % 211) as u8).collect();
+    let sha1 = polyio::sha1_bytes(&body);
+    let size = body.len() as u64;
+    let (url, _) = serve_jar(body, None).await;
+    seed_bundle_with_pack(&state, manifest(vec![github_mod_served(&url, &sha1, size)])).await;
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+    install_cluster_bundles(cluster_id, state.bundles.as_ref(), None, &ctx, None)
+        .await
+        .unwrap();
+    let cluster = state.clusters.get(cluster_id).await.unwrap();
+    let game_dir =
+        oneclient_common::paths::cluster_game_dir(&cluster.folder_name, cluster.is_isolated())
+            .unwrap();
+    oneclient_core::game::materialize_content(&state.services, &cluster, &game_dir, false, false)
+        .await
+        .unwrap();
+    let name = artifact_dao::get_cluster_artifact(&state.services.db, cluster_id, &sha1)
+        .await
+        .unwrap()
+        .unwrap()
+        .cluster_file_name;
+    let jar = game_dir.join("mods").join(&name);
+    assert!(jar.exists(), "{} not materialized", jar.display());
+
+    set_bundle_package_removed(cluster_id, BUNDLE, GITHUB_MOD_ID, Some(&sha1), true, &ctx)
+        .await
+        .unwrap();
+    assert!(!linked(&state, cluster_id, &sha1).await);
+    // The shared folder is last claimed by this cluster so the jar goes at the next launch
+    oneclient_core::game::materialize_content(&state.services, &cluster, &game_dir, false, false)
+        .await
+        .unwrap();
+    assert!(!jar.exists(), "{} left behind", jar.display());
+    install_cluster_bundles(cluster_id, state.bundles.as_ref(), None, &ctx, None)
+        .await
+        .unwrap();
+    assert!(
+        !linked(&state, cluster_id, &sha1).await,
+        "launch reinstalled it"
+    );
+
+    set_bundle_package_removed(cluster_id, BUNDLE, GITHUB_MOD_ID, Some(&sha1), false, &ctx)
+        .await
+        .unwrap();
+    install_cluster_bundles(cluster_id, state.bundles.as_ref(), None, &ctx, None)
+        .await
+        .unwrap();
+    assert!(
+        linked(&state, cluster_id, &sha1).await,
+        "restore did not reinstall"
+    );
 }
 
 #[tokio::test]
@@ -3612,7 +3760,7 @@ async fn restoring_a_deleted_mod_keeps_every_bundles_opt_in() {
     on_user_remove_artifact(cluster_id, HASH, &ctx)
         .await
         .unwrap();
-    on_user_enable_artifact(cluster_id, HASH, &ctx)
+    set_bundle_package_removed(cluster_id, BUNDLE, PROJECT_ID, Some(HASH), false, &ctx)
         .await
         .unwrap();
 
@@ -3635,7 +3783,7 @@ async fn restoring_a_deleted_mod_keeps_every_bundles_opt_in() {
 }
 
 #[tokio::test]
-async fn deleting_an_untracked_copy_switches_it_off() {
+async fn deleting_an_untracked_copy_unlinks_it() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
     let cluster_id = cluster_with_tracked_mod(&state).await;
     bundle_dao::clear_bundle_tracking(&state.services.db, cluster_id, HASH)
@@ -3653,7 +3801,7 @@ async fn deleting_an_untracked_copy_switches_it_off() {
     .await
     .unwrap();
 
-    assert!(!cluster_mod_enabled(&state, cluster_id).await);
+    assert!(!linked(&state, cluster_id, HASH).await);
 }
 
 #[tokio::test]
@@ -3683,7 +3831,7 @@ async fn deleting_under_a_declined_bundle_survives_heal() {
     .unwrap();
     heal(&state, cluster_id).await;
 
-    assert!(!cluster_mod_enabled(&state, cluster_id).await);
+    assert!(!linked(&state, cluster_id, HASH).await);
 }
 
 #[tokio::test]

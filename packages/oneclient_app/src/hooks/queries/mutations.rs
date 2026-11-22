@@ -445,16 +445,33 @@ impl MutationCapability for ClusterMutation {
                 package_id,
                 hash,
                 removed,
-            } => oneclient_core::set_bundle_package_removed(
-                *cluster_id,
-                bundle_name,
-                package_id,
-                hash.as_deref(),
-                *removed,
-                content,
-            )
-            .await
-            .map(|live| notify_deferred(live, *cluster_id)),
+            } => {
+                async {
+                    let live = oneclient_core::set_bundle_package_removed(
+                        *cluster_id,
+                        bundle_name,
+                        package_id,
+                        hash.as_deref(),
+                        *removed,
+                        content,
+                    )
+                    .await?;
+                    notify_deferred(live, *cluster_id);
+                    // A deleted mod has no files left, so a restore downloads it again now
+                    if !*removed {
+                        oneclient_content::bundles::install_cluster_bundles(
+                            *cluster_id,
+                            state.bundles.as_ref(),
+                            None,
+                            content,
+                            None,
+                        )
+                        .await?;
+                    }
+                    Ok(())
+                }
+                .await
+            }
             ClusterAction::SetDirTarget { cluster_id, .. }
                 if state.games.is_syncing(*cluster_id) =>
             {

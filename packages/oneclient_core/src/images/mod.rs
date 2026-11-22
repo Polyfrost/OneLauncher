@@ -293,8 +293,8 @@ async fn downscale_if_oversized(bytes: Bytes, max_edge: u32) -> Bytes {
 
 /// Icons come out of user supplied jars so the decoder gets a ceiling rather
 /// than whatever the file's header claims
-const MAX_DECODE_EDGE: u32 = 8192;
-const MAX_DECODE_ALLOC: u64 = 128 * 1024 * 1024;
+pub const MAX_DECODE_EDGE: u32 = 8192;
+pub const MAX_DECODE_ALLOC: u64 = 128 * 1024 * 1024;
 
 fn decode_limited(bytes: &[u8]) -> Option<image::DynamicImage> {
     let mut limits = image::Limits::default();

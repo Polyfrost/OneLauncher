@@ -1126,8 +1126,14 @@ impl Component for AnimatedPreview {
             spawn(async move {
                 let mut player = None::<WebpPlayer>;
                 loop {
-                    if player.is_none() {
-                        player = source.peek().as_ref().and_then(WebpPlayer::new);
+                    if player.is_none()
+                        && let Some(bytes) = source.peek().as_ref()
+                    {
+                        player = WebpPlayer::new(bytes);
+                        // Undecodable or oversized, so the still cover stays up
+                        if player.is_none() {
+                            return;
+                        }
                     }
                     let delay = match player.as_mut().and_then(WebpPlayer::step) {
                         Some((handle, delay)) => {
@@ -1185,12 +1191,24 @@ impl WebpPlayer {
             skia_safe::Data::new_copy(bytes),
             &[skia_safe::codec::webp_decoder::decoder()],
         )?;
+        // The header's dimensions are untrusted, so hold them to the same ceiling as other decodes
+        let size = codec.dimensions();
+        let edge = oneclient_core::images::MAX_DECODE_EDGE as i32;
         let info = skia_safe::ImageInfo::new(
-            codec.dimensions(),
+            size,
             skia_safe::ColorType::RGBA8888,
             skia_safe::AlphaType::Premul,
             None,
         );
+        if size.width <= 0
+            || size.height <= 0
+            || size.width > edge
+            || size.height > edge
+            || info.compute_min_byte_size() as u64 > oneclient_core::images::MAX_DECODE_ALLOC
+        {
+            tracing::warn!("refused to play a {}x{} animated preview", size.width, size.height);
+            return None;
+        }
         let frames = codec.get_frame_count().max(1);
         Some(Self {
             pixels: vec![0; info.compute_min_byte_size()],

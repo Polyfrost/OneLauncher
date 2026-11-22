@@ -435,6 +435,15 @@ pub(crate) fn set_enabled_action(
 }
 
 pub(crate) fn bundled_delete_action(item: &PackageEntry, cluster_id: i64) -> Option<ClusterAction> {
+    if let Some(bundle_name) = item.bundle_name.clone() {
+        return Some(ClusterAction::SetBundlePackageRemoved {
+            cluster_id,
+            bundle_name,
+            package_id: item.package_id.clone(),
+            hash: item.hash.clone(),
+            removed: !item.deleted,
+        });
+    }
     let hash = item.hash.clone()?;
     Some(if item.deleted {
         ClusterAction::SetArtifactEnabled {
@@ -595,7 +604,7 @@ pub fn package_context_menu(
         );
     }
 
-    if let Some(on_bundled) = on_bundled.filter(|_| item.in_bundle() && item.installed) {
+    if let Some(on_bundled) = on_bundled.filter(|_| item.in_bundle() && item.opted_in) {
         menu = if item.deleted {
             menu.separator().action(
                 IconType::RefreshCcw02,

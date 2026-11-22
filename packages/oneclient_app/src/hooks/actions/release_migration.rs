@@ -14,7 +14,7 @@ use oneclient_content::packages::{
 };
 use oneclient_core::ReleaseTarget;
 use oneclient_core::clusters::{
-    Cluster, OfferLookup, ReleaseMigrationOffer, copy_configs, manual_migration_offer,
+    Cluster, OfferLookup, ReleaseMigrationOffer, copy_configs, manual_migration_partners,
     record_new_versions, release_migration_offer,
 };
 use oneclient_events::Level;
@@ -25,7 +25,18 @@ use crate::hooks::{ClusterAction, ClusterMutation};
 use crate::i18n::{t, tf};
 use crate::launcher;
 use crate::notifications::NotificationSpec;
-use crate::state::{AppChannel, PromptOrigin, ReleaseMigrationPrompt, ReleasePlanState};
+use crate::state::{
+    AppChannel, MigrationDirection, PromptOrigin, ReleaseMigrationPrompt, ReleasePlanState,
+    opening_direction,
+};
+
+fn release_key(cluster: &Cluster) -> String {
+    ReleaseTarget {
+        mc_version: cluster.mc_version.clone(),
+        loader: cluster.mc_loader,
+    }
+    .key()
+}
 
 enum SourcePlan {
     Offer(ReleaseMigrationPlan),
@@ -48,7 +59,7 @@ fn classify(plan: Result<ReleaseMigrationPlan, oneclient_content::ContentError>)
 enum SourcePlans {
     Ready {
         sources: Vec<Cluster>,
-        plans: HashMap<i64, ReleasePlanState>,
+        plans: HashMap<(i64, i64), ReleasePlanState>,
     },
     Nothing,
     Unreachable,
@@ -73,7 +84,7 @@ async fn plan_sources(
     for source in &offer.sources {
         match checked.remove(&source.id) {
             Some(SourcePlan::Offer(plan)) => {
-                plans.insert(source.id, ReleasePlanState::Ready(plan));
+                plans.insert((source.id, offer.target.id), ReleasePlanState::Ready(plan));
                 sources.push(source.clone());
             }
             Some(SourcePlan::Nothing) | None => {}
@@ -246,23 +257,27 @@ impl Actions {
         state: &std::sync::Arc<oneclient_core::LauncherState>,
         offer: ReleaseMigrationOffer,
         sources: Vec<Cluster>,
-        plans: HashMap<i64, ReleasePlanState>,
+        plans: HashMap<(i64, i64), ReleasePlanState>,
         origin: PromptOrigin,
     ) {
-        let java_major = oneclient_core::required_java_major(state, offer.target.id)
+        let java: HashMap<i64, u32> = oneclient_core::required_java_major(state, offer.target.id)
             .await
             .ok()
-            .flatten();
+            .flatten()
+            .map(|major| (offer.target.id, major))
+            .into_iter()
+            .collect();
 
-        let selected = sources[0].id;
         self.write_release_migration(move |prompt| {
             *prompt = Some(ReleaseMigrationPrompt {
-                key: offer.release.key(),
-                target: offer.target,
-                java_major,
-                sources,
-                selected,
+                home: offer.target,
+                direction: MigrationDirection::Into,
+                inbound: sources,
+                outbound: Vec::new(),
+                picked_inbound: None,
+                picked_outbound: None,
                 plans,
+                java,
                 origin,
             });
         });
@@ -346,24 +361,41 @@ impl Actions {
         });
     }
 
-    pub fn select_release_migration_source(&self, source_id: i64) {
-        let mut target_id = None;
+    pub fn pick_migration_partner(&self, cluster_id: i64) {
+        self.edit_migration_prompt(|prompt| match prompt.direction {
+            MigrationDirection::Into => prompt.picked_inbound = Some(cluster_id),
+            MigrationDirection::From => prompt.picked_outbound = Some(cluster_id),
+        });
+    }
+
+    pub fn set_migration_direction(&self, direction: MigrationDirection) {
+        self.edit_migration_prompt(|prompt| prompt.direction = direction);
+    }
+
+    fn edit_migration_prompt(&self, edit: impl FnOnce(&mut ReleaseMigrationPrompt)) {
+        let mut pair = None;
         self.write_release_migration(|prompt| {
             let Some(prompt) = prompt.as_mut() else {
                 return;
             };
-            prompt.selected = source_id;
-            if let std::collections::hash_map::Entry::Vacant(entry) = prompt.plans.entry(source_id)
-            {
+            edit(prompt);
+            let Some(key) = prompt.pair() else { return };
+            if let std::collections::hash_map::Entry::Vacant(entry) = prompt.plans.entry(key) {
                 entry.insert(ReleasePlanState::Loading);
-                target_id = Some(prompt.target.id);
+                pair = Some(key);
             }
         });
 
-        let Some(target_id) = target_id else { return };
+        let Some((source_id, target_id)) = pair else {
+            return;
+        };
         let actions = self.clone();
         spawn_in_window(async move {
             let Ok(state) = launcher::state() else { return };
+            let java = oneclient_core::required_java_major(&state, target_id)
+                .await
+                .ok()
+                .flatten();
             let result = plan_release_migrations(
                 &[source_id],
                 target_id,
@@ -383,7 +415,10 @@ impl Actions {
             };
             actions.write_release_migration(move |prompt| {
                 if let Some(prompt) = prompt.as_mut() {
-                    prompt.plans.insert(source_id, next);
+                    prompt.plans.insert((source_id, target_id), next);
+                    if let Some(java) = java {
+                        prompt.java.insert(target_id, java);
+                    }
                 }
             });
         });
@@ -410,21 +445,19 @@ impl Actions {
                 .into_iter()
                 .find(|cluster| cluster.id != target.id)
                 .unwrap_or_else(|| target.clone());
-            let selected = source.id;
-            let release = ReleaseTarget {
-                mc_version: target.mc_version.clone(),
-                loader: target.mc_loader,
-            };
-            let plan = fake_plan(selected, target.id);
+            let pair = (source.id, target.id);
+            let plan = fake_plan(source.id, target.id);
 
             actions.write_release_migration(move |prompt| {
                 *prompt = Some(ReleaseMigrationPrompt {
-                    key: release.key(),
-                    target,
-                    java_major: None,
-                    sources: vec![source],
-                    selected,
-                    plans: HashMap::from([(selected, ReleasePlanState::Ready(plan))]),
+                    home: target,
+                    direction: MigrationDirection::Into,
+                    inbound: vec![source],
+                    outbound: Vec::new(),
+                    picked_inbound: None,
+                    picked_outbound: None,
+                    plans: HashMap::from([(pair, ReleasePlanState::Ready(plan))]),
+                    java: HashMap::new(),
                     origin: PromptOrigin::Fake,
                 });
             });
@@ -532,46 +565,47 @@ impl Actions {
                 _ => None,
             };
             if let Some(target_cluster_id) = created {
-                actions.open_manual_migration(target_cluster_id, source_cluster_id);
+                actions.open_manual_migration(
+                    source_cluster_id,
+                    MigrationDirection::From,
+                    Some(target_cluster_id),
+                );
             }
         });
     }
 
-    pub fn open_manual_migration(&self, target_cluster_id: i64, source_cluster_id: i64) {
-        if self.refuse_during_update_check(target_cluster_id) {
+    pub fn open_manual_migration(
+        &self,
+        home_cluster_id: i64,
+        direction: MigrationDirection,
+        picked: Option<i64>,
+    ) {
+        if self.refuse_during_update_check(home_cluster_id) {
             return;
         }
-        self.set_release_migration_checking(target_cluster_id, true);
-        self.set_release_migration_checking(source_cluster_id, true);
+        self.set_release_migration_checking(home_cluster_id, true);
         let actions = self.clone();
         spawn_in_window(async move {
             actions
-                .run_manual_migration(target_cluster_id, source_cluster_id)
+                .run_manual_migration(home_cluster_id, direction, picked)
                 .await;
-            actions.set_release_migration_checking(target_cluster_id, false);
-            actions.set_release_migration_checking(source_cluster_id, false);
+            actions.set_release_migration_checking(home_cluster_id, false);
         });
     }
 
-    async fn run_manual_migration(&self, target_cluster_id: i64, source_cluster_id: i64) {
+    async fn run_manual_migration(
+        &self,
+        home_cluster_id: i64,
+        direction: MigrationDirection,
+        picked: Option<i64>,
+    ) {
         let Ok(state) = launcher::state() else { return };
 
-        let nothing = || {
-            self.notify(t("oneclient.actions.release_migration.nothing.title"))
-                .body(t("oneclient.actions.release_migration.nothing.no_packages"))
-                .send();
-        };
-
-        let offer = match manual_migration_offer(&state, target_cluster_id, source_cluster_id).await
-        {
-            Ok(OfferLookup::Offer(offer)) => offer,
-            Ok(OfferLookup::NoSources) => {
-                nothing();
-                return;
-            }
-            Ok(OfferLookup::MissingCluster) => return,
+        let partners = match manual_migration_partners(&state, home_cluster_id).await {
+            Ok(Some(partners)) => partners,
+            Ok(None) => return,
             Err(err) => {
-                tracing::warn!(error = %err, target_cluster_id, "manual migration lookup failed");
+                tracing::warn!(error = %err, home_cluster_id, "manual migration lookup failed");
                 self.notify(t("oneclient.actions.release_migration.check_failed.title"))
                     .body(err.to_string())
                     .level(Level::Error)
@@ -580,26 +614,33 @@ impl Actions {
             }
         };
 
-        let (sources, plans) =
-            match plan_sources(&offer, state.bundles.as_ref(), &state.services.content()).await {
-                SourcePlans::Ready { sources, plans } => (sources, plans),
-                SourcePlans::Nothing => {
-                    nothing();
-                    return;
-                }
-                SourcePlans::Unreachable => {
-                    self.notify(t("oneclient.actions.release_migration.check_failed.title"))
-                        .body(t(
-                            "oneclient.actions.release_migration.check_failed.unreachable",
-                        ))
-                        .level(Level::Error)
-                        .send();
-                    return;
-                }
-            };
+        let Some(direction) =
+            opening_direction(&partners.inbound, &partners.outbound, direction, picked)
+        else {
+            self.notify(t("oneclient.actions.release_migration.nothing.title"))
+                .body(t("oneclient.actions.release_migration.nothing.no_packages"))
+                .send();
+            return;
+        };
+        let (picked_inbound, picked_outbound) = match direction {
+            MigrationDirection::Into => (picked, None),
+            MigrationDirection::From => (None, picked),
+        };
 
-        self.open_release_prompt(&state, *offer, sources, plans, PromptOrigin::Manual)
-            .await;
+        self.write_release_migration(move |prompt| {
+            *prompt = Some(ReleaseMigrationPrompt {
+                home: partners.home,
+                direction,
+                inbound: partners.inbound,
+                outbound: partners.outbound,
+                picked_inbound,
+                picked_outbound,
+                plans: HashMap::new(),
+                java: HashMap::new(),
+                origin: PromptOrigin::Manual,
+            });
+        });
+        self.edit_migration_prompt(|_| {});
     }
 
     pub fn queue_release_migration(&self, target_cluster_id: i64) {
@@ -684,7 +725,7 @@ impl Actions {
             key = prompt
                 .take()
                 .filter(|prompt| prompt.origin == PromptOrigin::NewRelease)
-                .map(|prompt| prompt.key);
+                .map(|prompt| release_key(&prompt.home));
         });
         if let Some(key) = key {
             self.remove_pending_release_migrations(vec![key]);
@@ -699,7 +740,11 @@ impl Actions {
         let mut taken = None;
         self.write_release_migration(|prompt| taken = prompt.take());
         let Some(prompt) = taken else { return };
-        if self.refuse_during_update_check(prompt.target.id) {
+        let (Some(source), Some(target)) = (prompt.source().cloned(), prompt.target().cloned())
+        else {
+            return;
+        };
+        if self.refuse_during_update_check(target.id) {
             return;
         }
         match prompt.origin {
@@ -711,25 +756,23 @@ impl Actions {
             }
             PromptOrigin::Simulated => {}
             PromptOrigin::NewRelease | PromptOrigin::Manual => {
-                self.remove_pending_release_migrations(vec![prompt.key.clone()]);
+                self.remove_pending_release_migrations(vec![release_key(&target)]);
             }
         }
 
-        if let Some(source) = prompt.source() {
-            let (source_id, target_id) = (source.id, prompt.target.id);
-            spawn_in_window(async move {
-                let Ok(state) = launcher::state() else { return };
-                if let Err(err) = oneclient_content::bundles::inherit_bundle_choices(
-                    source_id,
-                    target_id,
-                    &state.services.content(),
-                )
-                .await
-                {
-                    tracing::warn!(error = %err, "could not carry the bundle choices over to the target");
-                }
-            });
-        }
+        let (source_id, target_id) = (source.id, target.id);
+        spawn_in_window(async move {
+            let Ok(state) = launcher::state() else { return };
+            if let Err(err) = oneclient_content::bundles::inherit_bundle_choices(
+                source_id,
+                target_id,
+                &state.services.content(),
+            )
+            .await
+            {
+                tracing::warn!(error = %err, "could not carry the bundle choices over to the target");
+            }
+        });
 
         if packages.is_empty() {
             return;
@@ -739,8 +782,7 @@ impl Actions {
             .iter()
             .map(|package| package.source_hash.clone())
             .collect();
-        let (dependencies, unavailable): (Vec<_>, Vec<_>) = match prompt.plans.get(&prompt.selected)
-        {
+        let (dependencies, unavailable): (Vec<_>, Vec<_>) = match prompt.plan() {
             Some(ReleasePlanState::Ready(plan)) => (
                 plan.dependencies
                     .iter()
@@ -758,13 +800,12 @@ impl Actions {
         let waitlisted = !prompt.is_cross_loader();
 
         let actions = self.clone();
-        let write = super::ClusterWrite::take(prompt.target.id);
+        let write = super::ClusterWrite::take(target.id);
         spawn_in_window(async move {
             let _write = write;
             let Ok(state) = launcher::state() else { return };
             let content = state.services.content();
-            let source = prompt.source().filter(|_| copy_configs_too).cloned();
-            let target = prompt.target;
+            let source = copy_configs_too.then_some(source);
             let total = packages.len() + dependencies.len();
 
             let session = oneclient_events::GroupedProgressSession::start(

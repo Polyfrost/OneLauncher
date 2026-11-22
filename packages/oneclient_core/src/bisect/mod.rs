@@ -1,6 +1,9 @@
-mod plan;
+mod imcs;
+mod meta;
+mod resolve;
+mod version;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -9,8 +12,7 @@ use oneclient_common::domain::ContentType;
 use oneclient_content::packages::store::artifact_absolute_path;
 use oneclient_content::packages::types::DependencyKind;
 use oneclient_content::packages::{
-    JarDependencies, LinkedArtifactInfo, PackageStore, ProviderId, read_cached_package_meta,
-    read_jar_dependencies, read_jar_manifest,
+    LinkedArtifactInfo, PackageStore, ProviderId, read_cached_package_meta, read_jar_manifest,
 };
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::cluster_bisect as bisect_dao;
@@ -18,15 +20,17 @@ use oneclient_db::dao::cluster_bisect::BisectModState;
 use oneclient_db::models::BisectEdgeKind;
 pub use oneclient_db::models::BisectExit;
 use oneclient_events::Signal;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::LauncherResult;
-use crate::game::diagnosis::{
-    LogFindings, MissingDependency, MissingTarget, crash_report_findings,
-};
+use crate::game::diagnosis::{LogFindings, MissingDependency, MissingTarget, crash_report_findings};
 use crate::state::LauncherState;
-use plan::ModSet;
-pub use plan::launches_left;
+use imcs::{Outcome, Plan, State, Test};
+pub use imcs::PlanKind as BisectPlanKind;
+use meta::{ClassIndex, ModMeta};
+use resolve::{Catalog, Set};
+use version::Predicate;
 
 #[derive(Debug, Error)]
 pub enum BisectError {
@@ -35,6 +39,9 @@ pub enum BisectError {
 
     #[error("A problem mod search is already running for this cluster")]
     AlreadyRunning,
+
+    #[error("A problem mod search is already running in {name}. Finish or stop it there first")]
+    RunningElsewhere { name: String },
 
     #[error("No problem mod search is running for this cluster")]
     NotRunning,
@@ -45,11 +52,17 @@ pub enum BisectError {
     #[error("There is no earlier answer to undo")]
     NothingToUndo,
 
+    #[error("The search isn't waiting for an answer right now")]
+    NothingToAnswer,
+
+    #[error("There are no mods left to search for another problem")]
+    CannotContinue,
+
+    #[error("The search is not stuck, so there is nothing to look into")]
+    NotHalted,
+
     #[error("That mod is no longer off, so answer the question instead")]
     NoSuggestion,
-
-    #[error("There is no result to confirm yet")]
-    NothingToConfirm,
 
     #[error(
         "Couldn't turn {name} {direction}: {reason}. Close anything using the mod file and try again."
@@ -67,8 +80,12 @@ pub enum BisectRole {
     Waiting,
     Helper,
     Cleared,
-    /// Found earlier and kept on while looking for a mod it conflicts with
     Found,
+    Problem,
+    Required,
+    KeptOff,
+    Omitted,
+    Unresolvable,
 }
 
 impl BisectRole {
@@ -80,8 +97,29 @@ impl BisectRole {
             Self::Helper => "Needed by a tested mod",
             Self::Cleared => "Cleared",
             Self::Found => "Found",
+            Self::Problem => "Problem found earlier",
+            Self::Required => "Always on",
+            Self::KeptOff => "Kept off",
+            Self::Omitted => "Left out",
+            Self::Unresolvable => "Can't load",
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BisectChoice {
+    Search,
+    Required,
+    KeptOff,
+    Omitted,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BisectStage {
+    Testing,
+    Verifying,
+    Halted,
+    Complete,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,26 +127,49 @@ pub struct BisectMod {
     pub hash: String,
     pub name: String,
     pub role: BisectRole,
+    pub choice: BisectChoice,
+    pub on: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BisectStatus {
-    pub cluster_id: i64,
-    pub round: i64,
-    pub pending_exit: BisectExit,
-    pub mods: Vec<BisectMod>,
-    pub finished: bool,
-    pub retry_note: Option<String>,
-    pub suggestion: Option<BisectSuggestion>,
-    /// The user said the problem still happens with only the found mods on
-    pub confirmed: bool,
-    /// Mods are being put back a failure leaves it here until retried
-    pub finishing: bool,
-    /// Names of mods in the search that left the cluster since it started
-    pub removed: Vec<String>,
-    /// Names of enabled mods that joined the cluster since it started they are
-    /// on for every launch and never tested
-    pub added: Vec<String>,
+pub struct CascadeMod {
+    pub hash: String,
+    pub name: String,
+    pub also: Vec<String>,
+    pub maybe: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ConflictReport {
+    pub mods: Vec<CascadeMod>,
+    pub if_all_also: Vec<String>,
+    pub if_all_maybe: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnresolvableMod {
+    pub hash: String,
+    pub name: String,
+    pub missing: Vec<String>,
+    pub blocks: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HiddenDependency {
+    pub from: String,
+    pub to: String,
+    pub classes: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BisectHistoryEntry {
+    pub round: u32,
+    pub iteration: u32,
+    pub step: u32,
+    pub kind: BisectPlanKind,
+    pub answer: BisectAnswer,
+    pub tested: Vec<String>,
+    pub enabled: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -117,69 +178,65 @@ pub struct BisectSuggestion {
     pub needed_by: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BisectStatus {
+    pub cluster_id: i64,
+    pub stage: BisectStage,
+    pub round: u32,
+    pub iteration: u32,
+    pub tests_this_round: usize,
+    pub estimate: u32,
+    pub pending_exit: BisectExit,
+    pub mods: Vec<BisectMod>,
+    pub current: ConflictReport,
+    pub earlier: Vec<ConflictReport>,
+    pub pending: Vec<String>,
+    pub removed: Vec<String>,
+    pub can_undo: bool,
+    pub can_continue: bool,
+    pub groups: Option<(Vec<String>, Vec<String>)>,
+    pub can_look_for_hidden: bool,
+    pub hidden: Vec<HiddenDependency>,
+    pub unresolvable: Vec<UnresolvableMod>,
+    pub history: Vec<BisectHistoryEntry>,
+    pub resolution_problem: Option<String>,
+    pub retry_note: Option<String>,
+    pub suggestion: Option<BisectSuggestion>,
+    pub finishing: bool,
+}
+
 impl BisectStatus {
     #[must_use]
-    pub fn suspects(&self) -> impl Iterator<Item = &BisectMod> {
-        self.mods
-            .iter()
-            .filter(|m| matches!(m.role, BisectRole::Testing | BisectRole::Waiting))
-    }
-
-    #[must_use]
-    pub fn suspect_count(&self) -> usize {
-        self.suspects().count()
-    }
-
-    #[must_use]
-    pub fn testing_count(&self) -> usize {
-        self.mods
-            .iter()
-            .filter(|m| m.role == BisectRole::Testing)
-            .count()
-    }
-
-    #[must_use]
-    pub fn launches_left(&self) -> u32 {
-        if self.finished {
-            0
-        } else {
-            plan::launches_left(self.suspect_count())
-        }
+    pub fn finished(&self) -> bool {
+        self.stage == BisectStage::Complete
     }
 
     #[must_use]
     pub fn awaiting_answer(&self) -> bool {
-        self.pending_exit != BisectExit::None && !self.confirmed && !self.finishing
+        self.pending_exit != BisectExit::None
+            && !self.finishing
+            && matches!(self.stage, BisectStage::Testing | BisectStage::Verifying)
     }
 
-    /// The launch after a result asks whether the found mods alone still cause it
     #[must_use]
-    pub fn awaiting_confirmation(&self) -> bool {
-        self.awaiting_answer() && self.finished
+    pub fn count(&self, role: BisectRole) -> usize {
+        self.mods.iter().filter(|m| m.role == role).count()
     }
 
-    /// The mods to blame the ones found earlier plus the suspects once only
-    /// they are left
     #[must_use]
-    pub fn culprits(&self) -> Vec<&BisectMod> {
-        self.mods
+    pub fn culprits(&self) -> Vec<&CascadeMod> {
+        self.current.mods.iter().collect()
+    }
+
+    pub fn all_found(&self) -> impl Iterator<Item = &CascadeMod> {
+        self.earlier
             .iter()
-            .filter(|m| {
-                m.role == BisectRole::Found || (self.finished && m.role == BisectRole::Testing)
-            })
-            .collect()
+            .chain([&self.current])
+            .flat_map(|report| &report.mods)
     }
 
-    #[must_use]
-    pub fn mods_changed(&self) -> bool {
-        !self.removed.is_empty() || !self.added.is_empty()
-    }
-
-    #[must_use]
     pub fn off_this_round(&self) -> impl Iterator<Item = &BisectMod> {
-        self.mods
-            .iter()
-            .filter(|m| matches!(m.role, BisectRole::Waiting | BisectRole::Cleared))
+        self.mods.iter().filter(|m| !m.on && m.role != BisectRole::KeptOff)
     }
 
     #[must_use]
@@ -188,143 +245,195 @@ impl BisectStatus {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BisectAnswer {
     Broken,
     Works,
+    Unsure,
+}
+
+#[must_use]
+pub fn estimate_launches(mods: usize) -> u32 {
+    if mods == 0 {
+        0
+    } else {
+        usize::BITS - (mods - 1).leading_zeros() + 1
+    }
 }
 
 static OPS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-static JAR_DEPENDENCIES: std::sync::LazyLock<std::sync::Mutex<HashMap<String, JarDependencies>>> =
+static MOD_META: std::sync::LazyLock<std::sync::Mutex<HashMap<String, ModMeta>>> =
     std::sync::LazyLock::new(Default::default);
 
-struct Session {
-    round: i64,
-    pending_exit: BisectExit,
-    retry_note: Option<String>,
-    confirmed: bool,
-    finishing: bool,
-    hashes: Vec<String>,
-    cleared: Vec<Option<i64>>,
-    pinned: Vec<Option<i64>>,
-    disable_on_finish: Vec<bool>,
-    testing: ModSet,
-    linked: HashMap<String, LinkedArtifactInfo>,
-    names: HashMap<String, String>,
-    edges: Vec<(String, String, BisectEdgeKind)>,
-    suggestions: Vec<(Option<String>, String)>,
-    removed: Vec<String>,
-    added: Vec<String>,
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+struct Flags {
+    required: bool,
+    kept_off: bool,
+    omitted: bool,
+    missing: bool,
+    problem: bool,
+    unresolvable: bool,
+    was_enabled: bool,
 }
 
-impl Session {
-    /// Round the current search started at pinning the found mods to look for
-    /// a partner makes everything cleared before it a suspect again
-    fn phase_round(&self) -> i64 {
-        self.pinned
+impl Flags {
+    fn activatable(self) -> bool {
+        !(self.kept_off || self.missing || self.unresolvable || self.problem)
+    }
+
+    fn candidate(self) -> bool {
+        self.activatable() && !self.required && !self.omitted
+    }
+
+    fn evaluated(self) -> bool {
+        !(self.kept_off || self.missing || self.problem)
+    }
+
+    fn choice(self) -> BisectChoice {
+        if self.required {
+            BisectChoice::Required
+        } else if self.kept_off {
+            BisectChoice::KeptOff
+        } else if self.omitted {
+            BisectChoice::Omitted
+        } else {
+            BisectChoice::Search
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Saved {
+    state: State,
+    #[serde(default)]
+    log: Vec<Test>,
+    #[serde(default)]
+    found: Vec<Set>,
+    #[serde(default)]
+    pending: Set,
+    #[serde(default)]
+    flags: BTreeMap<String, Flags>,
+    #[serde(default)]
+    ignored: BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    hidden_checked: bool,
+    #[serde(default)]
+    hidden: Vec<(String, String, usize)>,
+    #[serde(default)]
+    problem: Option<String>,
+}
+
+impl Saved {
+    fn fresh(hashes: &[String]) -> Self {
+        Self {
+            state: State::new(hashes.iter().cloned().collect(), 1),
+            log: Vec::new(),
+            found: Vec::new(),
+            pending: Set::new(),
+            flags: hashes
+                .iter()
+                .map(|hash| {
+                    (
+                        hash.clone(),
+                        Flags {
+                            was_enabled: true,
+                            ..Flags::default()
+                        },
+                    )
+                })
+                .collect(),
+            ignored: BTreeMap::new(),
+            hidden_checked: false,
+            hidden: Vec::new(),
+            problem: None,
+        }
+    }
+
+    fn select(&self, keep: impl Fn(Flags) -> bool) -> Set {
+        self.flags
             .iter()
-            .flatten()
-            .max()
-            .map_or(0, |round| round + 1)
-    }
-
-    fn suspects(&self) -> ModSet {
-        let phase = self.phase_round();
-        (0..self.hashes.len())
-            .filter(|&i| {
-                self.pinned[i].is_none()
-                    && self.cleared[i].is_none_or(|round| round < phase)
-                    && self.linked.contains_key(&self.hashes[i])
-            })
+            .filter(|(_, f)| keep(**f))
+            .map(|(hash, _)| hash.clone())
             .collect()
     }
 
-    fn pinned_set(&self) -> ModSet {
-        (0..self.hashes.len())
-            .filter(|&i| self.pinned[i].is_some() && self.linked.contains_key(&self.hashes[i]))
-            .collect()
+    fn activatable(&self) -> Set {
+        self.select(Flags::activatable)
     }
 
-    fn finished(&self) -> bool {
-        self.suspects().is_subset(&self.testing)
+    fn forced(&self) -> Set {
+        self.select(|f| f.required && f.activatable())
     }
 
-    fn off(&self) -> ModSet {
-        (0..self.hashes.len())
-            .filter(|&i| !self.testing.contains(&i) && self.linked.contains_key(&self.hashes[i]))
-            .collect()
+    fn candidates(&self) -> Set {
+        self.select(Flags::candidate)
     }
 
-    fn index_of(&self, hash: &str) -> Option<usize> {
-        self.hashes.iter().position(|h| h == hash)
-    }
-
-    fn name(&self, index: usize) -> String {
-        let hash = &self.hashes[index];
-        self.names
-            .get(hash)
-            .cloned()
-            .unwrap_or_else(|| hash.clone())
-    }
-
-    fn names(&self, indices: &ModSet) -> String {
-        indices
-            .iter()
-            .map(|&i| self.name(i))
-            .collect::<Vec<_>>()
-            .join(", ")
-    }
-}
-
-struct Graph {
-    requires: Vec<Vec<usize>>,
-    firm: Vec<Vec<usize>>,
-    /// A jar's own mod ids
-    own: HashMap<String, usize>,
-    /// Libraries nested inside jars one id is often bundled by several mods
-    bundled: HashMap<String, Vec<usize>>,
-}
-
-impl Graph {
-    /// Only an unambiguous provider when several mods bundle the same library
-    /// any of them satisfies it so no single one is needed
-    fn provider(&self, id: &str) -> Option<usize> {
-        self.own
-            .get(id)
-            .copied()
-            .or_else(|| match self.bundled.get(id) {
-                Some(providers) if providers.len() == 1 => Some(providers[0]),
-                _ => None,
-            })
-    }
-
-    fn provider_among(&self, id: &str, among: &ModSet) -> Option<usize> {
-        self.own
-            .get(id)
-            .copied()
-            .filter(|index| among.contains(index))
-            .or_else(|| {
-                self.bundled
-                    .get(id)?
-                    .iter()
-                    .copied()
-                    .find(|index| among.contains(index))
-            })
+    fn present(&self) -> Set {
+        self.select(|f| !f.missing)
     }
 }
 
 type Edge = (String, String, BisectEdgeKind);
+
+struct Session {
+    cluster_id: i64,
+    pending_exit: BisectExit,
+    retry_note: Option<String>,
+    finishing: bool,
+    hashes: Vec<String>,
+    names: HashMap<String, String>,
+    testing: Set,
+    disable_on_finish: Set,
+    linked: HashMap<String, LinkedArtifactInfo>,
+    edges: Vec<Edge>,
+    suggestions: Vec<(Option<String>, String)>,
+    saved: Saved,
+}
+
+impl Session {
+    fn name(&self, hash: &str) -> String {
+        self.names
+            .get(hash)
+            .cloned()
+            .unwrap_or_else(|| hash.to_string())
+    }
+
+    fn names(&self, hashes: &Set) -> String {
+        self.name_list(hashes).join(", ")
+    }
+
+    fn name_list<'a>(&self, hashes: impl IntoIterator<Item = &'a String>) -> Vec<String> {
+        let mut names: Vec<String> = hashes.into_iter().map(|h| self.name(h)).collect();
+        names.sort_by_key(|n| n.to_lowercase());
+        names
+    }
+
+    fn off(&self) -> Set {
+        self.hashes
+            .iter()
+            .filter(|h| !self.testing.contains(*h) && self.linked.contains_key(*h))
+            .cloned()
+            .collect()
+    }
+
+    fn flags(&mut self, hash: &str) -> &mut Flags {
+        self.saved.flags.entry(hash.to_string()).or_default()
+    }
+}
 
 #[tracing::instrument(skip(state))]
 pub async fn bisect_status(
     state: &Arc<LauncherState>,
     cluster_id: i64,
 ) -> LauncherResult<Option<BisectStatus>> {
-    let Some(session) = load(state, cluster_id).await? else {
+    let guard = OPS.try_lock().ok();
+    let Some(session) = load(state, cluster_id, guard.is_some()).await? else {
         return Ok(None);
     };
-    Ok(Some(describe(cluster_id, &session)))
+    let catalog = catalog(state, &session).await;
+    Ok(Some(describe(&session, &catalog)))
 }
 
 #[tracing::instrument(skip(state, progress))]
@@ -334,32 +443,42 @@ pub async fn start_bisect(
     progress: impl Fn(&str, u64, u64),
 ) -> LauncherResult<BisectStatus> {
     let _guard = OPS.lock().await;
-    ensure_idle(state, cluster_id)?;
+    let _busy = ensure_idle(state, cluster_id)?;
     let db = &state.services.db;
     if bisect_dao::is_active(db, cluster_id).await? {
         return Err(BisectError::AlreadyRunning.into());
     }
+    match bisect_dao::any_active(db).await? {
+        Some(running) => {
+            let name = match state.clusters.get(running).await {
+                Ok(cluster) => cluster.name.clone(),
+                Err(_) => "another cluster".to_string(),
+            };
+            return Err(BisectError::RunningElsewhere { name }.into());
+        }
+        None => {}
+    }
 
     let linked = PackageStore::list_linked_artifacts(cluster_id, &state.services.content()).await?;
-    let mut enabled: Vec<&LinkedArtifactInfo> = linked
+    let mut all: Vec<&LinkedArtifactInfo> = linked
         .iter()
-        .filter(|info| info.content_type == ContentType::Mod && info.enabled)
+        .filter(|info| info.content_type == ContentType::Mod)
         .collect();
-    enabled.sort_by(|a, b| a.hash.cmp(&b.hash));
-    enabled.dedup_by(|a, b| a.hash == b.hash);
-    if enabled.len() < 2 {
+    all.sort_by(|a, b| a.hash.cmp(&b.hash));
+    all.dedup_by(|a, b| a.hash == b.hash);
+    if all.iter().filter(|info| info.enabled).count() < 2 {
         return Err(BisectError::TooFewMods.into());
     }
 
-    let total = enabled.len() as u64 + 2;
-    for (read, info) in enabled.iter().enumerate() {
+    let total = all.len() as u64 + 2;
+    for (read, info) in all.iter().enumerate() {
         progress("Reading mods", read as u64, total);
-        jar_dependencies(state, &info.hash).await;
+        mod_meta(state, &info.hash, &info.file_name).await;
     }
 
     progress("Checking dependencies online", total - 2, total);
-    let names = mod_names(state, &enabled).await;
-    let mods: Vec<(String, String)> = enabled
+    let names = mod_names(state, &all).await;
+    let mods: Vec<(String, String)> = all
         .iter()
         .map(|info| {
             let name = names
@@ -370,9 +489,26 @@ pub async fn start_bisect(
         })
         .collect();
 
-    bisect_dao::start(db, cluster_id, &mods).await?;
+    let hashes: Vec<String> = mods.iter().map(|(hash, _)| hash.clone()).collect();
+    let mut saved = Saved::fresh(&hashes);
+    for info in &all {
+        if !info.enabled
+            && let Some(flags) = saved.flags.get_mut(&info.hash)
+        {
+            flags.was_enabled = false;
+            flags.kept_off = true;
+        }
+    }
+    for loser in duplicate_losers(&all) {
+        if let Some(flags) = saved.flags.get_mut(&loser) {
+            flags.kept_off = true;
+        }
+    }
+
+    bisect_dao::start(db, cluster_id, &mods, &encode(&saved)).await?;
     tracing::info!(cluster_id, mods = mods.len(), "started problem mod search");
 
+    let enabled: Vec<&LinkedArtifactInfo> = all.iter().copied().filter(|i| i.enabled).collect();
     let listed = tokio::time::timeout(
         std::time::Duration::from_secs(15),
         listed_dependency_edges(state, &enabled),
@@ -389,18 +525,44 @@ pub async fn start_bisect(
     }
 
     progress("Switching mods for the first round", total - 1, total);
-    let started = match load(state, cluster_id).await {
-        Ok(Some(session)) => advance(state, cluster_id, session).await,
+    let started = match load(state, cluster_id, true).await {
+        Ok(Some(session)) => fresh_round(state, session, 1).await,
         Ok(None) => Err(BisectError::NotRunning.into()),
         Err(err) => Err(err),
     };
-    // A first round that could not be set up leaves nothing worth resuming
     if started.is_err()
         && let Err(err) = bisect_dao::end(db, cluster_id).await
     {
         tracing::warn!(cluster_id, error = %err, "could not drop a mod search that failed to start");
     }
     started
+}
+
+fn duplicate_losers(all: &[&LinkedArtifactInfo]) -> Vec<String> {
+    let cache = MOD_META.lock().ok();
+    let mut by_id: HashMap<String, Vec<(&LinkedArtifactInfo, ModMeta)>> = HashMap::new();
+    for info in all.iter().filter(|info| info.enabled) {
+        if let Some(meta) = cache
+            .as_ref()
+            .and_then(|c| c.get(&info.hash))
+            .filter(|meta| !meta.loose_id)
+        {
+            by_id
+                .entry(meta.id.clone())
+                .or_default()
+                .push((info, meta.clone()));
+        }
+    }
+    let mut losers = Vec::new();
+    for mut group in by_id.into_values().filter(|g| g.len() > 1) {
+        group.sort_by(|a, b| {
+            b.1.version
+                .compare(&a.1.version)
+                .then_with(|| a.0.file_name.cmp(&b.0.file_name))
+        });
+        losers.extend(group.into_iter().skip(1).map(|(info, _)| info.hash.clone()));
+    }
+    losers
 }
 
 #[tracing::instrument(skip(state))]
@@ -410,32 +572,42 @@ pub async fn answer_bisect(
     answer: BisectAnswer,
 ) -> LauncherResult<BisectStatus> {
     let _guard = OPS.lock().await;
-    ensure_idle(state, cluster_id)?;
-    let mut session = load(state, cluster_id)
+    let _busy = ensure_idle(state, cluster_id)?;
+    let mut session = load(state, cluster_id, true)
         .await?
         .ok_or(BisectError::NotRunning)?;
+    let plan = session
+        .saved
+        .state
+        .plan()
+        .ok_or(BisectError::NothingToAnswer)?;
+    let outcome = match answer {
+        BisectAnswer::Broken => Outcome::Fail,
+        BisectAnswer::Works => Outcome::Good,
+        BisectAnswer::Unsure => Outcome::Unsure,
+    };
 
-    let suspects = session.suspects();
-    let kept = plan::narrow(&suspects, &session.testing, answer == BisectAnswer::Broken);
-    for index in suspects.difference(&kept) {
-        session.cleared[*index] = Some(session.round);
+    let before = session.saved.state.clone();
+    session.saved.state = before.apply(&plan, outcome);
+    session.saved.log.push(Test {
+        plan: plan.clone(),
+        outcome,
+        before,
+        enabled: session.testing.clone(),
+    });
+    if plan.kind == BisectPlanKind::Verification && !session.saved.pending.is_empty() {
+        let pending = std::mem::take(&mut session.saved.pending);
+        session.saved.state.add(&pending);
     }
-    session.round += 1;
-    tracing::info!(
-        cluster_id,
-        ?answer,
-        round = session.round,
-        suspects = kept.len(),
-        "recorded problem mod search answer"
-    );
+    tracing::info!(cluster_id, ?answer, kind = ?plan.kind, "recorded problem mod search answer");
 
-    advance(state, cluster_id, session).await
+    advance(state, session).await
 }
 
 #[tracing::instrument(skip(state))]
 pub async fn skip_bisect_answer(state: &Arc<LauncherState>, cluster_id: i64) -> LauncherResult<()> {
     let _guard = OPS.lock().await;
-    ensure_idle(state, cluster_id)?;
+    let _busy = ensure_idle(state, cluster_id)?;
     bisect_dao::clear_suggestions(&state.services.db, cluster_id).await?;
     bisect_dao::set_pending_exit(&state.services.db, cluster_id, BisectExit::None).await?;
     state.services.events.signal(Signal::ClustersChanged);
@@ -448,116 +620,201 @@ pub async fn undo_bisect_answer(
     cluster_id: i64,
 ) -> LauncherResult<BisectStatus> {
     let _guard = OPS.lock().await;
-    ensure_idle(state, cluster_id)?;
-    let mut session = load(state, cluster_id)
+    let _busy = ensure_idle(state, cluster_id)?;
+    let mut session = load(state, cluster_id, true)
         .await?
         .ok_or(BisectError::NotRunning)?;
-    if session.confirmed {
-        bisect_dao::set_confirmed(&state.services.db, cluster_id, false).await?;
-        state.services.events.signal(Signal::ClustersChanged);
-        session.confirmed = false;
-        session.pending_exit = BisectExit::None;
-        return Ok(describe(cluster_id, &session));
-    }
-    if session.round == 0 {
+    if !can_undo(&session.saved) {
         return Err(BisectError::NothingToUndo.into());
     }
-
-    session.round -= 1;
-    let round = Some(session.round);
-    for cleared in &mut session.cleared {
-        if *cleared == round {
-            *cleared = None;
-        }
+    if let Some(last) = session.saved.log.pop() {
+        session.saved.state = last.before;
     }
-    for pinned in &mut session.pinned {
-        if *pinned == round {
-            *pinned = None;
-        }
-    }
-
-    advance(state, cluster_id, session).await
+    advance(state, session).await
 }
 
-/// Answers the launch after a result where only the found mods and what they
-/// need were on
 #[tracing::instrument(skip(state))]
-pub async fn confirm_bisect(
+pub async fn continue_bisect(
     state: &Arc<LauncherState>,
     cluster_id: i64,
-    reproduced: bool,
 ) -> LauncherResult<BisectStatus> {
     let _guard = OPS.lock().await;
-    ensure_idle(state, cluster_id)?;
-    let db = &state.services.db;
-    let mut session = load(state, cluster_id)
+    let _busy = ensure_idle(state, cluster_id)?;
+    let mut session = load(state, cluster_id, true)
         .await?
         .ok_or(BisectError::NotRunning)?;
-    if !session.finished() || session.confirmed {
-        return Err(BisectError::NothingToConfirm.into());
+    let current = &session.saved.state;
+    if !current.complete || current.conflict.is_empty() || current.candidate_set().is_empty() {
+        return Err(BisectError::CannotContinue.into());
     }
-
-    if reproduced {
-        bisect_dao::set_confirmed(db, cluster_id, true).await?;
-        tracing::info!(cluster_id, "confirmed the problem mod");
-        state.services.events.signal(Signal::ClustersChanged);
-        session.confirmed = true;
-        session.pending_exit = BisectExit::None;
-        return Ok(describe(cluster_id, &session));
+    let conflict = current.conflict.clone();
+    let round = current.round + 1;
+    for hash in &conflict {
+        session.flags(hash).problem = true;
     }
+    session.saved.found.push(conflict);
 
-    let found: ModSet = session
-        .suspects()
-        .union(&session.pinned_set())
-        .copied()
-        .collect();
-    let found_names = session.names(&found);
-    let candidates = (0..session.hashes.len())
-        .filter(|i| !found.contains(i) && session.linked.contains_key(&session.hashes[*i]))
-        .count();
-    if candidates == 0 {
-        bisect_dao::set_confirmed(db, cluster_id, true).await?;
-        let note = format!(
-            "The problem didn't happen with only {found_names} on. It may only happen sometimes, or need a mod that wasn't part of the search."
-        );
-        bisect_dao::set_retry_note(db, cluster_id, &note).await?;
-        state.services.events.signal(Signal::ClustersChanged);
-        session.confirmed = true;
-        session.pending_exit = BisectExit::None;
-        session.retry_note = Some(note);
-        return Ok(describe(cluster_id, &session));
-    }
-
-    for &index in &found {
-        if session.pinned[index].is_none() {
-            session.pinned[index] = Some(session.round);
-        }
-    }
-    session.round += 1;
-    tracing::info!(
-        cluster_id,
-        candidates,
-        "looking for a mod the found one conflicts with"
-    );
-
-    let note = format!(
-        "{found_names} alone didn't cause it, so now looking for a mod that causes it together with them. They stay on for every launch."
-    );
-    let mut status = advance(state, cluster_id, session).await?;
-    bisect_dao::set_retry_note(db, cluster_id, &note).await?;
-    status.retry_note = Some(note);
-    Ok(status)
+    tracing::info!(cluster_id, round, "looking for another problem");
+    fresh_round(state, session, round).await
 }
 
-/// Starts over with the mods the cluster has now after mods changed under a
-/// running search
 #[tracing::instrument(skip(state))]
-pub async fn restart_bisect(
+pub async fn reset_bisect(
     state: &Arc<LauncherState>,
     cluster_id: i64,
 ) -> LauncherResult<BisectStatus> {
-    finish_bisect(state, cluster_id, &[]).await?;
-    start_bisect(state, cluster_id, |_, _, _| {}).await
+    let _guard = OPS.lock().await;
+    let _busy = ensure_idle(state, cluster_id)?;
+    let db = &state.services.db;
+    let mut session = load(state, cluster_id, true)
+        .await?
+        .ok_or(BisectError::NotRunning)?;
+    bisect_dao::remove_edges(db, cluster_id, BisectEdgeKind::Inferred).await?;
+    session
+        .edges
+        .retain(|(_, _, kind)| *kind != BisectEdgeKind::Inferred);
+    for flags in session.saved.flags.values_mut() {
+        flags.problem = false;
+    }
+    session.saved.found.clear();
+    session.saved.log.clear();
+    session.saved.hidden_checked = false;
+    session.saved.hidden.clear();
+    tracing::info!(cluster_id, "started the problem mod search over");
+    fresh_round(state, session, 1).await
+}
+
+#[tracing::instrument(skip(state))]
+pub async fn set_bisect_mod_choice(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+    hashes: &[String],
+    choice: BisectChoice,
+) -> LauncherResult<BisectStatus> {
+    let _guard = OPS.lock().await;
+    let _busy = ensure_idle(state, cluster_id)?;
+    let mut session = load(state, cluster_id, true)
+        .await?
+        .ok_or(BisectError::NotRunning)?;
+    for hash in hashes {
+        if !session.saved.flags.contains_key(hash) {
+            continue;
+        }
+        let flags = session.flags(hash);
+        if choice == BisectChoice::Required && flags.unresolvable {
+            continue;
+        }
+        flags.required = choice == BisectChoice::Required;
+        flags.kept_off = choice == BisectChoice::KeptOff;
+        flags.omitted = choice == BisectChoice::Omitted;
+    }
+    advance(state, session).await
+}
+
+#[tracing::instrument(skip(state))]
+pub async fn settle_unresolvable_mod(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+    hash: &str,
+    ignore: bool,
+) -> LauncherResult<BisectStatus> {
+    let _guard = OPS.lock().await;
+    let _busy = ensure_idle(state, cluster_id)?;
+    let mut session = load(state, cluster_id, true)
+        .await?
+        .ok_or(BisectError::NotRunning)?;
+    if ignore {
+        let catalog = catalog(state, &session).await;
+        let evaluated = session.saved.select(Flags::evaluated);
+        let failing = catalog
+            .directly_unresolvable(&evaluated, false)
+            .remove(hash)
+            .unwrap_or_default();
+        session
+            .saved
+            .ignored
+            .entry(hash.to_string())
+            .or_default()
+            .extend(failing);
+    } else {
+        session.flags(hash).kept_off = true;
+    }
+    advance(state, session).await
+}
+
+#[tracing::instrument(skip(state, progress))]
+pub async fn find_hidden_dependencies(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+    progress: impl Fn(&str, u64, u64),
+) -> LauncherResult<BisectStatus> {
+    let _guard = OPS.lock().await;
+    let mut session = load(state, cluster_id, true)
+        .await?
+        .ok_or(BisectError::NotRunning)?;
+    if !session.saved.state.halted {
+        return Err(BisectError::NotHalted.into());
+    }
+    let catalog = catalog(state, &session).await;
+    let activatable = session.saved.activatable();
+
+    let total = activatable.len() as u64;
+    let mut indexes: BTreeMap<String, ClassIndex> = BTreeMap::new();
+    for (done, hash) in activatable.iter().enumerate() {
+        progress("Reading mod classes", done as u64, total);
+        if let Some(path) = artifact_path(state, hash).await {
+            indexes.insert(hash.clone(), meta::index_classes(&path).await);
+        }
+    }
+
+    let groups = halted_groups(&session.saved.state);
+    let found: Vec<(String, String, usize)> = resolve::infer(&catalog, &indexes)
+        .into_iter()
+        .filter(|dep| activatable.contains(&dep.target))
+        .filter(|dep| {
+            groups.as_ref().is_none_or(|(a, b)| {
+                (a.contains(&dep.source) && b.contains(&dep.target))
+                    || (b.contains(&dep.source) && a.contains(&dep.target))
+            })
+        })
+        .map(|dep| (dep.source, dep.target, dep.classes.len()))
+        .collect();
+
+    tracing::info!(cluster_id, found = found.len(), "looked for undeclared dependencies");
+    session.saved.hidden_checked = found.is_empty();
+    session.saved.hidden = found;
+    bisect_dao::set_search(&state.services.db, cluster_id, &encode(&session.saved)).await?;
+    if session.saved.hidden.is_empty() {
+        let note = "No hidden dependencies were found between the two groups.";
+        bisect_dao::set_retry_note(&state.services.db, cluster_id, note).await?;
+        session.retry_note = Some(note.to_string());
+    }
+    state.services.events.signal(Signal::ClustersChanged);
+    Ok(describe(&session, &catalog))
+}
+
+#[tracing::instrument(skip(state))]
+pub async fn use_hidden_dependencies(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+    accept: bool,
+) -> LauncherResult<BisectStatus> {
+    let _guard = OPS.lock().await;
+    let _busy = ensure_idle(state, cluster_id)?;
+    let mut session = load(state, cluster_id, true)
+        .await?
+        .ok_or(BisectError::NotRunning)?;
+    let hidden = std::mem::take(&mut session.saved.hidden);
+    session.saved.hidden_checked = true;
+    if accept && !hidden.is_empty() {
+        let edges: Vec<Edge> = hidden
+            .into_iter()
+            .map(|(from, to, _)| (from, to, BisectEdgeKind::Inferred))
+            .collect();
+        learn(state, &mut session, edges).await?;
+        session.saved.state.halted = false;
+    }
+    advance(state, session).await
 }
 
 #[tracing::instrument(skip(state))]
@@ -567,16 +824,15 @@ pub async fn finish_bisect(
     disable: &[String],
 ) -> LauncherResult<()> {
     let _guard = OPS.lock().await;
-    ensure_idle(state, cluster_id)?;
-    let Some(session) = load(state, cluster_id).await? else {
+    let _busy = ensure_idle(state, cluster_id)?;
+    let Some(session) = load(state, cluster_id, true).await? else {
         return Err(BisectError::NotRunning.into());
     };
 
-    // A retry after a failed restore keeps the choice made the first time
     if !session.finishing {
         let disable: Vec<String> = disable
             .iter()
-            .filter(|hash| session.index_of(hash).is_some())
+            .filter(|hash| session.hashes.contains(hash))
             .cloned()
             .collect();
         bisect_dao::begin_finish(&state.services.db, cluster_id, &disable).await?;
@@ -585,34 +841,35 @@ pub async fn finish_bisect(
     complete_finish(state, cluster_id).await
 }
 
-/// Each step is safe to repeat so a finish cut short by a crash or a locked
-/// file is simply run again
 async fn complete_finish(state: &Arc<LauncherState>, cluster_id: i64) -> LauncherResult<()> {
     let ctx = state.services.content();
-    let Some(session) = load(state, cluster_id).await? else {
+    let Some(session) = load(state, cluster_id, true).await? else {
         return Ok(());
     };
 
     let mut failure: Option<BisectError> = None;
-    for (index, hash) in session.hashes.iter().enumerate() {
-        if !session.linked.contains_key(hash) {
+    for hash in &session.hashes {
+        let Some(info) = session.linked.get(hash) else {
             continue;
-        }
-        let disable = session.disable_on_finish[index];
+        };
+        let disable = session.disable_on_finish.contains(hash);
+        let was_enabled = session.saved.flags.get(hash).is_none_or(|f| f.was_enabled);
         let result = if disable {
             oneclient_content::bundles::set_artifact_enabled_to(cluster_id, hash, false, &ctx)
                 .await
                 .map(|_| ())
-        } else {
-            PackageStore::set_artifact_enabled_to(cluster_id, hash, true, &ctx)
+        } else if info.enabled != was_enabled {
+            PackageStore::set_artifact_enabled_to(cluster_id, hash, was_enabled, &ctx)
                 .await
                 .map(|_| ())
+        } else {
+            Ok(())
         };
         if let Err(err) = result {
             tracing::warn!(cluster_id, %hash, error = %err, "could not restore a mod after the search");
             failure.get_or_insert(BisectError::SwitchFailed {
-                name: session.name(index),
-                direction: if disable { "off" } else { "back on" },
+                name: session.name(hash),
+                direction: if disable || !was_enabled { "off" } else { "back on" },
                 reason: err.to_string(),
             });
         }
@@ -626,30 +883,51 @@ async fn complete_finish(state: &Arc<LauncherState>, cluster_id: i64) -> Launche
     bisect_dao::end(&state.services.db, cluster_id).await?;
     tracing::info!(
         cluster_id,
-        disabled = session.disable_on_finish.iter().filter(|d| **d).count(),
+        disabled = session.disable_on_finish.len(),
         "finished problem mod search"
     );
     state.services.events.signal(Signal::ClustersChanged);
     Ok(())
 }
 
-/// Completes any finish the launcher was closed in the middle of
 pub async fn resume_unfinished_bisects(state: &Arc<LauncherState>) {
-    let clusters = match bisect_dao::list_finishing(&state.services.db).await {
-        Ok(clusters) => clusters,
-        Err(err) => {
-            tracing::warn!(error = %err, "could not look for unfinished mod searches");
-            return;
+    let db = &state.services.db;
+    match bisect_dao::list_finishing(db).await {
+        Ok(clusters) => {
+            for cluster_id in clusters {
+                let _guard = OPS.lock().await;
+                let Ok(_busy) = ensure_idle(state, cluster_id) else {
+                    continue;
+                };
+                if let Err(err) = complete_finish(state, cluster_id).await {
+                    tracing::warn!(cluster_id, error = %err, "could not finish restoring mods after a search");
+                }
+            }
         }
-    };
-    for cluster_id in clusters {
-        let _guard = OPS.lock().await;
-        if ensure_idle(state, cluster_id).is_err() {
-            continue;
+        Err(err) => tracing::warn!(error = %err, "could not look for unfinished mod searches"),
+    }
+
+    match bisect_dao::list_without_search(db).await {
+        Ok(clusters) => {
+            for cluster_id in clusters {
+                let _guard = OPS.lock().await;
+                let Ok(_busy) = ensure_idle(state, cluster_id) else {
+                    continue;
+                };
+                let upgraded = match load(state, cluster_id, true).await {
+                    Ok(Some(session)) => fresh_round(state, session, 1).await,
+                    Ok(None) => Err(BisectError::NotRunning.into()),
+                    Err(err) => Err(err),
+                };
+                match upgraded {
+                    Ok(_) => tracing::info!(cluster_id, "moved a mod search to the new search"),
+                    Err(err) => {
+                        tracing::warn!(cluster_id, error = %err, "could not move a mod search to the new search");
+                    }
+                }
+            }
         }
-        if let Err(err) = complete_finish(state, cluster_id).await {
-            tracing::warn!(cluster_id, error = %err, "could not finish restoring mods after a search");
-        }
+        Err(err) => tracing::warn!(error = %err, "could not look for old mod searches"),
     }
 }
 
@@ -660,19 +938,19 @@ pub async fn keep_bisect_mods_on(
     hashes: &[String],
 ) -> LauncherResult<BisectStatus> {
     let _guard = OPS.lock().await;
-    ensure_idle(state, cluster_id)?;
-    let mut session = load(state, cluster_id)
+    let _busy = ensure_idle(state, cluster_id)?;
+    let mut session = load(state, cluster_id, true)
         .await?
         .ok_or(BisectError::NotRunning)?;
 
     let off = session.off();
-    let targets: ModSet = hashes
+    let targets: Set = hashes
         .iter()
-        .filter_map(|hash| session.index_of(hash))
-        .filter(|index| off.contains(index))
+        .filter(|hash| off.contains(*hash))
+        .cloned()
         .collect();
     let edges = edges_from_testing(&session, &targets, BisectEdgeKind::Guessed);
-    learn(state, cluster_id, &mut session, edges).await?;
+    learn(state, &mut session, edges).await?;
 
     let kept = if targets.len() > 3 {
         format!("{} mods", targets.len())
@@ -680,7 +958,7 @@ pub async fn keep_bisect_mods_on(
         session.names(&targets)
     };
     let note = format!("{kept} will stay on with the mods being tested. Launch again.");
-    let mut status = advance(state, cluster_id, session).await?;
+    let mut status = advance(state, session).await?;
     bisect_dao::set_retry_note(&state.services.db, cluster_id, &note).await?;
     status.retry_note = Some(note);
     Ok(status)
@@ -692,31 +970,28 @@ pub async fn accept_bisect_suggestion(
     cluster_id: i64,
 ) -> LauncherResult<BisectStatus> {
     let _guard = OPS.lock().await;
-    ensure_idle(state, cluster_id)?;
-    let mut session = load(state, cluster_id)
+    let _busy = ensure_idle(state, cluster_id)?;
+    let mut session = load(state, cluster_id, true)
         .await?
         .ok_or(BisectError::NotRunning)?;
 
     let off = session.off();
     let mut edges: Vec<Edge> = Vec::new();
-    let mut targets = ModSet::new();
-    let mut requesters = ModSet::new();
+    let mut targets = Set::new();
+    let mut requesters = Set::new();
     for (from, to) in session.suggestions.clone() {
-        let Some(to) = session.index_of(&to).filter(|index| off.contains(index)) else {
+        if !off.contains(&to) {
             continue;
-        };
-        targets.insert(to);
-        let from = from
-            .and_then(|from| session.index_of(&from))
-            .filter(|index| session.testing.contains(index));
-        match from {
+        }
+        targets.insert(to.clone());
+        match from.filter(|from| session.testing.contains(from)) {
             Some(from) => {
-                requesters.insert(from);
-                edges.push(edge(&session, from, to, BisectEdgeKind::Known));
+                requesters.insert(from.clone());
+                edges.push((from, to, BisectEdgeKind::Known));
             }
             None => edges.extend(edges_from_testing(
                 &session,
-                &ModSet::from([to]),
+                &Set::from([to]),
                 BisectEdgeKind::Guessed,
             )),
         }
@@ -728,18 +1003,15 @@ pub async fn accept_bisect_suggestion(
         return Err(BisectError::NoSuggestion.into());
     }
 
-    learn(state, cluster_id, &mut session, edges).await?;
+    learn(state, &mut session, edges).await?;
 
     let with = if requesters.is_empty() {
         "the mods being tested".to_string()
     } else {
         session.names(&requesters)
     };
-    let note = format!(
-        "{} will stay on with {with}. Launch again.",
-        session.names(&targets)
-    );
-    let mut status = advance(state, cluster_id, session).await?;
+    let note = format!("{} will stay on with {with}. Launch again.", session.names(&targets));
+    let mut status = advance(state, session).await?;
     bisect_dao::set_retry_note(&state.services.db, cluster_id, &note).await?;
     status.retry_note = Some(note);
     Ok(status)
@@ -751,7 +1023,7 @@ pub async fn decline_bisect_suggestion(
     cluster_id: i64,
 ) -> LauncherResult<()> {
     let _guard = OPS.lock().await;
-    ensure_idle(state, cluster_id)?;
+    let _busy = ensure_idle(state, cluster_id)?;
     bisect_dao::clear_suggestions(&state.services.db, cluster_id).await?;
     state.services.events.signal(Signal::ClustersChanged);
     Ok(())
@@ -761,8 +1033,6 @@ pub async fn decline_bisect_suggestion(
 pub(crate) enum GameExit {
     Clean,
     Crashed,
-    /// The launcher lost the process or recovered the session afterwards so
-    /// it cannot say how the game ended
     Unknown,
 }
 
@@ -805,8 +1075,6 @@ pub(crate) async fn record_bisect_exit(
         merge_findings(&mut classes, report.classes);
     }
 
-    // A clean exit means nothing was missing badly enough to matter, whatever
-    // the loader warned about along the way
     if crashed && !sure.is_empty() {
         match repair_round(state, cluster_id, &sure).await {
             Ok(true) => return,
@@ -864,51 +1132,50 @@ async fn repair_round(
     sure: &[MissingDependency],
 ) -> LauncherResult<bool> {
     let _guard = OPS.lock().await;
-    let Some(mut session) = load(state, cluster_id).await? else {
+    let Some(mut session) = load(state, cluster_id, true).await? else {
         return Ok(false);
     };
-    if session.suspects().is_subset(&session.testing) {
+    if session.saved.state.plan().is_none() {
         return Ok(false);
     }
 
-    let graph = dependency_graph(state, &session).await;
+    let catalog = catalog(state, &session).await;
     let off = session.off();
     let mut edges: Vec<Edge> = Vec::new();
-    let mut requesters = ModSet::new();
+    let mut requesters = Set::new();
     let mut unknown_requester = false;
-    let mut targets = ModSet::new();
+    let mut targets = Set::new();
 
     for found in sure {
         let MissingTarget::Mod(id) = &found.missing else {
             continue;
         };
-        let Some(target) = graph.provider_among(id, &off) else {
+        let Some(target) = catalog.provider_of(&id.to_ascii_lowercase(), &off) else {
             continue;
         };
-        targets.insert(target);
+        targets.insert(target.clone());
 
         let requester = found
             .requester
             .as_ref()
-            .and_then(|id| graph.provider(id))
-            .filter(|index| session.testing.contains(index));
+            .and_then(|id| catalog.provider_of(&id.to_ascii_lowercase(), &session.testing));
         match requester {
             Some(from) => {
-                requesters.insert(from);
-                edges.push(edge(&session, from, target, BisectEdgeKind::Known));
+                requesters.insert(from.clone());
+                edges.push((from, target, BisectEdgeKind::Known));
             }
             None => {
                 unknown_requester = true;
                 edges.extend(edges_from_testing(
                     &session,
-                    &ModSet::from([target]),
+                    &Set::from([target]),
                     BisectEdgeKind::Guessed,
                 ));
             }
         }
     }
 
-    if !learn(state, cluster_id, &mut session, edges).await? {
+    if !learn(state, &mut session, edges).await? {
         return Ok(false);
     }
 
@@ -923,7 +1190,7 @@ async fn repair_round(
     );
     tracing::info!(cluster_id, %note, "repaired a mod search round after a missing dependency");
 
-    advance(state, cluster_id, session).await?;
+    advance(state, session).await?;
     bisect_dao::set_retry_note(&state.services.db, cluster_id, &note).await?;
     state.services.events.signal(Signal::ClustersChanged);
     Ok(true)
@@ -935,10 +1202,10 @@ async fn suggest(
     classes: &[MissingDependency],
 ) -> LauncherResult<bool> {
     let _guard = OPS.lock().await;
-    let Some(session) = load(state, cluster_id).await? else {
+    let Some(session) = load(state, cluster_id, true).await? else {
         return Ok(false);
     };
-    if session.suspects().is_subset(&session.testing) {
+    if session.saved.state.plan().is_none() {
         return Ok(false);
     }
 
@@ -950,19 +1217,19 @@ async fn suggest(
         let MissingTarget::Class(class) = &found.missing else {
             continue;
         };
-        let Some(target) = jars.find(state, &session, &off, class).await else {
+        let Some(target) = jars.find(state, &off, class).await else {
             continue;
         };
 
         let mut requester = None;
         for frame in &found.frames {
-            if let Some(from) = jars.find(state, &session, &session.testing, frame).await {
-                requester = Some(session.hashes[from].clone());
+            if let Some(from) = jars.find(state, &session.testing, frame).await {
+                requester = Some(from);
                 break;
             }
         }
 
-        let suggestion = (requester, session.hashes[target].clone());
+        let suggestion = (requester, target);
         if !suggestions.contains(&suggestion) {
             suggestions.push(suggestion);
         }
@@ -1054,30 +1321,21 @@ fn required_edges(mods: &[(&str, &str, &str)], required: &[(String, String)]) ->
     edges
 }
 
-fn edge(session: &Session, from: usize, to: usize, kind: BisectEdgeKind) -> Edge {
-    (
-        session.hashes[from].clone(),
-        session.hashes[to].clone(),
-        kind,
-    )
-}
-
-fn edges_from_testing(session: &Session, targets: &ModSet, kind: BisectEdgeKind) -> Vec<Edge> {
+fn edges_from_testing(session: &Session, targets: &Set, kind: BisectEdgeKind) -> Vec<Edge> {
     session
         .testing
         .iter()
-        .flat_map(|&from| {
+        .flat_map(|from| {
             targets
                 .iter()
-                .filter(move |&&to| to != from)
-                .map(move |&to| edge(session, from, to, kind))
+                .filter(move |to| *to != from)
+                .map(move |to| (from.clone(), to.clone(), kind))
         })
         .collect()
 }
 
 async fn learn(
     state: &Arc<LauncherState>,
-    cluster_id: i64,
     session: &mut Session,
     edges: Vec<Edge>,
 ) -> LauncherResult<bool> {
@@ -1096,7 +1354,7 @@ async fn learn(
         return Ok(false);
     }
 
-    bisect_dao::add_edges(&state.services.db, cluster_id, &fresh).await?;
+    bisect_dao::add_edges(&state.services.db, session.cluster_id, &fresh).await?;
     for (from, to, kind) in fresh {
         match session
             .edges
@@ -1112,21 +1370,20 @@ async fn learn(
 
 #[derive(Default)]
 struct JarEntries {
-    names: HashMap<usize, HashSet<String>>,
+    names: HashMap<String, HashSet<String>>,
 }
 
 impl JarEntries {
     async fn find(
         &mut self,
         state: &Arc<LauncherState>,
-        session: &Session,
-        candidates: &ModSet,
+        candidates: &Set,
         class: &str,
-    ) -> Option<usize> {
+    ) -> Option<String> {
         let entry = format!("{class}.class");
-        for &index in candidates {
-            if !self.names.contains_key(&index) {
-                let names = match artifact_path(state, &session.hashes[index]).await {
+        for hash in candidates {
+            if !self.names.contains_key(hash) {
+                let names = match artifact_path(state, hash).await {
                     Some(path) => polyio::zip_entry_names(&path)
                         .await
                         .unwrap_or_default()
@@ -1134,36 +1391,34 @@ impl JarEntries {
                         .collect(),
                     None => HashSet::new(),
                 };
-                self.names.insert(index, names);
+                self.names.insert(hash.clone(), names);
             }
             if self
                 .names
-                .get(&index)
+                .get(hash)
                 .is_some_and(|names| names.contains(&entry))
             {
-                return Some(index);
+                return Some(hash.clone());
             }
         }
         None
     }
 }
 
-async fn jar_dependencies(state: &Arc<LauncherState>, hash: &str) -> Option<JarDependencies> {
-    if let Some(known) = JAR_DEPENDENCIES
+async fn mod_meta(state: &Arc<LauncherState>, hash: &str, file_name: &str) -> Option<ModMeta> {
+    if let Some(known) = MOD_META
         .lock()
         .ok()
         .and_then(|cache| cache.get(hash).cloned())
     {
         return Some(known);
     }
-
-    let deps = read_jar_dependencies(&artifact_path(state, hash).await?).await;
-    if deps != JarDependencies::default()
-        && let Ok(mut cache) = JAR_DEPENDENCIES.lock()
-    {
-        cache.insert(hash.to_string(), deps.clone());
+    let path = artifact_path(state, hash).await?;
+    let meta = meta::read_mod(&path, file_name).await?;
+    if let Ok(mut cache) = MOD_META.lock() {
+        cache.insert(hash.to_string(), meta.clone());
     }
-    Some(deps)
+    Some(meta)
 }
 
 async fn artifact_path(state: &Arc<LauncherState>, hash: &str) -> Option<PathBuf> {
@@ -1173,15 +1428,44 @@ async fn artifact_path(state: &Arc<LauncherState>, hash: &str) -> Option<PathBuf
     }
 }
 
-fn ensure_idle(state: &Arc<LauncherState>, cluster_id: i64) -> Result<(), BisectError> {
-    if state.games.is_active(cluster_id) {
-        Err(BisectError::GameRunning)
-    } else {
-        Ok(())
+static SWITCHING: std::sync::Mutex<BTreeSet<i64>> = std::sync::Mutex::new(BTreeSet::new());
+
+/// Marks a cluster's mods as being switched until dropped, so a launch refuses to start meanwhile
+struct Switching(i64);
+
+impl Drop for Switching {
+    fn drop(&mut self) {
+        SWITCHING.lock().unwrap().remove(&self.0);
     }
 }
 
-async fn load(state: &Arc<LauncherState>, cluster_id: i64) -> LauncherResult<Option<Session>> {
+/// Whether a search is changing this cluster's mods right now
+#[must_use]
+pub fn is_switching(cluster_id: i64) -> bool {
+    SWITCHING.lock().unwrap().contains(&cluster_id)
+}
+
+/// Claims the cluster before checking for a game, while a launch marks itself active before
+/// checking `is_switching`, so the two can't both go ahead
+fn ensure_idle(state: &Arc<LauncherState>, cluster_id: i64) -> Result<Switching, BisectError> {
+    SWITCHING.lock().unwrap().insert(cluster_id);
+    let claim = Switching(cluster_id);
+    if state.games.is_active(cluster_id) {
+        Err(BisectError::GameRunning)
+    } else {
+        Ok(claim)
+    }
+}
+
+fn encode(saved: &Saved) -> String {
+    serde_json::to_string(saved).unwrap_or_default()
+}
+
+async fn load(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+    join: bool,
+) -> LauncherResult<Option<Session>> {
     let db = &state.services.db;
     let Some(row) = bisect_dao::get_session(db, cluster_id).await? else {
         return Ok(None);
@@ -1197,15 +1481,6 @@ async fn load(state: &Arc<LauncherState>, cluster_id: i64) -> LauncherResult<Opt
             .map(|info| (info.hash.clone(), info))
             .collect();
 
-    let testing = mods
-        .iter()
-        .enumerate()
-        .filter(|(_, m)| m.testing != 0)
-        .map(|(i, _)| i)
-        .collect();
-
-    // Named once when the search starts sessions from before names were kept
-    // are filled in the first time they load
     let mut names: HashMap<String, String> = mods
         .iter()
         .filter_map(|m| Some((m.hash.clone(), m.name.clone()?)))
@@ -1223,73 +1498,101 @@ async fn load(state: &Arc<LauncherState>, cluster_id: i64) -> LauncherResult<Opt
         names.extend(found);
     }
 
-    let in_search: HashSet<&str> = mods.iter().map(|m| m.hash.as_str()).collect();
-    let removed = mods
+    let mut hashes: Vec<String> = mods.iter().map(|m| m.hash.clone()).collect();
+    let mut testing: Set = mods
         .iter()
-        .filter(|m| !linked.contains_key(&m.hash))
-        .map(|m| {
-            names
-                .get(&m.hash)
-                .cloned()
-                .unwrap_or_else(|| m.hash.clone())
-        })
+        .filter(|m| m.testing != 0)
+        .map(|m| m.hash.clone())
         .collect();
+    let mut saved = row
+        .search
+        .as_deref()
+        .and_then(|json| match serde_json::from_str::<Saved>(json) {
+            Ok(saved) => Some(saved),
+            Err(err) => {
+                tracing::warn!(cluster_id, error = %err, "could not read the saved mod search");
+                None
+            }
+        })
+        .unwrap_or_else(|| Saved::fresh(&hashes));
+    for hash in &hashes {
+        saved
+            .flags
+            .entry(hash.clone())
+            .or_insert(Flags {
+                was_enabled: true,
+                ..Flags::default()
+            })
+            .missing = !linked.contains_key(hash);
+    }
+
     let joined: Vec<&LinkedArtifactInfo> = linked
         .values()
-        .filter(|info| info.enabled && !in_search.contains(info.hash.as_str()))
+        .filter(|info| info.enabled && !hashes.contains(&info.hash))
         .collect();
-    let added = if joined.is_empty() {
-        Vec::new()
-    } else {
-        let joined_names = mod_names(state, &joined).await;
-        let mut added: Vec<String> = joined
-            .iter()
-            .map(|info| {
-                joined_names
-                    .get(&info.hash)
-                    .cloned()
-                    .unwrap_or_else(|| info.file_name.clone())
-            })
-            .collect();
-        added.sort();
-        added
-    };
+    if join && row.search.is_some() && row.finishing == 0 && !joined.is_empty() {
+        let found: Vec<(String, String)> = mod_names(state, &joined).await.into_iter().collect();
+        for (hash, _) in &found {
+            saved.flags.insert(
+                hash.clone(),
+                Flags {
+                    required: true,
+                    was_enabled: true,
+                    ..Flags::default()
+                },
+            );
+        }
+        match bisect_dao::add_mods(db, cluster_id, &found, &encode(&saved)).await {
+            Ok(()) => {
+                for (hash, _) in &found {
+                    hashes.push(hash.clone());
+                    testing.insert(hash.clone());
+                }
+                names.extend(found);
+            }
+            Err(err) => {
+                tracing::warn!(cluster_id, error = %err, "could not add mods that joined during the search");
+                for (hash, _) in &found {
+                    saved.flags.remove(hash);
+                }
+            }
+        }
+    }
 
     Ok(Some(Session {
-        round: row.round,
+        cluster_id,
         pending_exit: row.pending_exit(),
         retry_note: row.retry_note,
-        confirmed: row.confirmed != 0,
         finishing: row.finishing != 0,
-        hashes: mods.iter().map(|m| m.hash.clone()).collect(),
-        cleared: mods.iter().map(|m| m.cleared_round).collect(),
-        pinned: mods.iter().map(|m| m.pinned_round).collect(),
-        disable_on_finish: mods.iter().map(|m| m.disable_on_finish != 0).collect(),
         testing,
-        linked,
+        disable_on_finish: mods
+            .iter()
+            .filter(|m| m.disable_on_finish != 0)
+            .map(|m| m.hash.clone())
+            .collect(),
+        hashes,
         names,
+        linked,
         edges,
         suggestions,
-        removed,
-        added,
+        saved,
     }))
 }
 
-/// Named the way the mods page names them a linked artifact only carries its
-/// release title which is often just a version
 async fn mod_names(
     state: &Arc<LauncherState>,
     infos: &[&LinkedArtifactInfo],
 ) -> HashMap<String, String> {
     let ctx = state.services.content();
+    let key = |info: &LinkedArtifactInfo| match (info.provider, &info.project_id) {
+        (Some(provider), Some(project_id)) if provider != ProviderId::Local => {
+            (provider, project_id.clone())
+        }
+        _ => (ProviderId::Local, info.hash.clone()),
+    };
     let mut by_provider: HashMap<ProviderId, Vec<String>> = HashMap::new();
     for info in infos {
-        let (provider, id) = match (info.provider, &info.project_id) {
-            (Some(provider), Some(project_id)) if provider != ProviderId::Local => {
-                (provider, project_id.clone())
-            }
-            _ => (ProviderId::Local, info.hash.clone()),
-        };
+        let (provider, id) = key(info);
         by_provider.entry(provider).or_default().push(id);
     }
 
@@ -1305,13 +1608,7 @@ async fn mod_names(
     let mut names = HashMap::new();
     for info in infos {
         let hash = &info.hash;
-        let key = match (info.provider, &info.project_id) {
-            (Some(provider), Some(project_id)) if provider != ProviderId::Local => {
-                (provider, project_id.clone())
-            }
-            _ => (ProviderId::Local, hash.clone()),
-        };
-        let name = match project_names.get(&key).cloned() {
+        let name = match project_names.get(&key(info)).cloned() {
             Some(name) => name,
             None => match artifact_path(state, hash).await {
                 Some(path) => read_jar_manifest(&path).await.name,
@@ -1324,180 +1621,377 @@ async fn mod_names(
     names
 }
 
-async fn dependency_graph(state: &Arc<LauncherState>, session: &Session) -> Graph {
-    let mut own: HashMap<String, usize> = HashMap::new();
-    let mut bundled: HashMap<String, Vec<usize>> = HashMap::new();
-    let mut requires: Vec<Vec<String>> = Vec::with_capacity(session.hashes.len());
-
-    for hash in &session.hashes {
-        let Some(deps) = jar_dependencies(state, hash).await else {
-            requires.push(Vec::new());
-            continue;
-        };
-        let index = requires.len();
-        for id in deps.provides {
-            own.entry(id).or_insert(index);
-        }
-        for id in deps.bundled {
-            bundled.entry(id).or_default().push(index);
-        }
-        requires.push(deps.requires);
-    }
-
-    let lookup = Graph {
-        requires: Vec::new(),
-        firm: Vec::new(),
-        own,
-        bundled,
-    };
-    let base: Vec<Vec<usize>> = requires
-        .into_iter()
-        .enumerate()
-        .map(|(index, ids)| {
-            ids.iter()
-                .filter_map(|id| lookup.provider(id))
-                .filter(|&target| target != index)
-                .collect()
-        })
-        .collect();
-
-    let mut all = base.clone();
-    let mut firm = base;
-    for (from, to, kind) in &session.edges {
-        if let (Some(from), Some(to)) = (session.index_of(from), session.index_of(to))
-            && from != to
-        {
-            all[from].push(to);
-            if *kind == BisectEdgeKind::Known {
-                firm[from].push(to);
+async fn overrides(state: &Arc<LauncherState>, cluster_id: i64) -> Vec<resolve::Rule> {
+    let mut layers = Vec::new();
+    if let Ok(cluster) = state.clusters.get(cluster_id).await
+        && let Ok(dir) = cluster.game_dir()
+    {
+        let path = dir.join("config").join("dependency_overrides.json");
+        if let Ok(text) = tokio::fs::read_to_string(&path).await {
+            match resolve::parse_overrides(&text) {
+                Ok(rules) => layers.push(rules),
+                Err(err) => {
+                    tracing::warn!(cluster_id, path = %path.display(), %err, "could not read dependency overrides");
+                }
             }
         }
     }
+    if let Ok(builtin) = resolve::parse_overrides(resolve::BUILTIN_OVERRIDES) {
+        layers.push(builtin);
+    }
+    resolve::merge_overrides(layers)
+}
 
-    for edges in all.iter_mut().chain(firm.iter_mut()) {
-        edges.sort_unstable();
-        edges.dedup();
+async fn catalog(state: &Arc<LauncherState>, session: &Session) -> Catalog {
+    let rules = overrides(state, session.cluster_id).await;
+    let mut mods = BTreeMap::new();
+    for hash in &session.hashes {
+        let Some(info) = session.linked.get(hash) else {
+            continue;
+        };
+        let mut meta = mod_meta(state, hash, &info.file_name)
+            .await
+            .unwrap_or_else(|| ModMeta::library(&info.file_name));
+        resolve::apply_overrides(&rules, &mut meta);
+        mods.insert(hash.clone(), meta);
+    }
+    let mut extra: BTreeMap<String, Set> = BTreeMap::new();
+    for (from, to, kind) in &session.edges {
+        let Some(id) = mods.get(to).map(|m| m.id.clone()) else {
+            continue;
+        };
+        if from == to || !mods.contains_key(from) {
+            continue;
+        }
+        if *kind == BisectEdgeKind::Guessed {
+            extra.entry(from.clone()).or_default().insert(to.clone());
+        } else if let Some(meta) = mods.get_mut(from) {
+            meta.depends.entry(id).or_insert_with(|| vec![Predicate::any()]);
+        }
+    }
+    for (hash, deps) in &session.saved.ignored {
+        if let Some(meta) = mods.get_mut(hash) {
+            for dep in deps {
+                meta.forget(dep);
+            }
+        }
+    }
+    Catalog::new(mods, extra)
+}
+
+fn reconcile(saved: &mut Saved, catalog: &Catalog) {
+    let evaluated = saved.select(Flags::evaluated);
+    let unresolvable = catalog.unresolvable_details(&evaluated).all();
+    for (hash, flags) in &mut saved.flags {
+        flags.unresolvable = unresolvable.contains(hash);
     }
 
-    Graph {
-        requires: all,
-        firm,
-        ..lookup
+    let valid = saved.candidates();
+    let current: Set = saved
+        .state
+        .candidates
+        .iter()
+        .chain(&saved.state.conflict)
+        .chain(&saved.pending)
+        .cloned()
+        .collect();
+    let removals: Set = current.difference(&valid).cloned().collect();
+    if !removals.is_empty() {
+        saved.pending.retain(|h| !removals.contains(h));
+        saved.state.remove(&removals);
+    }
+    saved.pending.extend(valid.difference(&current).cloned());
+
+    let search = &saved.state;
+    if search.complete && search.conflict.is_empty() && !saved.pending.is_empty() {
+        let round = search.round;
+        saved.state = State::new(saved.candidates(), round);
+        saved.pending.clear();
     }
 }
 
-async fn advance(
+fn can_undo(saved: &Saved) -> bool {
+    saved
+        .log
+        .last()
+        .is_some_and(|test| test.before.round == saved.state.round)
+}
+
+async fn fresh_round(
     state: &Arc<LauncherState>,
-    cluster_id: i64,
     mut session: Session,
+    round: u32,
 ) -> LauncherResult<BisectStatus> {
-    let graph = dependency_graph(state, &session).await;
-    let suspects = session.suspects();
+    let catalog = catalog(state, &session).await;
+    reconcile(&mut session.saved, &catalog);
+    session.saved.state = State::new(session.saved.candidates(), round);
+    session.saved.pending.clear();
+    apply(state, session, &catalog).await
+}
 
-    // Mods found earlier stay on so this round looks for what they need to
-    // break together with
-    let kept = plan::closure(&graph.firm, session.pinned_set());
-    let split = plan::next_round(&graph.requires, &suspects)
-        .or_else(|| plan::next_round(&graph.firm, &suspects))
-        .unwrap_or_else(|| plan::closure(&graph.firm, suspects.iter().copied()));
-    session.testing = split.union(&kept).copied().collect();
-    session.pending_exit = BisectExit::None;
-    session.retry_note = None;
-    session.suggestions.clear();
-    session.confirmed = false;
+async fn advance(state: &Arc<LauncherState>, mut session: Session) -> LauncherResult<BisectStatus> {
+    let catalog = catalog(state, &session).await;
+    reconcile(&mut session.saved, &catalog);
+    apply(state, session, &catalog).await
+}
 
-    let switches: Vec<(usize, bool)> = session
+async fn apply(
+    state: &Arc<LauncherState>,
+    mut session: Session,
+    catalog: &Catalog,
+) -> LauncherResult<BisectStatus> {
+    let cluster_id = session.cluster_id;
+    let activatable = session.saved.activatable();
+    let forced = session.saved.forced();
+    let want: Set = match session.saved.state.plan() {
+        Some(plan) => {
+            let resolution = catalog.resolve(&plan.targets(), &forced, &activatable);
+            if let Some(problem) = &resolution.problem {
+                tracing::warn!(cluster_id, %problem, "the mods for this round don't all fit together");
+            }
+            session.saved.problem = resolution.problem;
+            resolution
+                .set
+                .union(&forced)
+                .filter(|h| activatable.contains(*h))
+                .cloned()
+                .collect()
+        }
+        None => {
+            session.saved.problem = None;
+            session.testing.clone()
+        }
+    };
+
+    let switches: Vec<(String, bool)> = session
         .hashes
         .iter()
-        .enumerate()
-        .filter_map(|(index, hash)| {
-            let want = session.testing.contains(&index);
+        .filter_map(|hash| {
             let info = session.linked.get(hash)?;
-            (info.enabled != want).then_some((index, want))
+            let on = want.contains(hash);
+            (info.enabled != on).then(|| (hash.clone(), on))
         })
         .collect();
 
-    // A round only counts if every mod in it really switched otherwise the
-    // answer would be about a different set of mods than the one recorded
     let ctx = state.services.content();
-    let mut done: Vec<(usize, bool)> = Vec::new();
-    for &(index, want) in &switches {
-        let hash = &session.hashes[index];
-        if let Err(err) = PackageStore::set_artifact_enabled_to(cluster_id, hash, want, &ctx).await
-        {
+    let mut done: Vec<(String, bool)> = Vec::new();
+    for (hash, on) in &switches {
+        if let Err(err) = PackageStore::set_artifact_enabled_to(cluster_id, hash, *on, &ctx).await {
             tracing::warn!(cluster_id, %hash, error = %err, "could not switch a mod for the search");
-            for &(index, want) in done.iter().rev() {
-                let hash = &session.hashes[index];
-                if let Err(err) =
-                    PackageStore::set_artifact_enabled_to(cluster_id, hash, !want, &ctx).await
-                {
-                    tracing::warn!(cluster_id, %hash, error = %err, "could not undo a switch for the search");
-                }
-            }
-            state.services.events.signal(Signal::ClustersChanged);
+            undo_switches(state, cluster_id, &done).await;
             return Err(BisectError::SwitchFailed {
-                name: session.name(index),
-                direction: if want { "on" } else { "off" },
+                name: session.name(hash),
+                direction: if *on { "on" } else { "off" },
                 reason: err.to_string(),
             }
             .into());
         }
-        done.push((index, want));
+        done.push((hash.clone(), *on));
     }
-    for (index, want) in done {
-        if let Some(info) = session.linked.get_mut(&session.hashes[index]) {
-            info.enabled = want;
+    for (hash, on) in &done {
+        if let Some(info) = session.linked.get_mut(hash) {
+            info.enabled = *on;
         }
     }
 
+    session.testing = want;
     let states: Vec<BisectModState<'_>> = session
         .hashes
         .iter()
-        .enumerate()
-        .map(|(index, hash)| BisectModState {
+        .map(|hash| BisectModState {
             hash,
-            cleared_round: session.cleared[index],
-            pinned_round: session.pinned[index],
-            testing: session.testing.contains(&index),
+            testing: session.testing.contains(hash),
         })
         .collect();
-    bisect_dao::save_round(
-        &state.services.db,
-        cluster_id,
-        session.round,
-        false,
-        &states,
-    )
-    .await?;
+    if let Err(err) =
+        bisect_dao::save(&state.services.db, cluster_id, &encode(&session.saved), &states).await
+    {
+        // The saved round still names the old mods, so the files go back to match it
+        undo_switches(state, cluster_id, &done).await;
+        return Err(err.into());
+    }
+    session.pending_exit = BisectExit::None;
+    session.retry_note = None;
+    session.suggestions.clear();
 
     state.services.events.signal(Signal::ClustersChanged);
-    Ok(describe(cluster_id, &session))
+    Ok(describe(&session, catalog))
 }
 
-fn describe(cluster_id: i64, session: &Session) -> BisectStatus {
-    let suspects = session.suspects();
-    let finished = suspects.is_subset(&session.testing);
-    let pinned = session.pinned_set();
+async fn undo_switches(state: &Arc<LauncherState>, cluster_id: i64, done: &[(String, bool)]) {
+    let ctx = state.services.content();
+    for (hash, on) in done.iter().rev() {
+        if let Err(err) = PackageStore::set_artifact_enabled_to(cluster_id, hash, !on, &ctx).await {
+            tracing::warn!(cluster_id, %hash, error = %err, "could not undo a switch for the search");
+        }
+    }
+    state.services.events.signal(Signal::ClustersChanged);
+}
 
-    let mods = session
+fn halted_groups(state: &State) -> Option<(Set, Set)> {
+    if !state.halted {
+        return None;
+    }
+    let candidates: Vec<String> = state.candidate_set().into_iter().collect();
+    let (first, second) = imcs::split(&candidates);
+    Some((first.into_iter().collect(), second.into_iter().collect()))
+}
+
+fn conflict_report(session: &Session, catalog: &Catalog, conflict: &Set) -> ConflictReport {
+    let all = session.saved.present();
+    let generally = catalog.transitively_unresolvable(&all, false);
+    let with_extra = catalog.has_extra();
+    let without = |gone: &Set| -> Set { all.difference(gone).cloned().collect() };
+
+    let mut union = Set::new();
+    let mut mods = Vec::new();
+    for hash in conflict {
+        let gone = Set::from([hash.clone()]);
+        let cascade = catalog.transitively_unresolvable(&without(&gone), false);
+        let also: Set = cascade.difference(&generally).cloned().collect();
+        union.extend(also.iter().cloned());
+        let maybe: Set = if with_extra {
+            catalog
+                .transitively_unresolvable(&without(&gone), true)
+                .difference(&cascade)
+                .filter(|h| *h != hash)
+                .cloned()
+                .collect()
+        } else {
+            Set::new()
+        };
+        mods.push(CascadeMod {
+            hash: hash.clone(),
+            name: session.name(hash),
+            also: session.name_list(&also),
+            maybe: session.name_list(&maybe),
+        });
+    }
+    mods.sort_by_key(|m| m.name.to_lowercase());
+
+    let full = catalog.transitively_unresolvable(&without(conflict), false);
+    let if_all_also: Set = full
+        .difference(&generally)
+        .filter(|h| !union.contains(*h))
+        .cloned()
+        .collect();
+    let if_all_maybe: Set = if with_extra {
+        catalog
+            .transitively_unresolvable(&without(conflict), true)
+            .difference(&full)
+            .filter(|h| !conflict.contains(*h))
+            .cloned()
+            .collect()
+    } else {
+        Set::new()
+    };
+    ConflictReport {
+        mods,
+        if_all_also: session.name_list(&if_all_also),
+        if_all_maybe: session.name_list(&if_all_maybe),
+    }
+}
+
+fn describe(session: &Session, catalog: &Catalog) -> BisectStatus {
+    let saved = &session.saved;
+    let search = &saved.state;
+    let plan: Option<Plan> = search.plan();
+    let tested: Set = plan
+        .as_ref()
+        .map(|p| p.tested_half().iter().cloned().collect())
+        .unwrap_or_default();
+    let stable: Set = plan.as_ref().map(|p| p.stable.clone()).unwrap_or_default();
+
+    let mut mods: Vec<BisectMod> = session
         .hashes
         .iter()
-        .enumerate()
-        .filter_map(|(index, hash)| {
+        .filter_map(|hash| {
             session.linked.get(hash)?;
-            let testing = session.testing.contains(&index);
-            let role = match (suspects.contains(&index), testing) {
-                _ if pinned.contains(&index) => BisectRole::Found,
-                (true, true) => BisectRole::Testing,
-                (true, false) => BisectRole::Waiting,
-                (false, true) => BisectRole::Helper,
-                (false, false) => BisectRole::Cleared,
+            let flags = saved.flags.get(hash).copied().unwrap_or_default();
+            let on = session.testing.contains(hash);
+            let role = if flags.problem {
+                BisectRole::Problem
+            } else if search.conflict.contains(hash) {
+                BisectRole::Found
+            } else if flags.unresolvable {
+                BisectRole::Unresolvable
+            } else if flags.kept_off {
+                BisectRole::KeptOff
+            } else if flags.required {
+                BisectRole::Required
+            } else if on && tested.contains(hash) {
+                BisectRole::Testing
+            } else if on && stable.contains(hash) {
+                BisectRole::Cleared
+            } else if on {
+                BisectRole::Helper
+            } else if flags.omitted {
+                BisectRole::Omitted
+            } else {
+                BisectRole::Waiting
             };
             Some(BisectMod {
                 hash: hash.clone(),
-                name: session.name(index),
+                name: session.name(hash),
                 role,
+                choice: flags.choice(),
+                on,
             })
+        })
+        .collect();
+    mods.sort_by_key(|m| m.name.to_lowercase());
+
+    let stage = if search.halted {
+        BisectStage::Halted
+    } else if search.complete || plan.is_none() {
+        BisectStage::Complete
+    } else if plan.as_ref().is_some_and(|p| p.kind == BisectPlanKind::Verification) {
+        BisectStage::Verifying
+    } else {
+        BisectStage::Testing
+    };
+
+    let evaluated = saved.select(Flags::evaluated);
+    let details = catalog.unresolvable_details(&evaluated);
+    let mut blocked_by: BTreeMap<&String, Set> = BTreeMap::new();
+    for (hash, roots) in &details.transitive {
+        for root in roots {
+            blocked_by.entry(root).or_default().insert(hash.clone());
+        }
+    }
+    let mut unresolvable: Vec<UnresolvableMod> = details
+        .direct
+        .iter()
+        .map(|(hash, missing)| UnresolvableMod {
+            hash: hash.clone(),
+            name: session.name(hash),
+            missing: missing.clone(),
+            blocks: session.name_list(blocked_by.get(hash).into_iter().flatten()),
+        })
+        .collect();
+    unresolvable.sort_by_key(|m| m.name.to_lowercase());
+
+    let history = saved
+        .log
+        .iter()
+        .map(|test| {
+            let tested: Vec<String> = match test.plan.kind {
+                BisectPlanKind::Verification => session.name_list(&test.plan.conflict),
+                _ => session.name_list(test.plan.tested_half()),
+            };
+            BisectHistoryEntry {
+                round: test.before.round,
+                iteration: test.before.iteration,
+                step: test.before.step,
+                kind: test.plan.kind,
+                answer: match test.outcome {
+                    Outcome::Fail => BisectAnswer::Broken,
+                    Outcome::Good => BisectAnswer::Works,
+                    Outcome::Unsure => BisectAnswer::Unsure,
+                },
+                tested,
+                enabled: test.enabled.len(),
+            }
         })
         .collect();
 
@@ -1505,36 +1999,170 @@ fn describe(cluster_id: i64, session: &Session) -> BisectStatus {
         let mut missing: Vec<String> = Vec::new();
         let mut needed_by: Vec<String> = Vec::new();
         for (from, to) in &session.suggestions {
-            if let Some(name) = session.index_of(to).map(|index| session.name(index))
-                && !missing.contains(&name)
-            {
+            let name = session.name(to);
+            if !missing.contains(&name) {
                 missing.push(name);
             }
-            if let Some(name) = from
-                .as_deref()
-                .and_then(|from| session.index_of(from))
-                .map(|index| session.name(index))
-                && !needed_by.contains(&name)
-            {
-                needed_by.push(name);
+            if let Some(from) = from {
+                let name = session.name(from);
+                if !needed_by.contains(&name) {
+                    needed_by.push(name);
+                }
             }
         }
         BisectSuggestion { missing, needed_by }
     });
 
+    let groups = halted_groups(search).map(|(a, b)| (session.name_list(&a), session.name_list(&b)));
+
     BisectStatus {
-        cluster_id,
-        round: session.round,
+        cluster_id: session.cluster_id,
+        stage,
+        round: search.round,
+        iteration: search.iteration,
+        tests_this_round: saved
+            .log
+            .iter()
+            .filter(|test| test.before.round == search.round)
+            .count(),
+        estimate: search.estimate(),
         pending_exit: session.pending_exit,
         mods,
-        finished,
+        current: conflict_report(session, catalog, &search.conflict),
+        earlier: saved
+            .found
+            .iter()
+            .map(|set| conflict_report(session, catalog, set))
+            .collect(),
+        pending: session.name_list(&saved.pending),
+        removed: session.name_list(saved.flags.iter().filter(|(_, f)| f.missing).map(|(h, _)| h)),
+        can_undo: can_undo(saved),
+        can_continue: search.complete
+            && !search.conflict.is_empty()
+            && !search.candidate_set().is_empty(),
+        groups,
+        can_look_for_hidden: search.halted
+            && search.candidate_set().len() > 1
+            && !saved.hidden_checked
+            && saved.hidden.is_empty(),
+        hidden: saved
+            .hidden
+            .iter()
+            .map(|(from, to, classes)| HiddenDependency {
+                from: session.name(from),
+                to: session.name(to),
+                classes: *classes,
+            })
+            .collect(),
+        unresolvable,
+        history,
+        resolution_problem: saved.problem.clone(),
         retry_note: session.retry_note.clone(),
         suggestion,
-        confirmed: session.confirmed,
         finishing: session.finishing,
-        removed: session.removed.clone(),
-        added: session.added.clone(),
     }
+}
+
+#[tracing::instrument(skip(state))]
+pub async fn bisect_report(state: &Arc<LauncherState>, cluster_id: i64) -> LauncherResult<String> {
+    let guard = OPS.try_lock().ok();
+    let session = load(state, cluster_id, guard.is_some())
+        .await?
+        .ok_or(BisectError::NotRunning)?;
+    let catalog = catalog(state, &session).await;
+    let status = describe(&session, &catalog);
+    Ok(report(&session, &status))
+}
+
+fn report(session: &Session, status: &BisectStatus) -> String {
+    use std::fmt::Write;
+    let mut out = String::new();
+    let stage = match status.stage {
+        BisectStage::Testing => "In progress",
+        BisectStage::Verifying => "Checking the found mods alone",
+        BisectStage::Halted => "Stuck: both halves were unclear",
+        BisectStage::Complete => "Complete",
+    };
+    let _ = writeln!(out, "OneClient problem mod search report");
+    let _ = writeln!(out, "===================================");
+    let _ = writeln!(out, "Status: {stage}");
+    let _ = writeln!(
+        out,
+        "Round {}, iteration {}, {} tests this round (about {} expected)",
+        status.round, status.iteration, status.tests_this_round, status.estimate
+    );
+    if let Some(problem) = &status.resolution_problem {
+        let _ = writeln!(out, "Dependency problem this round: {problem}");
+    }
+
+    let write_set = |out: &mut String, title: &str, report: &ConflictReport| {
+        let _ = writeln!(out, "\n{title}");
+        if report.mods.is_empty() {
+            let _ = writeln!(out, "  (none)");
+        }
+        for m in &report.mods {
+            let _ = writeln!(out, "  - {}", m.name);
+            if !m.also.is_empty() {
+                let _ = writeln!(out, "      turning it off also turns off: {}", m.also.join(", "));
+            }
+            if !m.maybe.is_empty() {
+                let _ = writeln!(out, "      may also need off: {}", m.maybe.join(", "));
+            }
+        }
+        if !report.if_all_also.is_empty() {
+            let _ = writeln!(out, "  turning all of them off also turns off: {}", report.if_all_also.join(", "));
+        }
+    };
+    for (index, earlier) in status.earlier.iter().enumerate() {
+        write_set(&mut out, &format!("Problem #{}", index + 1), earlier);
+    }
+    write_set(&mut out, "Current problem", &status.current);
+
+    if !status.unresolvable.is_empty() {
+        let _ = writeln!(out, "\nMods that can't load");
+        for m in &status.unresolvable {
+            let _ = writeln!(out, "  - {} is missing {}", m.name, m.missing.join(", "));
+            if !m.blocks.is_empty() {
+                let _ = writeln!(out, "      which also blocks: {}", m.blocks.join(", "));
+            }
+        }
+    }
+
+    let _ = writeln!(out, "\nTests");
+    for (index, test) in session.saved.log.iter().enumerate() {
+        let answer = match test.outcome {
+            Outcome::Fail => "BROKEN",
+            Outcome::Good => "WORKS",
+            Outcome::Unsure => "UNCLEAR",
+        };
+        let kind = match test.plan.kind {
+            BisectPlanKind::Verification => " [VERIFICATION]",
+            BisectPlanKind::Complement => " [OTHER HALF]",
+            _ => "",
+        };
+        let _ = writeln!(
+            out,
+            "  #{} round {} iteration {} step {}{kind}: {answer}",
+            index + 1,
+            test.before.round,
+            test.before.iteration,
+            test.before.step
+        );
+        let _ = writeln!(out, "      tested: {}", session.name_list(&test.plan.targets()).join(", "));
+        let _ = writeln!(out, "      found so far: {}", session.name_list(&test.before.conflict).join(", "));
+        let _ = writeln!(out, "      suspects: {}", session.name_list(&test.before.candidate_set()).join(", "));
+        let _ = writeln!(out, "      cleared: {}", session.name_list(&test.before.cleared_set()).join(", "));
+        let _ = writeln!(out, "      mods on: {}", test.enabled.len());
+    }
+
+    let search = &session.saved.state;
+    let _ = writeln!(out, "\nRight now");
+    let _ = writeln!(out, "  suspects: {}", session.name_list(&search.candidate_set()).join(", "));
+    let _ = writeln!(out, "  cleared: {}", session.name_list(&search.cleared_set()).join(", "));
+    if !status.pending.is_empty() {
+        let _ = writeln!(out, "  joining after the next check: {}", status.pending.join(", "));
+    }
+    out
 }
 
 #[cfg(test)]
@@ -1573,46 +2201,93 @@ mod tests {
         );
     }
 
-    fn graph(own: &[(&str, usize)], bundled: &[(&str, &[usize])]) -> Graph {
-        Graph {
-            requires: Vec::new(),
-            firm: Vec::new(),
-            own: own.iter().map(|(id, i)| ((*id).to_string(), *i)).collect(),
-            bundled: bundled
-                .iter()
-                .map(|(id, by)| ((*id).to_string(), by.to_vec()))
-                .collect(),
+    #[test]
+    fn estimate_matches_the_search() {
+        for mods in 0..300 {
+            let ids: Set = (0..mods).map(|i| i.to_string()).collect();
+            assert_eq!(estimate_launches(mods), State::new(ids, 1).estimate(), "{mods}");
         }
     }
 
-    #[test]
-    fn a_mod_of_its_own_wins_over_copies_bundled_elsewhere() {
-        let graph = graph(&[("cloth-config", 4)], &[("cloth-config", &[1, 2])]);
-        assert_eq!(graph.provider("cloth-config"), Some(4));
+    fn hashes(items: &[&str]) -> Set {
+        items.iter().map(|s| (*s).to_string()).collect()
     }
 
     #[test]
-    fn a_library_bundled_by_one_mod_points_at_it() {
-        let graph = graph(&[], &[("fabric-api-base", &[3])]);
-        assert_eq!(graph.provider("fabric-api-base"), Some(3));
+    fn reconcile_keeps_found_mods_out_and_queues_returning_ones() {
+        let all = ["a", "b", "c", "d"].map(String::from);
+        let mut saved = Saved::fresh(&all);
+        saved.state.conflict = hashes(&["a"]);
+        saved.state.candidates = vec!["b".to_string(), "c".to_string()];
+        let catalog = Catalog::new(BTreeMap::new(), BTreeMap::new());
+
+        reconcile(&mut saved, &catalog);
+        assert_eq!(saved.pending, hashes(&["d"]));
+        assert_eq!(saved.state.conflict, hashes(&["a"]));
+
+        saved.flags.get_mut("c").unwrap().kept_off = true;
+        saved.flags.get_mut("d").unwrap().omitted = true;
+        reconcile(&mut saved, &catalog);
+        assert_eq!(saved.state.candidates, vec!["b".to_string()]);
+        assert!(saved.pending.is_empty());
     }
 
     #[test]
-    fn a_library_bundled_by_several_mods_needs_none_of_them() {
-        let graph = graph(&[], &[("cloth-config", &[1, 2])]);
-        assert_eq!(graph.provider("cloth-config"), None);
+    fn mods_waiting_to_join_are_searched_when_nothing_was_found() {
+        let all = ["a", "b", "c"].map(String::from);
+        let mut saved = Saved::fresh(&all);
+        saved.state = State::new(hashes(&["a", "b"]), 1);
+        saved.state.complete = true;
+        let catalog = Catalog::new(BTreeMap::new(), BTreeMap::new());
+
+        reconcile(&mut saved, &catalog);
+        assert!(saved.pending.is_empty());
+        assert!(!saved.state.complete);
+        assert_eq!(saved.state.candidate_set(), hashes(&["a", "b", "c"]));
     }
 
     #[test]
-    fn a_missing_library_is_looked_for_among_the_mods_that_were_off() {
-        let graph = graph(&[], &[("cloth-config", &[1, 2])]);
-        assert_eq!(
-            graph.provider_among("cloth-config", &ModSet::from([2, 5])),
-            Some(2)
+    fn always_on_survives_a_dependency_being_kept_off_for_a_while() {
+        let all = ["x", "y", "z"].map(String::from);
+        let mut saved = Saved::fresh(&all);
+        let mut needs_y = ModMeta::library("x.jar");
+        needs_y.depends.insert(
+            ModMeta::library("y.jar").id,
+            vec![Predicate::any()],
         );
-        assert_eq!(
-            graph.provider_among("cloth-config", &ModSet::from([5])),
-            None
+        let catalog = Catalog::new(
+            BTreeMap::from([
+                ("x".to_string(), needs_y),
+                ("y".to_string(), ModMeta::library("y.jar")),
+                ("z".to_string(), ModMeta::library("z.jar")),
+            ]),
+            BTreeMap::new(),
         );
+        saved.flags.get_mut("x").unwrap().required = true;
+        saved.flags.get_mut("y").unwrap().kept_off = true;
+        reconcile(&mut saved, &catalog);
+        assert!(saved.flags["x"].unresolvable);
+
+        saved.flags.get_mut("y").unwrap().kept_off = false;
+        reconcile(&mut saved, &catalog);
+        assert_eq!(saved.flags["x"].choice(), BisectChoice::Required);
+        assert!(!saved.candidates().contains("x"));
+    }
+
+    #[test]
+    fn undo_stops_at_the_start_of_a_round() {
+        let mut saved = Saved::fresh(&["a".to_string(), "b".to_string()]);
+        assert!(!can_undo(&saved));
+        let plan = saved.state.plan().unwrap();
+        saved.log.push(Test {
+            plan: plan.clone(),
+            outcome: Outcome::Good,
+            before: saved.state.clone(),
+            enabled: Set::new(),
+        });
+        saved.state = saved.state.apply(&plan, Outcome::Good);
+        assert!(can_undo(&saved));
+        saved.state = State::new(hashes(&["b"]), 2);
+        assert!(!can_undo(&saved));
     }
 }

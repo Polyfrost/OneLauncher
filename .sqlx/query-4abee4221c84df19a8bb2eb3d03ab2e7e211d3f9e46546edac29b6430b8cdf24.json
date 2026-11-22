@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO cluster_bisect_sessions (cluster_id, search) VALUES (?, ?)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "4abee4221c84df19a8bb2eb3d03ab2e7e211d3f9e46546edac29b6430b8cdf24"
+}

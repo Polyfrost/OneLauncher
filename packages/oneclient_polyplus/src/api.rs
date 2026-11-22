@@ -456,7 +456,7 @@ pub async fn bundle_files(url: &str) -> Result<Vec<(String, Bytes)>, PlusError> 
         return Ok(vec![(name.to_string(), bytes)]);
     }
 
-    let entries = polyio::read_zip_bytes_entries(bytes.to_vec())
+    let entries = polyio::read_zip_bytes_entries(bytes.to_vec(), |_| true)
         .await
         .map_err(|err| PlusError::Asset(err.to_string()))?;
     Ok(entries

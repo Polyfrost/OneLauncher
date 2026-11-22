@@ -27,10 +27,12 @@ pub mod verify;
 pub mod versions;
 
 pub use bisect::{
-    BisectAnswer, BisectError, BisectExit, BisectMod, BisectRole, BisectStatus, BisectSuggestion,
-    accept_bisect_suggestion, answer_bisect, bisect_status, confirm_bisect,
-    decline_bisect_suggestion, finish_bisect, keep_bisect_mods_on, restart_bisect,
-    skip_bisect_answer, start_bisect, undo_bisect_answer,
+    BisectAnswer, BisectChoice, BisectError, BisectExit, BisectHistoryEntry, BisectMod,
+    BisectPlanKind, BisectRole, BisectStage, BisectStatus, BisectSuggestion, CascadeMod,
+    ConflictReport, HiddenDependency, UnresolvableMod, accept_bisect_suggestion, answer_bisect,
+    bisect_report, bisect_status, continue_bisect, decline_bisect_suggestion, find_hidden_dependencies,
+    finish_bisect, keep_bisect_mods_on, reset_bisect, set_bisect_mod_choice, settle_unresolvable_mod,
+    skip_bisect_answer, start_bisect, undo_bisect_answer, use_hidden_dependencies,
 };
 pub use changelog::{ChangelogEntry, fetch_changelog};
 pub use clusters::{

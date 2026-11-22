@@ -136,6 +136,9 @@ async fn start(
     if crate::clusters::is_resetting(cluster_id) {
         return Err(GameError::Resetting.into());
     }
+    if crate::bisect::is_switching(cluster_id) {
+        return Err(GameError::Diagnosing.into());
+    }
     match crate::clusters::reset_unfinished(state, cluster_id).await {
         Ok(true) => return Err(GameError::ResetUnfinished.into()),
         Ok(false) => {}

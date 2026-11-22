@@ -50,25 +50,6 @@ fn category_opted_in(archive: &BundleArchive, opted_in: Option<&[String]>) -> bo
     categories.iter().any(|c| c.eq_ignore_ascii_case(category))
 }
 
-pub fn archive_selected(
-    cluster_id: i64,
-    archive: &BundleArchive,
-    selected: &HashSet<String>,
-) -> bool {
-    let mut any = false;
-    for file in archive.manifest.files.iter().filter(|f| is_default_file(f)) {
-        any = true;
-        if !selected.contains(&pkg_key(
-            cluster_id,
-            &archive.manifest.name,
-            &file.kind.package_id(),
-        )) {
-            return false;
-        }
-    }
-    any
-}
-
 pub fn set_archive_selected(
     cluster_id: i64,
     archive: &BundleArchive,
@@ -184,8 +165,8 @@ mod tests {
         let sb = &items[0].archives[0];
         set_archive_selected(1, sb, true, &mut selected);
 
-        assert!(archive_selected(1, sb, &selected));
-        assert!(!archive_selected(2, &items[1].archives[0], &selected));
+        assert!(bundle_taken(1, sb, &selected));
+        assert!(!bundle_taken(2, &items[1].archives[0], &selected));
     }
 
     #[test]
@@ -195,10 +176,10 @@ mod tests {
         let mut selected = HashSet::new();
 
         set_archive_selected(1, pvp, true, &mut selected);
-        assert!(archive_selected(1, pvp, &selected));
+        assert!(bundle_taken(1, pvp, &selected));
 
         set_archive_selected(1, pvp, false, &mut selected);
-        assert!(!archive_selected(1, pvp, &selected));
+        assert!(!bundle_taken(1, pvp, &selected));
         assert!(selected.is_empty());
     }
 
@@ -230,11 +211,5 @@ mod tests {
             vec![(skyblock.to_string(), "sb-a".to_string(), OverrideType::Removed)]
         );
         assert_eq!(choices, vec![(skyblock.to_string(), false)]);
-    }
-
-    #[test]
-    fn archive_with_no_default_files_is_not_selected() {
-        let a = archive("Odd", true, vec![file("opt", false, false)]);
-        assert!(!archive_selected(1, &a, &HashSet::new()));
     }
 }

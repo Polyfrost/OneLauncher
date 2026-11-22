@@ -1,4 +1,5 @@
 mod account;
+mod bundle_picker;
 mod bundles;
 mod language;
 mod location;
@@ -12,11 +13,12 @@ pub(crate) mod test_support;
 mod welcome;
 
 pub(crate) use selection::{
-    UNCREATED_CLUSTER, archive_selected, bundle_plan, bundle_taken, default_selection,
+    UNCREATED_CLUSTER, bundle_plan, bundle_taken, default_selection,
     is_default_bundle, is_default_file, pkg_key, set_archive_selected,
 };
 
 pub use account::OnboardingAccount;
+pub use bundle_picker::OnboardingBundlePicker;
 pub use bundles::OnboardingBundles;
 pub use language::OnboardingLanguage;
 pub use location::OnboardingLocation;
@@ -41,7 +43,7 @@ use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, entrance_motion_layer};
 
 pub fn onboarding_total(has_migration: bool, picks_location: bool) -> usize {
-    7 + usize::from(has_migration) + usize::from(picks_location)
+    8 + usize::from(has_migration) + usize::from(picks_location)
 }
 
 pub fn onboarding_step_index(route: &Route, has_migration: bool, picks_location: bool) -> usize {
@@ -55,9 +57,10 @@ pub fn onboarding_step_index(route: &Route, has_migration: bool, picks_location:
         Route::OnboardingMigration {} => 2 + location,
         Route::OnboardingLanguage {} => 2 + shift,
         Route::OnboardingAccount {} => 3 + shift,
-        Route::OnboardingBundles {} => 4 + shift,
-        Route::OnboardingPreferences {} => 5 + shift,
-        Route::OnboardingSummary {} => 6 + shift,
+        Route::OnboardingBundlePicker {} => 4 + shift,
+        Route::OnboardingBundles {} => 5 + shift,
+        Route::OnboardingPreferences {} => 6 + shift,
+        Route::OnboardingSummary {} => 7 + shift,
         _ => 0,
     }
 }
@@ -358,6 +361,7 @@ mod tests {
         routes.extend([
             Route::OnboardingLanguage {},
             Route::OnboardingAccount {},
+            Route::OnboardingBundlePicker {},
             Route::OnboardingBundles {},
             Route::OnboardingPreferences {},
             Route::OnboardingSummary {},

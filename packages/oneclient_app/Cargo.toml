@@ -137,32 +137,24 @@ timestamp-url = "https://timestamp.digicert.com"
 
 [package.metadata.packager.nsis]
 preinstall-section = """
-Section "-OneClientStopRunningApp"
-  nsis_tauri_utils::FindProcess "${MAINBINARYNAME}.exe"
-  Pop $R0
-  ${If} $R0 = 0
-    IfSilent oneclient_kill 0
-    ${IfThen} $PassiveMode != 1 ${|} MessageBox MB_OKCANCEL "$(appRunningOkKill)" IDOK oneclient_kill IDCANCEL oneclient_cancel ${|}
-    oneclient_kill:
-      StrCpy $R1 0
-      oneclient_wait:
-        nsis_tauri_utils::KillProcess "${MAINBINARYNAME}.exe"
-        Pop $R0
+Section "-OneClientWaitForExit"
+  ; The updater starts this installer unattended and then quits. The packager's own
+  ; running-app check kills and sleeps a fixed 500 ms without confirming the exit, so
+  ; give the launcher up to 10 s to close by itself first. Interactive installs skip
+  ; this and go straight to the packager's prompt.
+  ${If} $PassiveMode = 1
+  ${OrIf} ${Silent}
+    StrCpy $R1 0
+    oneclient_wait:
+      nsis_tauri_utils::FindProcess "${MAINBINARYNAME}.exe"
+      Pop $R0
+      ${If} $R0 = 0
+      ${AndIf} $R1 < 40
+        IntOp $R1 $R1 + 1
         Sleep 250
-        nsis_tauri_utils::FindProcess "${MAINBINARYNAME}.exe"
-        Pop $R0
-        ${If} $R0 = 0
-          IntOp $R1 $R1 + 1
-          ${If} $R1 < 40
-            Goto oneclient_wait
-          ${EndIf}
-          Abort "$(failedToKillApp)"
-        ${EndIf}
-      Goto oneclient_done
-    oneclient_cancel:
-      Abort "$(appRunning)"
+        Goto oneclient_wait
+      ${EndIf}
   ${EndIf}
-  oneclient_done:
 SectionEnd
 
 Section "-OneClientTauriMigration"

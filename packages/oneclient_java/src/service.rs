@@ -22,10 +22,10 @@ pub const JAVA_CHOICE_FOLDER: &str = "java.folder";
 /// Tells the front-end to show its vendor list rather than another picker
 pub const JAVA_VENDOR_HINT: &str = "java-vendor";
 
-const LEGACY_MACOS_CHOICE_DOWNGRADE: &str = "java.legacy_macos.downgrade";
-const LEGACY_MACOS_CHOICE_KEEP: &str = "java.legacy_macos.keep";
+pub const LEGACY_MACOS_CHOICE_DOWNGRADE: &str = "java.legacy_macos.downgrade";
+pub const LEGACY_MACOS_CHOICE_KEEP: &str = "java.legacy_macos.keep";
 /// Newest Java whose AWT still loads on macOS 10.x
-const LEGACY_MACOS_MAX_MAJOR: u32 = 21;
+pub const LEGACY_MACOS_MAX_MAJOR: u32 = 21;
 
 pub const INSTALLABLE_MAJORS: &[u32] = &[8, 11, 16, 17, 18, 19, 20, 21, 22, 23];
 
@@ -372,10 +372,13 @@ impl JavaService {
     }
 
     /// Java 22+ builds need macOS 11 for AWT, so on 10.x the game starts and
-    /// then dies on `libawt.dylib`. Java 21 still runs newer versions there
+    /// then dies on `libawt.dylib`. Java 21 still runs older game versions
+    /// there, so the swap is only offered when the game's `required_major`
+    /// allows it. The app localizes this prompt by its choice ids
     pub async fn check_legacy_macos(
         &self,
         runtime: JavaRuntime,
+        required_major: Option<u32>,
         native_ok: bool,
         search_system: bool,
     ) -> JavaResult<JavaRuntime> {
@@ -384,20 +387,43 @@ impl JavaService {
         }
 
         let major = runtime.major;
-        let prompt = Prompt::new(
-            "Java may crash on this macOS version",
-            format!(
-                "Java {major} needs macOS 11 or newer for its graphics libraries, so the game will likely crash on startup. \
-                 Java {LEGACY_MACOS_MAX_MAJOR} works on older macOS. Use it for this launch? \
-                 To stop seeing this, pick Java {LEGACY_MACOS_MAX_MAJOR} in this cluster's Java settings."
-            ),
-        )
-        .option(
-            Choice::primary(LEGACY_MACOS_CHOICE_DOWNGRADE, format!("Use Java {LEGACY_MACOS_MAX_MAJOR}")),
-            true,
-        )
-        .option(Choice::new(LEGACY_MACOS_CHOICE_KEEP, format!("Launch with Java {major}")), false)
-        .dismiss("Cancel");
+        let can_downgrade =
+            required_major.is_none_or(|required| required <= LEGACY_MACOS_MAX_MAJOR);
+        let warning = format!(
+            "Java {major} needs macOS 11 or newer for its graphics libraries, so the game will likely crash on startup."
+        );
+        let mut prompt = if can_downgrade {
+            Prompt::new(
+                "Java may crash on this macOS version",
+                format!(
+                    "{warning} Java {LEGACY_MACOS_MAX_MAJOR} works on older macOS. Use it for this launch? \
+                     To stop seeing this, pick Java {LEGACY_MACOS_MAX_MAJOR} in this cluster's Java settings."
+                ),
+            )
+            .option(
+                Choice::primary(
+                    LEGACY_MACOS_CHOICE_DOWNGRADE,
+                    format!("Use Java {LEGACY_MACOS_MAX_MAJOR}"),
+                ),
+                true,
+            )
+        } else {
+            Prompt::new(
+                "Java may crash on this macOS version",
+                format!(
+                    "{warning} This version of the game needs a newer Java, so no older one can stand in."
+                ),
+            )
+        };
+        prompt = prompt
+            .option(
+                Choice::new(
+                    LEGACY_MACOS_CHOICE_KEEP,
+                    format!("Launch with Java {major}"),
+                ),
+                false,
+            )
+            .dismiss("Cancel");
 
         match self.events.ask(prompt).await? {
             Some(chosen) if chosen.value => {

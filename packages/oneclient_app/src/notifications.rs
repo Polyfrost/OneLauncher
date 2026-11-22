@@ -8,8 +8,8 @@ use oneclient_core::UnpublishedFile;
 use oneclient_core::clusters::{FlaggedModpack, FlaggedPackMod};
 use oneclient_db::models::{ClusterId, OptionalModStatus};
 use oneclient_events::{
-    Answer, Choice, Event, GroupedProgressEvent, Level, Notification, ProgressEvent, TaskCategory,
-    TaskPhase,
+    Answer, Choice, Event, GroupedProgressEvent, Level, Notification, ProgressEvent, PromptRequest,
+    TaskCategory, TaskPhase,
 };
 use tokio::sync::oneshot;
 use uuid::Uuid;
@@ -289,6 +289,45 @@ pub struct PendingPrompt {
     pub dismiss: Option<String>,
     /// Taken when answered so a second answer cannot fire the oneshot twice
     pub reply_tx: Option<oneshot::Sender<Option<Answer>>>,
+}
+
+/// The Java crate has no i18n, so its legacy macOS warning is recognised by
+/// choice id and rewritten here
+fn localize_legacy_macos_prompt(request: &mut PromptRequest) {
+    use oneclient_java::{
+        LEGACY_MACOS_CHOICE_DOWNGRADE, LEGACY_MACOS_CHOICE_KEEP, LEGACY_MACOS_MAX_MAJOR,
+    };
+
+    if !request
+        .choices
+        .iter()
+        .any(|c| c.id == LEGACY_MACOS_CHOICE_KEEP)
+    {
+        return;
+    }
+    let newest = LEGACY_MACOS_MAX_MAJOR;
+    let can_downgrade = request
+        .choices
+        .iter()
+        .any(|c| c.id == LEGACY_MACOS_CHOICE_DOWNGRADE);
+
+    request.title = t("oneclient.java.legacy_macos.title").to_string();
+    request.body = if can_downgrade {
+        tf(
+            "oneclient.java.legacy_macos.body_downgrade",
+            &[&(newest + 1), &newest],
+        )
+    } else {
+        tf("oneclient.java.legacy_macos.body", &[&(newest + 1)])
+    };
+    for choice in &mut request.choices {
+        if choice.id == LEGACY_MACOS_CHOICE_DOWNGRADE {
+            choice.label = tf("oneclient.java.legacy_macos.downgrade", &[&newest]);
+        } else if choice.id == LEGACY_MACOS_CHOICE_KEEP {
+            choice.label = t("oneclient.java.legacy_macos.keep").to_string();
+        }
+    }
+    request.dismiss = Some(t("oneclient.common.cancel").to_string());
 }
 
 #[derive(Clone, Debug)]
@@ -749,7 +788,8 @@ impl NotificationState {
             }
             // Handled directly by the runtime loop they never become inbox entries
             Event::Signal(_) | Event::Game(_) => {}
-            Event::Notification(Notification::Prompt(request)) => {
+            Event::Notification(Notification::Prompt(mut request)) => {
+                localize_legacy_macos_prompt(&mut request);
                 let pending_prompt = Some(PendingPrompt {
                     title: request.title,
                     question: request.body,

@@ -310,6 +310,7 @@ async fn start(
     }
 
     let native_ok = crate::game::natives::native_java_ok(&version_info);
+    let required_major = version_info.java_version.as_ref().map(|v| v.major_version);
     let pinned = state
         .java
         .runtime_for_profile(profile.java_path.as_deref())
@@ -330,11 +331,7 @@ async fn start(
                     );
                     runtime.major
                 }
-                None => version_info
-                    .java_version
-                    .as_ref()
-                    .map(|v| v.major_version)
-                    .ok_or(GameError::MissingJavaVersion)?,
+                None => required_major.ok_or(GameError::MissingJavaVersion)?,
             };
 
             state
@@ -345,7 +342,7 @@ async fn start(
     };
     let java = state
         .java
-        .check_legacy_macos(java, native_ok, search_for_java)
+        .check_legacy_macos(java, required_major, native_ok, search_for_java)
         .await?;
 
     // Stats every library and the asset tree, the same work `plan_downloads`

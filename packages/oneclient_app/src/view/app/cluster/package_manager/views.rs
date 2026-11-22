@@ -969,43 +969,49 @@ impl Component for ContentBox {
         let warnings_query = use_disable_warnings();
         let mut menu = use_state(|| None::<(f32, f32, PackageEntry)>);
         let mut copies_of = use_state(|| None::<String>);
-        let known_hashes =
-            use_hook(|| std::rc::Rc::new(std::cell::RefCell::new(None::<HashSet<String>>)));
-        let hashes_of = |item: &PackageEntry| {
-            item.hash
-                .iter()
-                .chain(item.copies.iter().filter_map(|copy| copy.hash.as_ref()))
-                .cloned()
-                .collect::<Vec<_>>()
-        };
-        let copy_groups: Vec<(String, Vec<String>)> = items
+        // Copy groups an import asked to show, waiting for the open one to close
+        let mut queued_copies = use_state(Vec::<String>::new);
+        // Every group, hidden Advanced ones included, so only the import decides what opens
+        let copy_groups: Vec<(String, Vec<String>)> = self
+            .items
             .iter()
+            .chain(self.advanced.iter())
             .filter(|item| !item.copies.is_empty())
-            .map(|item| (item.package_id.clone(), hashes_of(item)))
-            .collect();
-        let shown_hashes: Vec<String> = items.iter().flat_map(hashes_of).collect();
-        use_side_effect_with_deps(&(shown_hashes, copy_groups), move |(shown, groups)| {
-            let mut known = known_hashes.borrow_mut();
-            let mut request = crate::hooks::COPIES_REQUEST.lock().unwrap();
-            let requested = request
-                .as_ref()
-                .filter(|(cluster, _)| *cluster == cluster_id)
-                .and_then(|(_, wanted)| {
-                    groups
-                        .iter()
-                        .find(|(_, hashes)| hashes.iter().any(|hash| wanted.contains(hash)))
-                });
-            if let Some((package_id, _)) = requested {
-                copies_of.set(Some(package_id.clone()));
-                *request = None;
-            } else if let Some(known) = known.as_ref().filter(|known| !known.is_empty())
-                && let Some((package_id, _)) = groups
+            .map(|item| {
+                let hashes = item
+                    .hash
                     .iter()
-                    .find(|(_, hashes)| hashes.iter().any(|hash| !known.contains(hash)))
-            {
-                copies_of.set(Some(package_id.clone()));
+                    .chain(item.copies.iter().filter_map(|copy| copy.hash.as_ref()))
+                    .cloned()
+                    .collect();
+                (item.package_id.clone(), hashes)
+            })
+            .collect();
+        use_side_effect_with_deps(&copy_groups, move |groups| {
+            let mut request = crate::hooks::COPIES_REQUEST.lock().unwrap();
+            let Some((_, wanted)) = request.as_ref().filter(|(cluster, _)| *cluster == cluster_id)
+            else {
+                return;
+            };
+            let mut found: Vec<String> = groups
+                .iter()
+                .filter(|(_, hashes)| hashes.iter().any(|hash| wanted.contains(hash)))
+                .map(|(package_id, _)| package_id.clone())
+                .collect();
+            if found.is_empty() {
+                return;
             }
-            known.get_or_insert_default().extend(shown.iter().cloned());
+            *request = None;
+            if copies_of.peek().is_none() {
+                copies_of.set(Some(found.remove(0)));
+            }
+            queued_copies.write().extend(found);
+        });
+        use_side_effect(move || {
+            if copies_of.read().is_none() && !queued_copies.peek().is_empty() {
+                let next = queued_copies.write().remove(0);
+                copies_of.set(Some(next));
+            }
         });
         let (on_delete, delete_dialog) =
             use_shared_delete(cluster_id, move |(_, hash): (String, String)| {
@@ -1094,7 +1100,12 @@ impl Component for ContentBox {
         let copies_target = copies_of
             .read()
             .as_ref()
-            .and_then(|key| items.iter().find(|item| &item.package_id == key))
+            .and_then(|key| {
+                items
+                    .iter()
+                    .chain(self.advanced.iter())
+                    .find(|item| &item.package_id == key)
+            })
             .filter(|item| !item.copies.is_empty())
             .cloned();
         let copies_open = copies_target.is_some();

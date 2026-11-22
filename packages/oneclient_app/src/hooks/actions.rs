@@ -1582,9 +1582,12 @@ impl Actions {
                         duplicates.copies.contains_key(hash)
                             || duplicates.copies.values().flatten().any(|copy| copy == hash)
                     });
-                    super::invalidate_cluster_queries().await;
+                    // Set before the refetch so the mods list sees it when the new copies arrive
                     if copied {
                         *COPIES_REQUEST.lock().unwrap() = Some((cluster_id, imported));
+                    }
+                    super::invalidate_cluster_queries().await;
+                    if copied {
                         let mods = crate::routes::Route::ClusterMods { cluster_id };
                         if let Some(router) = &router
                             && router.current::<crate::routes::Route>() != mods

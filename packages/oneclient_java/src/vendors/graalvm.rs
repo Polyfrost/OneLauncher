@@ -25,12 +25,13 @@ impl JavaRuntimeProvider for GraalVmRuntimeProvider {
     }
 
     #[tracing::instrument(level = "debug", skip(self, net))]
-    async fn list_packages(
+    async fn list_arch_packages(
         &self,
         major: Option<u32>,
+        arch: HostArch,
         net: &RequestClient,
     ) -> JavaResult<Vec<JavaPackage>> {
-        let Some(platform) = GRAALVM_PLATFORM else {
+        let Some(platform) = graalvm_platform(arch) else {
             tracing::debug!("Oracle publishes no GraalVM build for this platform. Listing nothing");
             return Ok(Vec::new());
         };
@@ -125,14 +126,16 @@ fn download_url(major: u32, filename: &str) -> String {
     format!("https://download.oracle.com/graalvm/{major}/latest/{filename}")
 }
 
-const GRAALVM_PLATFORM: Option<&str> = match (HostTarget::CURRENT.os, HostTarget::CURRENT.arch) {
-    (HostOs::Windows, HostArch::X86_64) => Some("windows-x64"),
-    (HostOs::MacOs, HostArch::X86_64) => Some("macos-x64"),
-    (HostOs::MacOs, HostArch::Aarch64) => Some("macos-aarch64"),
-    (HostOs::Linux { musl: false }, HostArch::X86_64) => Some("linux-x64"),
-    (HostOs::Linux { musl: false }, HostArch::Aarch64) => Some("linux-aarch64"),
-    _ => None,
-};
+fn graalvm_platform(arch: HostArch) -> Option<&'static str> {
+    match (HostTarget::CURRENT.os, arch) {
+        (HostOs::Windows, HostArch::X86_64) => Some("windows-x64"),
+        (HostOs::MacOs, HostArch::X86_64) => Some("macos-x64"),
+        (HostOs::MacOs, HostArch::Aarch64) => Some("macos-aarch64"),
+        (HostOs::Linux { musl: false }, HostArch::X86_64) => Some("linux-x64"),
+        (HostOs::Linux { musl: false }, HostArch::Aarch64) => Some("linux-aarch64"),
+        _ => None,
+    }
+}
 
 const GRAALVM_EXT: (&str, PackageArchive) = (
     HostTarget::CURRENT.archive_ext(),

@@ -183,7 +183,6 @@
   "oneclient.actions.release_migration.builds_added.body.other": "%s now support %s and were added to %s.",
   "oneclient.actions.release_migration.builds_added.title": "New %s builds added",
   "oneclient.actions.release_migration.check_failed.title": "Couldn't check for packages to migrate",
-  "oneclient.actions.release_migration.check_failed.unreachable": "Couldn't reach Modrinth or CurseForge. Check your connection and try again.",
   "oneclient.actions.release_migration.fake.body": "Nothing was installed",
   "oneclient.actions.release_migration.fake.title": "Fake plan",
   "oneclient.actions.release_migration.migrated.body.one": "%s package copied into %s",

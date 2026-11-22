@@ -236,11 +236,9 @@ impl PlusClient {
         .await
     }
 
-    pub async fn is_special_chat_target(&self) -> Result<bool, PlusError> {
-        let body: SpecialChatStatus = self
-            .json(Method::GET, self.url("/special-chat")?, None)
-            .await?;
-        Ok(body.is_special_chat_target)
+    pub async fn special_chat(&self) -> Result<SpecialChatStatus, PlusError> {
+        self.json(Method::GET, self.url("/special-chat")?, None)
+            .await
     }
 
     pub async fn status(&self) -> Result<PlayerStatus, PlusError> {

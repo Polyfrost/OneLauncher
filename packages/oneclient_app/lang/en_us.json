@@ -555,6 +555,7 @@
   "oneclient.chat.thread.not_sent": "Not sent",
   "oneclient.chat.thread.sending": "Sending…",
   "oneclient.chat.thread.too_long": "This message is too long.",
+  "oneclient.chat.thread.special_cooldown": "Next Special Chat message available in %s",
   "oneclient.chat.time.today": "Today",
   "oneclient.chat.time.yesterday": "Yesterday",
   "oneclient.chat.window.title": "Social — OneClient",

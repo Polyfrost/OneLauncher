@@ -284,6 +284,14 @@ pub fn use_invite_join() -> Option<crate::state::InviteJoinPrompt> {
     use_radio(AppChannel::Social).read().invite_join.clone()
 }
 
+pub fn use_special_cooldown(group_id: i32) -> Option<chrono::DateTime<chrono::FixedOffset>> {
+    let radio = use_radio(AppChannel::Chat);
+    let state = radio.read();
+    let chat = &state.chat;
+    chat.special_cooldown
+        .filter(|_| chat.special_group == Some(group_id))
+}
+
 pub fn use_chat_invite_game(invite_id: i32) -> Option<crate::chat::InviteGame> {
     use_radio(AppChannel::Chat)
         .read()

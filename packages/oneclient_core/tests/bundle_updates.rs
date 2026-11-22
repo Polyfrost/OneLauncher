@@ -1,3 +1,6 @@
+// The install futures these tests await are deeper than the default layout limit
+#![recursion_limit = "256"]
+
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 

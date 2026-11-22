@@ -240,6 +240,81 @@ fn has_unexpected_copy(
     })
 }
 
+const UNDO_SUFFIX: &str = ".oneclient-undo";
+
+/// `.<name>.oneclient-undo` so a forced exit leaves a name recovery can reverse
+fn staging_path(original: &Path) -> PathBuf {
+    let mut name = std::ffi::OsString::from(".");
+    name.push(original.file_name().unwrap_or_default());
+    name.push(UNDO_SUFFIX);
+    original.with_file_name(name)
+}
+
+/// An exit between staging and cleanup strands staged files. A file whose link
+/// survived goes back, the rest belong to an Undo the database already committed.
+pub async fn recover_staged_undo_files(ctx: &ContentCtx) -> ContentResult<()> {
+    let _mutation = crate::packages::exclusive_package_mutation_guard().await;
+    let _manifest = manifest::lock().await;
+    // Folders can be shared, so each one knows the names linked by any cluster using it
+    let mut dirs: HashMap<PathBuf, HashSet<String>> = HashMap::new();
+    for cluster in oneclient_db::dao::cluster::list_all(&ctx.db).await? {
+        let linked: Vec<String> = artifacts::list_cluster_artifacts_detailed(&ctx.db, cluster.id)
+            .await?
+            .into_iter()
+            .map(|link| link.cluster_file_name)
+            .collect();
+        let name = &cluster.folder_name;
+        let locations = [
+            paths::cluster_dir(name).ok(),
+            paths::cluster_game_dir(name, cluster.is_isolated()).ok(),
+            paths::cluster_shared_dir(name).ok(),
+        ];
+        for location in locations.into_iter().flatten() {
+            for content_type in [
+                ContentType::Mod,
+                ContentType::ResourcePack,
+                ContentType::Shader,
+                ContentType::DataPack,
+            ] {
+                dirs.entry(location.join(content_type.folder_name()))
+                    .or_default()
+                    .extend(linked.iter().cloned());
+            }
+        }
+    }
+    for (dir, linked) in dirs {
+        recover_staged_in(&dir, &linked).await;
+    }
+    Ok(())
+}
+
+async fn recover_staged_in(dir: &Path, linked: &HashSet<String>) {
+    let Ok(mut entries) = polyio::read_dir(dir).await else {
+        return;
+    };
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let file_name = entry.file_name();
+        let Some(name) = file_name
+            .to_str()
+            .and_then(|name| name.strip_prefix('.')?.strip_suffix(UNDO_SUFFIX))
+        else {
+            continue;
+        };
+        let staged = entry.path();
+        let original = dir.join(name);
+        let result = match (linked.contains(name), polyio::try_exists(&original).await) {
+            (true, Ok(false)) => polyio::rename(&staged, &original).await,
+            // Rollback keeps these on purpose when the original path was taken
+            (true, _) | (_, Err(_)) => continue,
+            // The cache keeps its own copy, so a committed Undo's leftover is disposable
+            (false, Ok(_)) => polyio::remove_file(&staged).await,
+        };
+        if let Err(err) = result {
+            tracing::warn!(path = %staged.display(), %err, "could not recover a staged Undo file");
+        }
+    }
+}
+
 struct StagedFile {
     original: PathBuf,
     staged: PathBuf,
@@ -377,8 +452,7 @@ impl StagedUndoFiles {
         hash: String,
         location: MaterializedFile,
     ) -> ContentResult<()> {
-        let staging_name = format!(".oneclient-undo-{}", uuid::Uuid::new_v4().simple());
-        let staged = original.with_file_name(staging_name);
+        let staged = staging_path(&original);
         polyio::rename(&original, &staged).await?;
         self.files.push(StagedFile {
             original,
@@ -554,5 +628,27 @@ mod tests {
         files.rollback().await;
         assert!(polyio::try_exists(&original).await.unwrap());
         assert!(!polyio::try_exists(&staged).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn recovery_restores_linked_leftovers_and_drops_committed_ones() {
+        let dir = polyio::testing::ScratchDir::new("undo_recovery");
+        polyio::create_dir_all(dir.path()).await.unwrap();
+        let kept = dir.path().join("kept.jar");
+        let undone = dir.path().join("undone.jar");
+        let taken = dir.path().join("taken.jar");
+        for path in [&kept, &undone, &taken] {
+            polyio::write(staging_path(path), b"package").await.unwrap();
+        }
+        polyio::write(&taken, b"other").await.unwrap();
+
+        let linked = HashSet::from(["kept.jar".into(), "taken.jar".into()]);
+        recover_staged_in(dir.path(), &linked).await;
+
+        assert!(polyio::try_exists(staging_path(&taken)).await.unwrap());
+        assert!(polyio::try_exists(&kept).await.unwrap());
+        assert!(!polyio::try_exists(&undone).await.unwrap());
+        assert!(!polyio::try_exists(staging_path(&kept)).await.unwrap());
+        assert!(!polyio::try_exists(staging_path(&undone)).await.unwrap());
     }
 }

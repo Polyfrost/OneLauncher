@@ -11,7 +11,7 @@ pub use gc::{
     remove_unreferenced_files,
 };
 pub use link::{
-    LiveSync, drop_unmanaged_mod, link_or_copy, materialize_file, remove_entry,
+    LiveSync, drop_unmanaged_mod, link_or_copy, materialize_file, materialized_root, remove_entry,
     sharing_cluster_ids, sharing_with, sweep_staging_files, try_link_materialized,
     try_unlink_materialized,
 };

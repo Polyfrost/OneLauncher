@@ -993,24 +993,19 @@ fn reveal_in_cluster(cluster_id: i64, content_type: ContentType, file_name: Stri
         let Ok(state) = crate::launcher::state() else {
             return;
         };
-        let cluster = match state.clusters.get(cluster_id).await {
+        use oneclient_content::packages::{PackageStore, store::materialized_root};
+        let cluster = match PackageStore::get_cluster(cluster_id, &state.services.content()).await
+        {
             Ok(cluster) => cluster,
             Err(err) => {
                 tracing::warn!(%err, "failed to look up cluster for reveal");
                 return;
             }
         };
-        let dir = if content_type == ContentType::Mod {
-            oneclient_common::paths::cluster_mods_dir(&cluster.folder_name).ok()
-        } else {
-            cluster
-                .game_dir()
-                .ok()
-                .map(|dir| dir.join(content_type.folder_name()))
-        };
-        let Some(dir) = dir else {
+        let Some((root, _)) = materialized_root(&cluster, content_type).await else {
             return;
         };
+        let dir = root.join(content_type.folder_name());
         let file = [file_name.clone(), format!("{file_name}.disabled")]
             .into_iter()
             .map(|name| dir.join(name))

@@ -151,7 +151,8 @@ pub async fn drop_unmanaged_mod(
     }
 }
 
-async fn materialized_root(
+/// Where the last launch put this cluster's files of `content_type`
+pub async fn materialized_root(
     cluster: &ClusterRow,
     content_type: ContentType,
 ) -> Option<(PathBuf, &'static str)> {

@@ -12,7 +12,7 @@ use crate::hooks::{
 use crate::i18n::t;
 use crate::layout::cluster_content;
 use crate::theme::{colors, text_size};
-use crate::view::app::cluster::logs::{Confirm, LevelFilter, confirm_overlay, viewer_header};
+use crate::view::app::cluster::logs::{Confirm, LevelFilter, confirm_overlay, viewer_controls};
 
 use super::cluster_not_found;
 
@@ -31,7 +31,6 @@ impl Component for ProcessLogs {
         let level = use_state(|| LevelFilter::All);
         let confirm = use_state(|| None::<Confirm>);
         let search_id = use_a11y();
-
 
         let game = use_game_snapshot();
         let Some(_cluster) = use_cluster(self.cluster_id) else {
@@ -53,7 +52,7 @@ impl Component for ProcessLogs {
 
             LogViewer::new(t("oneclient.cluster.process_logs.title"), visible)
                 .streaming(true)
-                .header(viewer_header(
+                .actions(viewer_controls(
                     search,
                     level,
                     confirm,

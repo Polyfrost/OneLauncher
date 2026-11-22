@@ -394,6 +394,39 @@ pub fn viewer_header(
     upload_path: Option<PathBuf>,
     search_id: AccessibilityId,
 ) -> impl IntoElement {
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .child(
+            rect()
+                .width(Size::fill())
+                .padding(Gaps::new_symmetric(10., 14.))
+                .child(viewer_controls(
+                    search,
+                    level,
+                    confirm,
+                    has_log,
+                    upload_path,
+                    search_id,
+                )),
+        )
+        .child(
+            rect()
+                .width(Size::fill())
+                .height(Size::px(1.))
+                .background(colors::component_border()),
+        )
+        .into_element()
+}
+
+pub fn viewer_controls(
+    search: State<String>,
+    level: State<LevelFilter>,
+    confirm: State<Option<Confirm>>,
+    has_log: bool,
+    upload_path: Option<PathBuf>,
+    search_id: AccessibilityId,
+) -> impl IntoElement {
     let on_key_down = move |e: Event<KeyboardEventData>| {
         let find = matches!(&e.key, Key::Character(c) if c.as_str().eq_ignore_ascii_case("f"))
             && e.modifiers.contains(Modifiers::ctrl_or_meta());
@@ -420,13 +453,12 @@ pub fn viewer_header(
         }
     };
 
-    let row = rect()
+    rect()
         .horizontal()
         .width(Size::fill())
         .cross_align(Alignment::Center)
         .content(Content::Flex)
         .spacing(10.)
-        .padding(Gaps::new_symmetric(10., 14.))
         .on_global_key_down(on_key_down)
         .child(rect().width(Size::flex(1.0)).child(search_input))
         .child(
@@ -446,18 +478,7 @@ pub fn viewer_header(
                 )
                 .into_element(),
         )
-        .child(UploadToMclogs::new(upload_path, confirm));
-
-    rect()
-        .vertical()
-        .width(Size::fill())
-        .child(row)
-        .child(
-            rect()
-                .width(Size::fill())
-                .height(Size::px(1.))
-                .background(colors::component_border()),
-        )
+        .child(UploadToMclogs::new(upload_path, confirm))
         .into_element()
 }
 

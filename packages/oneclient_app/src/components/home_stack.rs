@@ -54,7 +54,14 @@ pub fn use_home_stack() -> Option<HomeStack> {
 /// When present in context, `ScrollArea` hands wheel input up to the home stack:
 /// always while `pass_all` is set (the stack is mid-scroll), and otherwise once the
 /// area is pinned against an edge, so scrolling flows between the list and the stack.
+/// A wheel stream that was scrolling the area is held at the edge until it pauses for
+/// `EDGE_SETTLE`, so the tail of a scroll (or its momentum) never jumps to Home.
 #[derive(Clone, Copy)]
 pub struct WheelEdgeChain {
     pub pass_all: State<bool>,
+    /// When the area last took the wheel, or held it at the edge
+    pub inner_wheel_at: State<Option<std::time::Instant>>,
 }
+
+/// How long the wheel must go quiet after scrolling a list before it may move the stack
+pub const EDGE_SETTLE: std::time::Duration = std::time::Duration::from_millis(300);

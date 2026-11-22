@@ -52,7 +52,13 @@ impl Component for Home {
         let wheel_tick = use_state(|| 0u64);
         let mut last_dir = use_state(|| 0f32);
 
-        use_hook(|| provide_context(WheelEdgeChain { pass_all }));
+        let inner_wheel_at = use_state(|| None);
+        use_hook(|| {
+            provide_context(WheelEdgeChain {
+                pass_all,
+                inner_wheel_at,
+            })
+        });
 
         let mover = Mover {
             ticker,

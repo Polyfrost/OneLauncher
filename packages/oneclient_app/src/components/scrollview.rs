@@ -2,7 +2,7 @@
 use freya::prelude::*;
 use freya::torin::geometry::Point2D;
 
-use super::home_stack::WheelEdgeChain;
+use super::home_stack::{EDGE_SETTLE, WheelEdgeChain};
 use crate::theme::{colors, rounded};
 
 const LAZY_OVERSCAN: i64 = 3;
@@ -618,13 +618,29 @@ impl ScrollArea {
                 return;
             }
 
-            // Pinned against an edge: let the wheel bubble so the outer stack can use it
-            if edge_chain.is_some() && do_v && !do_h {
+            // Pinned against an edge: let the wheel bubble so the outer stack can use it,
+            // unless it is still the stream that was scrolling this area
+            if let Some(mut chain) = edge_chain
+                && do_v
+                && !do_h
+            {
                 let (_, cur_y) = controller.into();
                 let current = corrected_scroll(ct_h, vp_h, cur_y as f32);
                 if scroll_pos_from_wheel(v_delta, ct_h, vp_h, current) == current as i32 {
+                    let settled = chain
+                        .inner_wheel_at
+                        .peek()
+                        .is_none_or(|at| at.elapsed() >= EDGE_SETTLE);
+                    if settled {
+                        return;
+                    }
+                    chain.inner_wheel_at.set(Some(std::time::Instant::now()));
+                    e.stop_propagation();
                     return;
                 }
+            }
+            if let Some(mut chain) = edge_chain {
+                chain.inner_wheel_at.set(Some(std::time::Instant::now()));
             }
 
             e.stop_propagation();

@@ -68,6 +68,9 @@ pub struct LauncherSettings {
     pub show_tray_icon: bool,
     pub dynamic_background_enabled: bool,
     pub start_maximized: bool,
+    /// Windows only: `None` detects whether the GPU needs the frame-style workaround,
+    /// `Some(true)`/`Some(false)` forces it on or off
+    pub window_frame_fix: Option<bool>,
     pub animations_enabled: bool,
     pub theme: String,
     pub accent_color: Option<String>,
@@ -131,6 +134,7 @@ impl Default for LauncherSettings {
             show_tray_icon: true,
             dynamic_background_enabled: true,
             start_maximized: false,
+            window_frame_fix: None,
             animations_enabled: true,
             theme: "dark".to_string(),
             accent_color: None,

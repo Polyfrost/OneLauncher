@@ -10,13 +10,16 @@ use oneclient_cluster::GameSettingsProfile;
 #[tracing::instrument(level = "debug", skip(notify))]
 pub async fn load_settings(notify: Option<&EventBus>) -> LauncherSettings {
     let settings = load_settings_file(notify).await;
-    with_overrides(
-        settings,
-        std::env::vars_os().filter_map(|(key, value)| {
+    with_overrides(settings, env_overrides())
+}
+
+fn env_overrides() -> Vec<(String, String)> {
+    std::env::vars_os()
+        .filter_map(|(key, value)| {
             let key = key.to_str()?.strip_prefix(ENV_PREFIX)?.to_ascii_lowercase();
             Some((key, value.into_string().ok()?))
-        }),
-    )
+        })
+        .collect()
 }
 
 /// Any `settings.json` key can be overridden with `ONECLIENT_SETTING_<KEY>`
@@ -37,10 +40,18 @@ fn with_overrides(
     };
 
     for (key, raw) in overrides {
-        let value = serde_json::from_str(&raw)
+        let Some(value) = serde_json::from_str(&raw)
             .ok()
-            .filter(|value| fits(&key, value).is_ok())
-            .unwrap_or(serde_json::Value::String(raw));
+            .into_iter()
+            .chain([serde_json::Value::String(raw)])
+            .find(|value| fits(&key, value).is_ok())
+        else {
+            tracing::warn!(
+                "ignored invalid {ENV_PREFIX}{}, keeping the saved `{key}`",
+                key.to_ascii_uppercase()
+            );
+            continue;
+        };
         tracing::info!(
             "setting `{key}` overridden by {ENV_PREFIX}{}",
             key.to_ascii_uppercase()
@@ -152,9 +163,40 @@ fn fits(key: &str, field: &serde_json::Value) -> serde_json::Result<LauncherSett
 pub async fn save_settings(settings: &LauncherSettings) -> LauncherResult<()> {
     let path = paths::settings_file()?;
 
-    let data = serde_json::to_string_pretty(settings)?;
+    let overridden: Vec<String> = env_overrides().into_iter().map(|(key, _)| key).collect();
+    let stored = if overridden.is_empty() {
+        None
+    } else {
+        polyio::read(&path)
+            .await
+            .ok()
+            .and_then(|data| serde_json::from_slice(&data).ok())
+    };
+    let data = serde_json::to_string_pretty(&without_overrides(settings, stored, overridden)?)?;
     polyio::write_atomic(path, data).await?;
     Ok(())
+}
+
+/// Environment overrides only live in memory, so overridden keys keep whatever the file had
+fn without_overrides(
+    settings: &LauncherSettings,
+    stored: Option<serde_json::Value>,
+    overridden: impl IntoIterator<Item = String>,
+) -> serde_json::Result<serde_json::Value> {
+    let mut value = serde_json::to_value(settings)?;
+    let stored = match stored {
+        Some(serde_json::Value::Object(stored)) => stored,
+        _ => serde_json::Map::new(),
+    };
+    if let serde_json::Value::Object(fields) = &mut value {
+        for key in overridden {
+            match stored.get(&key) {
+                Some(saved) => fields.insert(key, saved.clone()),
+                None => fields.remove(&key),
+            };
+        }
+    }
+    Ok(value)
 }
 
 #[tracing::instrument(level = "debug", skip(services, settings))]
@@ -211,5 +253,18 @@ mod tests {
         assert_eq!(salvage(r#"{"log_debug":true}"#).data_dir, None);
         assert_eq!(salvage(r#"{"data_dir":null}"#).data_dir, None);
         assert_eq!(salvage(r#"{"data_dir":42}"#).data_dir, None);
+    }
+
+    #[test]
+    fn env_overrides_are_never_saved() {
+        let key = || "max_concurrent_requests".to_owned();
+        for (saved, env, effective) in [(25, "7", 7), (41, "typo", 41)] {
+            let stored = serde_json::json!({ "max_concurrent_requests": saved });
+            let settings = with_overrides(salvage(&stored.to_string()), [(key(), env.to_owned())]);
+            assert_eq!(settings.max_concurrent_requests, effective);
+
+            let written = without_overrides(&settings, Some(stored), [key()]).unwrap();
+            assert_eq!(written["max_concurrent_requests"], saved);
+        }
     }
 }

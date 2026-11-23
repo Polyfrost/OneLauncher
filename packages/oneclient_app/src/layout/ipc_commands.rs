@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use freya::prelude::*;
 use freya::router::*;
 
@@ -6,16 +8,30 @@ use crate::ipc::{self, IpcCommand};
 use crate::platform;
 use crate::routes::Route;
 
+thread_local! {
+    /// The open main window's router, `None` while it's closed to the background
+    static ROUTER: Cell<Option<RouterContext>> = const { Cell::new(None) };
+    /// Logs asked for while the window was closed, opened once it's back
+    static PENDING_LOGS: Cell<Option<i64>> = const { Cell::new(None) };
+}
+
 pub fn use_ipc_commands() {
     let dispatch = use_dispatch();
 
     use_hook(move || {
+        let router = RouterContext::get();
+        ROUTER.set(Some(router));
+        if let Some(cluster_id) = PENDING_LOGS.take() {
+            let _ = router.push(Route::ProcessLogs { cluster_id });
+        }
+
+        // The inbox is taken once, the loop is global so the tray and second launches
+        // still reach a launcher whose window was closed to the background
         let Some(mut inbox) = ipc::take_inbox() else {
             return;
         };
-        let router = RouterContext::get();
 
-        spawn_in_window(async move {
+        spawn_global(async move {
             while let Some(command) = inbox.recv().await {
                 match command {
                     IpcCommand::Focus => platform::focus_window(),
@@ -31,7 +47,12 @@ pub fn use_ipc_commands() {
                         platform::focus_window();
                         let running = dispatch.station().peek().game.running_clusters().min();
                         if let Some(cluster_id) = running {
-                            let _ = router.push(Route::ProcessLogs { cluster_id });
+                            match ROUTER.get() {
+                                Some(router) => {
+                                    let _ = router.push(Route::ProcessLogs { cluster_id });
+                                }
+                                None => PENDING_LOGS.set(Some(cluster_id)),
+                            }
                         }
                     }
                     IpcCommand::Stop => {
@@ -47,4 +68,6 @@ pub fn use_ipc_commands() {
             }
         });
     });
+
+    use_drop(|| ROUTER.set(None));
 }

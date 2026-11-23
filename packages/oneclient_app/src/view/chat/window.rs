@@ -33,9 +33,9 @@ pub fn open_chat_window() {
     };
 
     let platform = Platform::get();
-    let launcher = Platform::window_id();
+    let launcher = crate::platform::main_window();
     let anchor = platform.post_callback(move |ctx: &mut RendererContext| {
-        let window = ctx.windows.get(&launcher)?.window();
+        let window = ctx.windows.get(&launcher?)?.window();
         let monitor = window.current_monitor()?;
 
         Some(Anchor {
@@ -47,7 +47,7 @@ pub fn open_chat_window() {
         })
     });
 
-    spawn_in_window(async move {
+    spawn_global(async move {
         let _opening = opening;
         let beside = anchor.await.ok().flatten().map(beside_launcher);
         platform.launch_window(window_config(beside)).await;

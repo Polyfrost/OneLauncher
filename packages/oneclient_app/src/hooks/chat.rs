@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
-use freya::prelude::spawn_in_window;
+use freya::prelude::spawn_global;
 use freya::query::{MutationStateData, UseMutation};
 use freya::radio::RadioStation;
 use oneclient_auth::MinecraftAccount;
@@ -1410,7 +1410,7 @@ impl Actions {
         };
         let actions = self.clone();
         let owner = owner_of(self.station());
-        spawn_in_window(async move {
+        spawn_global(async move {
             let failed = matches!(
                 &*mutation.mutate_async(action).await.state(),
                 MutationStateData::Settled { res: Err(_), .. }
@@ -1426,7 +1426,7 @@ impl Actions {
             return;
         };
         let owner = owner_of(self.station());
-        spawn_in_window(finish_invite_join(self.clone(), invite_id, owner, claim));
+        spawn_global(finish_invite_join(self.clone(), invite_id, owner, claim));
     }
 
     pub fn clear_invite_join(&self) {

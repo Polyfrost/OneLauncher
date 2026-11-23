@@ -4,7 +4,7 @@
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use freya::prelude::spawn_in_window;
+use freya::prelude::spawn_global;
 use freya::radio::RadioStation;
 use oneclient_events::{
     ChatEvent, Event, EventReceiver, GameEvent, LaunchStage, ProgressEvent, Signal,
@@ -119,11 +119,11 @@ impl EventPump {
                     match signal {
                         PumpSignal::Chat(job) => {
                             let station = self.station;
-                            spawn_in_window(job.run(station));
+                            spawn_global(job.run(station));
                         }
                         PumpSignal::JoinInvite(invite_id) => {
                             let actions = self.actions.clone();
-                            spawn_in_window(crate::hooks::start_invite_join(actions, invite_id));
+                            spawn_global(crate::hooks::start_invite_join(actions, invite_id));
                         }
                         PumpSignal::Reconcile => reconcile(&self.station, &mut armed, paused),
                         PumpSignal::PauseToasts => {
@@ -367,35 +367,35 @@ impl EventPump {
         }
 
         if folded.clusters {
-            spawn_in_window(async move { crate::hooks::invalidate_cluster_queries().await });
+            spawn_global(async move { crate::hooks::invalidate_cluster_queries().await });
         }
         if folded.java {
-            spawn_in_window(async move { crate::hooks::invalidate_java_queries().await });
+            spawn_global(async move { crate::hooks::invalidate_java_queries().await });
         }
         if folded.chat_roster {
             let station = self.station;
-            spawn_in_window(async move { crate::hooks::load_roster(station).await });
+            spawn_global(async move { crate::hooks::load_roster(station).await });
         }
         if folded.chat_invites {
             let station = self.station;
-            spawn_in_window(async move { crate::hooks::load_invite_games(station).await });
+            spawn_global(async move { crate::hooks::load_invite_games(station).await });
         }
         if folded.chat_unknown_group {
             let station = self.station;
-            spawn_in_window(async move { crate::hooks::load_conversations(station).await });
+            spawn_global(async move { crate::hooks::load_conversations(station).await });
         }
         if folded.chat_reconnected {
             let station = self.station;
-            spawn_in_window(async move { crate::hooks::resync_chat(station).await });
-            spawn_in_window(async move { crate::hooks::load_self_status(station).await });
+            spawn_global(async move { crate::hooks::resync_chat(station).await });
+            spawn_global(async move { crate::hooks::load_self_status(station).await });
         }
         for toast in toasts {
             let actions = self.actions.clone();
-            spawn_in_window(async move { crate::hooks::notify_chat(actions, toast).await });
+            spawn_global(async move { crate::hooks::notify_chat(actions, toast).await });
         }
         for group_id in std::mem::take(&mut folded.chat_read) {
             let station = self.station;
-            spawn_in_window(async move { crate::hooks::mark_chat_read(station, group_id).await });
+            spawn_global(async move { crate::hooks::mark_chat_read(station, group_id).await });
         }
 
         folded

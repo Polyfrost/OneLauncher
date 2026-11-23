@@ -2627,6 +2627,8 @@
   "oneclient.wardrobe.plus.unreachable": "Couldn't reach the Poly+ servers.",
   "oneclient.wardrobe.plus_refresh_failed": "Couldn't refresh your Poly+ data, so this may be out of date. %s",
   "oneclient.wardrobe.preview.already_owned": "You already own this cosmetic.",
+  "oneclient.wardrobe.preview.both": "Both",
+  "oneclient.wardrobe.preview.both_named": "Both %s",
   "oneclient.wardrobe.preview.bundle": "Bundle",
   "oneclient.wardrobe.preview.classic_skin": "Classic skin",
   "oneclient.wardrobe.preview.new_outfit": "New outfit from current look",

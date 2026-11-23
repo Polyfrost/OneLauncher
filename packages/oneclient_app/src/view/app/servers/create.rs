@@ -91,6 +91,7 @@ struct Form {
     source: State<Option<Source>>,
     memory: State<String>,
     port: State<String>,
+    performance: State<bool>,
     eula: State<bool>,
     query: State<String>,
 }
@@ -141,6 +142,7 @@ impl Component for CreateServerModal {
             source: use_state(|| None),
             memory: use_state(|| DEFAULT_MEMORY_MB.to_string()),
             port: use_state(|| DEFAULT_PORT.to_string()),
+            performance: use_state(|| true),
             eula: use_state(|| false),
             query: use_state(String::new),
         };
@@ -436,6 +438,16 @@ impl Component for CreateServerModal {
                 server.loader_version = loader_version.clone();
                 server.platform = platform;
                 server.memory_mb = memory;
+                server.performance_flags = *form.performance.read();
+                if let Some(major) = java_major.filter(|_| server.performance_flags) {
+                    server.jvm_args = oneclient_mc::server_performance_flags(
+                        major,
+                        std::env::consts::ARCH,
+                        std::env::consts::OS,
+                        memory,
+                    )
+                    .join(" ");
+                }
                 server.eula = true;
                 server.source_cluster = (kind == ServerKind::FromInstance)
                     .then(|| *form.cluster.read())
@@ -1049,6 +1061,10 @@ fn details_step(form: Form) -> Element {
                 .vertical()
                 .width(Size::fill())
                 .spacing(6.)
+                .child(checkbox_labeled(
+                    form.performance,
+                    t("oneclient.servers.create.details.performance"),
+                ))
                 .child(checkbox_labeled(
                     form.eula,
                     t("oneclient.servers.create.details.eula"),

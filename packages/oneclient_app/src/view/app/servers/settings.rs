@@ -458,7 +458,7 @@ impl Component for ServerSettings {
             }
             .into_element(),
         ));
-        let extra: [(Section, &'static str, &'static str, Element); 7] = [
+        let extra: [(Section, &'static str, &'static str, Element); 8] = [
             (
                 Section::Network,
                 t("oneclient.servers.settings.motd.title"),
@@ -486,6 +486,12 @@ impl Component for ServerSettings {
                     server: server.clone(),
                 }
                 .into_element(),
+            ),
+            (
+                Section::Performance,
+                t("oneclient.servers.settings.performance.title"),
+                t("oneclient.servers.settings.performance.description"),
+                performance_row(&server),
             ),
             (
                 Section::Performance,
@@ -1360,7 +1366,8 @@ struct JvmRow {
 
 impl Component for JvmRow {
     fn render_key(&self) -> DiffKey {
-        row_key(&[&self.server.id, "JvmRow"])
+        let performance = if self.server.performance_flags { "on" } else { "off" };
+        row_key(&[&self.server.id, "JvmRow", performance])
     }
 
     fn render(&self) -> impl IntoElement {
@@ -1436,6 +1443,42 @@ fn client_mods_row(server: &LocalServer) -> Element {
             on,
             (move |()| servers::update(id.clone(), move |s| s.auto_disable_client_mods = !on))
                 .into(),
+        ),
+    )
+    .into_element()
+}
+
+fn performance_row(server: &LocalServer) -> Element {
+    let id = server.id.clone();
+    let on = server.performance_flags;
+    settings_row(
+        IconType::Rocket02,
+        t("oneclient.servers.settings.performance.title"),
+        t("oneclient.servers.settings.performance.description"),
+        toggle_controlled(
+            on,
+            (move |()| {
+                servers::update(id.clone(), move |s| {
+                    let rest = oneclient_mc::without_server_performance_flags(&s.jvm_args);
+                    s.jvm_args = match s.java_major.filter(|_| !on) {
+                        Some(major) => format!(
+                            "{} {rest}",
+                            oneclient_mc::server_performance_flags(
+                                major,
+                                std::env::consts::ARCH,
+                                std::env::consts::OS,
+                                s.memory_mb,
+                            )
+                            .join(" ")
+                        )
+                        .trim()
+                        .to_string(),
+                        None => rest,
+                    };
+                    s.performance_flags = !on;
+                });
+            })
+            .into(),
         ),
     )
     .into_element()

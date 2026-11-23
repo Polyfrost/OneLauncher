@@ -124,6 +124,116 @@ pub fn performance_flags(
     flags
 }
 
+const SERVER_SMALL_HEAP_MB: u32 = 4096;
+
+const SERVER_LARGE_HEAP_MB: u32 = 12288;
+
+const SERVER_G1_LIGHT: [&str; 5] = [
+    "-XX:+UseG1GC",
+    "-XX:MaxGCPauseMillis=100",
+    "-XX:+DisableExplicitGC",
+    "-XX:+AlwaysPreTouch",
+    "-XX:+ParallelRefProcEnabled",
+];
+
+const SERVER_G1_AIKAR: [&str; 13] = [
+    "-XX:+UseG1GC",
+    "-XX:+ParallelRefProcEnabled",
+    "-XX:MaxGCPauseMillis=200",
+    "-XX:+UnlockExperimentalVMOptions",
+    "-XX:+DisableExplicitGC",
+    "-XX:+AlwaysPreTouch",
+    "-XX:G1HeapWastePercent=5",
+    "-XX:G1MixedGCCountTarget=4",
+    "-XX:G1MixedGCLiveThresholdPercent=90",
+    "-XX:G1RSetUpdatingPauseTimePercent=5",
+    "-XX:SurvivorRatio=32",
+    "-XX:+PerfDisableSharedMem",
+    "-XX:MaxTenuringThreshold=1",
+];
+
+const SERVER_G1_AIKAR_STANDARD: [&str; 5] = [
+    "-XX:G1NewSizePercent=30",
+    "-XX:G1MaxNewSizePercent=40",
+    "-XX:G1HeapRegionSize=8M",
+    "-XX:G1ReservePercent=20",
+    "-XX:InitiatingHeapOccupancyPercent=15",
+];
+
+const SERVER_G1_AIKAR_LARGE: [&str; 5] = [
+    "-XX:G1NewSizePercent=40",
+    "-XX:G1MaxNewSizePercent=50",
+    "-XX:G1HeapRegionSize=16M",
+    "-XX:G1ReservePercent=15",
+    "-XX:InitiatingHeapOccupancyPercent=20",
+];
+
+const SERVER_ZGC: [&str; 3] = [
+    "-XX:+AlwaysPreTouch",
+    "-XX:+DisableExplicitGC",
+    "-XX:+PerfDisableSharedMem",
+];
+
+#[must_use]
+pub fn server_performance_flags(
+    java_major: u32,
+    java_arch: &str,
+    os: &str,
+    mem_max: u32,
+) -> Vec<String> {
+    let mut flags = Vec::new();
+    if java_major < 8 {
+        return flags;
+    }
+
+    let x86_64 = matches!(java_arch, "amd64" | "x86_64" | "x64");
+    let zgc_runs = java_major >= 15 || (java_major >= 11 && os == "linux" && x86_64);
+    if mem_max >= ZGC_MIN_HEAP_MB && is_64_bit(java_arch) && zgc_runs {
+        if java_major <= 14 {
+            flags.push("-XX:+UnlockExperimentalVMOptions".to_string());
+        }
+        flags.push("-XX:+UseZGC".to_string());
+        if (21..=22).contains(&java_major) {
+            flags.push("-XX:+ZGenerational".to_string());
+        }
+        flags.extend(SERVER_ZGC.map(String::from));
+        return flags;
+    }
+
+    if mem_max < SERVER_SMALL_HEAP_MB {
+        flags.extend(SERVER_G1_LIGHT.map(String::from));
+    } else {
+        flags.extend(SERVER_G1_AIKAR.map(String::from));
+        let sizing = if mem_max > SERVER_LARGE_HEAP_MB {
+            SERVER_G1_AIKAR_LARGE
+        } else {
+            SERVER_G1_AIKAR_STANDARD
+        };
+        flags.extend(sizing.map(String::from));
+    }
+    flags
+}
+
+#[must_use]
+pub fn without_server_performance_flags(args: &str) -> String {
+    let ours = |arg: &str| {
+        matches!(arg, "-XX:+UseZGC" | "-XX:+ZGenerational")
+            || [
+                &SERVER_G1_LIGHT[..],
+                &SERVER_G1_AIKAR,
+                &SERVER_G1_AIKAR_STANDARD,
+                &SERVER_G1_AIKAR_LARGE,
+                &SERVER_ZGC,
+            ]
+            .iter()
+            .any(|preset| preset.contains(&arg))
+    };
+    args.split_whitespace()
+        .filter(|arg| !ours(arg))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn is_collector_flag(arg: &str) -> bool {
     const COLLECTORS: [&str; 8] = [
         "UseG1GC",
@@ -895,6 +1005,38 @@ mod tests {
             flags(21, "amd64", 256),
             vec!["-Xms256M", "-XX:+UseG1GC", "-XX:+ParallelRefProcEnabled",],
             "a start size above the maximum is refused by the JVM outright"
+        );
+    }
+
+    #[test]
+    fn server_presets_follow_java_os_and_heap() {
+        let server = super::server_performance_flags;
+        let has = |flags: &[String], flag: &str| flags.iter().any(|f| f == flag);
+
+        let old = server(8, "amd64", "windows", 6144);
+        assert!(has(&old, "-XX:G1HeapRegionSize=8M"));
+        assert!(has(&old, "-XX:+AlwaysPreTouch"));
+        assert!(!old.iter().any(|f| f.starts_with("-Xms")));
+
+        assert!(has(&server(8, "amd64", "linux", 16384), "-XX:G1HeapRegionSize=16M"));
+        assert!(has(&server(17, "x86", "windows", 16384), "-XX:G1HeapRegionSize=16M"));
+        assert!(has(&server(11, "amd64", "windows", 10240), "-XX:+UseG1GC"));
+        assert!(has(&server(17, "amd64", "windows", 2048), "-XX:MaxGCPauseMillis=100"));
+
+        let experimental = server(11, "amd64", "linux", 10240);
+        assert!(has(&experimental, "-XX:+UnlockExperimentalVMOptions"));
+        assert!(has(&experimental, "-XX:+UseZGC"));
+
+        let plain = server(17, "aarch64", "macos", 10240);
+        assert!(has(&plain, "-XX:+UseZGC") && !has(&plain, "-XX:+ZGenerational"));
+        assert!(has(&server(21, "amd64", "windows", 10240), "-XX:+ZGenerational"));
+        assert!(!has(&server(25, "amd64", "windows", 10240), "-XX:+ZGenerational"));
+        assert!(server(7, "amd64", "windows", 4096).is_empty());
+
+        let preset = server(21, "amd64", "windows", 10240).join(" ");
+        assert_eq!(
+            super::without_server_performance_flags(&format!("{preset} -Dfoo=1 -Xss2m")),
+            "-Dfoo=1 -Xss2m"
         );
     }
 

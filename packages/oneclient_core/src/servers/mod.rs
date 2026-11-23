@@ -51,6 +51,11 @@ pub async fn server_command(
     let mut command = tokio::process::Command::new(java);
     command
         .arg(format!("-Xmx{}M", server.memory_mb))
+        .args(
+            server
+                .performance_flags
+                .then(|| format!("-Xms{}M", server.memory_mb)),
+        )
         .args(server.jvm_args.split_whitespace())
         .args(&server.launch)
         .current_dir(&dir)

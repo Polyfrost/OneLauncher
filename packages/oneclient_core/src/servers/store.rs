@@ -49,6 +49,8 @@ pub struct LocalServer {
     #[serde(default)]
     pub jvm_args: String,
     #[serde(default)]
+    pub performance_flags: bool,
+    #[serde(default)]
     pub java_major: Option<u32>,
     #[serde(default)]
     pub java_path: Option<PathBuf>,
@@ -99,6 +101,7 @@ impl LocalServer {
             loader_version: None,
             memory_mb: DEFAULT_MEMORY_MB,
             jvm_args: String::new(),
+            performance_flags: false,
             java_major: None,
             java_path: None,
             autostart: false,

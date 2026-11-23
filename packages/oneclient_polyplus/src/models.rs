@@ -50,8 +50,12 @@ impl<'de> Deserialize<'de> for PlayerStatus {
     }
 }
 
-#[derive(Debug, Deserialize)]
-pub(crate) struct SpecialChatStatus {
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct SpecialChatStatus {
+    #[serde(default)]
+    pub group_id: Option<i32>,
+    #[serde(default)]
+    pub cooldown_until: Option<DateTime<FixedOffset>>,
     #[serde(default)]
     pub is_special_chat_target: bool,
 }

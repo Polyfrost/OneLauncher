@@ -1,12 +1,22 @@
 use std::path::PathBuf;
 
+use interfrost::api::minecraft::VersionInfo;
 use oneclient_common::domain::GameLoader;
 use oneclient_common::paths;
+use oneclient_java::HostTarget;
 use oneclient_mc::MetadataStore;
 
 use crate::clusters::Cluster;
 use crate::game::NativesMode;
 use crate::state::LauncherState;
+
+pub(crate) fn native_java_ok(version_info: &VersionInfo) -> bool {
+    oneclient_mc::natives_cover(
+        &version_info.libraries,
+        HostTarget::native().arch.os_arch(),
+        HostTarget::CURRENT.arch.os_arch(),
+    )
+}
 
 pub(crate) fn natives_dir(version_name: &str) -> Option<PathBuf> {
     paths::natives_dir().ok().map(|dir| dir.join(version_name))

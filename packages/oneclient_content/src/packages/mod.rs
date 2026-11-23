@@ -55,3 +55,16 @@ pub use updates::{
     cached_browser_package_updates, check_browser_package_updates, refresh_browser_package_updates,
     refresh_browser_package_updates_for, skip_browser_package_update,
 };
+
+
+// Dependency resolution and content writes from any launcher entry point can
+// overlap. Undo needs both to settle before it checks and removes links.
+static PACKAGE_MUTATIONS: tokio::sync::RwLock<()> = tokio::sync::RwLock::const_new(());
+
+pub async fn package_mutation_guard() -> tokio::sync::RwLockReadGuard<'static, ()> {
+    PACKAGE_MUTATIONS.read().await
+}
+
+pub async fn exclusive_package_mutation_guard() -> tokio::sync::RwLockWriteGuard<'static, ()> {
+    PACKAGE_MUTATIONS.write().await
+}

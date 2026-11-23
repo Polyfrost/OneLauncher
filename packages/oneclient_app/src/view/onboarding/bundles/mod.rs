@@ -2,8 +2,6 @@ use std::collections::{HashMap, HashSet};
 
 use freya::prelude::*;
 use oneclient_content::packages::ProviderId;
-use oneclient_core::BundleArchive;
-use oneclient_core::clusters::Cluster;
 
 use crate::components::ScrollArea;
 use crate::hooks::{
@@ -16,150 +14,14 @@ type MetaMap = HashMap<String, oneclient_content::packages::CachedPackageMeta>;
 use crate::routes::Route;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, fixed_grid};
-use crate::utils::bundle_display_name;
 use crate::view::onboarding::{
-    archive_selected, choice_row_sized, is_default_bundle, onboarding_nav, onboarding_slide,
-    pkg_key, set_archive_selected, step_heading, version_chip,
+    bundle_taken, onboarding_nav, onboarding_slide, pkg_key, step_heading,
 };
 
 mod row;
 use row::{CARD_GRID_H, GRID_GAP, OnboardingModCard, empty_hint};
 
-const CHIPS_PER_ROW: usize = 4;
-
 const MOD_GRID_COLS: usize = 3;
-
-const ANSWER_H: f32 = 48.;
-
-const FPS_WARNING_BUNDLE: &str = "SkyBlock";
-
-fn fps_warning_runs() -> [(&'static str, bool, bool); 7] {
-    [
-        (
-            t("oneclient.onboarding.bundles.fps_warning.your"),
-            false,
-            false,
-        ),
-        (
-            t("oneclient.onboarding.bundles.fps_warning.fps"),
-            true,
-            false,
-        ),
-        (
-            t("oneclient.onboarding.bundles.fps_warning.will_be"),
-            false,
-            false,
-        ),
-        (
-            t("oneclient.onboarding.bundles.fps_warning.significantly_worse"),
-            true,
-            false,
-        ),
-        (
-            t("oneclient.onboarding.bundles.fps_warning.with_skyblock_mods"),
-            false,
-            false,
-        ),
-        (
-            t("oneclient.onboarding.bundles.fps_warning.do_not_install"),
-            true,
-            true,
-        ),
-        (
-            t("oneclient.onboarding.bundles.fps_warning.unless_hypixel"),
-            false,
-            true,
-        ),
-    ]
-}
-
-fn fps_warning_banner() -> impl IntoElement {
-    let mut text = paragraph();
-    for (run, bold, underlined) in &fps_warning_runs() {
-        let mut span = Span::new(*run)
-            .font_size(text_size(12.))
-            .font_weight(if *bold {
-                FontWeight::BOLD
-            } else {
-                FontWeight::NORMAL
-            })
-            .color(colors::code_warn());
-        if *underlined {
-            span = span.text_decoration(TextDecoration::Underline);
-        }
-        text = text.span(span);
-    }
-
-    rect()
-        .width(Size::fill())
-        .corner_radius(rounded(8.))
-        .border(border_all_color(1., colors::code_warn()))
-        .padding(Gaps::new_all(8.))
-        .child(text)
-}
-
-#[derive(Clone)]
-struct OptInBundle {
-    display_name: String,
-    members: Vec<(Cluster, BundleArchive)>,
-}
-
-impl OptInBundle {
-    fn chosen(&self, selected: &HashSet<String>) -> Vec<i64> {
-        self.members
-            .iter()
-            .filter(|(cluster, archive)| archive_selected(cluster.id, archive, selected))
-            .map(|(cluster, _)| cluster.id)
-            .collect()
-    }
-
-    fn wanted(&self, selected: &HashSet<String>) -> bool {
-        !self.chosen(selected).is_empty()
-    }
-
-    fn mod_count(&self) -> usize {
-        self.members
-            .first()
-            .map(|(_, a)| {
-                a.manifest
-                    .files
-                    .iter()
-                    .filter(|f| f.enabled && !f.hidden)
-                    .count()
-            })
-            .unwrap_or(0)
-    }
-}
-
-fn opt_in_bundles(clusters: &[ClusterBundles]) -> Vec<OptInBundle> {
-    let mut order: Vec<String> = Vec::new();
-    let mut map: HashMap<String, OptInBundle> = HashMap::new();
-
-    for cb in clusters {
-        for archive in &cb.archives {
-            if is_default_bundle(archive) {
-                continue;
-            }
-            let name = bundle_display_name(archive);
-            let entry = map.entry(name.clone()).or_insert_with(|| {
-                order.push(name.clone());
-                OptInBundle {
-                    display_name: name.clone(),
-                    members: Vec::new(),
-                }
-            });
-            entry.members.push((cb.cluster.clone(), archive.clone()));
-        }
-    }
-
-    for bundle in map.values_mut() {
-        bundle
-            .members
-            .sort_by(|(a, _), (b, _)| a.mc_version.cmp(&b.mc_version));
-    }
-
-    order.into_iter().filter_map(|n| map.remove(&n)).collect()
-}
 
 #[derive(Clone)]
 struct OptionalMod {
@@ -186,12 +48,15 @@ impl OptionalMod {
     }
 }
 
-fn optional_mods(clusters: &[ClusterBundles]) -> Vec<OptionalMod> {
+fn optional_mods(clusters: &[ClusterBundles], selected: &HashSet<String>) -> Vec<OptionalMod> {
     let mut order: Vec<String> = Vec::new();
     let mut map: HashMap<String, OptionalMod> = HashMap::new();
 
     for cb in clusters {
         for archive in &cb.archives {
+            if !bundle_taken(cb.cluster.id, archive, selected) {
+                continue;
+            }
             for file in archive
                 .manifest
                 .files
@@ -219,21 +84,6 @@ fn optional_mods(clusters: &[ClusterBundles]) -> Vec<OptionalMod> {
     }
 
     order.into_iter().filter_map(|n| map.remove(&n)).collect()
-}
-
-fn set_bundle_versions(
-    mut selected: State<HashSet<String>>,
-    mut user_touched: State<bool>,
-    bundle: &OptInBundle,
-    clusters: &[i64],
-) {
-    let mut set = selected.peek().clone();
-    for (cluster, archive) in &bundle.members {
-        let on = clusters.contains(&cluster.id);
-        set_archive_selected(cluster.id, archive, on, &mut set);
-    }
-    user_touched.set(true);
-    selected.set(set);
 }
 
 fn toggle_optional_mod(
@@ -271,12 +121,11 @@ impl Component for OnboardingBundles {
             None if query_is_loading(&bundles_query) => {
                 t("oneclient.onboarding.bundles.loading").to_string()
             }
-            None => t("oneclient.onboarding.bundles.empty").to_string(),
+            None => t("oneclient.onboarding.bundles.extras_empty").to_string(),
         };
 
         let selected_set = selected.read().clone();
-        let opt_ins = opt_in_bundles(&clusters);
-        let extras = optional_mods(&clusters);
+        let extras = optional_mods(&clusters, &selected_set);
 
         // Hooks so they run every render regardless of whether there are extras yet
         let (mr_ids, cf_ids, local_ids) = collect_ids(&extras);
@@ -285,11 +134,6 @@ impl Component for OnboardingBundles {
         let local_meta = package_meta_batch(&use_package_meta_batch(ProviderId::Local, local_ids));
 
         let mut sections: Vec<Element> = Vec::new();
-
-        for bundle in &opt_ins {
-            sections
-                .push(opt_in_card(bundle, &selected_set, selected, user_touched).into_element());
-        }
 
         if !extras.is_empty() {
             sections.push(extras_section(
@@ -303,7 +147,7 @@ impl Component for OnboardingBundles {
             ));
         }
 
-        let nothing_to_ask = opt_ins.is_empty() && extras.is_empty();
+        let nothing_to_ask = extras.is_empty();
 
         rect()
             .vertical()
@@ -343,121 +187,11 @@ impl Component for OnboardingBundles {
                     ),
             ))
             .child(onboarding_nav(
-                Some(Route::OnboardingAccount {}),
+                Some(Route::OnboardingBundlePicker {}),
                 Route::OnboardingPreferences {},
                 bundles_loaded,
             ))
     }
-}
-
-fn opt_in_card(
-    bundle: &OptInBundle,
-    selected_set: &HashSet<String>,
-    selected: State<HashSet<String>>,
-    user_touched: State<bool>,
-) -> impl IntoElement {
-    let name = bundle.display_name.clone();
-    let wanted = bundle.wanted(selected_set);
-    let chosen = bundle.chosen(selected_set);
-    let all_ids: Vec<i64> = bundle.members.iter().map(|(c, _)| c.id).collect();
-
-    let yes_bundle = bundle.clone();
-    let yes_ids = all_ids.clone();
-    let no_bundle = bundle.clone();
-
-    let mut card = rect().vertical().width(Size::fill()).spacing(10.).child(
-        label()
-            .text(tf("oneclient.onboarding.bundles.opt_in.question", &[&name]))
-            .font_size(text_size(15.))
-            .font_weight(FontWeight::SEMI_BOLD)
-            .color(colors::fg_primary()),
-    );
-
-    card = card.child(
-        rect()
-            .horizontal()
-            .width(Size::fill())
-            .spacing(8.)
-            .content(Content::Flex)
-            .child(
-                rect()
-                    .width(Size::flex(1.0))
-                    .height(Size::px(ANSWER_H))
-                    .child(choice_row_sized(
-                        t("oneclient.common.yes"),
-                        &tf(
-                            "oneclient.onboarding.bundles.opt_in.mod_count",
-                            &[&yes_bundle.mod_count()],
-                        ),
-                        wanted,
-                        Size::fill(),
-                        colors::fg_primary(),
-                        move |()| {
-                            if wanted {
-                                return;
-                            }
-                            set_bundle_versions(selected, user_touched, &yes_bundle, &yes_ids)
-                        },
-                    )),
-            )
-            .child(
-                rect()
-                    .width(Size::flex(1.0))
-                    .height(Size::px(ANSWER_H))
-                    .child(choice_row_sized(
-                        t("oneclient.common.no"),
-                        "",
-                        !wanted,
-                        Size::fill(),
-                        colors::fg_primary(),
-                        move |()| set_bundle_versions(selected, user_touched, &no_bundle, &[]),
-                    )),
-            ),
-    );
-
-    if wanted && name.eq_ignore_ascii_case(FPS_WARNING_BUNDLE) {
-        card = card.child(fps_warning_banner());
-    }
-
-    if wanted {
-        let mut rows: Vec<Element> = Vec::new();
-        for chunk in bundle.members.chunks(CHIPS_PER_ROW) {
-            let mut row = rect().horizontal().spacing(8.);
-            for (cluster, _) in chunk {
-                let active = chosen.contains(&cluster.id);
-                let chip_bundle = bundle.clone();
-                let chosen_now = chosen.clone();
-                let cluster_id = cluster.id;
-                row = row.child(version_chip(&cluster.mc_version, active, move |()| {
-                    let mut next = chosen_now.clone();
-                    if active {
-                        next.retain(|id| *id != cluster_id);
-                    } else {
-                        next.push(cluster_id);
-                    }
-                    set_bundle_versions(selected, user_touched, &chip_bundle, &next);
-                }));
-            }
-            rows.push(row.into_element());
-        }
-
-        card = card.child(
-            rect()
-                .vertical()
-                .width(Size::fill())
-                .spacing(8.)
-                .padding(Gaps::new(4., 0., 0., 0.))
-                .child(
-                    label()
-                        .text(tf("oneclient.onboarding.bundles.opt_in.versions", &[&name]))
-                        .font_size(text_size(13.))
-                        .color(colors::fg_secondary()),
-                )
-                .child(rect().vertical().spacing(8.).children(rows)),
-        );
-    }
-
-    card
 }
 
 fn extras_section(
@@ -531,4 +265,38 @@ fn collect_ids(extras: &[OptionalMod]) -> (Vec<String>, Vec<String>, Vec<String>
         }
     }
     (mr, cf, local)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::view::onboarding::test_support::{archive, cluster, file};
+
+    #[test]
+    fn only_picked_bundles_offer_their_extras() {
+        let items = vec![ClusterBundles {
+            cluster: cluster(1),
+            archives: vec![
+                archive(
+                    "PvP",
+                    false,
+                    vec![file("pvp-a", true, false), file("pvp-opt", false, false)],
+                ),
+                archive(
+                    "SkyBlock",
+                    false,
+                    vec![file("sb-a", true, false), file("sb-opt", false, false)],
+                ),
+            ],
+        }];
+        let selected = HashSet::from([pkg_key(1, "OneClient 1.21.11 Fabric [PvP]", "pvp-a")]);
+
+        let offered: Vec<String> = optional_mods(&items, &selected)
+            .into_iter()
+            .map(|m| m.package_id)
+            .collect();
+
+        assert_eq!(offered.len(), 1);
+        assert!(offered[0].contains("pvp-opt"));
+    }
 }

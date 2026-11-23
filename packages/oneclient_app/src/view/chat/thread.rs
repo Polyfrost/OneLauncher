@@ -9,7 +9,7 @@ use crate::components::{
 };
 use crate::hooks::{
     Actions, chat_draft, save_chat_draft, use_chat_invite_game, use_chat_online_count,
-    use_chat_roster, use_chat_thread, use_dispatch, use_player_online,
+    use_chat_roster, use_chat_thread, use_dispatch, use_player_online, use_special_cooldown,
 };
 use crate::i18n::{t, tf};
 use crate::theme::{colors, rounded, text_size};
@@ -630,7 +630,7 @@ impl Component for MessageRow {
 
 fn message_text(content: &str) -> Label {
     label()
-        .text(content.to_string())
+        .text(crate::chat::expand_shortcodes(content))
         .font_size(text_size(14.))
         .line_height(1.4)
         .color(colors::fg_primary())
@@ -913,6 +913,7 @@ fn submit_draft(
     mut draft: State<String>,
     mut editing: State<Option<(i64, String)>>,
     group_id: i32,
+    cooling: bool,
     on_sent: &EventHandler<()>,
 ) {
     let content = draft.read().clone();
@@ -921,6 +922,9 @@ fn submit_draft(
     }
 
     let edit = editing.read().clone();
+    if cooling && edit.is_none() {
+        return;
+    }
     match edit {
         Some((message_id, original)) => {
             if content.trim() != original.trim() {
@@ -934,6 +938,26 @@ fn submit_draft(
         }
     }
     draft.set(String::new());
+}
+
+fn millis_until(until: Option<chrono::DateTime<chrono::FixedOffset>>) -> i64 {
+    until.map_or(0, |until| (until.to_utc() - chrono::Utc::now()).num_milliseconds().max(0))
+}
+
+/// Rounded up, so it only reaches 0 once the cooldown has actually ended
+fn seconds_until(until: Option<chrono::DateTime<chrono::FixedOffset>>) -> i64 {
+    (millis_until(until) + 999) / 1000
+}
+
+fn format_cooldown(seconds: i64) -> String {
+    let (hours, minutes) = (seconds / 3600, seconds % 3600 / 60);
+    if hours > 0 {
+        format!("{hours}h {minutes}m")
+    } else if minutes > 0 {
+        format!("{minutes}m")
+    } else {
+        format!("{seconds}s")
+    }
 }
 
 #[derive(PartialEq)]
@@ -994,6 +1018,28 @@ impl Component for Composer {
         let counterpart = self.placeholder.counterpart(self.own_id);
         let name = use_player_name(counterpart.unwrap_or(self.own_id));
         let title = conversation_title(&self.placeholder, counterpart.map(|_| name));
+
+        let cooldown = use_special_cooldown(group_id);
+        let mut armed = use_state(|| None);
+        let mut left = use_state(|| 0);
+        use_side_effect_with_deps(&cooldown, move |&until| {
+            armed.set(until);
+            left.set(seconds_until(until));
+            spawn(async move {
+                while *left.peek() > 0 && *armed.peek() == until {
+                    // Wake on the next whole second left so the count and Send flip right on time
+                    let tick = match millis_until(until) % 1000 {
+                        0 => 1000,
+                        rest => rest,
+                    };
+                    tokio::time::sleep(std::time::Duration::from_millis(tick as u64)).await;
+                    if *armed.peek() == until {
+                        left.set(seconds_until(until));
+                    }
+                }
+            });
+        });
+        let cooling = left() > 0;
 
         let text = draft.read().clone();
         let too_long = text.len() > MAX_MESSAGE_LENGTH;
@@ -1130,7 +1176,7 @@ impl Component for Composer {
                             .placeholder(tf("oneclient.chat.thread.message_placeholder", &[&title]))
                             .on_submit(move |_| {
                                 emoji_open.set(false);
-                                submit_draft(&on_key, draft, editing, group_id, &sent_by_key);
+                                submit_draft(&on_key, draft, editing, group_id, cooling, &sent_by_key);
                             })
                             .key(edit_id),
                     )
@@ -1145,7 +1191,7 @@ impl Component for Composer {
                             .a11y_alt(t("oneclient.chat.common.send"))
                             .on_press(move |_| {
                                 emoji_open.set(false);
-                                submit_draft(&dispatch, draft, editing, group_id, &sent_by_press);
+                                submit_draft(&dispatch, draft, editing, group_id, cooling, &sent_by_press);
                             })
                             .child(
                                 Icon::new(IconType::Send01)
@@ -1159,6 +1205,15 @@ impl Component for Composer {
                     .text(t("oneclient.chat.thread.too_long"))
                     .font_size(text_size(11.))
                     .color(colors::danger())
+            }))
+            .maybe_child(cooling.then(|| {
+                label()
+                    .text(tf(
+                        "oneclient.chat.thread.special_cooldown",
+                        &[&format_cooldown(left())],
+                    ))
+                    .font_size(text_size(11.))
+                    .color(colors::fg_secondary())
             }))
             .maybe_child((emoji_open() || current_edit.is_some()).then(|| {
                 EscapeGuard {
@@ -1212,5 +1267,20 @@ impl Component for EmojiCell {
                     .text_align(TextAlign::Center)
                     .width(Size::fill()),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cooldowns_read_like_the_in_game_chat() {
+        assert_eq!(format_cooldown(3 * 3600 + 25 * 60 + 9), "3h 25m");
+        assert_eq!(format_cooldown(4 * 60 + 59), "4m");
+        assert_eq!(format_cooldown(42), "42s");
+        assert_eq!(seconds_until(None), 0);
+        assert_eq!(seconds_until(Some(chrono::Utc::now().fixed_offset() - chrono::Duration::hours(1))), 0);
+        assert_eq!(seconds_until(Some(chrono::Utc::now().fixed_offset() + chrono::Duration::milliseconds(300))), 1);
     }
 }

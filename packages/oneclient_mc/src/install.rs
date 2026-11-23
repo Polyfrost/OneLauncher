@@ -107,6 +107,33 @@ fn native_download<'a>(lib: &'a Library, java_arch: &str) -> Option<&'a LibraryD
     classifiers.get(&os_key.replace("${arch}", oneclient_common::constants::ARCH_WIDTH))
 }
 
+/// Arch segment of an explicit `natives-<os>[-<arch>]` Maven classifier built
+/// for the host OS. No suffix means x64
+fn classifier_arch(lib: &Library) -> Option<&str> {
+    let rest = natives_classifier(lib)?.strip_prefix("natives-")?;
+    let (os, arch) = rest.split_once('-').unwrap_or((rest, "x64"));
+    let host = oneclient_common::constants::TARGET_OS;
+    if os != host && !(host == "osx" && os == "macos") {
+        return None;
+    }
+    Some(if arch == "aarch_64" { "arm64" } else { arch })
+}
+
+#[must_use]
+pub fn natives_cover(libraries: &[Library], java_arch: &str, emulated_arch: &str) -> bool {
+    let (wanted, emulated) = (arch_segment(java_arch), arch_segment(emulated_arch));
+    libraries.iter().all(|lib| {
+        let legacy_ok = native_download(lib, emulated_arch).is_none()
+            || native_download(lib, java_arch).is_some();
+        let classifier_ok = classifier_arch(lib) != Some(emulated)
+            || libraries.iter().any(|other| {
+                natives_family(other) == natives_family(lib)
+                    && classifier_arch(other) == Some(wanted)
+            });
+        legacy_ok && classifier_ok
+    })
+}
+
 fn native_download_size(lib: &Library, java_arch: &str) -> u64 {
     native_download(lib, java_arch).map_or(0, |native| u64::from(native.size))
 }
@@ -1711,6 +1738,83 @@ fn version_info_file_name(stem: &str, format_version: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn native_lib(keys: &[&str]) -> Library {
+        let natives: serde_json::Map<_, _> = keys
+            .iter()
+            .map(|key| ((*key).to_string(), format!("natives-{key}").into()))
+            .collect();
+        let classifiers: serde_json::Map<_, _> = keys
+            .iter()
+            .map(|key| {
+                (
+                    format!("natives-{key}"),
+                    serde_json::json!({ "sha1": "", "size": 1, "url": "" }),
+                )
+            })
+            .collect();
+        serde_json::from_value(serde_json::json!({
+            "name": "org.lwjgl.lwjgl:lwjgl-platform:2.9.4",
+            "natives": natives,
+            "downloads": { "classifiers": classifiers },
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn natives_cover_needs_a_build_for_the_native_arch() {
+        let x64_only = native_lib(&["windows", "osx", "linux"]);
+        let both = native_lib(&[
+            "windows",
+            "windows-arm64",
+            "osx",
+            "osx-arm64",
+            "linux",
+            "linux-arm64",
+        ]);
+        let plain: Library =
+            serde_json::from_value(serde_json::json!({ "name": "com.google:gson:2.8" })).unwrap();
+
+        assert!(!natives_cover(&[x64_only.clone()], "aarch64", "amd64"));
+        assert!(natives_cover(
+            &[both.clone(), plain.clone()],
+            "aarch64",
+            "amd64"
+        ));
+        assert!(!natives_cover(
+            &[both, x64_only.clone()],
+            "aarch64",
+            "amd64"
+        ));
+        assert!(natives_cover(&[x64_only], "amd64", "amd64"));
+        assert!(natives_cover(&[plain], "aarch64", "amd64"));
+    }
+
+    #[test]
+    fn natives_cover_reads_explicit_classifiers() {
+        let host = match oneclient_common::constants::TARGET_OS {
+            "osx" => "macos",
+            os => os,
+        };
+        let lib = |classifier: String| -> Library {
+            serde_json::from_value(serde_json::json!({
+                "name": format!("org.lwjgl:lwjgl:3.3.3:{classifier}")
+            }))
+            .unwrap()
+        };
+        let x64 = lib(format!("natives-{host}"));
+        let arm64 = lib(format!("natives-{host}-arm64"));
+        let other_os_arm64 = lib(String::from("natives-solaris-arm64"));
+
+        assert!(!natives_cover(&[x64.clone()], "aarch64", "amd64"));
+        assert!(!natives_cover(
+            &[x64.clone(), other_os_arm64],
+            "aarch64",
+            "amd64"
+        ));
+        assert!(natives_cover(&[x64.clone(), arm64], "aarch64", "amd64"));
+        assert!(natives_cover(&[x64], "amd64", "amd64"));
+    }
 
     #[test]
     fn a_format_bump_moves_the_cached_version_info() {

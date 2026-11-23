@@ -17,6 +17,11 @@ public final class JavaInfo {
             }
         }
 
+        String vendorVersion = System.getProperty("java.vendor.version");
+        if (vendorVersion != null) {
+            System.out.println("java.vendor.version=" + vendorVersion);
+        }
+
         System.out.println("java.awt=" + hasClass("java.awt.Toolkit"));
         System.out.println("java.awt.natives=" + hasAwtNatives());
         System.out.println("java.awt.link=" + awtLinks());

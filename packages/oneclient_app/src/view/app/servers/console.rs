@@ -1,4 +1,6 @@
+use std::cell::RefCell;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use freya::prelude::*;
 use oneclient_core::LogFileInfo;
@@ -13,7 +15,7 @@ use crate::i18n::t;
 use crate::servers::{self, ServerStatus};
 use crate::state::AppChannel;
 use crate::theme::colors;
-use crate::view::app::cluster::filter_lines;
+use crate::view::app::cluster::LiveLogFilter;
 use crate::view::app::cluster::logs::{
     Category, Confirm, LevelFilter, LogBrowser, confirm_overlay, viewer_header_inset,
 };
@@ -41,6 +43,7 @@ impl Component for ConsolePanel {
         let confirm = use_state(|| None::<Confirm>);
         let search_id = use_a11y();
         let auto_scroll = use_state(|| true);
+        let filter = use_hook(|| Rc::new(RefCell::new(LiveLogFilter::new())));
         let upload = use_upload_log();
         let action = use_log_action();
         let mut command = use_state(String::new);
@@ -49,7 +52,9 @@ impl Component for ConsolePanel {
 
         let all = use_server_console(&self.server_id);
         let has_log = !all.is_empty();
-        let lines = filter_lines(&all, &search.read(), *level.read());
+        let lines = filter
+            .borrow_mut()
+            .update(&all, &search.read(), *level.read());
         let log_path = has_log.then(|| log_file(&self.server_id)).flatten();
 
         let subtitle = match live.status {

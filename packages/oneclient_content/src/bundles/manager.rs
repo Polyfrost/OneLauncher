@@ -361,9 +361,13 @@ impl BundlesManager {
     #[tracing::instrument(level = "debug", skip(ctx))]
     async fn fetch_manifest(ctx: &ContentCtx) -> ContentResult<Option<FetchedManifest>> {
         let manifest_path = paths::bundles_dir()?.join("metadata.json");
+        let config = ctx.net.config();
+        let channel = if config.nightly_bundles { "nightly" } else { "stable" };
+        // One cache file for both channels: a switch sends the other channel's
+        // ETag, misses, and resyncs the catalog onto the new channel's paths
         let url = format!(
-            "{}/oneclient/bundles/metadata.json",
-            ctx.net.config().meta_url_base
+            "{}/oneclient/bundles/{channel}/metadata.json",
+            config.meta_url_base
         );
 
         let Some(fetched) = fetch_cached(&ctx.net, &url, &manifest_path, EtagPolicy::Defer).await?

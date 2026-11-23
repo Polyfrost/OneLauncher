@@ -137,6 +137,13 @@ pub fn run_startup_tasks(state: &Arc<LauncherState>) {
         sweep_java_scratch_files().await;
         crate::migration::launchers::sweep_instance_archives().await;
         background.clusters.sweep_trash().await;
+        if let Err(err) = oneclient_content::packages::store::undo::recover_staged_undo_files(
+            &background.services.content(),
+        )
+        .await
+        {
+            tracing::warn!("staged Undo file recovery failed: {err:#}");
+        }
 
         let recovery = match crate::recovery::reconstruct_from_disk(&background).await {
             Ok(report) => report,

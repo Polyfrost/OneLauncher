@@ -8,9 +8,14 @@ use crate::components::{
     Button, ColorPicker, Dropdown, IconType, Segment, SegmentedControl, TextInput, toggle,
 };
 use crate::hooks::{use_debounced, use_dispatch};
+use crate::i18n::t;
 use crate::routes::Route;
 use crate::theme::colors::{self, Hex, Palette};
-use crate::theme::{Theme, font_families, pixel_font_size_of, save_theme};
+use crate::theme::{
+    Theme, family_name, family_taken, family_variants, font_families, pixel_font_size_of,
+    save_theme, variant_name,
+};
+use crate::view::app::settings::appearance_picker::{compose_theme, split_theme};
 
 const BORDER_OPACITIES: [u8; 7] = [5, 10, 15, 20, 30, 45, 60];
 const CORNERS: [(&str, f32); 4] = [
@@ -20,32 +25,38 @@ const CORNERS: [(&str, f32); 4] = [
     ("Round", 1.5),
 ];
 
+/// Edits both variants of the family `id` belongs to; name, corners, fonts and icons are
+/// shared, the colors are per variant
 #[derive(PartialEq)]
-pub struct SettingsThemeEditor;
+pub struct SettingsThemeEditor {
+    pub id: String,
+}
 
 impl Component for SettingsThemeEditor {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
-        let draft = use_state(|| {
-            let mut theme = (*colors::active_theme()).clone();
-            if theme.is_builtin() {
-                theme.name = format!("{} (Custom)", theme.name);
-            }
-            theme
-        });
-        let name = use_state(|| draft.peek().name.clone());
-        let light = use_state(|| draft.peek().colors.light);
-        let radius = use_state(|| draft.peek().radius_scale);
-        let pixel_icons = use_state(|| draft.peek().pixel_icons);
+        let variants = use_hook(|| family_variants(&self.id));
+        let dark = use_state(|| (*variants[0]).clone());
+        let light = use_state(|| (*variants[variants.len() - 1]).clone());
+        let ids = [dark.peek().id.clone(), light.peek().id.clone()];
+        let editing_light = use_state(|| colors::active_theme().colors.light);
+        let draft = if *editing_light.read() { light } else { dark };
+        let name = use_state(|| family_name(&dark.peek().name));
+        let radius = use_state(|| dark.peek().radius_scale);
+        let pixel_icons = use_state(|| dark.peek().pixel_icons);
 
-        let edited = {
-            let mut theme = draft.read().clone();
-            theme.name = name.read().trim().to_string();
-            theme.colors.light = *light.read();
+        // Dark and Light are added per variant, so they are dropped from the typed name
+        let family = family_name(&name.read());
+        let finish = |theme: &Theme| {
+            let mut theme = theme.clone();
+            theme.name = variant_name(&family, theme.colors.light);
             theme.radius_scale = *radius.read();
             theme.pixel_icons = *pixel_icons.read();
             theme
         };
+        let edited = finish(&draft.read());
+        let both = [finish(&dark.read()), finish(&light.read())];
+        let valid = !family.is_empty() && !family_taken(&family, &[&ids[0], &ids[1]]);
 
         let settled = use_debounced(edited.clone(), Duration::from_millis(120));
         use_side_effect_with_deps(&settled.read().clone(), |theme| {
@@ -55,15 +66,27 @@ impl Component for SettingsThemeEditor {
 
         let mut saving = use_state(|| false);
         let save = {
-            let edited = edited.clone();
             move |_| {
-                let theme = edited.clone();
+                let both = both.clone();
+                let family = ids[0].clone();
                 let dispatch = dispatch.clone();
                 saving.set(true);
                 spawn(async move {
-                    match save_theme(theme).await {
-                        Ok(id) => {
-                            dispatch.edit_settings(|settings| settings.theme = id);
+                    let mut saved = Ok(String::new());
+                    for theme in both {
+                        saved = save_theme(theme).await;
+                        if saved.is_err() {
+                            break;
+                        }
+                    }
+                    match saved {
+                        Ok(_) => {
+                            dispatch.edit_settings(|settings| {
+                                let (_, mode) = split_theme(&settings.theme);
+                                if let Some(id) = compose_theme(&family, mode) {
+                                    settings.theme = id;
+                                }
+                            });
                             let _ = RouterContext::get().push(Route::SettingsAppearance {});
                         }
                         Err(err) => {
@@ -92,11 +115,15 @@ impl Component for SettingsThemeEditor {
             ))
             .child(settings_row(
                 IconType::Moon01,
-                "Base",
-                "Whether the theme is dark or light. Changes which way hover and pressed shades go.",
-                SegmentedControl::new(light)
-                    .segment(Segment::new(false).label("Dark"))
-                    .segment(Segment::new(true).label("Light")),
+                t("oneclient.settings.theme_editor.variant.title"),
+                t("oneclient.settings.theme_editor.variant.description"),
+                SegmentedControl::new(editing_light)
+                    .segment(
+                        Segment::new(false).label(t("oneclient.settings.appearance.theme.dark")),
+                    )
+                    .segment(
+                        Segment::new(true).label(t("oneclient.settings.appearance.theme.light")),
+                    ),
             ))
             .child(section_header("Colors"))
             .child(color_row(
@@ -163,7 +190,7 @@ impl Component for SettingsThemeEditor {
             ))
             .child(section_header("Fonts"))
             .child(font_row(
-                draft,
+                [dark, light],
                 IconType::ParagraphWrap,
                 "Font",
                 "Used for all launcher text.",
@@ -171,7 +198,7 @@ impl Component for SettingsThemeEditor {
                 |theme| &mut theme.font,
             ))
             .child(font_row(
-                draft,
+                [dark, light],
                 IconType::CodeSnippet02,
                 "Code font",
                 "Used for logs and code blocks.",
@@ -202,7 +229,7 @@ impl Component for SettingsThemeEditor {
                     .child(
                         Button::new()
                             .primary()
-                            .enabled(!edited.name.is_empty() && !*saving.read())
+                            .enabled(valid && !*saving.read())
                             .on_press(save)
                             .text("Save theme"),
                     ),
@@ -272,8 +299,9 @@ fn border_opacity_row(draft: State<Theme>) -> impl IntoElement {
     )
 }
 
+/// Fonts are shared, so a pick is written to both variants
 fn font_row(
-    draft: State<Theme>,
+    drafts: [State<Theme>; 2],
     icon: IconType,
     title: &'static str,
     description: &'static str,
@@ -289,10 +317,11 @@ fn font_row(
             .width(Size::px(160.))
             .outlined()
             .on_select(move |index: usize| {
-                let mut draft = draft;
-                let mut theme = draft.write();
-                *field(&mut theme) = families[index].clone();
-                theme.pixel_font_size = pixel_font_size_of(&theme.font);
+                for mut draft in drafts {
+                    let mut theme = draft.write();
+                    *field(&mut theme) = families[index].clone();
+                    theme.pixel_font_size = pixel_font_size_of(&theme.font);
+                }
             }),
     )
 }

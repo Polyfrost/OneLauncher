@@ -1,6 +1,7 @@
 use freya::prelude::*;
 
 use super::MarkdownStyle;
+use super::embed_card::EmbedCard;
 use super::image::MarkdownImage;
 use super::parse::{Block, Inline, List, TextSpan};
 use crate::components::CodeBlock;
@@ -55,6 +56,7 @@ pub fn render_block(block: &Block, key: usize, style: &MarkdownStyle) -> Element
                 render_content(content, style.paragraph_size, style).font_slant(FontSlant::Italic),
             )
             .into(),
+        Block::Embed(embed) => EmbedCard::new(embed.clone(), style.clone()).key(key).into(),
         Block::Rule => rect()
             .key(key)
             .width(Size::fill())
@@ -265,6 +267,7 @@ impl Component for MarkdownLink {
             .on_pointer_enter(move |_| hovering.set(true))
             .on_pointer_leave(move |_| hovering.set(false))
             .on_press(move |_| match pending {
+                _ if url == crate::constants::RELEASES_URL => crate::platform::open_url(&url),
                 Some(mut pending) => pending.set(Some(url.clone())),
                 None => tracing::warn!("no link confirmation available, not opening {url}"),
             })

@@ -29,7 +29,7 @@ use crate::view::{
         },
     },
     onboarding::{
-        OnboardingAccount, OnboardingBundles, OnboardingLanguage, OnboardingLocation,
+        OnboardingAccount, OnboardingBundlePicker, OnboardingBundles, OnboardingLanguage, OnboardingLocation,
         OnboardingMigration, OnboardingPreferences, OnboardingSummary, OnboardingTerms,
         OnboardingWelcome,
     },
@@ -59,6 +59,8 @@ pub enum Route {
             OnboardingAccount {},
             #[route("/onboarding/preferences")]
             OnboardingPreferences {},
+            #[route("/onboarding/bundle-picker")]
+            OnboardingBundlePicker {},
             #[route("/onboarding/bundles")]
             OnboardingBundles {},
             #[route("/onboarding/summary")]
@@ -140,8 +142,8 @@ pub enum Route {
             #[layout(SettingsShell)]
                 #[route("/app/settings/appearance")]
                 SettingsAppearance {},
-                #[route("/app/settings/appearance/theme")]
-                SettingsThemeEditor {},
+                #[route("/app/settings/appearance/theme/:id")]
+                SettingsThemeEditor { id: String },
                 #[route("/app/settings/minecraft")]
                 SettingsMinecraft {},
                 #[route("/app/settings/accounts")]
@@ -181,6 +183,9 @@ impl Route {
             Route::OnboardingLanguage { .. } => t("oneclient.routes.onboarding_language"),
             Route::OnboardingAccount { .. } => t("oneclient.routes.onboarding_account"),
             Route::OnboardingPreferences { .. } => t("oneclient.routes.onboarding_preferences"),
+            Route::OnboardingBundlePicker { .. } => {
+                t("oneclient.routes.onboarding_bundle_picker")
+            }
             Route::OnboardingBundles { .. } => t("oneclient.routes.onboarding_bundles"),
             Route::OnboardingSummary { .. } => t("oneclient.routes.onboarding_summary"),
             Route::Home { .. } => t("oneclient.routes.home"),

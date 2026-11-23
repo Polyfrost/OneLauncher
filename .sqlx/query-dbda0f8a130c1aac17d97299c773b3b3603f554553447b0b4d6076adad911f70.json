@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        UPDATE cluster_bisect_sessions\n        SET search = ?, pending_exit = ?, retry_note = NULL\n        WHERE cluster_id = ?\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "dbda0f8a130c1aac17d97299c773b3b3603f554553447b0b4d6076adad911f70"
+}

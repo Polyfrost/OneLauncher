@@ -46,6 +46,7 @@ impl Component for ScreenshotViewer {
             move || start
         });
         let mut menu = use_state(|| None::<(f32, f32)>);
+        let mut stage = use_state(|| (0f32, 0f32));
         let action = use_screenshot_action();
         let dispatch = use_dispatch();
 
@@ -59,6 +60,15 @@ impl Component for ScreenshotViewer {
         let scrim_close = self.on_close.clone();
         let delete_close = self.on_close.clone();
         let menu_delete_close = self.on_close.clone();
+        let backdrop_close = self.on_close.clone();
+        let image_close = self.on_close.clone();
+        let (image_w, image_h) = match info.resolution {
+            Some(res) => {
+                let (w, h) = fitted_size(*stage.read(), res);
+                (Size::px(w), Size::px(h))
+            }
+            None => (Size::fill(), Size::fill()),
+        };
 
         let has_prev = idx > 0;
         let has_next = idx + 1 < len;
@@ -95,6 +105,7 @@ impl Component for ScreenshotViewer {
                     .width(Size::window_percent(100.))
                     .height(Size::window_percent(100.))
                     .center()
+                    .on_press(move |_| backdrop_close.call(()))
                     .on_global_key_down(move |e: Event<KeyboardEventData>| {
                         if !overlay_is_topmost(OVERLAY_BASE_LEVEL) {
                             return;
@@ -113,6 +124,7 @@ impl Component for ScreenshotViewer {
                             .spacing(12.)
                             .padding(Gaps::new_all(16.))
                             .content(Content::Flex)
+                            .on_press(|e: Event<PressEventData>| e.stop_propagation())
                             .child(header_row(&info, idx, len, move |_| close.call(())))
                             .child(
                                 rect()
@@ -132,15 +144,35 @@ impl Component for ScreenshotViewer {
                                         rect()
                                             .width(Size::flex(1.0))
                                             .height(Size::fill())
-                                            .on_secondary_down(move |e: Event<PressEventData>| {
-                                                if let PressEventData::Mouse(m) = e.data() {
-                                                    menu.set(Some((
-                                                        m.global_location.x as f32,
-                                                        m.global_location.y as f32,
-                                                    )));
+                                            .on_sized(move |e: Event<SizedEventData>| {
+                                                let size = (e.area.width(), e.area.height());
+                                                if *stage.read() != size {
+                                                    stage.set(size);
                                                 }
                                             })
-                                            .child(preview),
+                                            .center()
+                                            .on_press(move |_| image_close.call(()))
+                                            .child(
+                                                rect()
+                                                    .width(image_w)
+                                                    .height(image_h)
+                                                    .on_press(|e: Event<PressEventData>| {
+                                                        e.stop_propagation()
+                                                    })
+                                                    .on_secondary_down(
+                                                        move |e: Event<PressEventData>| {
+                                                            if let PressEventData::Mouse(m) =
+                                                                e.data()
+                                                            {
+                                                                menu.set(Some((
+                                                                    m.global_location.x as f32,
+                                                                    m.global_location.y as f32,
+                                                                )));
+                                                            }
+                                                        },
+                                                    )
+                                                    .child(preview),
+                                            ),
                                     )
                                     .child(chevron_btn(
                                         IconType::ArrowRight,
@@ -266,6 +298,26 @@ pub fn screenshot_context_menu(
             });
             on_deleted.call(());
         })
+}
+
+fn fitted_size((w, h): (f32, f32), (iw, ih): (u32, u32)) -> (f32, f32) {
+    if iw == 0 || ih == 0 {
+        return (w, h);
+    }
+    let scale = (w / iw as f32).min(h / ih as f32);
+    (iw as f32 * scale, ih as f32 * scale)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fitted_size;
+
+    #[test]
+    fn fitted_size_keeps_aspect() {
+        assert_eq!(fitted_size((200., 100.), (100, 100)), (100., 100.));
+        assert_eq!(fitted_size((100., 200.), (100, 50)), (100., 50.));
+        assert_eq!(fitted_size((100., 200.), (0, 50)), (100., 200.));
+    }
 }
 
 fn chevron_btn(

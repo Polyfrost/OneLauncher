@@ -1,4 +1,3 @@
-use std::rc::Rc;
 use std::time::Duration;
 
 use freya::prelude::*;
@@ -6,19 +5,18 @@ use freya::router::RouterContext;
 use oneclient_core::settings::LauncherSettings;
 
 use super::settings_page;
-use crate::components::{
-    ColorPicker, ContextMenu, IconType, kebab_button, link_button, on_secondary, toggle,
-};
+use crate::components::{Button, ColorPicker, ContextMenu, Icon, IconType, toggle};
 use crate::hooks::{Actions, use_debounced, use_dispatch, use_settings_snapshot};
-use crate::i18n::t;
+use crate::i18n::{t, tf};
 use crate::layout::SearchItem;
 use crate::routes::Route;
 use crate::theme::{
-    colors::{self, Palette},
-    delete_theme, duplicate_theme, export_theme, family_name, light_variant, system_aware,
-    system_pair, system_theme_id, text_size, theme_display_name, themes,
+    colors, copy_family, delete_theme, duplicate_theme, export_theme, family_variants,
+    import_theme, is_known, system_theme_id, text_size,
 };
-use crate::ui::border_all_color;
+use crate::view::app::settings::appearance_picker::{
+    compose_theme, section, section_with_action, split_theme, style_picker, theme_mode_picker,
+};
 use crate::view::app::settings::{resettable, settings_row};
 
 #[derive(PartialEq)]
@@ -27,6 +25,7 @@ pub struct SettingsAppearance;
 impl Component for SettingsAppearance {
     fn render(&self) -> impl IntoElement {
         let settings = use_settings_snapshot().settings;
+        let dense = Platform::get().current_window().root_size.read().width < 1080.;
         let defaults = LauncherSettings::default();
         let dispatch = use_dispatch();
 
@@ -72,7 +71,24 @@ impl Component for SettingsAppearance {
         });
 
         settings_page()
-            .child(theme_cards(&settings.theme))
+            .child(
+                // Same pickers as the onboarding Appearance step. The style cards add columns
+                // as the page widens, so they keep their proportions
+                rect()
+                    .vertical()
+                    .width(Size::fill())
+                    .spacing(20.)
+                    .padding(Gaps::new(0., 0., 12., 0.))
+                    .child(section(
+                        t("oneclient.settings.appearance.mode"),
+                        theme_mode_picker(&settings.theme, &dispatch),
+                    ))
+                    .child(section_with_action(
+                        t("oneclient.settings.appearance.style"),
+                        Some(theme_actions(&dispatch)),
+                        style_picker(&settings.theme, dense, true),
+                    )),
+            )
             .child(
                 rect()
                     .vertical()
@@ -80,7 +96,6 @@ impl Component for SettingsAppearance {
                     .spacing(4.)
                     .padding(Gaps::new(8., 0., 0., 0.))
                     .child(accent_color_row(accent, defaults.accent_color.clone()))
-                    .child(custom_theme_row())
                     .child(dynamic_background_row(
                         dynamic_bg,
                         defaults.dynamic_background_enabled,
@@ -99,268 +114,251 @@ impl Component for SettingsAppearance {
     }
 }
 
-const FAMILY_WIDTH: f32 = 3. * 126. + 2. * 16.;
-
-pub(crate) fn theme_cards(selected: &str) -> impl IntoElement {
-    let system_family = system_pair(selected).map(|(dark, _)| dark);
-
-    let card = |theme: &crate::theme::Theme| ThemeCard {
-        id: theme.id.clone(),
-        name: if theme.colors.light {
-            t("oneclient.settings.appearance.theme.light")
-        } else {
-            t("oneclient.settings.appearance.theme.dark")
+/// Switches to the family named by its dark id, keeping the current Light/Dark/System mode
+fn select_family(dispatch: &Actions, family: &str) {
+    dispatch.edit_settings(|settings| {
+        let (_, mode) = split_theme(&settings.theme);
+        if let Some(id) = compose_theme(family, mode) {
+            settings.theme = id;
         }
-        .to_string(),
-        full_name: theme.name.clone(),
-        background: theme.colors.page.0.into(),
-        preview: theme.colors,
-        radius_scale: theme.radius_scale,
-        selected: system_family.is_none() && theme.id == selected,
-        menu: true,
-        deletable: !theme.is_builtin(),
-        selected_theme: selected.to_string(),
-    };
-
-    let mut families: Vec<(String, Vec<Rc<crate::theme::Theme>>)> = Vec::new();
-    for theme in themes() {
-        let family = family_name(&theme.name);
-        match families.iter_mut().find(|(name, _)| *name == family) {
-            Some((_, members)) => members.push(theme),
-            None => families.push((family, vec![theme])),
-        }
-    }
-
-    let groups = families.into_iter().map(|(family, mut members)| {
-        members.sort_by_key(|theme| theme.colors.light);
-        let system = members.iter().find_map(|dark| {
-            let light = light_variant(&dark.id)?;
-            let light = members.iter().find(|theme| theme.id == light)?;
-            let id = system_theme_id(&dark.id);
-            Some(ThemeCard {
-                name: t("oneclient.settings.appearance.theme.system").to_string(),
-                full_name: theme_display_name(&id),
-                id,
-                background: LinearGradient::new()
-                    .angle(-90.)
-                    .stop((dark.colors.page.0, 0.))
-                    .stop((dark.colors.page.0, 50.))
-                    .stop((light.colors.page.0, 50.))
-                    .stop((light.colors.page.0, 100.))
-                    .into(),
-                selected: system_family.as_deref() == Some(dark.id.as_str()),
-                menu: false,
-                deletable: false,
-                ..card(dark)
-            })
-        });
-
-        rect()
-            .vertical()
-            .spacing(10.)
-            .width(Size::px(FAMILY_WIDTH))
-            .child(
-                label()
-                    .text(family)
-                    .width(Size::fill())
-                    .max_lines(1)
-                    .text_overflow(TextOverflow::Ellipsis)
-                    .font_size(text_size(14.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .color(colors::fg_primary()),
-            )
-            .child(
-                rect()
-                    .horizontal()
-                    .spacing(16.)
-                    .maybe_child(system.map(IntoElement::into_element))
-                    .children(members.iter().map(|theme| card(theme).into_element())),
-            )
-            .into_element()
     });
+}
 
+fn open_editor(id: String) {
+    let _ = RouterContext::get().push(Route::SettingsThemeEditor { id });
+}
+
+/// New custom themes start as a copy of the built-in PolyGlass dark and light pair
+fn create_theme(dispatch: &Actions) {
+    let dispatch = dispatch.clone();
+    // The window task below has no component context to find the router in
+    let router = RouterContext::get();
+    spawn_in_window(async move {
+        match copy_family("dark", t("oneclient.settings.appearance.theme.new_name")).await {
+            Ok(id) => {
+                select_family(&dispatch, &id);
+                let _ = router.push(Route::SettingsThemeEditor { id });
+            }
+            Err(err) => notify_failure(
+                &dispatch,
+                t("oneclient.settings.appearance.theme.create_failed"),
+                err,
+            ),
+        }
+    });
+}
+
+/// New theme and Import, side by side at the right of the Style header
+fn theme_actions(dispatch: &Actions) -> Element {
+    let create = dispatch.clone();
+    let text = t("oneclient.settings.appearance.theme.new");
     rect()
         .horizontal()
-        .width(Size::fill())
-        .content(Content::wrap_spacing(24.))
-        .spacing(24.)
-        .children(groups)
+        .spacing(8.)
+        .child(
+            Button::new()
+                .secondary()
+                .small()
+                .alt(text)
+                .on_press(move |_| create_theme(&create))
+                .child(Icon::new(IconType::Plus).size(14.))
+                .text(text),
+        )
+        .child(import_button(dispatch))
         .into_element()
 }
 
-#[derive(Clone, PartialEq)]
-struct ThemeCard {
-    id: String,
-    name: String,
-    full_name: String,
-    background: Fill,
-    preview: Palette,
-    radius_scale: f32,
-    selected: bool,
-    menu: bool,
-    deletable: bool,
-    selected_theme: String,
+fn import_button(dispatch: &Actions) -> Element {
+    let dispatch = dispatch.clone();
+    let text = t("oneclient.settings.appearance.theme.import");
+    Button::new()
+        .secondary()
+        .small()
+        .alt(text)
+        .on_press(move |_| {
+            let dispatch = dispatch.clone();
+            spawn_in_window(async move {
+                let Some(file) = rfd::AsyncFileDialog::new()
+                    .set_title(t("oneclient.settings.appearance.theme.import_title"))
+                    .add_filter("JSON", &["json"])
+                    .pick_file()
+                    .await
+                else {
+                    return;
+                };
+                match import_theme(file.path()).await {
+                    Ok(id) => select_family(&dispatch, &id),
+                    Err(err) => notify_failure(
+                        &dispatch,
+                        t("oneclient.settings.appearance.theme.import_failed"),
+                        err,
+                    ),
+                }
+            });
+        })
+        .child(Icon::new(IconType::FilePlus02).size(14.))
+        .text(text)
+        .into_element()
 }
 
-impl Component for ThemeCard {
+/// The kebab menu on a style card; custom families can also be edited and deleted
+#[derive(PartialEq)]
+pub(super) struct ThemeFileMenu {
+    pub(super) id: String,
+    pub(super) name: String,
+    pub(super) custom: bool,
+    /// Owned by the card so a right-click on it opens this menu too
+    pub(super) menu_at: State<Option<(f32, f32)>>,
+}
+
+impl Component for ThemeFileMenu {
     fn render(&self) -> impl IntoElement {
-        let mut menu_at = use_state(|| None::<(f32, f32)>);
-
-        let id = self.id.clone();
+        let mut anchor = use_state(|| (0., 0.));
+        let mut menu_at = self.menu_at;
         let dispatch = use_dispatch();
-        let border_color = if self.selected {
-            colors::brand()
-        } else {
-            colors::component_border()
-        };
-
-        let open_menu: EventHandler<(f32, f32)> = (move |at| menu_at.set(Some(at))).into();
-        let menu = menu_at.read().filter(|_| self.menu).map(|(x, y)| {
-            let duplicate = {
-                let id = self.id.clone();
-                let dispatch = dispatch.clone();
-                move |()| {
-                    let id = id.clone();
-                    let dispatch = dispatch.clone();
-                    spawn_in_window(async move {
-                        if let Err(err) = duplicate_theme(&id).await {
-                            notify_failure(
-                                &dispatch,
-                                t("oneclient.settings.appearance.theme.duplicate_failed"),
-                                err,
-                            );
-                        }
-                    });
-                }
-            };
-            let export = {
-                let id = self.id.clone();
-                let dispatch = dispatch.clone();
-                move |()| {
-                    let id = id.clone();
-                    let dispatch = dispatch.clone();
-                    spawn_in_window(async move {
-                        let Some(file) = rfd::AsyncFileDialog::new()
-                            .set_title(t("oneclient.settings.appearance.theme.export_title"))
-                            .set_file_name(format!("{id}.json"))
-                            .add_filter("JSON", &["json"])
-                            .save_file()
-                            .await
-                        else {
-                            return;
-                        };
-                        match export_theme(&id, file.path()).await {
-                            Ok(()) => dispatch
-                                .notify(t("oneclient.settings.appearance.theme.exported"))
-                                .info()
-                                .toast_only()
-                                .send(),
-                            Err(err) => notify_failure(
-                                &dispatch,
-                                t("oneclient.settings.appearance.theme.export_failed"),
-                                err,
-                            ),
-                        }
-                    });
-                }
-            };
-
-            let mut menu = ContextMenu::new(x, y)
-                .title(self.full_name.clone())
-                .action(
-                    IconType::Copy01,
-                    t("oneclient.settings.appearance.theme.duplicate"),
-                    duplicate,
-                )
-                .action(
-                    IconType::Download01,
-                    t("oneclient.settings.appearance.theme.export"),
-                    export,
-                );
-            if self.deletable {
-                let id = self.id.clone();
-                let selected = self.selected_theme.clone();
-                let dispatch = dispatch.clone();
-                menu = menu.separator().danger_action(
-                    IconType::Trash01,
-                    t("oneclient.common.delete"),
-                    move |()| {
-                        let id = id.clone();
-                        let selected = selected.clone();
-                        let dispatch = dispatch.clone();
-                        spawn_in_window(async move {
-                            let in_use = [true, false]
-                                .into_iter()
-                                .any(|dark| system_aware(&selected, dark) == id);
-                            match delete_theme(&id).await {
-                                Ok(()) if in_use => dispatch
-                                    .edit_settings(|settings| settings.theme = "dark".into()),
-                                Ok(()) => {}
-                                Err(err) => notify_failure(
-                                    &dispatch,
-                                    t("oneclient.settings.appearance.theme.delete_failed"),
-                                    err,
-                                ),
-                            }
-                        });
-                    },
-                );
-            }
-            menu.on_close(move |()| menu_at.set(None)).into_element()
-        });
+        let alt = tf("oneclient.settings.appearance.theme.actions", &[&self.name]);
 
         rect()
-            .vertical()
-            .spacing(6.)
-            .cursor(CursorIcon::Pointer)
-            .on_press(move |_| {
-                dispatch.edit_settings(|settings| settings.theme = id.clone());
+            .position(Position::new_absolute().top(8.).right(8.))
+            .layer(Layer::Relative(3))
+            .on_sized(move |event: Event<SizedEventData>| {
+                let frame = event.data().area;
+                anchor.set_if_modified((frame.min_x(), frame.max_y()));
             })
-            .maybe(self.menu, |el| {
-                el.on_secondary_down(on_secondary(Some(open_menu.clone())))
-            })
-            .maybe_child(menu)
             .child(
-                rect()
-                    .vertical()
-                    .width(Size::px(126.))
-                    .height(Size::px(78.))
-                    .corner_radius(CornerRadius::new_all(8. * self.radius_scale))
-                    .background(self.background.clone())
-                    .border(border_all_color(1., border_color))
-                    .padding(8.)
-                    .spacing(20.)
-                    .child(mock_line(108., line_tint(self.preview), self.radius_scale))
-                    .child(split_bar(self.preview.accent.0, 96., self.radius_scale))
-                    .maybe_child(self.menu.then(|| {
-                        rect()
-                            .position(Position::new_absolute().top(-4.).right(-4.))
-                            .layer(Layer::Relative(3))
-                            .corner_radius(CornerRadius::new_all(6. * self.radius_scale))
-                            .background(colors::card())
-                            .child(kebab_button(open_menu.clone()))
-                            .into_element()
-                    })),
+                Button::new()
+                    .icon()
+                    .width(Size::px(26.))
+                    .height(Size::px(26.))
+                    .alt(alt.clone())
+                    .tooltip(alt)
+                    .on_press(move |_| menu_at.set(Some(*anchor.peek())))
+                    .child(Icon::new(IconType::DotsVertical).size(14.)),
             )
-            .child(
-                label()
-                    .text(self.name.clone())
-                    .width(Size::px(126.))
-                    .max_lines(1)
-                    .text_overflow(TextOverflow::Ellipsis)
-                    .font_size(text_size(12.))
-                    .font_weight(if self.selected {
-                        FontWeight::MEDIUM
-                    } else {
-                        FontWeight::NORMAL
-                    })
-                    .color(if self.selected {
-                        colors::fg_primary()
-                    } else {
-                        colors::fg_secondary()
-                    }),
-            )
+            .maybe_child((*menu_at.read()).map(|(x, y)| {
+                let mut menu = ContextMenu::new(x, y).title(self.name.clone());
+                if self.custom {
+                    let id = self.id.clone();
+                    menu = menu.action(
+                        IconType::Pencil01,
+                        t("oneclient.settings.appearance.theme.edit"),
+                        move |()| open_editor(id.clone()),
+                    );
+                }
+                menu = theme_file_actions(menu, &self.id, &dispatch);
+                if self.custom {
+                    menu = theme_delete_action(menu, &self.id, &dispatch);
+                }
+                menu.on_close(move |()| menu_at.set(None))
+            }))
     }
+}
+
+fn theme_delete_action(menu: ContextMenu, id: &str, dispatch: &Actions) -> ContextMenu {
+    let id = id.to_owned();
+    let dispatch = dispatch.clone();
+    menu.separator()
+        .danger_action(IconType::Trash01, t("oneclient.common.delete"), move |()| {
+            let id = id.clone();
+            let dispatch = dispatch.clone();
+            spawn_in_window(async move {
+                // Capture the ids that name this family before deletion, then repair only
+                // the current selection if it actually became invalid.
+                let affected = family_ids(&id);
+                match delete_theme(&id).await {
+                    Ok(()) => dispatch.edit_settings(|settings| {
+                        if theme_needs_fallback(&settings.theme, &affected, is_known) {
+                            settings.theme = "dark".into();
+                        }
+                    }),
+                    Err(err) => notify_failure(
+                        &dispatch,
+                        t("oneclient.settings.appearance.theme.delete_failed"),
+                        err,
+                    ),
+                }
+            });
+        })
+}
+
+/// Every setting value that selects the family `id` belongs to
+fn family_ids(id: &str) -> Vec<String> {
+    let variants = family_variants(id);
+    variants
+        .iter()
+        .map(|theme| theme.id.clone())
+        .chain(variants.first().map(|dark| system_theme_id(&dark.id)))
+        .collect()
+}
+
+fn theme_needs_fallback(
+    current: &str,
+    affected: &[String],
+    known: impl FnOnce(&str) -> bool,
+) -> bool {
+    affected.iter().any(|affected| affected == current) && !known(current)
+}
+
+fn theme_file_actions(menu: ContextMenu, id: &str, dispatch: &Actions) -> ContextMenu {
+    let duplicate = {
+        let id = id.to_owned();
+        let dispatch = dispatch.clone();
+        move |()| {
+            let id = id.clone();
+            let dispatch = dispatch.clone();
+            spawn_in_window(async move {
+                if let Err(err) = duplicate_theme(&id).await {
+                    notify_failure(
+                        &dispatch,
+                        t("oneclient.settings.appearance.theme.duplicate_failed"),
+                        err,
+                    );
+                }
+            });
+        }
+    };
+    let export = {
+        let id = id.to_owned();
+        let dispatch = dispatch.clone();
+        move |()| {
+            let id = id.clone();
+            let dispatch = dispatch.clone();
+            spawn_in_window(async move {
+                let Some(file) = rfd::AsyncFileDialog::new()
+                    .set_title(t("oneclient.settings.appearance.theme.export_title"))
+                    .set_file_name(format!("{id}.json"))
+                    .add_filter("JSON", &["json"])
+                    .save_file()
+                    .await
+                else {
+                    return;
+                };
+                match export_theme(&id, file.path()).await {
+                    Ok(()) => dispatch
+                        .notify(t("oneclient.settings.appearance.theme.exported"))
+                        .info()
+                        .toast_only()
+                        .send(),
+                    Err(err) => notify_failure(
+                        &dispatch,
+                        t("oneclient.settings.appearance.theme.export_failed"),
+                        err,
+                    ),
+                }
+            });
+        }
+    };
+
+    menu.action(
+        IconType::Copy01,
+        t("oneclient.settings.appearance.theme.duplicate"),
+        duplicate,
+    )
+    .action(
+        IconType::Download01,
+        t("oneclient.settings.appearance.theme.export"),
+        export,
+    )
 }
 
 fn notify_failure(dispatch: &Actions, title: &'static str, err: anyhow::Error) {
@@ -371,40 +369,6 @@ fn notify_failure(dispatch: &Actions, title: &'static str, err: anyhow::Error) {
         .error()
         .toast_only()
         .send();
-}
-
-fn mock_line(width: f32, color: Color, radius_scale: f32) -> impl IntoElement {
-    rect()
-        .width(Size::px(width))
-        .height(Size::px(10.))
-        .corner_radius(CornerRadius::new_all(4. * radius_scale))
-        .background(color)
-        .into_element()
-}
-
-fn split_bar(accent: Color, width: f32, radius_scale: f32) -> impl IntoElement {
-    rect()
-        .horizontal()
-        .width(Size::px(width))
-        .height(Size::px(16.))
-        .corner_radius(CornerRadius::new_all(4. * radius_scale))
-        .background(accent.with_a(128))
-        .child(
-            rect()
-                .width(Size::px(width / 3.))
-                .height(Size::fill())
-                .corner_radius(CornerRadius::new_all(4. * radius_scale))
-                .background(accent),
-        )
-        .into_element()
-}
-
-fn line_tint(theme: Palette) -> Color {
-    if theme.light {
-        Color::from_argb(38, 0, 0, 0)
-    } else {
-        Color::from_argb(46, 255, 255, 255)
-    }
 }
 
 fn accent_color_row(accent: State<Option<String>>, default: Option<String>) -> impl IntoElement {
@@ -427,17 +391,6 @@ fn accent_color_row(accent: State<Option<String>>, default: Option<String>) -> i
             accent,
             default,
         ),
-    )
-}
-
-fn custom_theme_row() -> impl IntoElement {
-    settings_row(
-        IconType::Colors,
-        t("oneclient.settings.appearance.custom_theme.title"),
-        t("oneclient.settings.appearance.custom_theme.description"),
-        link_button().on_press(|_| {
-            let _ = RouterContext::get().push(Route::SettingsThemeEditor {});
-        }),
     )
 }
 
@@ -472,17 +425,6 @@ inventory::submit! {
 
 inventory::submit! {
     SearchItem {
-        id: "appearance.custom_theme",
-        icon: IconType::Colors,
-        title: "oneclient.settings.appearance.custom_theme.title",
-        description: "oneclient.layout.search.appearance.custom_theme.description",
-        keywords: &["theme", "custom", "import", "export"],
-        route: Route::SettingsAppearance {},
-    }
-}
-
-inventory::submit! {
-    SearchItem {
         id: "appearance.parallax_background",
         icon: IconType::Eye,
         title: "oneclient.settings.appearance.parallax_background.title",
@@ -509,7 +451,27 @@ inventory::submit! {
         icon: IconType::Colors,
         title: "oneclient.onboarding.summary.accessibility.theme",
         description: "oneclient.layout.search.appearance.theme.description",
-        keywords: &["theme", "dark", "light", "mode", "colors"],
+        keywords: &["theme", "dark", "light", "mode", "colors", "custom", "import"],
         route: Route::SettingsAppearance {},
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::theme_needs_fallback;
+
+    #[test]
+    fn deleting_a_theme_repairs_only_the_current_invalid_selection() {
+        let affected = [
+            "custom-dark".to_string(),
+            "custom-light".to_string(),
+            "system:custom-dark".to_string(),
+        ];
+
+        let system = "system:custom-dark";
+        assert!(theme_needs_fallback("custom-light", &affected, |_| false));
+        assert!(theme_needs_fallback(system, &affected, |_| false));
+        assert!(!theme_needs_fallback(system, &affected, |_| true));
+        assert!(!theme_needs_fallback("system:other", &affected, |_| false));
     }
 }

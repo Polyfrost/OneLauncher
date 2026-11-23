@@ -38,7 +38,8 @@ pub use active_cluster::{
 
 pub(crate) use actions::listed;
 pub use actions::{
-    Actions, AlternativePick, ExternalImportJob, NotificationBuilder, PumpSignal, exporting,
+    Actions, AlternativePick, COPIES_REQUEST, ExternalImportJob, NotificationBuilder, PumpSignal,
+    exporting,
     modpack_job_running, update_check_running,
 };
 pub use actions::{
@@ -97,7 +98,9 @@ pub use queries::{
     use_version_art, use_version_art_gallery, use_version_loaders, use_version_metadata,
     use_versions, version_list, versions_metadata, versions_total,
 };
-pub use queries::{BisectAction, BisectMutation, use_bisect, use_bisect_mutation};
+pub use queries::{
+    BisectAction, BisectMutation, bisect_report, use_bisect, use_bisect_mutation,
+};
 pub use queries::{GraphicsBackendQuery, use_graphics_backend, use_has_game_options};
 pub(crate) use queries::{UNCREATED_CLUSTER, bundle_plan, bundle_taken, pkg_key};
 pub use queries::{
@@ -304,6 +307,14 @@ pub fn use_chat_online_count(members: &[uuid::Uuid]) -> usize {
 
 pub fn use_invite_join() -> Option<crate::state::InviteJoinPrompt> {
     use_radio(AppChannel::Social).read().invite_join.clone()
+}
+
+pub fn use_special_cooldown(group_id: i32) -> Option<chrono::DateTime<chrono::FixedOffset>> {
+    let radio = use_radio(AppChannel::Chat);
+    let state = radio.read();
+    let chat = &state.chat;
+    chat.special_cooldown
+        .filter(|_| chat.special_group == Some(group_id))
 }
 
 pub fn use_chat_invite_game(invite_id: i32) -> Option<crate::chat::InviteGame> {

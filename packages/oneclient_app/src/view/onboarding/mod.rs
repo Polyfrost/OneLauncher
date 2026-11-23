@@ -1,8 +1,10 @@
 mod account;
+mod bundle_picker;
 mod bundles;
 mod language;
 mod location;
 mod migration;
+mod parallax_grid;
 mod preferences;
 mod selection;
 mod summary;
@@ -12,11 +14,12 @@ pub(crate) mod test_support;
 mod welcome;
 
 pub(crate) use selection::{
-    UNCREATED_CLUSTER, archive_selected, bundle_plan, bundle_taken, default_selection,
+    UNCREATED_CLUSTER, bundle_plan, bundle_taken, default_selection,
     is_default_bundle, is_default_file, pkg_key, set_archive_selected,
 };
 
 pub use account::OnboardingAccount;
+pub use bundle_picker::OnboardingBundlePicker;
 pub use bundles::OnboardingBundles;
 pub use language::OnboardingLanguage;
 pub use location::OnboardingLocation;
@@ -41,7 +44,7 @@ use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, entrance_motion_layer};
 
 pub fn onboarding_total(has_migration: bool, picks_location: bool) -> usize {
-    7 + usize::from(has_migration) + usize::from(picks_location)
+    8 + usize::from(has_migration) + usize::from(picks_location)
 }
 
 pub fn onboarding_step_index(route: &Route, has_migration: bool, picks_location: bool) -> usize {
@@ -55,9 +58,10 @@ pub fn onboarding_step_index(route: &Route, has_migration: bool, picks_location:
         Route::OnboardingMigration {} => 2 + location,
         Route::OnboardingLanguage {} => 2 + shift,
         Route::OnboardingAccount {} => 3 + shift,
-        Route::OnboardingBundles {} => 4 + shift,
-        Route::OnboardingPreferences {} => 5 + shift,
-        Route::OnboardingSummary {} => 6 + shift,
+        Route::OnboardingBundlePicker {} => 4 + shift,
+        Route::OnboardingBundles {} => 5 + shift,
+        Route::OnboardingPreferences {} => 6 + shift,
+        Route::OnboardingSummary {} => 7 + shift,
         _ => 0,
     }
 }
@@ -118,41 +122,99 @@ pub(crate) fn onboarding_slide(content: impl IntoElement) -> impl IntoElement {
         .into_element()
 }
 
+const COMPACT_PAGE_WIDTH: f32 = 1100.;
+const SHORT_PAGE_HEIGHT: f32 = 720.;
+
+/// Narrow windows drop the illustration column (see `onboarding_page`)
+pub(crate) fn onboarding_compact() -> bool {
+    Platform::get().current_window().root_size.read().width < COMPACT_PAGE_WIDTH
+}
+
+/// Narrow or short windows, where steps should tighten up to keep their choices on screen
+pub(crate) fn onboarding_dense() -> bool {
+    let size = *Platform::get().current_window().root_size.read();
+    onboarding_needs_scroll(size.width, size.height)
+}
+
+fn onboarding_needs_scroll(width: f32, height: f32) -> bool {
+    width < COMPACT_PAGE_WIDTH || height < SHORT_PAGE_HEIGHT
+}
+
 pub(crate) fn onboarding_page(
     illustration: impl IntoElement,
     content: impl IntoElement,
     nav: impl IntoElement,
 ) -> impl IntoElement {
+    // Below this width the illustration would squeeze the step into a sliver, so it drops out
+    // and the step takes the whole width, scrolling if it is still too tall
+    let size = *Platform::get().current_window().root_size.read();
+    let compact = size.width < COMPACT_PAGE_WIDTH;
+    let scrollable = onboarding_needs_scroll(size.width, size.height);
+
+    let body = if compact {
+        ScrollView::new()
+            .width(Size::fill())
+            .height(Size::fill())
+            .child(
+                rect()
+                    .vertical()
+                    .width(Size::fill())
+                    .padding(Gaps::new(16., 40., 20., 40.))
+                    .child(content),
+            )
+            .into_element()
+    } else {
+        let content = rect()
+            .vertical()
+            .width(Size::fill())
+            .padding(Gaps::new(48., 80., 40., 24.))
+            .child(content);
+        let details = if scrollable {
+            ScrollView::new()
+                .width(Size::flex(1.0))
+                .height(Size::fill())
+                .child(content)
+                .into_element()
+        } else {
+            rect()
+                .width(Size::flex(1.0))
+                .height(Size::fill())
+                .vertical()
+                .main_align(Alignment::Center)
+                .child(content)
+                .into_element()
+        };
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .height(Size::fill())
+            .content(Content::Flex)
+            .child(
+                rect()
+                    .width(Size::flex(1.0))
+                    .height(Size::fill())
+                    .center()
+                    .padding(Gaps::new_all(48.))
+                    .child(illustration),
+            )
+            .child(details)
+            .into_element()
+    };
+
     rect()
         .vertical()
         .width(Size::fill())
         .height(Size::fill())
         .content(Content::Flex)
-        .child(onboarding_slide(
+        .child(onboarding_slide(body))
+        // Marks where scrolled content ends so it doesn't look cut off under the buttons
+        .maybe_child(scrollable.then(|| {
             rect()
-                .horizontal()
                 .width(Size::fill())
-                .height(Size::fill())
-                .content(Content::Flex)
-                .child(
-                    rect()
-                        .width(Size::flex(1.0))
-                        .height(Size::fill())
-                        .center()
-                        .padding(Gaps::new_all(48.))
-                        .child(illustration),
-                )
-                .child(
-                    rect()
-                        .vertical()
-                        .width(Size::flex(1.0))
-                        .height(Size::fill())
-                        .main_align(Alignment::Center)
-                        .padding(Gaps::new(48., 80., 24., 24.))
-                        .spacing(24.)
-                        .child(content),
-                ),
-        ))
+                .height(Size::px(1.))
+                .background(colors::component_border())
+                .into_element()
+        }))
         .child(nav)
         .into_element()
 }
@@ -342,6 +404,13 @@ pub(crate) fn step_heading(title: &str, subtitle: &str) -> impl IntoElement {
 mod tests {
     use super::*;
 
+    #[test]
+    fn onboarding_keeps_content_scrollable_in_wide_short_windows() {
+        assert!(onboarding_needs_scroll(1240., 600.));
+        assert!(onboarding_needs_scroll(820., 900.));
+        assert!(!onboarding_needs_scroll(1240., 900.));
+    }
+
     fn flow(has_migration: bool, picks_location: bool) -> Vec<Route> {
         let mut routes = vec![Route::OnboardingWelcome {}];
 
@@ -358,6 +427,7 @@ mod tests {
         routes.extend([
             Route::OnboardingLanguage {},
             Route::OnboardingAccount {},
+            Route::OnboardingBundlePicker {},
             Route::OnboardingBundles {},
             Route::OnboardingPreferences {},
             Route::OnboardingSummary {},

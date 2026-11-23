@@ -18,10 +18,10 @@ pub use data::{JavaPackage, JavaRuntime, PackageArchive, java_executable_relativ
 pub use error::{JavaError, JavaResult};
 pub use install::{install_package, is_launcher_managed};
 pub use locate::{LocatedJava, best_for_major, locate_java};
-pub use platform::{HostArch, HostOs, HostTarget, set_gpu_preference};
+pub use platform::{HostArch, HostOs, HostTarget, set_gpu_preference, wrong_arch_for_game};
 pub use service::{
     AvailableJava, INSTALLABLE_MAJORS, JAVA_CHOICE_DOWNLOAD, JAVA_CHOICE_FOLDER, JAVA_VENDOR_HINT,
-    JavaService,
+    JavaService, LEGACY_MACOS_CHOICE_DOWNGRADE, LEGACY_MACOS_CHOICE_KEEP, LEGACY_MACOS_MAX_MAJOR,
 };
 pub use store::{JavaStore, MemoryJavaStore, StoreError, StoreResult};
 pub use vendors::JavaVendor;

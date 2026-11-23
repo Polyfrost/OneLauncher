@@ -21,7 +21,7 @@ fn is_sidebar_route(route: &Route) -> bool {
     matches!(
         route,
         Route::SettingsAppearance {}
-            | Route::SettingsThemeEditor {}
+            | Route::SettingsThemeEditor { .. }
             | Route::SettingsMinecraft {}
             | Route::SettingsAccounts {}
             | Route::SettingsLauncher {}
@@ -109,6 +109,7 @@ pub struct AnimatedAppOutlet;
 impl Component for AnimatedAppOutlet {
     fn render(&self) -> impl IntoElement {
         let mut router = use_animated_router::<Route>();
+        let home_stack = crate::components::use_home_stack();
 
         let route = use_route::<Route>();
         let at_home = matches!(&route, Route::Home {});
@@ -237,7 +238,13 @@ impl Component for AnimatedAppOutlet {
             }
         };
 
-        let overlay = show_overlay.then(|| appshell_overlay(chrome_opacity));
+        // Home's scroll stack fades the regular page backdrop in as the versions page rises
+        let overlay = if is_home {
+            let stacked = home_stack.map_or(0., |stack| *stack.progress.read());
+            (stacked > 0.001).then(|| appshell_overlay(stacked))
+        } else {
+            show_overlay.then(|| appshell_overlay(chrome_opacity))
+        };
 
         let back = (!is_home).then(|| {
             rect()
@@ -272,7 +279,9 @@ impl Component for AnimatedAppOutlet {
             .overflow(Overflow::Clip)
             .on_global_key_down(on_global_key)
             .on_global_pointer_up(on_global_pointer)
-            .maybe_child(overlay)
+            // Always occupy the slot: inserting the overlay ahead of `column` shifts its
+            // index and remounts the page, which resets Home's scroll stack mid-scroll
+            .child(overlay.map_or_else(|| rect().into_element(), IntoElement::into_element))
             .child(column)
     }
 }

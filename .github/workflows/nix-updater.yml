@@ -1,0 +1,60 @@
+name: Nix Updater
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Check for a new release
+        id: update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/Polyfrost/OneLauncher/releases?per_page=30" \
+            | jq -r '[.[] | select((.tag_name | startswith("oneclient-")) and (.prerelease | not) and (.draft | not))][0].tag_name | ltrimstr("oneclient-")')
+          current=$(sed -n 's/^  version = "\(.*\)";$/\1/p' nix/package.nix | head -1)
+          echo "latest=${latest} current=${current}"
+
+          if [ -z "$latest" ] || [ "$latest" = "null" ] || [ "$latest" = "$current" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          url="https://github.com/Polyfrost/OneLauncher/releases/download/oneclient-${latest}/OneClient_${latest}_linux_x86_64.AppImage"
+          curl -fsSL -o /tmp/oneclient.AppImage "$url"
+          hash="sha256-$(openssl dgst -sha256 -binary /tmp/oneclient.AppImage | base64 -w0)"
+
+          sed -i \
+            -e "s|^  version = \".*\";|  version = \"${latest}\";|" \
+            -e "s|hash = \"sha256-[^\"]*\";|hash = \"${hash}\";|" \
+            nix/package.nix
+
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build the new version
+        if: steps.update.outputs.changed == 'true'
+        run: nix build .#oneclient --print-build-logs
+
+      - name: Commit and push
+        if: steps.update.outputs.changed == 'true'
+        run: |
+          version=$(nix eval --raw .#oneclient.version)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "oneclient: update to ${version}"
+          git push

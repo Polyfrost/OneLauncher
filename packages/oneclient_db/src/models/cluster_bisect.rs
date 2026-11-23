@@ -28,6 +28,7 @@ impl BisectExit {
 pub enum BisectEdgeKind {
     Known = 0,
     Guessed = 1,
+    Inferred = 2,
 }
 
 impl BisectEdgeKind {
@@ -39,6 +40,7 @@ impl BisectEdgeKind {
         match value {
             0 => Some(Self::Known),
             1 => Some(Self::Guessed),
+            2 => Some(Self::Inferred),
             _ => None,
         }
     }
@@ -47,12 +49,11 @@ impl BisectEdgeKind {
 #[derive(Debug, Clone, FromRow)]
 pub struct ClusterBisectSessionRow {
     pub cluster_id: i64,
-    pub round: i64,
     pub pending_exit: i64,
     pub started_at: String,
     pub retry_note: Option<String>,
-    pub confirmed: i64,
     pub finishing: i64,
+    pub search: Option<String>,
 }
 
 impl ClusterBisectSessionRow {
@@ -65,9 +66,7 @@ impl ClusterBisectSessionRow {
 pub struct ClusterBisectModRow {
     pub cluster_id: i64,
     pub hash: String,
-    pub cleared_round: Option<i64>,
     pub testing: i64,
     pub name: Option<String>,
-    pub pinned_round: Option<i64>,
     pub disable_on_finish: i64,
 }

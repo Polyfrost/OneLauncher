@@ -4,7 +4,9 @@ use freya::prelude::*;
 use freya::text_edit::Clipboard;
 use regex::Regex;
 
-use crate::components::{Icon, IconType, ScrollArea, ScrollAreaCtx, corrected_scroll};
+use crate::components::{
+    Button, Icon, IconType, ScrollArea, ScrollAreaCtx, TooltipPlacement, corrected_scroll,
+};
 use crate::i18n::t;
 use crate::theme::{self, colors, rounded, text_size};
 
@@ -156,6 +158,7 @@ pub struct LogViewer {
     streaming: bool,
     header: Option<Element>,
     auto_scroll: Option<State<bool>>,
+    actions: Option<Element>,
 }
 
 impl LogViewer {
@@ -166,6 +169,7 @@ impl LogViewer {
             streaming: false,
             header: None,
             auto_scroll: None,
+            actions: None,
         }
     }
 
@@ -182,6 +186,12 @@ impl LogViewer {
 
     pub fn header(mut self, header: impl IntoElement) -> Self {
         self.header = Some(header.into_element());
+        self
+    }
+
+    /// Controls placed in the title row, right of the title
+    pub fn actions(mut self, actions: impl IntoElement) -> Self {
+        self.actions = Some(actions.into_element());
         self
     }
 }
@@ -220,8 +230,8 @@ impl Component for LogViewer {
             .background(colors::page_elevated())
             .corner_radius(rounded(12.))
             .maybe_child(
-                (!self.title.is_empty() || own_toggle)
-                    .then(|| toolbar(self.title.clone(), own_toggle, auto_scroll)),
+                (!self.title.is_empty() || self.actions.is_some())
+                    .then(|| toolbar(self.title.clone(), self.actions.clone())),
             )
             .maybe_child(self.header.clone())
             .child(
@@ -232,6 +242,11 @@ impl Component for LogViewer {
                     .on_user_scroll(move |_| {
                         if streaming {
                             auto_scroll.set_if_modified(false);
+                        }
+                    })
+                    .on_overscroll_bottom(move |_| {
+                        if streaming {
+                            auto_scroll.set_if_modified(true);
                         }
                     })
                     .content(move |ctx: ScrollAreaCtx| {
@@ -249,32 +264,41 @@ impl Component for LogViewer {
                         })
                     }),
             )
+            .maybe_child(own_toggle.then(|| AutoScrollFab { auto_scroll }.into_element()))
     }
 }
 
-fn toolbar(title: String, streaming: bool, auto_scroll: State<bool>) -> impl IntoElement {
-    rect()
+fn toolbar(title: String, actions: Option<Element>) -> impl IntoElement {
+    let has_actions = actions.is_some();
+    let row = rect()
         .horizontal()
         .width(Size::fill())
         .cross_align(Alignment::Center)
         .content(Content::Flex)
-        .padding(Gaps::new(12., 20., 0., 20.))
-        .spacing(12.)
-        .child(
+        .padding(if has_actions {
+            Gaps::new(10., 14., 10., 20.)
+        } else {
+            Gaps::new(12., 20., 0., 20.)
+        })
+        .spacing(16.)
+        .maybe_child((!title.is_empty()).then(|| {
             label()
                 .text(title)
                 .font_size(text_size(18.))
                 .font_weight(FontWeight::SEMI_BOLD)
-                .color(colors::fg_primary()),
-        )
-        .child(
-            rect()
-                .horizontal()
-                .width(Size::flex(1.0))
-                .main_align(Alignment::End)
-                .cross_align(Alignment::Center)
-                .maybe_child(streaming.then(|| auto_scroll_toggle(auto_scroll))),
-        )
+                .max_lines(1)
+                .color(colors::fg_primary())
+                .into_element()
+        }))
+        .maybe_child(
+            actions.map(|actions| rect().width(Size::flex(1.0)).child(actions).into_element()),
+        );
+
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .child(row)
+        .maybe_child(has_actions.then(crate::ui::divider))
         .into_element()
 }
 
@@ -309,6 +333,33 @@ pub fn auto_scroll_toggle(mut auto_scroll: State<bool>) -> impl IntoElement {
                 }),
         )
         .into_element()
+}
+
+#[derive(PartialEq)]
+struct AutoScrollFab {
+    auto_scroll: State<bool>,
+}
+
+impl Component for AutoScrollFab {
+    fn render(&self) -> impl IntoElement {
+        let mut auto_scroll = self.auto_scroll;
+        let on = *auto_scroll.read();
+
+        let button = Button::new()
+            .icon()
+            .width(Size::px(36.))
+            .height(Size::px(36.))
+            .tooltip(t("oneclient.components.log_viewer.auto_scroll"))
+            .tooltip_placement(TooltipPlacement::Left)
+            .on_press(move |_| auto_scroll.toggle())
+            .child(Icon::new(IconType::ChevronDown).size(18.));
+
+        rect()
+            .position(Position::new_absolute().bottom(16.).right(22.))
+            // Above the ScrollArea thumbs (Layer 999) so it paints and takes pointer events on top
+            .layer(Layer::Relative(1000))
+            .child(if on { button.primary() } else { button.secondary() })
+    }
 }
 
 #[derive(Clone, Copy)]

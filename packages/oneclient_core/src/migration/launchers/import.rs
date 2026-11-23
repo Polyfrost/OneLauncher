@@ -702,24 +702,34 @@ async fn settle_java(
     progress: Option<&GroupedProgressSession>,
 ) -> Option<String> {
     let has_jvm_args = settings.jvm_args.is_some();
-    let required = if settings.java_major.is_some() && has_jvm_args {
-        crate::clusters::required_java_major(state, cluster_id)
+    let info = if settings.java_major.is_some() && has_jvm_args {
+        crate::clusters::cluster_version_info(state, cluster_id)
             .await
             .inspect_err(
                 |err| tracing::debug!(error = %err, "could not tell which Java the version needs"),
             )
             .ok()
-            .flatten()
     } else {
         None
     };
+    let required = info
+        .as_ref()
+        .and_then(|info| info.java_version.as_ref())
+        .map(|java| java.major_version);
 
     let JavaPlan::Pin(major) = java_plan(settings.java_major, required, has_jvm_args) else {
         return None;
     };
+    let native_ok = info
+        .as_ref()
+        .is_some_and(crate::game::natives::native_java_ok);
 
     // Same flags a launch uses: look on the system first, ask before downloading
-    match state.java.prepare(major, true, false, progress).await {
+    match state
+        .java
+        .prepare(major, native_ok, true, false, progress)
+        .await
+    {
         Ok(runtime) => {
             tracing::info!(
                 cluster_id,
@@ -1248,7 +1258,13 @@ mod tests {
         let kept: Vec<String> = scanned
             .files
             .iter()
-            .map(|file| file.path.file_name().unwrap().to_string_lossy().into_owned())
+            .map(|file| {
+                file.path
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned()
+            })
             .collect();
         assert_eq!(kept, ["good-top.jar"]);
         assert_eq!(dropped, 1);

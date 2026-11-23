@@ -23,9 +23,10 @@ impl JavaRuntimeProvider for CorrettoRuntimeProvider {
     }
 
     #[tracing::instrument(level = "debug", skip(self, net))]
-    async fn list_packages(
+    async fn list_arch_packages(
         &self,
         major: Option<u32>,
+        arch: HostArch,
         net: &RequestClient,
     ) -> JavaResult<Vec<JavaPackage>> {
         let index = net
@@ -35,7 +36,7 @@ impl JavaRuntimeProvider for CorrettoRuntimeProvider {
         // Corretto ships JDK only
         let Some(by_major) = index
             .get(CORRETTO_OS)
-            .and_then(|by_arch| by_arch.get(CORRETTO_ARCH))
+            .and_then(|by_arch| by_arch.get(corretto_arch(arch)))
             .and_then(|by_type| by_type.get("jdk"))
             .and_then(Value::as_object)
         else {
@@ -60,7 +61,7 @@ impl JavaRuntimeProvider for CorrettoRuntimeProvider {
             // Prefer the versioned URL the `latest` redirect resolves at
             // download time and can move away from this index's checksum
             let download_url = entry.get("resource").and_then(Value::as_str).map_or_else(
-                || latest_url(this_major, CORRETTO_EXT.0),
+                || latest_url(this_major, arch, CORRETTO_EXT.0),
                 |resource| format!("https://corretto.aws{resource}"),
             );
 
@@ -70,7 +71,8 @@ impl JavaRuntimeProvider for CorrettoRuntimeProvider {
                 .map(Checksum::sha256);
 
             let name = format!(
-                "amazon-corretto-{this_major}-{CORRETTO_ARCH}-{CORRETTO_OS}-jdk.{}",
+                "amazon-corretto-{this_major}-{}-{CORRETTO_OS}-jdk.{}",
+                corretto_arch(arch),
                 CORRETTO_EXT.0
             );
 
@@ -94,18 +96,21 @@ impl JavaRuntimeProvider for CorrettoRuntimeProvider {
     }
 }
 
-fn latest_url(major: u32, ext: &str) -> String {
+fn latest_url(major: u32, arch: HostArch, ext: &str) -> String {
     format!(
-        "https://corretto.aws/downloads/latest/amazon-corretto-{major}-{CORRETTO_ARCH}-{CORRETTO_OS}-jdk.{ext}"
+        "https://corretto.aws/downloads/latest/amazon-corretto-{major}-{}-{CORRETTO_OS}-jdk.{ext}",
+        corretto_arch(arch)
     )
 }
 
-const CORRETTO_ARCH: &str = match HostTarget::CURRENT.arch {
-    HostArch::X86 => "x86",
-    HostArch::X86_64 => "x64",
-    HostArch::Arm => "arm",
-    HostArch::Aarch64 => "aarch64",
-};
+const fn corretto_arch(arch: HostArch) -> &'static str {
+    match arch {
+        HostArch::X86 => "x86",
+        HostArch::X86_64 => "x64",
+        HostArch::Arm => "arm",
+        HostArch::Aarch64 => "aarch64",
+    }
+}
 
 /// Corretto publishes no separate musl build so Alpine gets the glibc one
 const CORRETTO_OS: &str = match HostTarget::CURRENT.os {

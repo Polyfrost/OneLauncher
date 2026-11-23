@@ -5,8 +5,8 @@ use std::env;
 use oneclient_common::paths::java_dir;
 use oneclient_events::EventBus;
 use oneclient_java::vendors::{
-    AdoptiumRuntimeProvider, CorrettoRuntimeProvider, JavaRuntimeProvider, LibericaRuntimeProvider,
-    MicrosoftRuntimeProvider, ZuluRuntimeProvider,
+    AdoptiumRuntimeProvider, CorrettoRuntimeProvider, GraalVmRuntimeProvider, JavaRuntimeProvider,
+    LibericaRuntimeProvider, MicrosoftRuntimeProvider, ZuluRuntimeProvider,
 };
 use oneclient_java::{JavaResult, JavaService, MemoryJavaStore, check_java_runtime};
 use oneclient_net::{NetConfig, RequestClient};
@@ -15,7 +15,9 @@ use oneclient_net::{NetConfig, RequestClient};
 async fn main() -> JavaResult<()> {
     let mut args = env::args().skip(1);
     let vendor = args.next().unwrap_or_else(|| {
-        eprintln!("usage: install_provider <zulu|adoptium|corretto|liberica|microsoft> [major]");
+        eprintln!(
+            "usage: install_provider <zulu|adoptium|corretto|liberica|microsoft|graalvm> [major]"
+        );
         std::process::exit(1);
     });
 
@@ -35,9 +37,10 @@ async fn main() -> JavaResult<()> {
         "corretto" => Box::new(CorrettoRuntimeProvider),
         "liberica" => Box::new(LibericaRuntimeProvider),
         "microsoft" => Box::new(MicrosoftRuntimeProvider),
+        "graalvm" => Box::new(GraalVmRuntimeProvider),
         other => {
             eprintln!(
-                "unknown vendor '{other}', use zulu, adoptium, corretto, liberica, or microsoft"
+                "unknown vendor '{other}', use zulu, adoptium, corretto, liberica, microsoft, or graalvm"
             );
             std::process::exit(1);
         }

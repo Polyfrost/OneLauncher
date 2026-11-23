@@ -44,6 +44,7 @@ fn entry(m: &ServerMod, update: Option<&ModUpdate>, icon_url: Option<String>) ->
             .clone()
             .unwrap_or_else(|| tidy_file_name(m.file_name.trim_end_matches(".disabled"))),
         file_name: m.file_name.clone(),
+        cluster_file_name: m.file_name.clone(),
         author: m.authors.join(", "),
         version: match update {
             Some(update) => Some(format!(

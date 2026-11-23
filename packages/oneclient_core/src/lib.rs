@@ -28,10 +28,12 @@ pub mod verify;
 pub mod versions;
 
 pub use bisect::{
-    BisectAnswer, BisectError, BisectExit, BisectMod, BisectRole, BisectStatus, BisectSuggestion,
-    accept_bisect_suggestion, answer_bisect, bisect_status, confirm_bisect,
-    decline_bisect_suggestion, finish_bisect, keep_bisect_mods_on, restart_bisect,
-    skip_bisect_answer, start_bisect, undo_bisect_answer,
+    BisectAnswer, BisectChoice, BisectError, BisectExit, BisectHistoryEntry, BisectMod,
+    BisectPlanKind, BisectRole, BisectStage, BisectStatus, BisectSuggestion, CascadeMod,
+    ConflictReport, HiddenDependency, UnresolvableMod, accept_bisect_suggestion, answer_bisect,
+    bisect_report, bisect_status, continue_bisect, decline_bisect_suggestion, find_hidden_dependencies,
+    finish_bisect, keep_bisect_mods_on, reset_bisect, set_bisect_mod_choice, settle_unresolvable_mod,
+    skip_bisect_answer, start_bisect, undo_bisect_answer, use_hidden_dependencies,
 };
 pub use changelog::{ChangelogEntry, fetch_changelog};
 pub use clusters::{
@@ -84,6 +86,7 @@ pub use oneclient_content::bundles::{
     on_user_remove_artifact, pending_optional_mods, remove_artifact_from_cluster,
     resolve_optional_mods, set_artifact_enabled_to, set_bundle_package_enabled,
     set_bundle_package_opt_in, set_bundle_package_override, set_bundle_package_overrides,
+    set_bundle_package_removed,
     skip_optional_mods,
 };
 pub use oneclient_content::packages::LinkedArtifactInfo;

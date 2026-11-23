@@ -37,6 +37,7 @@ const BACKFILL_CONCURRENCY: usize = 6;
 /// that issued them. Modrinth pins a project, a version or both, and the two id
 /// spaces are disjoint, so a package answers to every key it has.
 type DependencyKey = (ProviderId, String);
+type DependentEdges = HashMap<DependencyKey, Vec<(String, DependencyKind)>>;
 
 /// One installed package that depends on the one being disabled.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,60 +90,121 @@ pub async fn disable_impact(
 	roots: &[DisableRoot],
 	ctx: &ContentCtx,
 ) -> ContentResult<DisableImpact> {
-	let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
-	let edges = artifact_dao::list_cluster_dependency_edges(&ctx.db, cluster_id).await?;
+    package_impact(cluster_id, roots, false, ctx).await
+}
 
-	let by_hash: HashMap<&str, &LinkedArtifactInfo> = linked
-		.iter()
-		.map(|info| (info.hash.as_str(), info))
-		.collect();
+/// Returns the required dependents outside the Undo group for each candidate.
+pub async fn removal_blockers(
+    cluster_id: i64,
+    candidates: &HashSet<&str>,
+    ctx: &ContentCtx,
+) -> ContentResult<HashMap<String, Vec<DependentPackage>>> {
+    let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
+    let edges = artifact_dao::list_cluster_dependency_edges(&ctx.db, cluster_id).await?;
+    let identities = artifact_dao::list_cluster_release_identities(&ctx.db, cluster_id).await?;
+    // A currently disabled mod still needs its dependency when enabled again.
+    let graph = ReverseDependencies::new(&linked, edges, identities, true);
+    let by_hash = linked.iter().map(|info| (info.hash.as_str(), info)).collect();
+    let mut blockers = HashMap::new();
+    for &hash in candidates {
+        let outside = graph.required_outside_group(hash, candidates);
+        if !outside.is_empty() {
+            blockers.insert(hash.to_string(), name_all(&outside, &by_hash, ctx).await);
+        }
+    }
+    Ok(blockers)
+}
 
-	let mut keys_by_hash: HashMap<String, Vec<DependencyKey>> = HashMap::new();
-	for info in &linked {
-		keys_by_hash.insert(info.hash.clone(), dependency_keys(info));
-	}
+async fn package_impact(
+    cluster_id: i64,
+    roots: &[DisableRoot],
+    include_disabled: bool,
+    ctx: &ContentCtx,
+) -> ContentResult<DisableImpact> {
+    let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
+    let edges = artifact_dao::list_cluster_dependency_edges(&ctx.db, cluster_id).await?;
+    let identities = artifact_dao::list_cluster_release_identities(&ctx.db, cluster_id).await?;
+    let graph = ReverseDependencies::new(&linked, edges, identities, include_disabled);
+    let by_hash = linked.iter().map(|info| (info.hash.as_str(), info)).collect();
 
-	// Only enabled packages can be taken down by this, and an edge whose
-	// dependent is already off says nothing the user needs to hear.
-	let mut dependents: HashMap<DependencyKey, Vec<(String, DependencyKind)>> = HashMap::new();
-	for edge in edges {
-		let Some(info) = by_hash.get(edge.hash.as_str()) else {
-			continue;
-		};
-		if !info.enabled {
-			continue;
-		}
-		let Some(provider) = ProviderId::from_repr(edge.provider as u8) else {
-			continue;
-		};
-		let Some(kind) = DependencyKind::parse(&edge.kind) else {
-			continue;
-		};
+    let mut keys = Vec::new();
+    let mut root_hashes = HashSet::new();
+    for root in roots {
+        let (root_keys, hashes) = root_keys(root, &linked, &graph.keys_by_hash);
+        keys.extend(root_keys);
+        root_hashes.extend(hashes);
+    }
+    let closure = walk(&keys, &root_hashes, &graph.keys_by_hash, &graph.dependents);
 
-		for id in [edge.dependency_project_id, edge.dependency_version_id] {
-			if id.is_empty() {
-				continue;
-			}
-			dependents
-				.entry((provider, id))
-				.or_default()
-				.push((edge.hash.clone(), kind));
-		}
-	}
+    Ok(DisableImpact {
+        required: name_all(&closure.required, &by_hash, ctx).await,
+        optional: name_all(&closure.optional, &by_hash, ctx).await,
+    })
+}
 
-	let mut keys = Vec::new();
-	let mut root_hashes = HashSet::new();
-	for root in roots {
-		let (root_keys, hashes) = root_keys(root, &linked, &keys_by_hash);
-		keys.extend(root_keys);
-		root_hashes.extend(hashes);
-	}
-	let closure = walk(&keys, &root_hashes, &keys_by_hash, &dependents);
+struct ReverseDependencies {
+    keys_by_hash: HashMap<String, Vec<DependencyKey>>,
+    dependents: DependentEdges,
+}
 
-	Ok(DisableImpact {
-		required: name_all(&closure.required, &by_hash, ctx).await,
-		optional: name_all(&closure.optional, &by_hash, ctx).await,
-	})
+impl ReverseDependencies {
+    fn new(
+        linked: &[LinkedArtifactInfo],
+        edges: Vec<oneclient_db::models::ClusterDependencyEdgeRow>,
+        identities: Vec<oneclient_db::models::ClusterReleaseIdentityRow>,
+        include_disabled: bool,
+    ) -> Self {
+        let included: HashSet<_> = linked
+            .iter()
+            .filter(|info| include_disabled || info.enabled)
+            .map(|info| info.hash.as_str())
+            .collect();
+        let mut keys_by_hash: HashMap<_, Vec<_>> = HashMap::new();
+        for identity in identities {
+            let Some(provider) = ProviderId::from_repr(identity.provider as u8) else {
+                continue;
+            };
+            keys_by_hash.entry(identity.hash).or_default().extend([
+                (provider, identity.project_id),
+                (provider, identity.version_id),
+            ]);
+        }
+        let mut dependents: HashMap<_, Vec<_>> = HashMap::new();
+        for edge in edges {
+            if !included.contains(edge.hash.as_str()) {
+                continue;
+            }
+            let Some(provider) = ProviderId::from_repr(edge.provider as u8) else {
+                continue;
+            };
+            let Some(kind) = DependencyKind::parse(&edge.kind) else {
+                continue;
+            };
+
+            for id in [edge.dependency_project_id, edge.dependency_version_id] {
+                if !id.is_empty() {
+                    dependents
+                        .entry((provider, id))
+                        .or_default()
+                        .push((edge.hash.clone(), kind));
+                }
+            }
+        }
+
+        Self { keys_by_hash, dependents }
+    }
+
+    fn required_outside_group(&self, root: &str, candidates: &HashSet<&str>) -> Vec<String> {
+        let Some(keys) = self.keys_by_hash.get(root) else {
+            return Vec::new();
+        };
+        let roots = HashSet::from([root.to_string()]);
+        walk(keys, &roots, &self.keys_by_hash, &self.dependents)
+            .required
+            .into_iter()
+            .filter(|hash| !candidates.contains(hash.as_str()))
+            .collect()
+    }
 }
 
 /// Fetches and stores the dependency lists of any installed release that has
@@ -218,20 +280,6 @@ async fn fetch_version(
 		.await
 }
 
-/// Every id an installed package answers to.
-fn dependency_keys(info: &LinkedArtifactInfo) -> Vec<DependencyKey> {
-	let Some(provider) = info.provider else {
-		return Vec::new();
-	};
-
-	[info.project_id.clone(), info.version_id.clone()]
-		.into_iter()
-		.flatten()
-		.filter(|id| !id.is_empty())
-		.map(|id| (provider, id))
-		.collect()
-}
-
 /// The keys the walk starts from, and the artifacts that are the target itself
 /// and so must never be reported as depending on it.
 fn root_keys(
@@ -275,7 +323,7 @@ fn walk(
 	roots: &[DependencyKey],
 	root_hashes: &HashSet<String>,
 	keys_by_hash: &HashMap<String, Vec<DependencyKey>>,
-	dependents: &HashMap<DependencyKey, Vec<(String, DependencyKind)>>,
+	dependents: &DependentEdges,
 ) -> Closure {
 	let mut visited: HashSet<String> = root_hashes.clone();
 	let mut queued: HashSet<DependencyKey> = roots.iter().cloned().collect();
@@ -383,10 +431,10 @@ mod tests {
 		edges: &[(&str, &str, DependencyKind)],
 	) -> (
 		HashMap<String, Vec<DependencyKey>>,
-		HashMap<DependencyKey, Vec<(String, DependencyKind)>>,
+		DependentEdges,
 	) {
 		let mut keys_by_hash: HashMap<String, Vec<DependencyKey>> = HashMap::new();
-		let mut dependents: HashMap<DependencyKey, Vec<(String, DependencyKind)>> = HashMap::new();
+		let mut dependents: DependentEdges = HashMap::new();
 
 		for (dependent, target, kind) in edges {
 			keys_by_hash
@@ -531,6 +579,37 @@ mod tests {
 
 		assert_eq!(required, ["b", "c", "d"]);
 	}
+
+    #[test]
+    fn undo_can_remove_a_group_with_internal_dependencies_and_cycles() {
+        let (keys_by_hash, dependents) = graph(&[
+            ("c", "b", DependencyKind::Required),
+            ("b", "c", DependencyKind::Required),
+            ("target", "c", DependencyKind::Required),
+        ]);
+        let graph = ReverseDependencies { keys_by_hash, dependents };
+        let candidates = HashSet::from(["target", "b", "c"]);
+
+        assert!(graph.required_outside_group("b", &candidates).is_empty());
+        assert!(graph.required_outside_group("c", &candidates).is_empty());
+    }
+
+    #[test]
+    fn an_external_dependent_retains_its_whole_required_chain() {
+        let (keys_by_hash, dependents) = graph(&[
+            ("c", "b", DependencyKind::Required),
+            ("external", "c", DependencyKind::Required),
+            ("target", "c", DependencyKind::Required),
+            ("optional", "c", DependencyKind::Optional),
+        ]);
+        let graph = ReverseDependencies { keys_by_hash, dependents };
+        let candidates = HashSet::from(["target", "b", "c"]);
+
+        assert!(graph.required_outside_group("target", &candidates).is_empty());
+        assert_eq!(graph.required_outside_group("b", &candidates), ["external"]);
+        assert_eq!(graph.required_outside_group("c", &candidates), ["external"]);
+        assert_eq!(graph.required_outside_group("b", &HashSet::from(["target", "b"])), ["c", "external"]);
+    }
 
 	#[test]
 	fn a_version_pinned_dependency_still_matches() {

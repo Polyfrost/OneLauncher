@@ -456,7 +456,7 @@ pub async fn bundle_files(url: &str) -> Result<Vec<(String, Bytes)>, PlusError> 
         return Ok(vec![(name.to_string(), bytes)]);
     }
 
-    let entries = polyio::read_zip_bytes_entries(bytes.to_vec())
+    let entries = polyio::read_zip_bytes_entries(bytes.to_vec(), |_| true)
         .await
         .map_err(|err| PlusError::Asset(err.to_string()))?;
     Ok(entries
@@ -488,6 +488,9 @@ pub struct StoreVariant {
     pub asset_id: Option<i32>,
     #[serde(default)]
     pub cover_asset_id: Option<i32>,
+    /// Looping animated WebP for cosmetics that move
+    #[serde(default)]
+    pub preview_url: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -533,6 +536,8 @@ pub struct StoreItem {
     #[serde(default)]
     pub cover_asset_id: Option<i32>,
     #[serde(default)]
+    pub preview_url: Option<String>,
+    #[serde(default)]
     pub created_at: String,
     #[serde(default)]
     pub tags: StoreTags,
@@ -551,6 +556,7 @@ impl StoreItem {
                 variant_order: 0,
                 asset_id: self.asset_id,
                 cover_asset_id: self.cover_asset_id,
+                preview_url: self.preview_url.clone(),
             }],
         }
     }
@@ -593,6 +599,24 @@ impl StoreItem {
 struct StoreSearch {
     #[serde(default)]
     results: Vec<StoreItem>,
+}
+
+/// One row of the search bar's live dropdown
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct StoreSuggestion {
+    /// The representative variant, the same id `/cosmetics/search` returns
+    pub id: i32,
+    pub name: String,
+    #[serde(rename = "type")]
+    pub kind: CosmeticType,
+    #[serde(default)]
+    pub cover_asset_id: Option<i32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+struct SuggestResponse {
+    #[serde(default)]
+    cosmetics: Vec<StoreSuggestion>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -641,8 +665,11 @@ struct StoreView {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-struct CheckoutResponse {
-    url: String,
+pub struct Checkout {
+    pub url: String,
+    /// The basket was free and already granted, so there is nothing to open
+    #[serde(default)]
+    pub completed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -729,6 +756,15 @@ pub async fn search_store(
         .results)
 }
 
+/// Best store matches for `text` while typing, up to 5
+pub async fn suggest_store(text: &str) -> Result<Vec<StoreSuggestion>, PlusError> {
+    Ok(
+        get_public::<SuggestResponse>("/cosmetics/suggest", &[("text", text.to_string())])
+            .await?
+            .cosmetics,
+    )
+}
+
 pub async fn search_bundles(per_page: u32) -> Result<Vec<BundleInfo>, PlusError> {
     let query = [("nb", per_page.clamp(1, 100).to_string())];
     Ok(get_public::<BundleSearch>("/bundles/search", &query)
@@ -748,19 +784,12 @@ pub async fn store_product_id(id: i32) -> Result<Option<String>, PlusError> {
 pub async fn create_checkout(
     account: &MinecraftAccount,
     products: &[String],
-) -> Result<String, PlusError> {
+) -> Result<Checkout, PlusError> {
     let body = serde_json::json!({
         "player": account.id.hyphenated().to_string(),
         "products": products,
     });
-    Ok(json_authorized::<CheckoutResponse>(
-        account,
-        Method::POST,
-        "/v1/checkout/create",
-        Some(&body),
-    )
-    .await?
-    .url)
+    json_authorized(account, Method::POST, "/v1/checkout/create", Some(&body)).await
 }
 
 pub async fn transactions(account: &MinecraftAccount) -> Result<Vec<Transaction>, PlusError> {

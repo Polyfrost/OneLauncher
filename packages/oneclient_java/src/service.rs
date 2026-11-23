@@ -1,7 +1,7 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use oneclient_events::{Choice, EventBus, GroupedProgressSession, Prompt};
 use oneclient_net::RequestClient;
@@ -9,6 +9,8 @@ use oneclient_net::RequestClient;
 use crate::checker::{self, JavaCheckInfo};
 use crate::data::{JavaPackage, JavaRuntime};
 use crate::error::{JavaError, JavaResult};
+use crate::install::is_launcher_managed;
+use crate::platform::{self, HostArch, HostTarget};
 use crate::resolve::resolve_java_executable;
 use crate::store::JavaStore;
 use crate::vendors::{self, JavaVendor};
@@ -20,9 +22,14 @@ pub const JAVA_CHOICE_FOLDER: &str = "java.folder";
 /// Tells the front-end to show its vendor list rather than another picker
 pub const JAVA_VENDOR_HINT: &str = "java-vendor";
 
+pub const LEGACY_MACOS_CHOICE_DOWNGRADE: &str = "java.legacy_macos.downgrade";
+pub const LEGACY_MACOS_CHOICE_KEEP: &str = "java.legacy_macos.keep";
+/// Newest Java whose AWT still loads on macOS 10.x
+pub const LEGACY_MACOS_MAX_MAJOR: u32 = 21;
+
 pub const INSTALLABLE_MAJORS: &[u32] = &[8, 11, 16, 17, 18, 19, 20, 21, 22, 23];
 
-pub const PROBE_VERSION: u32 = 1;
+pub const PROBE_VERSION: u32 = 2;
 
 const _: () = assert!(PROBE_VERSION > 0);
 
@@ -61,7 +68,15 @@ impl JavaService {
 
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn list_runtimes(&self) -> JavaResult<Vec<JavaRuntime>> {
-        Ok(self.store.list().await?)
+        let mut runtimes = Vec::new();
+        for runtime in self.store.list().await? {
+            if runtime.probe_version == PROBE_VERSION {
+                runtimes.push(runtime);
+            } else if let Some(runtime) = self.revalidate(runtime).await? {
+                runtimes.push(runtime);
+            }
+        }
+        Ok(runtimes)
     }
 
     /// Checks if file wasn't deleted manually
@@ -169,7 +184,9 @@ impl JavaService {
             return Ok(None);
         };
 
-        provider.latest_package_by_major(major, &self.net).await
+        provider
+            .latest_package_by_major(major, &HostTarget::runtime_arches(), &self.net)
+            .await
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
@@ -209,11 +226,14 @@ impl JavaService {
     pub async fn prepare(
         &self,
         major: u32,
+        native_ok: bool,
         search_system: bool,
         auto_install: bool,
         progress: Option<&GroupedProgressSession>,
     ) -> JavaResult<JavaRuntime> {
-        let recorded = self.best_recorded_for_major(major).await?;
+        let recorded = self
+            .best_recorded_for_major(major, native_ok, auto_install)
+            .await?;
 
         if let Some(runtime) = &recorded
             && runtime.is_jdk
@@ -224,9 +244,13 @@ impl JavaService {
         if search_system {
             let located = crate::locate::locate_java().await?;
             self.register_located(&located).await?;
+            let usable: Vec<_> = located
+                .into_iter()
+                .filter(|(_, info)| !platform::wrong_arch_for_game(&info.os_arch, native_ok))
+                .collect();
 
             // A located runtime only displaces a recorded one by being a JDK
-            if let Some((path, info)) = crate::locate::best_for_major(&located, major)
+            if let Some((path, info)) = crate::locate::best_for_major(&usable, major)
                 && (info.is_jdk || recorded.is_none())
             {
                 return self.persist(path, info).await;
@@ -238,32 +262,69 @@ impl JavaService {
         }
 
         if auto_install {
-            return self.download_and_register(major, progress).await;
+            return self.download_and_register(major, native_ok, progress).await;
         }
 
-        self.prompt_and_install(major, progress).await
+        self.prompt_and_install(major, native_ok, progress).await
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn best_recorded_for_major(&self, major: u32) -> JavaResult<Option<JavaRuntime>> {
+    async fn best_recorded_for_major(
+        &self,
+        major: u32,
+        native_ok: bool,
+        auto_install: bool,
+    ) -> JavaResult<Option<JavaRuntime>> {
         let preferred = vendors::default_vendor();
 
         let mut candidates: Vec<JavaRuntime> = self
             .list_runtimes()
             .await?
             .into_iter()
-            .filter(|runtime| runtime.major == major)
+            .filter(|runtime| {
+                runtime.major == major
+                    && !platform::wrong_arch_for_game(&runtime.os_arch, native_ok)
+            })
             .collect();
 
         candidates.sort_by_key(|a| std::cmp::Reverse(pick_order(a, &preferred)));
 
         for candidate in candidates {
             if let Some(valid) = self.revalidate(candidate).await? {
+                if native_ok
+                    && auto_install
+                    && !platform::runs_natively(&valid.os_arch)
+                    && is_launcher_managed(Path::new(&valid.absolute_path))
+                    && let Some(native) = self.install_native(major).await
+                {
+                    return Ok(Some(native));
+                }
                 return Ok(Some(valid));
             }
         }
 
         Ok(None)
+    }
+
+    async fn install_native(&self, major: u32) -> Option<JavaRuntime> {
+        static UNAVAILABLE: Mutex<BTreeSet<u32>> = Mutex::new(BTreeSet::new());
+        if HostTarget::native() == HostTarget::CURRENT
+            || UNAVAILABLE.lock().unwrap().contains(&major)
+        {
+            return None;
+        }
+
+        match self
+            .download_for_arches(major, &[HostTarget::native().arch], None)
+            .await
+        {
+            Ok(runtime) => Some(runtime),
+            Err(err) => {
+                tracing::info!(major, "keeping the emulated Java runtime: {err}");
+                UNAVAILABLE.lock().unwrap().insert(major);
+                None
+            }
+        }
     }
 
     #[tracing::instrument(skip(self, progress))]
@@ -272,7 +333,7 @@ impl JavaService {
         major: u32,
         progress: Option<&GroupedProgressSession>,
     ) -> JavaResult<JavaRuntime> {
-        self.download_and_register(major, progress).await
+        self.download_and_register(major, true, progress).await
     }
 
     #[tracing::instrument(skip(self))]
@@ -281,7 +342,7 @@ impl JavaService {
         vendor: &JavaVendor,
         major: u32,
     ) -> JavaResult<JavaRuntime> {
-        self.install_vendor_runtime(vendor, major, None).await
+        self.install_vendor_runtime(vendor, major, true, None).await
     }
 
     #[tracing::instrument(level = "debug", skip(self, progress))]
@@ -289,11 +350,12 @@ impl JavaService {
         &self,
         vendor: &JavaVendor,
         major: u32,
+        native_ok: bool,
         progress: Option<&GroupedProgressSession>,
     ) -> JavaResult<JavaRuntime> {
         let provider = provider_for_vendor(vendor).ok_or(JavaError::PackageNotFound { major })?;
         let package = provider
-            .latest_package_by_major(major, &self.net)
+            .latest_package_by_major(major, &runtime_arches(native_ok), &self.net)
             .await?
             .ok_or(JavaError::PackageNotFound { major })?;
 
@@ -309,9 +371,74 @@ impl JavaService {
         self.register_checked(&executable, Some(major)).await
     }
 
+    /// Java 22+ builds need macOS 11 for AWT, so on 10.x the game starts and
+    /// then dies on `libawt.dylib`. Java 21 still runs older game versions
+    /// there, so the swap is only offered when the game's `required_major`
+    /// allows it. The app localizes this prompt by its choice ids
+    pub async fn check_legacy_macos(
+        &self,
+        runtime: JavaRuntime,
+        required_major: Option<u32>,
+        native_ok: bool,
+        search_system: bool,
+    ) -> JavaResult<JavaRuntime> {
+        if runtime.major <= LEGACY_MACOS_MAX_MAJOR || !crate::platform::is_legacy_macos() {
+            return Ok(runtime);
+        }
+
+        let major = runtime.major;
+        let can_downgrade =
+            required_major.is_none_or(|required| required <= LEGACY_MACOS_MAX_MAJOR);
+        let warning = format!(
+            "Java {major} needs macOS 11 or newer for its graphics libraries, so the game will likely crash on startup."
+        );
+        let mut prompt = if can_downgrade {
+            Prompt::new(
+                "Java may crash on this macOS version",
+                format!(
+                    "{warning} Java {LEGACY_MACOS_MAX_MAJOR} works on older macOS. Use it for this launch? \
+                     To stop seeing this, pick Java {LEGACY_MACOS_MAX_MAJOR} in this cluster's Java settings."
+                ),
+            )
+            .option(
+                Choice::primary(
+                    LEGACY_MACOS_CHOICE_DOWNGRADE,
+                    format!("Use Java {LEGACY_MACOS_MAX_MAJOR}"),
+                ),
+                true,
+            )
+        } else {
+            Prompt::new(
+                "Java may crash on this macOS version",
+                format!(
+                    "{warning} This version of the game needs a newer Java, so no older one can stand in."
+                ),
+            )
+        };
+        prompt = prompt
+            .option(
+                Choice::new(
+                    LEGACY_MACOS_CHOICE_KEEP,
+                    format!("Launch with Java {major}"),
+                ),
+                false,
+            )
+            .dismiss("Cancel");
+
+        match self.events.ask(prompt).await? {
+            Some(chosen) if chosen.value => {
+                self.prepare(LEGACY_MACOS_MAX_MAJOR, native_ok, search_system, false, None)
+                    .await
+            }
+            Some(_) => Ok(runtime),
+            None => Err(JavaError::Cancelled),
+        }
+    }
+
     async fn prompt_and_install(
         &self,
         major: u32,
+        native_ok: bool,
         progress: Option<&GroupedProgressSession>,
     ) -> JavaResult<JavaRuntime> {
         let prompt = Prompt::new(
@@ -340,9 +467,10 @@ impl JavaService {
                 Some(vendor) => {
                     let vendor = JavaVendor::from_str(vendor)
                         .unwrap_or_else(|_| JavaVendor::Other(vendor.to_string()));
-                    self.install_vendor_runtime(&vendor, major, progress).await
+                    self.install_vendor_runtime(&vendor, major, native_ok, progress)
+                        .await
                 }
-                None => self.download_and_register(major, progress).await,
+                None => self.download_and_register(major, native_ok, progress).await,
             },
             JavaPromptAnswer::PickFolder => match chosen.folder() {
                 Some(folder) => {
@@ -358,12 +486,34 @@ impl JavaService {
     async fn download_and_register(
         &self,
         major: u32,
+        native_ok: bool,
         progress: Option<&GroupedProgressSession>,
     ) -> JavaResult<JavaRuntime> {
-        for provider in vendors::runtime_providers() {
+        self.download_for_arches(major, &runtime_arches(native_ok), progress)
+            .await
+    }
+
+    #[tracing::instrument(level = "debug", skip(self, progress))]
+    async fn download_for_arches(
+        &self,
+        major: u32,
+        arches: &[HostArch],
+        progress: Option<&GroupedProgressSession>,
+    ) -> JavaResult<JavaRuntime> {
+        let attempts: Vec<_> = arches
+            .iter()
+            .flat_map(|&arch| {
+                vendors::runtime_providers()
+                    .into_iter()
+                    .map(move |p| (p, arch))
+            })
+            .collect();
+        for (provider, arch) in attempts {
             let vendor = provider.vendor();
 
-            let packages = provider.list_packages(Some(major), &self.net).await;
+            let packages = provider
+                .list_arch_packages(Some(major), arch, &self.net)
+                .await;
             let package = match &packages {
                 Ok(packages) => match packages
                     .iter()
@@ -372,7 +522,7 @@ impl JavaService {
                 {
                     Some(package) => package,
                     None => {
-                        tracing::warn!(?vendor, major, "no packages found");
+                        tracing::warn!(?vendor, major, ?arch, "no packages found");
                         continue;
                     }
                 },
@@ -382,7 +532,7 @@ impl JavaService {
                 }
             };
 
-            tracing::info!(?vendor, major, "downloading Java runtime");
+            tracing::info!(?vendor, major, ?arch, "downloading Java runtime");
             match provider
                 .install_package(package, &self.net, &self.events, progress)
                 .await
@@ -449,10 +599,17 @@ impl JavaService {
     }
 }
 
-/// Ranked highest-first the default vendor beats every other, a kit beats a
-/// runtime of the same vendor, and only then does the newest build win
-fn pick_order(runtime: &JavaRuntime, preferred: &JavaVendor) -> (bool, bool, Vec<u32>) {
+fn runtime_arches(native_ok: bool) -> Vec<HostArch> {
+    if native_ok {
+        HostTarget::runtime_arches()
+    } else {
+        vec![HostTarget::CURRENT.arch]
+    }
+}
+
+fn pick_order(runtime: &JavaRuntime, preferred: &JavaVendor) -> (bool, bool, bool, Vec<u32>) {
     (
+        platform::runs_natively(&runtime.os_arch),
         &runtime.vendor == preferred,
         runtime.is_jdk,
         version_key(&runtime.version),

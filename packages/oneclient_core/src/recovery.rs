@@ -270,7 +270,10 @@ async fn adopt_cluster(
         },
     )
     .await?;
-    if recorded.as_ref().is_some_and(|identity| identity.takes_bundles) {
+    if recorded
+        .as_ref()
+        .is_some_and(|identity| identity.takes_bundles)
+    {
         cluster_dao::set_takes_bundles(&state.services.db, row.id).await?;
         row.takes_bundles = 1;
     }

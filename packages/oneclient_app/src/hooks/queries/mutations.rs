@@ -279,6 +279,13 @@ pub enum ClusterAction {
         /// writes `Enabled` / `Disabled`
         manifest_default: bool,
     },
+    SetBundlePackageRemoved {
+        cluster_id: ClusterId,
+        bundle_name: String,
+        package_id: String,
+        hash: Option<String>,
+        removed: bool,
+    },
     SetDirTarget {
         cluster_id: ClusterId,
         target: oneclient_core::clusters::DirTarget,
@@ -360,6 +367,7 @@ impl MutationCapability for ClusterMutation {
             | ClusterAction::RemoveBundlePackageFromDisk { cluster_id, .. }
             | ClusterAction::DeleteBundledArtifact { cluster_id, .. }
             | ClusterAction::SetBundlePackageEnabled { cluster_id, .. }
+            | ClusterAction::SetBundlePackageRemoved { cluster_id, .. }
             | ClusterAction::SetDirTarget { cluster_id, .. }
             | ClusterAction::VerifyFiles { cluster_id }
             | ClusterAction::DeleteInstance { cluster_id }
@@ -429,6 +437,39 @@ impl MutationCapability for ClusterMutation {
                     *manifest_default,
                     content,
                 )
+                .await
+            }
+            ClusterAction::SetBundlePackageRemoved {
+                cluster_id,
+                bundle_name,
+                package_id,
+                hash,
+                removed,
+            } => {
+                async {
+                    let live = oneclient_core::set_bundle_package_removed(
+                        *cluster_id,
+                        bundle_name,
+                        package_id,
+                        hash.as_deref(),
+                        *removed,
+                        content,
+                    )
+                    .await?;
+                    notify_deferred(live, *cluster_id);
+                    // A deleted mod has no files left, so a restore downloads it again now
+                    if !*removed {
+                        oneclient_content::bundles::install_cluster_bundles(
+                            *cluster_id,
+                            state.bundles.as_ref(),
+                            None,
+                            content,
+                            None,
+                        )
+                        .await?;
+                    }
+                    Ok(())
+                }
                 .await
             }
             ClusterAction::SetDirTarget { cluster_id, .. }

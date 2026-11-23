@@ -84,7 +84,7 @@ pub async fn java_for(state: &LauncherState, server: &LocalServer) -> LauncherRe
     Ok(PathBuf::from(
         state
             .java
-            .prepare(major, true, true, None)
+            .prepare(major, true, true, true, None)
             .await?
             .absolute_path,
     ))

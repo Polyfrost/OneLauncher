@@ -14,6 +14,10 @@ fn providers() -> Vec<(JavaVendor, &'static str)> {
             JavaVendor::Microsoft,
             t("oneclient.components.java_install_manager.microsoft"),
         ),
+        (
+            JavaVendor::GraalVm,
+            t("oneclient.components.java_install_manager.graalvm"),
+        ),
         (JavaVendor::Zulu, "Azul Zulu"),
         (JavaVendor::Adoptium, "Eclipse Temurin"),
         (JavaVendor::Corretto, "Amazon Corretto"),
@@ -78,7 +82,7 @@ impl Component for JavaInstallManager {
         let runtimes = java_runtimes(&runtimes_query);
 
         if let Some(major) = suggested {
-            versions.sort_by_key(|v| v.major != major);
+            versions.retain(|v| v.major == major);
         }
 
         let provider_labels: Vec<String> =

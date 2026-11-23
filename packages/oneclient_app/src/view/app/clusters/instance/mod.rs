@@ -15,8 +15,11 @@ mod rail;
 mod shell;
 mod steps;
 
-pub(crate) use cards::{CellCard, asset_mark, cell_card, loader_mark, version_row};
+pub(crate) use cards::{
+    BUNDLE_CARD_H, BUNDLE_COLUMNS, CellCard, asset_mark, cell_card, loader_mark, version_row,
+};
 pub(crate) use cards::{WideCard, wide_card};
+pub(crate) use steps::{bundle_blurb, file_keys};
 pub use create::CreateInstanceModal;
 pub(crate) use details::field;
 pub use edit::{EditInstanceModal, InstanceFacts};

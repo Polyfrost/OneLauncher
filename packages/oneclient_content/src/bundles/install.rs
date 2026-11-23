@@ -6,7 +6,7 @@ use oneclient_db::dao::applied_migration as migration_dao;
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::cluster_bisect as bisect_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
-use oneclient_db::models::ClusterRow;
+use oneclient_db::models::{ClusterArtifactRow, ClusterRow};
 use oneclient_db::models::OverrideType;
 
 use crate::bundles::error::BundleError;
@@ -276,6 +276,65 @@ async fn clear_suppressing_overrides(
     Ok(())
 }
 
+async fn opted_in_bundles(
+    cluster_id: i64,
+    package_id: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<Vec<String>> {
+    Ok(bundle_dao::list_overrides(&ctx.db, cluster_id)
+        .await?
+        .into_iter()
+        .filter(|row| {
+            row.package_id == package_id
+                && OverrideType::parse(&row.override_type) == Some(OverrideType::Enabled)
+        })
+        .map(|row| row.bundle_name)
+        .collect())
+}
+
+async fn withdraw_opt_ins(
+    cluster_id: i64,
+    package_id: &str,
+    bundles: Vec<String>,
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    for name in bundles {
+        bundle_dao::save_override(
+            &ctx.db,
+            cluster_id,
+            &name,
+            package_id,
+            OverrideType::Removed,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+async fn restore_opt_ins(cluster_id: i64, package_id: &str, ctx: &ContentCtx) -> ContentResult<()> {
+    let removed: Vec<String> = bundle_dao::list_overrides(&ctx.db, cluster_id)
+        .await?
+        .into_iter()
+        .filter(|row| {
+            row.package_id == package_id
+                && OverrideType::parse(&row.override_type) == Some(OverrideType::Removed)
+        })
+        .map(|row| row.bundle_name)
+        .collect();
+    clear_suppressing_overrides(cluster_id, package_id, ctx).await?;
+    for name in removed {
+        bundle_dao::save_override(
+            &ctx.db,
+            cluster_id,
+            &name,
+            package_id,
+            OverrideType::Enabled,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
 #[tracing::instrument(level = "debug", skip(file, child, ctx), fields(package = %file.display_name()))]
 pub async fn install_package_from_bundle(
     file: &BundleFile,
@@ -453,15 +512,17 @@ pub async fn install_bundle(
         }
     })?;
 
-    let archive = bundles
+    let archives = bundles
         .archives_for(ctx, &cluster.mc_version, loader)
-        .await?
-        .into_iter()
+        .await?;
+    let archive = archives
+        .iter()
         .find(|a| a.manifest.name == bundle_name)
         .ok_or(BundleError::NotFound(bundle_name.to_string()))?;
 
     install_enabled_bundle_files(
-        &archive,
+        archive,
+        &archives,
         cluster_id,
         true,
         skip_compatibility,
@@ -641,6 +702,7 @@ async fn adopt_external_ids(
 async fn supersede_outdated_user_copies(
     cluster_id: i64,
     archives: &[BundleArchive],
+    all_archives: &[BundleArchive],
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
     if bisect_dao::is_active(&ctx.db, cluster_id).await? {
@@ -660,11 +722,16 @@ async fn supersede_outdated_user_copies(
         .collect();
 
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    let suppressors =
+        overrides_outside_declined(cluster_id, all_archives, overrides.clone(), ctx).await?;
     let accepted = accepted_bundles(cluster_id, ctx).await?;
     let wanted = wanted_bundle_files(
         archives.iter().map(|archive| &archive.manifest),
         &accepted,
-        |bundle_name, package_id| find_override(&overrides, bundle_name, package_id),
+        |bundle_name, package_id| {
+            find_override(&overrides, bundle_name, package_id)
+                .or_else(|| find_user_suppression(&suppressors, package_id))
+        },
     );
 
     for file in wanted {
@@ -731,11 +798,20 @@ pub async fn heal_bundle_activity(
     archives: &[BundleArchive],
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
+    heal_bundle_activity_among(cluster_id, archives, archives, ctx).await
+}
+
+async fn heal_bundle_activity_among(
+    cluster_id: i64,
+    archives: &[BundleArchive],
+    all_archives: &[BundleArchive],
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
     clear_reconciler_disables(cluster_id, archives, ctx).await?;
     adopt_external_ids(cluster_id, archives, ctx).await?;
     clear_stale_disables(cluster_id, ctx).await?;
 
-    supersede_outdated_user_copies(cluster_id, archives, ctx).await?;
+    supersede_outdated_user_copies(cluster_id, archives, all_archives, ctx).await?;
 
     let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
     if tracked.iter().all(|row| row.enabled != 0)
@@ -834,9 +910,10 @@ pub(crate) fn heal_restores<'a>(
     ))
 }
 
-#[tracing::instrument(level = "debug", skip(archive, progress, ctx), fields(bundle = %archive.manifest.name))]
+#[tracing::instrument(level = "debug", skip(archive, all_archives, progress, ctx), fields(bundle = %archive.manifest.name))]
 pub async fn install_enabled_bundle_files(
     archive: &BundleArchive,
+    all_archives: &[BundleArchive],
     cluster_id: i64,
     taken: bool,
     skip_compatibility: bool,
@@ -847,9 +924,12 @@ pub async fn install_enabled_bundle_files(
     if taken {
         extract_bundle_overrides_for_cluster(archive, cluster_id, ctx).await?;
     }
-    heal_bundle_activity(cluster_id, std::slice::from_ref(archive), ctx).await?;
+    heal_bundle_activity_among(cluster_id, std::slice::from_ref(archive), all_archives, ctx)
+        .await?;
 
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    let suppressors =
+        overrides_outside_declined(cluster_id, all_archives, overrides.clone(), ctx).await?;
     let bundle_name = archive.manifest.name.clone();
     let mut installed = Vec::new();
 
@@ -866,9 +946,11 @@ pub async fn install_enabled_bundle_files(
             let package_id = file.kind.package_id();
             wants_file(
                 file,
-                find_override(&overrides, &bundle_name, &package_id),
+                find_override(&overrides, &bundle_name, &package_id)
+                    .or_else(|| find_user_suppression(&suppressors, &package_id)),
                 taken,
-            ) && !present.contains(file)
+            ) && find_user_suppression(&overrides, &package_id) != Some(OverrideType::Removed)
+                && !present.contains(file)
         })
         .cloned()
         .collect();
@@ -1085,6 +1167,8 @@ pub async fn enabled_bundle_bytes(
         .archives_for(ctx, &cluster.mc_version, loader)
         .await?;
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    let suppressors =
+        overrides_outside_declined(cluster_id, &archives, overrides.clone(), ctx).await?;
     let accepted = accepted_bundles(cluster_id, ctx).await?;
     let present = PresentContent::load(cluster_id, ctx).await?;
 
@@ -1096,7 +1180,8 @@ pub async fn enabled_bundle_bytes(
             let package_id = file.kind.package_id();
             if !wants_file(
                 file,
-                find_override(&overrides, bundle_name, &package_id),
+                find_override(&overrides, bundle_name, &package_id)
+                    .or_else(|| find_user_suppression(&suppressors, &package_id)),
                 taken,
             ) || present.contains(file)
             {
@@ -1157,6 +1242,91 @@ pub async fn set_bundle_package_enabled(
     };
 
     set_bundle_package_override(cluster_id, bundle_name, package_id, override_type, ctx).await
+}
+
+/// Deleting unlinks every copy
+/// restoring one with no copy left only records the choice, the caller runs
+/// [`install_cluster_bundles`] to bring the files back
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn set_bundle_package_removed(
+    cluster_id: i64,
+    bundle_name: &str,
+    package_id: &str,
+    hash: Option<&str>,
+    removed: bool,
+    ctx: &ContentCtx,
+) -> ContentResult<LiveSync> {
+    if bundle_cluster(cluster_id, ctx).await?.is_none() {
+        return Ok(LiveSync::Skipped);
+    }
+
+    let copies: Vec<_> = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id)
+        .await?
+        .into_iter()
+        .filter(|row| row.package_id.as_deref() == Some(package_id))
+        .collect();
+    let mut untracked = hash.filter(|hash| !copies.iter().any(|row| row.hash == *hash));
+    if let Some(hash) = untracked
+        && artifact_dao::get_cluster_artifact(&ctx.db, cluster_id, hash)
+            .await?
+            .is_none()
+    {
+        untracked = None;
+    }
+    let opted_in = opted_in_bundles(cluster_id, package_id, ctx).await?;
+    let mut live = LiveSync::Skipped;
+    if removed {
+        // Deleting drops the files, a restore reinstalls them from the bundle
+        for hash in copies.iter().map(|row| row.hash.as_str()).chain(untracked) {
+            detach_artifact(cluster_id, hash, ctx).await?;
+        }
+    } else if let Some(hash) = untracked {
+        live = set_artifact_enabled_to(cluster_id, hash, true, ctx).await?;
+    } else if let Some(row) = copies
+        .iter()
+        .find(|row| Some(row.hash.as_str()) == hash)
+        .or_else(|| {
+            copies
+                .iter()
+                .max_by(|a, b| (a.enabled, &a.installed_at).cmp(&(b.enabled, &b.installed_at)))
+        })
+    {
+        return set_artifact_enabled_to(cluster_id, &row.hash, true, ctx).await;
+    }
+
+    if removed {
+        clear_suppressing_overrides(cluster_id, package_id, ctx).await?;
+        withdraw_opt_ins(cluster_id, package_id, opted_in, ctx).await?;
+        let mut owners: Vec<&str> = copies
+            .iter()
+            .filter_map(|row| row.bundle_name.as_deref())
+            .chain([bundle_name])
+            .collect();
+        owners.sort_unstable();
+        owners.dedup();
+        for owner in owners {
+            bundle_dao::save_override(
+                &ctx.db,
+                cluster_id,
+                owner,
+                package_id,
+                OverrideType::Removed,
+            )
+            .await?;
+        }
+    } else {
+        restore_opt_ins(cluster_id, package_id, ctx).await?;
+        bundle_dao::save_override(
+            &ctx.db,
+            cluster_id,
+            bundle_name,
+            package_id,
+            OverrideType::Enabled,
+        )
+        .await?;
+    }
+
+    Ok(live)
 }
 
 #[tracing::instrument(level = "debug", skip(overrides, ctx), fields(count = overrides.len()))]
@@ -1221,6 +1391,8 @@ pub async fn enabled_bundle_projects(
         .archives_for(ctx, &cluster.mc_version, loader)
         .await?;
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    let suppressors =
+        overrides_outside_declined(cluster_id, &archives, overrides.clone(), ctx).await?;
     let accepted = accepted_bundles(cluster_id, ctx).await?;
 
     let mut projects = std::collections::HashSet::new();
@@ -1233,7 +1405,8 @@ pub async fn enabled_bundle_projects(
             };
             if wants_file(
                 file,
-                find_override(&overrides, bundle_name, project_id),
+                find_override(&overrides, bundle_name, project_id)
+                    .or_else(|| find_user_suppression(&suppressors, project_id)),
                 taken,
             ) {
                 projects.insert(project_id.clone());
@@ -1260,6 +1433,7 @@ pub async fn install_cluster_bundles(
     ctx: &ContentCtx,
     deadline: Option<Instant>,
 ) -> ContentResult<()> {
+    let _mutation = crate::packages::package_mutation_guard().await;
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
     if !cluster.uses_bundles() {
         tracing::debug!(cluster_id, "instance does not take bundle content");
@@ -1284,9 +1458,10 @@ pub async fn install_cluster_bundles(
     let accepted = accepted_bundles(cluster_id, ctx).await?;
     for archive in &archives {
         let taken = takes_bundle(archive, &accepted);
-        let installed =
-            install_enabled_bundle_files(archive, cluster_id, taken, true, progress, ctx, deadline)
-                .await?;
+        let installed = install_enabled_bundle_files(
+            archive, &archives, cluster_id, taken, true, progress, ctx, deadline,
+        )
+        .await?;
         tracing::info!(
             cluster_id,
             bundle = %archive.manifest.name,
@@ -1307,9 +1482,12 @@ pub async fn on_user_remove_artifact(
     if let Some(tracked) = bundle_dao::get_bundle_tracked(&ctx.db, cluster_id, hash).await?
         && let Some(package_id) = tracked.package_id
     {
+        let opted_in = opted_in_bundles(cluster_id, &package_id, ctx).await?;
         clear_suppressing_overrides(cluster_id, &package_id, ctx).await?;
+        withdraw_opt_ins(cluster_id, &package_id, opted_in, ctx).await?;
     }
-    handle_user_artifact_action(cluster_id, hash, ctx, OverrideType::Removed).await
+    handle_user_artifact_action(cluster_id, hash, ctx, OverrideType::Removed).await?;
+    detach_artifact(cluster_id, hash, ctx).await
 }
 
 /// The caller passes the value it wants
@@ -1360,9 +1538,19 @@ pub async fn on_user_enable_artifact(
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
     for id in override_scope(cluster_id, hash, ctx).await? {
-        if let Some(tracked) = bundle_dao::get_bundle_tracked(&ctx.db, id, hash).await?
-            && let Some(package_id) = tracked.package_id
-        {
+        let Some(tracked) = bundle_dao::get_bundle_tracked(&ctx.db, id, hash).await? else {
+            continue;
+        };
+        let Some(package_id) = tracked.package_id else {
+            continue;
+        };
+        let overrides = bundle_dao::list_overrides(&ctx.db, id).await?;
+        let removed = tracked.bundle_name.is_some_and(|name| {
+            find_override(&overrides, &name, &package_id) == Some(OverrideType::Removed)
+        });
+        if removed {
+            restore_opt_ins(id, &package_id, ctx).await?;
+        } else {
             clear_suppressing_overrides(id, &package_id, ctx).await?;
         }
     }
@@ -1413,6 +1601,8 @@ pub async fn remove_artifact_from_cluster(
             (tracked.bundle_name.clone(), tracked.package_id.clone())
     {
         if record_override {
+            let opted_in = opted_in_bundles(cluster_id, &package_id, ctx).await?;
+            withdraw_opt_ins(cluster_id, &package_id, opted_in, ctx).await?;
             bundle_dao::save_override(
                 &ctx.db,
                 cluster_id,
@@ -1434,44 +1624,111 @@ pub async fn remove_artifact_from_cluster(
     Ok(())
 }
 
-pub(crate) async fn detach_artifact(cluster_id: i64, hash: &str, ctx: &ContentCtx) -> ContentResult<()> {
-    // Looked up first but never allowed to block removal
-    // a package whose artifact row has gone missing must still be removable
+pub(crate) async fn detach_artifact(
+    cluster_id: i64,
+    hash: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
-    let target = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
-        .await?
-        .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8));
-    crate::packages::store::ensure_mods_unlocked(cluster_id, target, ctx).await?;
-
+    let content_type = removable_content_type(cluster_id, hash, ctx).await?;
     let link = artifact_dao::get_cluster_artifact(&ctx.db, cluster_id, hash).await?;
-
-    // Database first unconditionally
-    // on Windows a jar held open by a running game blocks deleting every hard
-    // link which used to fail the whole removal
-    // The folder is rebuilt from the database at the next launch
     artifact_dao::unlink_cluster_artifact(&ctx.db, cluster_id, hash).await?;
+    finish_detach(&cluster, hash, content_type, link, ctx).await;
+    Ok(())
+}
 
-    if let (Some(content_type), Some(link)) = (target, &link) {
-        let name = &link.cluster_file_name;
-        drop_unmanaged_mod(&cluster, content_type, name, hash, &ctx.db).await;
+/// An Undo owns exactly the manual link its install created.
+pub async fn can_undo_artifact(
+    cluster_id: i64,
+    hash: &str,
+    added_at: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<bool> {
+    Ok(artifact_dao::matches_manual_artifact_link(&ctx.db, cluster_id, hash, added_at).await?
+        && clusters_sharing_artifact(cluster_id, hash, ctx)
+            .await?
+            .is_none_or(|count| count <= 1))
+}
+
+/// The caller holds the exclusive package mutation guard through planning and
+/// removal. The database commits the whole group before files are cleaned up,
+/// so circular dependencies cannot leave a partial removal.
+pub async fn detach_undo_artifacts(
+    cluster_id: i64,
+    artifacts: &[(&str, &str)],
+    ctx: &ContentCtx,
+) -> ContentResult<bool> {
+    use crate::packages::store::{manifest, undo::StagedUndoFiles};
+
+    let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    let _manifest = manifest::lock().await;
+    let mut staged = StagedUndoFiles::default();
+    for (hash, _) in artifacts {
+        let prepared = async {
+            let content_type = removable_content_type(cluster_id, hash, ctx).await?;
+            let link = artifact_dao::get_cluster_artifact(&ctx.db, cluster_id, hash).await?;
+            if let (Some(content_type), Some(link)) = (content_type, link) {
+                staged.stage(&cluster, &link, content_type, ctx).await?;
+            }
+            ContentResult::Ok(())
+        }.await;
+        if let Err(err) = prepared {
+            staged.rollback().await;
+            return Err(err);
+        }
     }
 
-    // Best-effort folder cleanup failure here is not an error
-    let deferred = match (target, link) {
+    match artifact_dao::unlink_unchanged_manual_artifacts(&ctx.db, cluster_id, artifacts).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            staged.rollback().await;
+            return Ok(false);
+        }
+        Err(err) => {
+            staged.rollback().await;
+            return Err(err.into());
+        }
+    }
+
+    staged.commit().await;
+    // Other sessions may still load these cache files through shared content
+    // directories. Leave cache reclamation to the normal storage cleanup.
+    Ok(true)
+}
+
+async fn removable_content_type(
+    cluster_id: i64,
+    hash: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<Option<ContentType>> {
+    let content_type = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
+        .await?
+        .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8));
+    crate::packages::store::ensure_mods_unlocked(cluster_id, content_type, ctx).await?;
+    Ok(content_type)
+}
+
+async fn finish_detach(
+    cluster: &ClusterRow,
+    hash: &str,
+    content_type: Option<ContentType>,
+    link: Option<ClusterArtifactRow>,
+    ctx: &ContentCtx,
+) {
+    // A jar held open on Windows can defer folder cleanup until the next launch.
+    let deferred = match (content_type, link) {
         (Some(content_type), Some(link)) => {
-            try_unlink_materialized(&cluster, content_type, &link.cluster_file_name, &ctx.db).await
+            let name = &link.cluster_file_name;
+            drop_unmanaged_mod(cluster, content_type, name, hash, &ctx.db).await;
+            try_unlink_materialized(cluster, content_type, name, &ctx.db).await
                 == LiveSync::Deferred
         }
         _ => false,
     };
 
-    // The package actually lives in the cache
-    // `evict_if_unused` drops it only once no other cluster still needs it
     if !deferred && let Err(err) = evict_if_unused(hash, ctx).await {
         tracing::warn!(hash, error = %err, "failed to evict unused artifact from the cache");
     }
-
-    Ok(())
 }
 
 async fn sharing_scope(
@@ -1726,6 +1983,24 @@ mod tests {
             find_user_suppression(&rows, "fabric-api"),
             Some(OverrideType::Disabled),
             "the user's choice follows the package, not the bundle it was filed under"
+        );
+    }
+
+    #[test]
+    fn declining_a_bundle_does_not_suppress_its_mods_elsewhere() {
+        let rows = vec![
+            row("Declined", "skyblocker", OverrideType::Removed),
+            row("Old", "modmenu", OverrideType::Removed),
+        ];
+        let suppressors: Vec<_> = rows
+            .into_iter()
+            .filter(|o| survives_decline(o, &["Declined"].into(), &Default::default()))
+            .collect();
+
+        assert_eq!(find_user_suppression(&suppressors, "skyblocker"), None);
+        assert_eq!(
+            find_user_suppression(&suppressors, "modmenu"),
+            Some(OverrideType::Removed)
         );
     }
 

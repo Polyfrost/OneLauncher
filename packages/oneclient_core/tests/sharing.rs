@@ -412,7 +412,11 @@ async fn unchecked_content_types_stay_out_of_the_file() {
         .await
         .unwrap()
         .unwrap();
-    assert_ne!(share.kind, ClusterKind::OneClient, "bundles would reinstall mods");
+    assert_ne!(
+        share.kind,
+        ClusterKind::OneClient,
+        "bundles would reinstall mods"
+    );
     assert!(share.bundles.is_empty());
     assert!(share.modpack.is_none());
 }

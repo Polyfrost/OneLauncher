@@ -146,9 +146,15 @@ pub fn bundle_packages(
         }
     }
 
+    let declined: HashSet<&str> = bundles
+        .iter()
+        .filter(|b| !b.taken)
+        .map(|b| b.archive.manifest.name.as_str())
+        .collect();
     let pids_with = |wanted: OverrideType| -> HashSet<&str> {
         overrides
             .iter()
+            .filter(|((bundle, _), _)| !declined.contains(bundle.as_str()))
             .filter(|(_, ty)| OverrideType::parse(ty) == Some(wanted))
             .map(|((_, pid), _)| pid.as_str())
             .collect()
@@ -160,7 +166,7 @@ pub fn bundle_packages(
         .collect();
 
     let mut ordered: Vec<&BundleWithUpdateStatus> = bundles.iter().collect();
-    ordered.sort_by_key(|b| !b.opted_in_types.contains(&content_type));
+    ordered.sort_by_key(|b| (!b.opted_in_types.contains(&content_type), !b.taken));
 
     let mut rows = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
@@ -201,11 +207,19 @@ pub fn bundle_packages(
             .copied();
             let ov = overrides
                 .get(&(bundle_name.clone(), pid.clone()))
-                .map(String::as_str);
+                .and_then(|ty| OverrideType::parse(ty))
+                .or_else(|| {
+                    if removed.contains(pid.as_str()) {
+                        Some(OverrideType::Removed)
+                    } else if disabled.contains(pid.as_str()) {
+                        Some(OverrideType::Disabled)
+                    } else {
+                        None
+                    }
+                });
             let enabled = match installed_info {
                 Some(info) => info.enabled,
                 None => {
-                    let ov = ov.and_then(OverrideType::parse);
                     ov == Some(OverrideType::Enabled)
                         || (bundle.opted_in_types.contains(&content_type)
                             && oneclient_core::effective_enabled(file, ov))
@@ -222,8 +236,9 @@ pub fn bundle_packages(
                 vec![category.clone()]
             };
 
-            let opted_in =
-                installed_info.is_some() || bundle.opted_in_types.contains(&content_type);
+            let opted_in = installed_info.is_some()
+                || bundle.opted_in_types.contains(&content_type)
+                || (bundle.taken && ov == Some(OverrideType::Removed));
             let mut row = make_row(
                 pid,
                 Some(bundle_name.clone()),
@@ -242,8 +257,10 @@ pub fn bundle_packages(
                 opted_in,
             );
             row.advanced = advanced;
-            row.deleted = installed_info.is_some_and(|info| !info.enabled)
-                && removed.contains(row.package_id.as_str());
+            row.deleted = opted_in
+                && !enabled
+                && (ov == Some(OverrideType::Removed) || removed.contains(row.package_id.as_str()))
+                && !disabled.contains(row.package_id.as_str());
             row.github_url = file.github_repo_url();
             rows.push(row);
         }
@@ -340,6 +357,9 @@ pub(crate) fn make_row(
         .map(|p| p.name.clone())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| fallback_name.clone());
+    let cluster_file_name = installed_info
+        .map(|i| i.cluster_file_name.clone())
+        .unwrap_or_else(|| fallback_name.clone());
     let file_name = installed_info
         .map(|i| i.file_name.clone())
         .unwrap_or(fallback_name);
@@ -362,6 +382,7 @@ pub(crate) fn make_row(
         github_url: None,
         name,
         file_name,
+        cluster_file_name,
         author,
         version,
         description,
@@ -829,7 +850,7 @@ impl Component for PackageManager {
         let bundled_deletable: Vec<PackageEntry> = chosen
             .iter()
             .filter(|_| content_type == ContentType::Mod)
-            .filter(|p| p.installed && p.in_bundle() && !p.deleted)
+            .filter(|p| p.in_bundle() && p.opted_in && !p.deleted && !p.locked)
             .cloned()
             .collect();
 
@@ -1047,6 +1068,7 @@ mod tests {
             } else {
                 HashSet::new()
             },
+            taken: true,
         }
     }
 
@@ -1127,12 +1149,47 @@ mod tests {
             vec![
                 file("deleted", true, false),
                 file("turned-off", false, false),
+                file("never-installed", false, false),
+                file("moved", true, false),
+                file("masked", true, false),
             ],
         );
-        let declined = bundle("Declined", false, vec![file("turned-off", true, false)]);
+        let declined = BundleWithUpdateStatus {
+            taken: false,
+            ..bundle(
+                "Declined",
+                false,
+                vec![
+                    file("turned-off", true, false),
+                    file("never-picked", true, false),
+                    file("only-mod", true, false),
+                    file("held", true, false),
+                ],
+            )
+        };
+        let emptied = bundle(
+            "Emptied",
+            false,
+            vec![
+                file("only-mod", true, false),
+                file("moved-again", true, false),
+            ],
+        );
         let name = |b: &BundleWithUpdateStatus| b.archive.manifest.name.clone();
         let overrides = HashMap::from([
             ((name(&taken), "deleted".to_string()), "removed".to_string()),
+            (
+                (name(&emptied), "only-mod".to_string()),
+                "removed".to_string(),
+            ),
+            (
+                (name(&taken), "never-installed".to_string()),
+                "removed".to_string(),
+            ),
+            (
+                ("Old".to_string(), "moved".to_string()),
+                "removed".to_string(),
+            ),
             (
                 (name(&taken), "turned-off".to_string()),
                 "disabled".to_string(),
@@ -1141,10 +1198,26 @@ mod tests {
                 (name(&declined), "turned-off".to_string()),
                 "removed".to_string(),
             ),
+            (
+                (name(&declined), "never-picked".to_string()),
+                "removed".to_string(),
+            ),
+            (
+                ("Old".to_string(), "moved-again".to_string()),
+                "removed".to_string(),
+            ),
+            ((name(&declined), "held".to_string()), "removed".to_string()),
+            ((name(&taken), "masked".to_string()), "enabled".to_string()),
+            (("Old".to_string(), "masked".to_string()), "removed".to_string()),
         ]);
         let rows = bundle_packages(
-            vec![installed_off("deleted"), installed_off("turned-off")],
-            &[taken, declined],
+            vec![
+                installed_off("deleted"),
+                installed_off("turned-off"),
+                installed_off("held"),
+                installed_off("masked"),
+            ],
+            &[taken, declined, emptied],
             &overrides,
             &PackageMetaMap::new(),
             &HashSet::new(),
@@ -1155,11 +1228,35 @@ mod tests {
             .filter(|p| Tab::Deleted.matches(p))
             .map(|p| p.package_id.as_str())
             .collect();
-        assert_eq!(deleted, ["deleted"]);
+        assert_eq!(
+            deleted,
+            [
+                "deleted",
+                "never-installed",
+                "moved",
+                "masked",
+                "only-mod",
+                "moved-again",
+                "held"
+            ]
+        );
         assert!(
             rows.iter()
                 .any(|p| p.package_id == "turned-off" && Tab::All.matches(p))
         );
+        let never = rows
+            .iter()
+            .find(|p| p.package_id == "never-installed")
+            .unwrap();
+        assert!(matches!(
+            bundled_delete_action(never, 1),
+            Some(ClusterAction::SetBundlePackageRemoved { removed: false, .. })
+        ));
+        let installed = rows.iter().find(|p| p.package_id == "turned-off").unwrap();
+        assert!(matches!(
+            bundled_delete_action(installed, 1),
+            Some(ClusterAction::SetBundlePackageRemoved { removed: true, .. })
+        ));
     }
 
     #[test]

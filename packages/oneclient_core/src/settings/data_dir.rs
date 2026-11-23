@@ -135,6 +135,33 @@ pub async fn apply(picked: Option<PathBuf>) -> Result<(), String> {
     Ok(())
 }
 
+/// Whether `path` sits inside a Windows OneDrive folder, where syncing thousands of
+/// small files and locked game files tends to break installs and eat cloud storage
+#[must_use]
+pub fn in_onedrive(path: &Path) -> bool {
+    if !cfg!(windows) {
+        return false;
+    }
+
+    let roots: Vec<PathBuf> = ["OneDrive", "OneDriveConsumer", "OneDriveCommercial"]
+        .into_iter()
+        .filter_map(std::env::var_os)
+        .map(PathBuf::from)
+        .collect();
+
+    under_any(path, &roots)
+}
+
+// Windows paths are case-insensitive, so compare lowercased
+fn under_any(path: &Path, roots: &[PathBuf]) -> bool {
+    let target = PathBuf::from(path.to_string_lossy().to_lowercase());
+
+    roots
+        .iter()
+        .filter(|root| !root.as_os_str().is_empty())
+        .any(|root| target.starts_with(root.to_string_lossy().to_lowercase()))
+}
+
 fn low_space_warning(path: &Path) -> Option<String> {
     let available = available_space(path)?;
     if available >= LOW_SPACE_BYTES {
@@ -161,6 +188,39 @@ pub(crate) fn available_space(path: &Path) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Drive-letter paths only parse as separate folders on Windows
+    #[cfg(windows)]
+    #[test]
+    fn folders_inside_onedrive_are_spotted_whatever_the_case() {
+        let roots = [
+            PathBuf::new(),
+            PathBuf::from(r"C:\Users\Steve\OneDrive"),
+            PathBuf::from(r"C:\Users\Steve\OneDrive - Contoso"),
+        ];
+
+        let inside = [
+            r"c:\users\steve\onedrive\Games\OneClient",
+            r"C:\Users\Steve\OneDrive",
+            r"C:\Users\Steve\OneDrive\Documents\OneClient",
+            r"C:\Users\Steve\OneDrive - Contoso\OneClient",
+        ];
+        for path in inside {
+            assert!(under_any(Path::new(path), &roots), "{path} is in OneDrive");
+        }
+
+        let outside = [
+            r"C:\Users\Steve\OneDriveBackup",
+            r"C:\Users\Steve\AppData\Roaming\OneClient",
+            r"D:\Games\OneClient",
+        ];
+        for path in outside {
+            assert!(
+                !under_any(Path::new(path), &roots),
+                "{path} is not in OneDrive"
+            );
+        }
+    }
 
     #[tokio::test]
     async fn a_folder_with_things_in_it_gets_a_folder_of_its_own() {

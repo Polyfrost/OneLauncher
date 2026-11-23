@@ -97,9 +97,9 @@ pub async fn reset_cluster(
         None
     };
 
-    super::modpack_import::drop_imported_modpacks(state, &cluster).await;
-
     {
+        let _mutation = oneclient_content::packages::package_mutation_guard().await;
+        super::modpack_import::drop_imported_modpacks(state, &cluster).await;
         let _mods_sync = crate::game::lock_mods_sync(cluster_id).await;
 
         flag_dao::set(
@@ -128,7 +128,10 @@ pub async fn reset_cluster(
             .create_and_assign_profile(&global, cluster_id, &cluster.folder_name)
             .await?;
 
-        let loader_version = match (&modpack, cluster.kind == ClusterKind::OneClient && !cluster.user_created) {
+        let loader_version = match (
+            &modpack,
+            cluster.kind == ClusterKind::OneClient && !cluster.user_created,
+        ) {
             (Some(manifest), _) => Some(manifest.loader_version.clone()),
             (None, true) => Some(None),
             (None, false) => None,

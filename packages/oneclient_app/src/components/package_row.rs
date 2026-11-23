@@ -1,6 +1,6 @@
 use freya::prelude::*;
 use freya::router::RouterContext;
-use oneclient_content::packages::ProviderId;
+use oneclient_content::packages::{ContentType, ProviderId};
 use oneclient_core::{BisectRole, SeenStatus};
 
 use crate::components::{ContextMenu, Icon, IconType, toggle_controlled};
@@ -65,6 +65,7 @@ pub struct PackageEntry {
     pub github_url: Option<String>,
     pub name: String,
     pub file_name: String,
+    pub cluster_file_name: String,
     pub author: String,
     pub version: Option<String>,
     pub description: String,
@@ -169,10 +170,12 @@ impl PackageEntry {
     pub fn bisect_badge(&self) -> Option<Element> {
         let role = self.bisect_role?;
         let accent = match role {
-            BisectRole::Testing | BisectRole::Helper => colors::brand(),
-            BisectRole::Waiting => colors::fg_secondary(),
+            BisectRole::Testing | BisectRole::Helper | BisectRole::Required => colors::brand(),
+            BisectRole::Waiting | BisectRole::KeptOff | BisectRole::Omitted => {
+                colors::fg_secondary()
+            }
             BisectRole::Cleared => colors::success(),
-            BisectRole::Found => colors::danger(),
+            BisectRole::Found | BisectRole::Problem | BisectRole::Unresolvable => colors::danger(),
         };
         Some(status_tag(role.label(), accent))
     }
@@ -435,6 +438,15 @@ pub(crate) fn set_enabled_action(
 }
 
 pub(crate) fn bundled_delete_action(item: &PackageEntry, cluster_id: i64) -> Option<ClusterAction> {
+    if let Some(bundle_name) = item.bundle_name.clone() {
+        return Some(ClusterAction::SetBundlePackageRemoved {
+            cluster_id,
+            bundle_name,
+            package_id: item.package_id.clone(),
+            hash: item.hash.clone(),
+            removed: !item.deleted,
+        });
+    }
     let hash = item.hash.clone()?;
     Some(if item.deleted {
         ClusterAction::SetArtifactEnabled {
@@ -540,6 +552,7 @@ pub fn package_context_menu(
     item: &PackageEntry,
     cluster_id: i64,
     package_type: &'static str,
+    content_type: ContentType,
     on_delete: EventHandler<(String, String)>,
     on_bundled: Option<EventHandler<()>>,
     on_select: EventHandler<()>,
@@ -579,11 +592,14 @@ pub fn package_context_menu(
         );
     }
 
-    if let Some(hash) = item.hash.clone() {
+    if item.hash.is_some() {
+        let file_name = item.cluster_file_name.clone();
         menu = menu.action(
             IconType::Folder,
             t("oneclient.components.package_row.view_in_folder"),
-            EventHandler::new_current(move |()| reveal_in_store(hash.clone())),
+            EventHandler::new_current(move |()| {
+                reveal_in_cluster(cluster_id, content_type, file_name.clone())
+            }),
         );
     }
 
@@ -595,7 +611,9 @@ pub fn package_context_menu(
         );
     }
 
-    if let Some(on_bundled) = on_bundled.filter(|_| item.in_bundle() && item.installed) {
+    if let Some(on_bundled) =
+        on_bundled.filter(|_| item.in_bundle() && item.opted_in && !item.locked)
+    {
         menu = if item.deleted {
             menu.separator().action(
                 IconType::RefreshCcw02,
@@ -983,26 +1001,31 @@ impl Component for KebabButton {
     }
 }
 
-fn reveal_in_store(hash: String) {
+fn reveal_in_cluster(cluster_id: i64, content_type: ContentType, file_name: String) {
     spawn(async move {
         let Ok(state) = crate::launcher::state() else {
             return;
         };
-        let row = match oneclient_db::dao::artifact::get_artifact_by_hash(&state.services.db, &hash)
-            .await
+        use oneclient_content::packages::{PackageStore, store::materialized_root};
+        let cluster = match PackageStore::get_cluster(cluster_id, &state.services.content()).await
         {
-            Ok(Some(row)) => row,
-            Ok(None) => return,
+            Ok(cluster) => cluster,
             Err(err) => {
-                tracing::warn!(%err, "failed to look up artifact for reveal");
+                tracing::warn!(%err, "failed to look up cluster for reveal");
                 return;
             }
         };
-        let Ok(path) = oneclient_content::packages::store::artifact_absolute_path(&row.path) else {
+        let Some((root, _)) = materialized_root(&cluster, content_type).await else {
             return;
         };
-        if let Some(dir) = path.parent() {
-            crate::platform::open_path(&dir.to_string_lossy());
+        let dir = root.join(content_type.folder_name());
+        let file = [file_name.clone(), format!("{file_name}.disabled")]
+            .into_iter()
+            .map(|name| dir.join(name))
+            .find(|path| path.exists());
+        match file {
+            Some(file) => crate::platform::reveal_file(file),
+            None => crate::platform::open_path(&dir.to_string_lossy()),
         }
     });
 }

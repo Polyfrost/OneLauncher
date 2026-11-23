@@ -403,7 +403,7 @@ mod tests {
         assert!(ov.contains(&(
             sb.manifest.name.clone(),
             "skyblock-main".to_string(),
-            OverrideType::Removed
+            OverrideType::Disabled
         )));
     }
 

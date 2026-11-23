@@ -25,8 +25,8 @@ use crate::components::{
     TextInput, centered_spinner,
 };
 use crate::hooks::{
-    ClusterAction, settled_or_loading, use_cluster_mutation, use_clusters, use_dispatch,
-    use_shared_groups,
+    ClusterAction, settled_or_loading, shared_mod_keys, toggle_keys, use_cluster_mutation,
+    use_clusters, use_dispatch, use_shared_groups,
 };
 use crate::i18n::{t, tf};
 use crate::theme::{colors, rounded, text_size};
@@ -1049,10 +1049,12 @@ fn bundle_mods(mut wizard: Wizard, picks: &Picks, archive: &BundleArchive) -> El
         .iter()
         .filter(|file| !file.hidden)
         .map(|file| {
-            let key = pkg_key(
+            let keys = shared_mod_keys(
                 UNCREATED_CLUSTER,
+                &picks.bundles.archives,
                 &archive.manifest.name,
                 &file.kind.package_id(),
+                &picks.bundles.picked,
             );
             let provider = file.kind.metadata_provider();
             let entry = make_row(
@@ -1061,7 +1063,7 @@ fn bundle_mods(mut wizard: Wizard, picks: &Picks, archive: &BundleArchive) -> El
                 provider,
                 file.size,
                 Vec::new(),
-                picks.bundles.picked.contains(&key),
+                keys.iter().any(|key| picks.bundles.picked.contains(key)),
                 file.enabled,
                 file.is_github_hosted(),
                 None,
@@ -1075,9 +1077,7 @@ fn bundle_mods(mut wizard: Wizard, picks: &Picks, archive: &BundleArchive) -> El
             let target = picks.bundle_target().map(|target| target.key.clone());
             let on_toggle: EventHandler<()> = (move |()| {
                 update_picked(wizard, target.clone(), &defaults, |picked| {
-                    if !picked.remove(&key) {
-                        picked.insert(key.clone());
-                    }
+                    toggle_keys(picked, &keys);
                 });
             })
             .into();

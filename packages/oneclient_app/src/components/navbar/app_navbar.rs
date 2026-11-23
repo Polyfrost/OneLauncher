@@ -140,7 +140,10 @@ impl Component for NavbarLogo {
 
 fn navbar_center(is_small: bool) -> impl IntoElement {
     let route = use_route::<Route>();
-    let over_art = home_page_in_view(&route, use_home_stack());
+    let stack = use_home_stack();
+    let over_art = home_page_in_view(&route, stack);
+    let on_versions = route == Route::Clusters {}
+        || (matches!(route, Route::Home {}) && stack.is_some_and(|s| *s.on_versions.read()));
     let browse_target = browse_target();
 
     rect()
@@ -157,6 +160,12 @@ fn navbar_center(is_small: bool) -> impl IntoElement {
             active: over_art,
             target: NavTarget::Home,
             nav_label: t("oneclient.components.navbar.home"),
+            over_art,
+        })
+        .child(NavLink {
+            active: on_versions,
+            target: NavTarget::Versions,
+            nav_label: t("oneclient.components.navbar.versions"),
             over_art,
         })
         .child(NavLink {
@@ -200,6 +209,7 @@ enum NavTarget {
     Route(Route),
     /// Home's page, scrolled back up to the top if it was on the versions page
     Home,
+    Versions,
 }
 
 #[derive(PartialEq)]
@@ -271,6 +281,17 @@ impl Component for NavLink {
                             let _ = RouterContext::get().push(Route::Home {});
                         }
                     }
+                    NavTarget::Versions => match stack {
+                        Some(stack) => {
+                            stack.set_open(true);
+                            if !at_home {
+                                let _ = RouterContext::get().push(Route::Home {});
+                            }
+                        }
+                        None => {
+                            let _ = RouterContext::get().push(Route::Clusters {});
+                        }
+                    },
                 }
             })
             .on_pointer_over(move |_| hovering.set(true))

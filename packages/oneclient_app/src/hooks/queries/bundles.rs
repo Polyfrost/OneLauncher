@@ -307,15 +307,53 @@ pub fn pkg_key(cluster_id: i64, bundle_name: &str, package_id: &str) -> String {
     format!("{cluster_id}|{bundle_name}|{package_id}")
 }
 
+pub fn shared_mod_keys(
+    cluster_id: i64,
+    archives: &[BundleArchive],
+    edited: &str,
+    package_id: &str,
+    selected: &HashSet<String>,
+) -> Vec<String> {
+    archives
+        .iter()
+        .filter(|archive| {
+            archive.manifest.name == edited || bundle_taken(cluster_id, archive, selected)
+        })
+        .filter(|archive| {
+            archive
+                .manifest
+                .files
+                .iter()
+                .any(|file| !file.hidden && file.kind.package_id() == package_id)
+        })
+        .map(|archive| pkg_key(cluster_id, &archive.manifest.name, package_id))
+        .collect()
+}
+
+pub fn toggle_keys(selected: &mut HashSet<String>, keys: &[String]) {
+    if keys.iter().any(|key| selected.contains(key)) {
+        for key in keys {
+            selected.remove(key);
+        }
+    } else {
+        selected.extend(keys.iter().cloned());
+    }
+}
+
 pub fn bundle_plan(
     cluster_id: i64,
     archives: &[BundleArchive],
     selected: &HashSet<String>,
 ) -> (Vec<(String, String, OverrideType)>, Vec<(String, bool)>) {
     let kept = kept_package_ids(cluster_id, archives, selected);
+    let in_taken: HashSet<String> = archives
+        .iter()
+        .filter(|archive| bundle_taken(cluster_id, archive, selected))
+        .flat_map(|archive| archive.manifest.files.iter().map(|file| file.kind.package_id()))
+        .collect();
     let overrides = archives
         .iter()
-        .flat_map(|archive| archive_overrides(cluster_id, archive, selected, &kept))
+        .flat_map(|archive| archive_overrides(cluster_id, archive, selected, &kept, &in_taken))
         .collect();
     let choices = archives
         .iter()
@@ -371,6 +409,7 @@ fn archive_overrides(
     archive: &BundleArchive,
     selected: &HashSet<String>,
     kept_elsewhere: &HashSet<String>,
+    in_taken: &HashSet<String>,
 ) -> Vec<(String, String, OverrideType)> {
     let bundle_name = &archive.manifest.name;
     let wants = |file: &BundleFile| {
@@ -398,7 +437,13 @@ fn archive_overrides(
                 if kept_elsewhere.contains(&file.kind.package_id()) {
                     continue;
                 }
-                OverrideType::Removed
+                if takes_hidden {
+                    OverrideType::Disabled
+                } else if in_taken.contains(&file.kind.package_id()) {
+                    continue;
+                } else {
+                    OverrideType::Removed
+                }
             }
         };
 

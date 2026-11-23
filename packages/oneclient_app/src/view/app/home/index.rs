@@ -52,13 +52,17 @@ impl Component for Home {
         let wheel_tick = use_state(|| 0u64);
         let mut last_dir = use_state(|| 0f32);
 
+        // Touchpad finger on the pad (between its Started and Ended phases)
+        let mut finger_down = use_state(|| false);
+
         let inner_wheel_at = use_state(|| None);
-        use_hook(|| {
-            provide_context(WheelEdgeChain {
-                pass_all,
-                inner_wheel_at,
-            })
-        });
+        let coast_at = use_state(|| None);
+        let chain = WheelEdgeChain {
+            pass_all,
+            inner_wheel_at,
+            coast_at,
+        };
+        use_hook(|| provide_context(chain));
 
         let mover = Mover {
             ticker,
@@ -83,8 +87,51 @@ impl Component for Home {
             });
         }
 
+        let settle = {
+            let mover = mover.clone();
+            move || {
+                let (mut target, mut open) = (target, open);
+                let vh = *viewport_h.peek();
+                let at = *target.peek() / vh.max(1.);
+                let to_versions = if *last_dir.peek() > 0. {
+                    at > SWITCH_AT
+                } else {
+                    at > 1. - SWITCH_AT
+                };
+                target.set(if to_versions { vh } else { 0. });
+                if *open.peek() != to_versions {
+                    open.set(to_versions);
+                }
+                mover.run();
+            }
+        };
+
         let wheel_mover = mover.clone();
         let on_wheel = move |e: Event<WheelEventData>| {
+            // macOS touchpad: settle the moment the finger lifts, then swallow the fling's
+            // momentum so it neither drags the stack again nor scrolls the versions list
+            if e.source == WheelSource::Pixel {
+                let mut coast_at = chain.coast_at;
+                if chain.coasting() {
+                    let ended = matches!(e.phase, TouchPhase::Ended | TouchPhase::Cancelled);
+                    coast_at.set((!ended).then(Instant::now));
+                    return;
+                }
+                match e.phase {
+                    TouchPhase::Started => finger_down.set(true),
+                    TouchPhase::Ended | TouchPhase::Cancelled => {
+                        finger_down.set(false);
+                        // Only when the stack owns this gesture, not a list scrolled on versions
+                        if *pass_all.peek() {
+                            coast_at.set(Some(Instant::now()));
+                            settle();
+                        }
+                        return;
+                    }
+                    TouchPhase::Moved => {}
+                }
+            }
+
             let vh = *viewport_h.peek();
             let delta = normalize_wheel_delta(e.delta_y, *scale_factor.peek());
             if delta == 0. || vh <= 0. {
@@ -104,24 +151,14 @@ impl Component for Home {
             let mut tick = wheel_tick;
             let current = *tick.peek() + 1;
             tick.set(current);
-            let settle_mover = wheel_mover.clone();
+            // A finger resting mid-drag isn't the wheel going quiet; its lift settles instead
+            let settle = settle.clone();
             spawn(async move {
                 tokio::time::sleep(SETTLE_DELAY).await;
-                if *tick.peek() != current {
+                if *tick.peek() != current || *finger_down.peek() {
                     return;
                 }
-                let vh = *viewport_h.peek();
-                let at = *target.peek() / vh.max(1.);
-                let to_versions = if *last_dir.peek() > 0. {
-                    at > SWITCH_AT
-                } else {
-                    at > 1. - SWITCH_AT
-                };
-                target.set(if to_versions { vh } else { 0. });
-                if *open.peek() != to_versions {
-                    open.set(to_versions);
-                }
-                settle_mover.run();
+                settle();
             });
         };
 

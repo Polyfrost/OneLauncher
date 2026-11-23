@@ -1,4 +1,4 @@
-use freya::prelude::spawn_in_window;
+use freya::prelude::spawn_global;
 use oneclient_db::models::ClusterId;
 
 use super::actions::Actions;
@@ -67,7 +67,7 @@ impl Actions {
 
     pub fn create_cluster_shortcut(&self, cluster_id: ClusterId) {
         let actions = self.clone();
-        spawn_in_window(async move {
+        spawn_global(async move {
             let Ok(state) = launcher::state() else { return };
 
             let cluster = match state.clusters.get(cluster_id).await {

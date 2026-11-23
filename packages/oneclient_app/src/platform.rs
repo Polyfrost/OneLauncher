@@ -1,37 +1,79 @@
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 
-use freya::prelude::{Platform, WinitPlatformExt, spawn_in_window};
+use freya::prelude::{Platform, WindowConfig, WinitPlatformExt, spawn_global};
 use freya::radio::RadioStation;
+use freya::winit::window::WindowId;
 use oneclient_core::settings::LaunchBehaviour;
 
 use crate::state::{AppChannel, AppState};
 
 const ALLOWED_URL_SCHEMES: [&str; 3] = ["http", "https", "mailto"];
 
-pub fn focus_window() {
-    Platform::get().with_window(Platform::window_id(), |win| {
-        #[cfg(target_os = "macos")]
-        macos::set_menu_bar_only(false);
+thread_local! {
+    /// `None` while the main window is closed to the background
+    static MAIN_WINDOW: Cell<Option<WindowId>> = const { Cell::new(None) };
+    static REOPENING: Cell<bool> = const { Cell::new(false) };
+    static MAIN_WINDOW_CONFIG: RefCell<Option<Box<dyn Fn() -> WindowConfig>>> =
+        const { RefCell::new(None) };
+}
 
+/// Builds the main window again after it was closed to the background
+pub fn set_main_window_config(config: impl Fn() -> WindowConfig + 'static) {
+    MAIN_WINDOW_CONFIG.set(Some(Box::new(config)));
+}
+
+/// Called from the main window's root so window ops target it from anywhere, including global tasks
+pub fn register_main_window(id: WindowId) {
+    MAIN_WINDOW.set(Some(id));
+}
+
+#[must_use]
+pub fn main_window() -> Option<WindowId> {
+    MAIN_WINDOW.get()
+}
+
+pub fn focus_window() {
+    let Some(id) = MAIN_WINDOW.get() else {
+        reopen_main_window();
+        return;
+    };
+
+    Platform::get().with_window(id, |win| {
         win.set_visible(true);
         win.set_minimized(false);
         win.focus_window();
     });
 }
 
-pub fn hide_window() {
-    Platform::get().with_window(Platform::window_id(), |win| {
-        #[cfg(target_os = "macos")]
-        if !tray::is_active() {
-            win.set_minimized(true);
-            return;
-        }
+fn reopen_main_window() {
+    if REOPENING.replace(true) {
+        return;
+    }
+    let Some(config) = MAIN_WINDOW_CONFIG.with_borrow(|build| build.as_ref().map(|build| build()))
+    else {
+        REOPENING.set(false);
+        return;
+    };
 
-        win.set_visible(false);
-
-        #[cfg(target_os = "macos")]
-        macos::set_menu_bar_only(true);
+    let platform = Platform::get();
+    spawn_global(async move {
+        let id = platform.launch_window(config).await;
+        MAIN_WINDOW.set(Some(id));
+        REOPENING.set(false);
+        platform.focus_window(id);
     });
+}
+
+/// Closes the main window, the process (game tracking, tray, IPC) keeps running.
+/// Only real way to get it off screen on Wayland, which can't hide windows. On macOS
+/// the app stays in the Dock like any closed Mac window and clicking it reopens
+pub fn hide_window() {
+    let Some(id) = MAIN_WINDOW.get() else { return };
+
+    crate::view::chat::close_chat_window();
+    MAIN_WINDOW.set(None);
+    Platform::get().close_window(id);
 }
 
 pub fn close() {
@@ -42,7 +84,7 @@ pub fn close() {
 
 pub fn quit() {
     let platform = Platform::get();
-    spawn_in_window(async move {
+    spawn_global(async move {
         if let Ok(state) = crate::launcher::state() {
             oneclient_core::shutdown(&state).await;
         }
@@ -276,7 +318,6 @@ pub fn copy_image_to_clipboard(path: std::path::PathBuf) {
 
 pub mod tray {
     use std::cell::RefCell;
-    use std::sync::atomic::{AtomicBool, Ordering};
 
     use freya::prelude::{LaunchConfig, RendererContext};
     use freya::tray::menu::{Menu, MenuItem, PredefinedMenuItem};
@@ -305,17 +346,10 @@ pub mod tray {
     #[cfg(not(target_os = "macos"))]
     const ICON: &[u8] = include_bytes!("../icons/64x64.png");
 
-    static ACTIVE: AtomicBool = AtomicBool::new(false);
-
     thread_local! {
         static GAME_ITEMS: RefCell<Vec<MenuItem>> = const { RefCell::new(Vec::new()) };
         #[cfg(target_os = "macos")]
         static MENU_BAR: RefCell<Option<Menu>> = const { RefCell::new(None) };
-    }
-
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-    pub(super) fn is_active() -> bool {
-        ACTIVE.load(Ordering::Relaxed)
     }
 
     pub(super) fn set_game_running(running: bool) {
@@ -343,7 +377,6 @@ pub mod tray {
         .expect("failed to build the tray menu");
 
         GAME_ITEMS.with_borrow_mut(|items| *items = vec![stop, logs]);
-        ACTIVE.store(true, Ordering::Relaxed);
 
         #[cfg(target_os = "macos")]
         install_menu_bar();
@@ -666,37 +699,41 @@ pub mod macos {
         }
     }
 
-    pub fn set_menu_bar_only(menu_bar_only: bool) {
-        const REGULAR: isize = 0;
-        const ACCESSORY: isize = 1;
-
+    /// Clicking the Dock icon reopens the main window like any other Mac app. winit's app
+    /// delegate doesn't answer `applicationShouldHandleReopen:`, so it's added to its class.
+    /// Call once the event loop exists, the class is registered when it starts
+    pub fn handle_dock_reopen() {
         type Id = *mut core::ffi::c_void;
+
+        // BOOL is one byte on both Intel and Apple silicon
+        unsafe extern "C" fn should_handle_reopen(_: Id, _: Id, _: Id, _: i8) -> i8 {
+            crate::ipc::send(crate::ipc::IpcCommand::Focus);
+            1
+        }
 
         unsafe {
             unsafe extern "C" {
                 fn objc_getClass(name: *const core::ffi::c_char) -> Id;
                 fn sel_registerName(name: *const core::ffi::c_char) -> Id;
-                fn objc_msgSend();
+                fn class_addMethod(
+                    class: Id,
+                    name: Id,
+                    imp: *const core::ffi::c_void,
+                    types: *const core::ffi::c_char,
+                ) -> bool;
             }
 
-            let class = objc_getClass(c"NSApplication".as_ptr());
+            let class = objc_getClass(c"WinitApplicationDelegate".as_ptr());
             if class.is_null() {
+                tracing::warn!("winit's app delegate is missing, the Dock icon won't reopen the window");
                 return;
             }
-
-            let send: unsafe extern "C" fn() = objc_msgSend;
-            let shared: unsafe extern "C" fn(Id, Id) -> Id = core::mem::transmute(send);
-            let app = shared(class, sel_registerName(c"sharedApplication".as_ptr()));
-            if app.is_null() {
-                return;
-            }
-
-            let set_policy: unsafe extern "C" fn(Id, Id, isize) -> bool =
-                core::mem::transmute(send);
-            set_policy(
-                app,
-                sel_registerName(c"setActivationPolicy:".as_ptr()),
-                if menu_bar_only { ACCESSORY } else { REGULAR },
+            // Fails only if a future winit implements it itself, which is just as good
+            class_addMethod(
+                class,
+                sel_registerName(c"applicationShouldHandleReopen:hasVisibleWindows:".as_ptr()),
+                should_handle_reopen as *const core::ffi::c_void,
+                c"c@:@c".as_ptr(),
             );
         }
     }

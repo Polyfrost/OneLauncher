@@ -109,6 +109,15 @@ impl Component for ServerShell {
             .iter()
             .find(|s| s.id == server_id)
             .is_some_and(LocalServer::plugins);
+        let show_live = live.status.is_live() || servers::is_restarting(&server_id);
+        use_side_effect_with_deps(
+            &(active == Tab::Live && !show_live).then(|| server_id.clone()),
+            move |redirect: &Option<String>| {
+                if let Some(server_id) = redirect.clone() {
+                    let _ = RouterContext::get().replace(Route::ServerConsole { server_id });
+                }
+            },
+        );
 
         let seed_icon = list
             .iter()
@@ -160,7 +169,7 @@ impl Component for ServerShell {
                     .padding(Gaps::new(16., SIDE_PADDING, 16., SIDE_PADDING))
                     .spacing(16.)
                     .maybe_child(header)
-                    .child(tabs(active, server_id, plugins)),
+                    .child(tabs(active, server_id, plugins, show_live)),
             )
             .child(
                 rect()
@@ -272,7 +281,6 @@ fn header(
                                 if Clipboard::set(address.clone()).is_ok() {
                                     dispatch
                                         .notify(t("oneclient.servers.copied"))
-                                        .body(address.clone())
                                         .toast_only()
                                         .send();
                                 }
@@ -321,8 +329,8 @@ fn header(
         .into_element()
 }
 
-fn tabs(active: Tab, server_id: String, plugins: bool) -> impl IntoElement {
-    let items = Tab::ALL.into_iter().map(|tab| {
+fn tabs(active: Tab, server_id: String, plugins: bool, show_live: bool) -> impl IntoElement {
+    let items = Tab::ALL.into_iter().filter(|tab| show_live || *tab != Tab::Live).map(|tab| {
         let route = tab.route(server_id.clone());
         let mut item = TabItem::new(tab.label(plugins), tab == active).on_press(move |_| {
             let _ = RouterContext::get().push(route.clone());

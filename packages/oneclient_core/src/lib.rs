@@ -62,7 +62,8 @@ pub use migration::{
 };
 pub use oneclient_cluster::logs::{
     LogFileInfo, LogKind, LogLevel, LogLine, LogTrim, LogsError, MclogsUploadResponse, ReadOptions,
-    delete_log_at, list_cluster_logs, log_exceeds_upload_limit, read_log_at, upload_log_at,
+    delete_log_at, list_cluster_logs, list_dir_logs, log_exceeds_upload_limit, read_log_at,
+    upload_log_at,
 };
 pub use oneclient_cluster::screenshots::{
     ScreenshotInfo, ScreenshotsError, delete_screenshot, list_cluster_screenshots,

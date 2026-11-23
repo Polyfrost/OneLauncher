@@ -1,31 +1,27 @@
 use std::path::PathBuf;
 
 use freya::prelude::*;
+use oneclient_core::LogFileInfo;
 
 use super::{card, card_head};
 use crate::components::{Button, Icon, IconType, LogViewer, TextInput, auto_scroll_toggle};
 use crate::hooks::{
     settled_or_loading, use_dispatch, use_log_action, use_server_console, use_server_hub,
-    use_server_log, use_upload_log,
+    use_server_logs, use_upload_log,
 };
 use crate::i18n::t;
 use crate::servers::{self, ServerStatus};
 use crate::state::AppChannel;
 use crate::theme::colors;
-use crate::ui::centered_note;
 use crate::view::app::cluster::filter_lines;
 use crate::view::app::cluster::logs::{
-    Confirm, LevelFilter, confirm_overlay, viewer_header, viewer_header_inset,
+    Category, Confirm, LevelFilter, LogBrowser, confirm_overlay, viewer_header_inset,
 };
 
 fn log_file(server_id: &str) -> Option<PathBuf> {
     oneclient_core::servers::server_dir(server_id)
         .ok()
         .map(|dir| dir.join("logs").join("latest.log"))
-}
-
-fn latest_log(server_id: &str) -> Option<PathBuf> {
-    log_file(server_id).filter(|path| path.exists())
 }
 
 /// Live output with the same filters as the cluster log viewer and a command box,
@@ -177,7 +173,6 @@ impl Component for ServerLiveConsole {
     }
 }
 
-/// The last run's log file, readable while the server is stopped
 #[derive(PartialEq)]
 pub struct ServerConsole {
     pub server_id: String,
@@ -185,39 +180,43 @@ pub struct ServerConsole {
 
 impl Component for ServerConsole {
     fn render(&self) -> impl IntoElement {
-        let all = settled_or_loading(&use_server_log(self.server_id.clone()));
-        let search = use_state(String::new);
-        let level = use_state(|| LevelFilter::All);
+        let logs = use_server_logs(self.server_id.clone());
         let confirm = use_state(|| None::<Confirm>);
-        let search_id = use_a11y();
-        let upload = use_upload_log();
-        let action = use_log_action();
+        let category = use_state(|| Category::Logs);
+        let mut selected = use_state(PathBuf::new);
 
-        let Some(all) = all else {
-            return centered_note(t("oneclient.servers.loading"));
+        let visible = move |category: Category| -> Vec<LogFileInfo> {
+            settled_or_loading(&logs)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|file| category.accepts(file.kind))
+                .collect()
         };
-        if all.is_empty() {
-            return centered_note(t("oneclient.servers.console.no_log"));
-        }
-        let lines = filter_lines(&all, &search.read(), *level.read());
-        let log_path = latest_log(&self.server_id);
 
-        rect()
-            .width(Size::fill())
-            .height(Size::fill())
-            .child(LogViewer::new("latest.log", lines).header(viewer_header(
-                search,
-                level,
-                confirm,
-                true,
-                log_path.clone(),
-                search_id,
-            )))
-            .maybe_child(
-                (*confirm.read())
-                    .zip(log_path)
-                    .map(|(kind, path)| confirm_overlay(kind, confirm, action, upload, path)),
-            )
-            .into_element()
+        use_side_effect(move || {
+            let files = visible(*category.read());
+            let current = selected.peek().clone();
+            if files.iter().any(|f| f.path == current) {
+                return;
+            }
+            let pick = files
+                .iter()
+                .find(|f| f.name == "latest.log")
+                .or_else(|| files.first())
+                .map(|f| f.path.clone())
+                .unwrap_or_default();
+            if pick != current {
+                selected.set(pick);
+            }
+        });
+
+        LogBrowser {
+            files: visible(*category.read()),
+            folder: log_file(&self.server_id).and_then(|p| p.parent().map(Into::into)),
+            selected,
+            category,
+            confirm,
+            extra: None,
+        }
     }
 }

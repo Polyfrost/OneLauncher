@@ -239,7 +239,7 @@ impl Component for CreateServerModal {
             }
         };
 
-        let dash = super::DASH.to_string();
+        let dash = super::none();
         let world = match kind {
             ServerKind::Modpack => t("oneclient.servers.create.world.pack"),
             ServerKind::Import => t("oneclient.servers.create.world.folder"),
@@ -370,7 +370,7 @@ impl Component for CreateServerModal {
             title: title.to_string(),
             subtitle: subtitle.to_string(),
             body,
-            scrolls_itself: step == Step::Version,
+            scrolls_itself: matches!(step, Step::Version | Step::Details),
             note: note.to_string(),
             secondary_label: if index == 0 {
                 t("oneclient.common.cancel")
@@ -1002,10 +1002,11 @@ fn platform_name(platform: Platform) -> &'static str {
 }
 
 fn details_step(form: Form) -> Element {
-    rect()
+    let fields = rect()
         .vertical()
         .width(Size::fill())
         .spacing(18.)
+        .padding(Gaps::new(0., 0., 12., 0.))
         .child(field(
             t("oneclient.servers.create.details.name"),
             TextInput::new(form.name)
@@ -1028,18 +1029,39 @@ fn details_step(form: Form) -> Element {
                 .width(Size::px(140.))
                 .on_validate(validate_number)
                 .into_element(),
-        ))
+        ));
+
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .height(Size::fill())
+        .content(Content::Flex)
+        .spacing(12.)
         .child(
-            checkbox_labeled(form.eula, t("oneclient.servers.create.details.eula")).into_element(),
+            ScrollArea::new()
+                .width(Size::fill())
+                .height(Size::flex(1.0))
+                .scrollbar_gutter(true)
+                .child(fields),
         )
         .child(
-            label()
-                .text(tf(
-                    "oneclient.servers.create.details.eula_link",
-                    &[&"https://aka.ms/MinecraftEULA"],
+            rect()
+                .vertical()
+                .width(Size::fill())
+                .spacing(6.)
+                .child(checkbox_labeled(
+                    form.eula,
+                    t("oneclient.servers.create.details.eula"),
                 ))
-                .font_size(text_size(12.))
-                .color(colors::fg_secondary()),
+                .child(
+                    label()
+                        .text(tf(
+                            "oneclient.servers.create.details.eula_link",
+                            &[&"https://aka.ms/MinecraftEULA"],
+                        ))
+                        .font_size(text_size(12.))
+                        .color(colors::fg_secondary()),
+                ),
         )
         .into_element()
 }

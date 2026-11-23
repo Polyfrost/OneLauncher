@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use chrono::{DateTime, Utc};
 
 pub use error::LogsError;
-pub use manage::{cluster_output_log, delete_log_at, list_cluster_logs, read_log_at};
+pub use manage::{cluster_output_log, delete_log_at, list_cluster_logs, list_dir_logs, read_log_at};
 pub use mclogs::{log_exceeds_upload_limit, upload_log_at};
 pub use parse::{censor, censor_username, parse_level};
 

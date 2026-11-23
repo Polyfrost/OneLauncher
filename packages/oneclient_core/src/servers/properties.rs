@@ -18,6 +18,10 @@ impl Properties {
         }
     }
 
+    pub fn replace_text(&mut self, text: &str) {
+        self.lines = text.lines().map(str::to_string).collect();
+    }
+
     pub async fn read(dir: &Path) -> Self {
         Self::load(dir).await.unwrap_or_default()
     }
@@ -241,6 +245,22 @@ mod tests {
         assert_eq!(
             tokio::fs::read(dir.join(super::FILE)).await.unwrap(),
             b"motd=Caf\xe9\npvp=false\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn replacing_the_text_keeps_a_latin1_file_latin1() {
+        let tmp = polyio::tempdir().await.expect("dir");
+        let dir = tmp.dir_path();
+        tokio::fs::write(dir.join(super::FILE), b"motd=Caf\xe9\n")
+            .await
+            .unwrap();
+        let mut props = Properties::load(dir).await.unwrap();
+        props.replace_text("#edited\nmotd=Caf\u{e9} \u{e8}\n");
+        props.write(dir).await.unwrap();
+        assert_eq!(
+            tokio::fs::read(dir.join(super::FILE)).await.unwrap(),
+            b"#edited\nmotd=Caf\xe9 \xe8\n"
         );
     }
 }

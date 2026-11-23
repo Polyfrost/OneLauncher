@@ -1,6 +1,7 @@
 //! Minecraft's section-sign formatting codes, as the server list renders them
 
 use freya::prelude::*;
+use freya::text_edit::*;
 
 use crate::components::Button;
 use crate::i18n::t;
@@ -180,8 +181,286 @@ pub fn motd_text(text: &str, default: Color, line_height: f32, wrap_width: Optio
 }
 
 /// Color swatches and format buttons that add a code to the end of the MOTD
-pub fn code_picker(mut motd: State<String>) -> Element {
-    let mut add = move |code: char| motd.write().push_str(&format!("{SECTION}{code}"));
+#[derive(Clone, Copy, PartialEq)]
+pub struct MotdEditor {
+    pub value: State<String>,
+    pub editable: UseEditable,
+    pub a11y_id: AccessibilityId,
+    pub keep_focus: State<bool>,
+}
+
+pub fn use_motd_editor(initial: String) -> MotdEditor {
+    let value = use_state({
+        let initial = initial.clone();
+        move || initial
+    });
+    let mut editable = use_editable(move || initial, EditableConfig::new);
+    use_hook(move || {
+        let mut editor = editable.editor_mut().write();
+        let end = editor.rope().len_utf16_cu();
+        *editor.selection_mut() = TextSelection::new_cursor(end);
+    });
+    MotdEditor {
+        value,
+        editable,
+        a11y_id: use_a11y(),
+        keep_focus: use_state(|| false),
+    }
+}
+
+impl MotdEditor {
+    fn insert(mut self, code: char) {
+        let text = {
+            let mut editor = self.editable.editor_mut().write();
+            if let Some((start, end)) = editor.get_selection_range() {
+                editor.remove(start..end);
+                *editor.selection_mut() = TextSelection::new_cursor(start);
+            }
+            let at = editor.cursor_pos();
+            let len = editor.insert(&format!("{SECTION}{code}"), at);
+            *editor.selection_mut() = TextSelection::new_cursor(at + len);
+            editor.committed_text()
+        };
+        self.value.set(text);
+        self.a11y_id.request_focus();
+    }
+}
+
+#[derive(PartialEq)]
+pub struct MotdInput {
+    pub editor: MotdEditor,
+    pub placeholder: &'static str,
+}
+
+impl Component for MotdInput {
+    fn render(&self) -> impl IntoElement {
+        let MotdEditor {
+            mut value,
+            mut editable,
+            a11y_id,
+            mut keep_focus,
+        } = self.editor;
+        let focus = use_focus(a11y_id);
+        let holder = use_state(ParagraphHolder::default);
+        let mut area = use_state(Area::default);
+        let mut dragging = use_state(|| false);
+        let focused = focus() != Focus::Not;
+        let (mut blink, cursor_color) = use_cursor_blink(focused, colors::fg_primary());
+
+        if *value.read() != editable.editor().read().committed_text() {
+            let mut editor = editable.editor_mut().write();
+            editor.clear_preedit();
+            editor.set(&value.read());
+            editor.editor_history_mut().clear();
+            editor.clear_selection();
+        }
+
+        let on_key_down = move |e: Event<KeyboardEventData>| {
+            match &e.key {
+                Key::Named(NamedKey::Escape) => {
+                    a11y_id.request_unfocus();
+                    return;
+                }
+                Key::Named(NamedKey::Tab | NamedKey::Enter) => return,
+                _ => {}
+            }
+            e.stop_propagation();
+            e.prevent_default();
+            blink.reset();
+            editable.process_event(EditableEvent::KeyDown {
+                key: &e.key,
+                modifiers: e.modifiers,
+                editor_line: Some(EditorLine::SingleParagraph),
+                holder: Some(&holder.read()),
+            });
+            let text = editable.editor().read().committed_text();
+            if *value.peek() != text {
+                value.set(text);
+            }
+        };
+
+        let on_key_up = move |e: Event<KeyboardEventData>| {
+            e.stop_propagation();
+            editable.process_event(EditableEvent::KeyUp { key: &e.key });
+        };
+
+        let on_ime_preedit = move |e: Event<ImePreeditEventData>| {
+            let mut editor = editable.editor_mut().write();
+            if e.data().text.is_empty() {
+                editor.clear_preedit();
+            } else {
+                editor.set_preedit(&e.data().text);
+            }
+        };
+
+        let on_focus_press = move |e: Event<FocusPressEventData>| {
+            e.stop_propagation();
+            e.prevent_default();
+            dragging.set_if_modified(true);
+            blink.reset();
+            let text_area = area.read().to_f64();
+            let global = e.global_location().clamp(text_area.min(), text_area.max());
+            editable.process_event(EditableEvent::Down {
+                location: (global - text_area.min()).to_point(),
+                editor_line: EditorLine::SingleParagraph,
+                holder: &holder.read(),
+            });
+            a11y_id.request_focus();
+        };
+
+        let on_global_pointer_move = move |e: Event<PointerEventData>| {
+            if a11y_id.is_focused() && *dragging.read() {
+                let text_area = area.read().to_f64();
+                editable.process_event(EditableEvent::Move {
+                    location: (e.global_location() - text_area.min()).to_point(),
+                    editor_line: EditorLine::SingleParagraph,
+                    holder: &holder.read(),
+                });
+            }
+        };
+
+        let on_global_pointer_up = move |_: Event<PointerEventData>| {
+            if a11y_id.is_focused() {
+                editable.process_event(EditableEvent::Release);
+            }
+            if *keep_focus.peek() {
+                keep_focus.set(false);
+                dragging.set_if_modified(false);
+            } else if *dragging.peek() {
+                dragging.set(false);
+            } else if a11y_id.is_focused() {
+                a11y_id.request_unfocus();
+            }
+        };
+
+        let text = value.read().clone();
+        let placeholder = text.is_empty() && !focused;
+        let (cursor_index, highlights) = if focused {
+            let editor = editable.editor().read();
+            (
+                Some(editor.cursor_pos()),
+                editor.get_visible_selection(EditorLine::SingleParagraph),
+            )
+        } else {
+            (None, None)
+        };
+        let border = if focused {
+            Border::new()
+                .fill(colors::component_border_pressed())
+                .width(2.)
+                .alignment(BorderAlignment::Inner)
+        } else {
+            Border::new()
+                .fill(colors::component_border())
+                .width(1.)
+                .alignment(BorderAlignment::Inner)
+        };
+
+        rect()
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::TextInput)
+            .a11y_alt(text.clone())
+            .on_key_down(on_key_down)
+            .on_key_up(on_key_up)
+            .on_ime_preedit(on_ime_preedit)
+            .on_focus_press(on_focus_press)
+            .on_global_pointer_move(on_global_pointer_move)
+            .on_global_pointer_up(on_global_pointer_up)
+            .cursor(CursorIcon::Text)
+            .width(Size::fill())
+            .corner_radius(rounded(8.))
+            .background(if focused {
+                colors::component_bg_pressed()
+            } else {
+                colors::component_bg()
+            })
+            .border(border)
+            .child(
+                paragraph()
+                    .holder(holder.read().clone())
+                    .on_sized(move |e: Event<SizedEventData>| area.set_if_modified(e.area))
+                    .width(Size::fill())
+                    .padding(Gaps::new_symmetric(8., 12.))
+                    .font_family(crate::theme::mono_font())
+                    .font_size(text_size(14.))
+                    .cursor_index(cursor_index)
+                    .cursor_color(cursor_color)
+                    .highlights(highlights.map(|h| vec![h]))
+                    .color(if placeholder {
+                        colors::fg_secondary()
+                    } else {
+                        colors::fg_primary()
+                    })
+                    .span(if placeholder {
+                        self.placeholder.to_string()
+                    } else {
+                        text
+                    }),
+            )
+    }
+}
+
+pub const DEFAULT_MOTD: &str = "A Minecraft Server";
+
+pub fn motd_card(editor: MotdEditor, preview: Element, action: Option<Element>) -> Element {
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(12.)
+        .padding(Gaps::new_symmetric(12., 16.))
+        .corner_radius(rounded(12.))
+        .background(colors::page_elevated())
+        .child(
+            rect()
+                .horizontal()
+                .width(Size::fill())
+                .content(Content::Flex)
+                .cross_align(Alignment::Center)
+                .spacing(16.)
+                .child(crate::components::Icon::new(
+                    crate::components::IconType::MessageTextSquare01,
+                ))
+                .child(
+                    rect()
+                        .vertical()
+                        .width(Size::flex(1.0))
+                        .spacing(2.)
+                        .child(
+                            label()
+                                .text(t("oneclient.servers.settings.motd.title"))
+                                .font_size(text_size(16.))
+                                .font_weight(FontWeight::MEDIUM)
+                                .color(colors::fg_primary()),
+                        )
+                        .child(
+                            label()
+                                .text(t("oneclient.servers.settings.motd.description"))
+                                .font_size(text_size(12.))
+                                .color(colors::fg_secondary()),
+                        ),
+                )
+                .maybe_child(action),
+        )
+        .child(
+            rect()
+                .vertical()
+                .width(Size::fill())
+                .spacing(10.)
+                .padding(Gaps::new(0., 0., 0., 40.))
+                .child(preview)
+                .child(MotdInput {
+                    editor,
+                    placeholder: DEFAULT_MOTD,
+                })
+                .child(code_picker(editor)),
+        )
+        .into_element()
+}
+
+pub fn code_picker(editor: MotdEditor) -> Element {
+    let mut keep_focus = editor.keep_focus;
+    let add = move |code: char| editor.insert(code);
 
     let swatches = COLORS.iter().map(|(code, color)| {
         let code = *code;
@@ -234,6 +513,7 @@ pub fn code_picker(mut motd: State<String>) -> Element {
         .vertical()
         .width(Size::fill())
         .spacing(8.)
+        .on_pointer_down(move |_| keep_focus.set(true))
         .child(
             rect()
                 .horizontal()

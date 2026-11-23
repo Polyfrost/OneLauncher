@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use freya::prelude::*;
 
-use super::settings::{ConfirmRow, whitelist_row};
-use super::{DASH, card, card_head};
+use super::settings::{ConfirmRow, whitelist_on, whitelist_row, whitelist_toggle};
+use super::{card, card_head, size_label};
 use crate::components::{Button, Icon, IconType, ScrollArea, open_folder_button};
 use crate::hooks::{
     settled_or_loading, use_server, use_server_files, use_server_hub, use_server_run,
@@ -62,9 +62,10 @@ pub struct ServerPlayers {
 
 impl Component for ServerPlayers {
     fn render(&self) -> impl IntoElement {
+        let server = use_server(&self.server_id);
         let files = settled_or_loading(&use_server_files(self.server_id.clone()));
         let live = use_server_hub().get(&self.server_id);
-        let Some(files) = files else {
+        let (Some(server), Some(files)) = (server, files) else {
             return centered_note(t("oneclient.servers.loading"));
         };
 
@@ -110,7 +111,7 @@ impl Component for ServerPlayers {
                 .into_element()
         };
 
-        page(vec![
+        let mut children = vec![
             card()
                 .child(card_head(
                     t("oneclient.servers.players.online"),
@@ -122,9 +123,13 @@ impl Component for ServerPlayers {
                 ))
                 .child(online)
                 .into_element(),
-            whitelist_row(&self.server_id, &files, false),
-            whitelist_row(&self.server_id, &files, true),
-        ])
+        ];
+        children.extend(whitelist_toggle(&server, &files));
+        if whitelist_on(&files) {
+            children.push(whitelist_row(&self.server_id, &files, false));
+        }
+        children.push(whitelist_row(&self.server_id, &files, true));
+        page(children)
     }
 }
 
@@ -143,11 +148,7 @@ impl Component for ServerWorlds {
             return centered_note(t("oneclient.servers.loading"));
         };
         let folder = server.dir().ok().map(|d| d.join(&files.world));
-        let size = if world_size == 0 {
-            DASH.to_string()
-        } else {
-            format_size(world_size)
-        };
+        let size = size_label(world_size);
 
         page(vec![
             settings_row(

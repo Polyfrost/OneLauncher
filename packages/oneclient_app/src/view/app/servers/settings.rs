@@ -1,14 +1,16 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_core::servers::{self as core, LocalServer};
 
-use super::{DASH, list_preview};
+use super::{list_preview, none};
 use crate::Route;
 use crate::components::{
-    Avatar, Button, Dropdown, Icon, IconType, ScrollArea, Segment, SegmentedControl, TextInput,
+    Avatar, Button, Dropdown, Icon, IconType, OVERLAY_BASE_LEVEL, OverlayPopup, ScrollArea,
+    Segment, SegmentedControl, TextInput,
     memory_field, toggle_controlled, validate_number,
 };
 use crate::hooks::{
@@ -299,6 +301,42 @@ fn props() -> Vec<Prop> {
     ]
 }
 
+fn prop_row(server: &LocalServer, files: &ServerFiles, prop: Prop) -> Element {
+    let value = shown(
+        &prop.control,
+        files
+            .props
+            .get(prop.key)
+            .unwrap_or_else(|| prop.default.to_string()),
+    );
+    PropRow {
+        server_id: server.id.clone(),
+        key: prop.key,
+        default: prop.default,
+        value,
+        control: prop.control,
+        numeric: !core::named_modes(&server.mc_version),
+        icon: prop.icon,
+        title: prop.title,
+        description: prop.description,
+    }
+    .into_element()
+}
+
+pub(super) fn whitelist_toggle(server: &LocalServer, files: &ServerFiles) -> Option<Element> {
+    props()
+        .into_iter()
+        .find(|p| p.key == "white-list")
+        .map(|p| prop_row(server, files, p))
+}
+
+static OPEN_AT_MOTD: AtomicBool = AtomicBool::new(false);
+
+pub(super) fn open_at_motd(server_id: String) {
+    OPEN_AT_MOTD.store(true, Ordering::Relaxed);
+    let _ = RouterContext::get().replace(Route::ServerSettings { server_id });
+}
+
 #[derive(PartialEq)]
 pub struct ServerSettings {
     pub server_id: String,
@@ -312,6 +350,18 @@ impl Component for ServerSettings {
         let scroll = use_scroll_controller(ScrollConfig::default);
         let offsets = use_state(HashMap::<Section, f32>::new);
         let mut top = use_state(|| 0f32);
+        let picked = use_state(|| None::<(Section, i32)>);
+        let editing = use_state(|| None::<String>);
+        let mut pending_motd = use_state(|| OPEN_AT_MOTD.swap(false, Ordering::Relaxed));
+        use_side_effect(move || {
+            let base = *top.read();
+            let target = offsets.read().get(&Section::Network).copied();
+            if let Some(y) = target.filter(|_| *pending_motd.peek() && base != 0.) {
+                pending_motd.set(false);
+                let mut scroll = scroll;
+                scroll.scroll_to_y(-((y - base).round() as i32));
+            }
+        });
 
         let (Some(server), Some(files)) = (server, files) else {
             return centered_note(t("oneclient.servers.loading"));
@@ -325,7 +375,6 @@ impl Component for ServerSettings {
         };
 
         let mut by_section: HashMap<Section, Vec<Element>> = HashMap::new();
-        let numeric = !core::named_modes(&server.mc_version);
         for prop in props() {
             if !shows(prop.title, prop.description)
                 || (prop.key == "simulation-distance"
@@ -333,27 +382,10 @@ impl Component for ServerSettings {
             {
                 continue;
             }
-            let value = shown(
-                &prop.control,
-                files
-                    .props
-                    .get(prop.key)
-                    .unwrap_or_else(|| prop.default.to_string()),
-            );
-            by_section.entry(prop.section).or_default().push(
-                PropRow {
-                    server_id: self.server_id.clone(),
-                    key: prop.key,
-                    default: prop.default,
-                    value: value.clone(),
-                    control: prop.control,
-                    numeric,
-                    icon: prop.icon,
-                    title: prop.title,
-                    description: prop.description,
-                }
-                .into_element(),
-            );
+            by_section
+                .entry(prop.section)
+                .or_default()
+                .push(prop_row(&server, &files, prop));
         }
 
         let id = self.server_id.clone();
@@ -389,8 +421,11 @@ impl Component for ServerSettings {
         software.push((
             Section::Software,
             t("oneclient.servers.settings.java.title"),
-            "",
-            super::software::java_row(&server),
+            t("oneclient.servers.settings.java.description"),
+            super::software::JavaRow {
+                server: server.clone(),
+            }
+            .into_element(),
         ));
         software.push((
             Section::Software,
@@ -406,6 +441,14 @@ impl Component for ServerSettings {
                 client_mods_row(&server),
             ));
         }
+        if whitelist_on(&files) {
+            software.push((
+                Section::Players,
+                t("oneclient.servers.settings.whitelisted.title"),
+                "",
+                whitelist_row(&id, &files, false),
+            ));
+        }
         software.push((
             Section::Performance,
             t("oneclient.servers.settings.backups_kept.title"),
@@ -415,13 +458,7 @@ impl Component for ServerSettings {
             }
             .into_element(),
         ));
-        let extra: [(Section, &'static str, &'static str, Element); 8] = [
-            (
-                Section::Players,
-                t("oneclient.servers.settings.whitelisted.title"),
-                "",
-                whitelist_row(&id, &files, false),
-            ),
+        let extra: [(Section, &'static str, &'static str, Element); 7] = [
             (
                 Section::Network,
                 t("oneclient.servers.settings.motd.title"),
@@ -489,6 +526,17 @@ impl Component for ServerSettings {
             }
         }
 
+        let nav = SectionNav {
+            scroll,
+            offsets,
+            top,
+            picked,
+            shown: Section::ALL
+                .into_iter()
+                .filter(|s| by_section.contains_key(s))
+                .collect(),
+        };
+
         let sections: Vec<Element> = Section::ALL
             .into_iter()
             .filter_map(|section| {
@@ -525,17 +573,26 @@ impl Component for ServerSettings {
             let base = *top.peek();
             if let Some(y) = offsets.peek().get(&section) {
                 let mut scroll = scroll;
+                let mut picked = picked;
                 scroll.scroll_to_y(-((y - base).round() as i32));
+                picked.set(Some((section, scroll.position().y as i32)));
             }
         };
 
-        let props_path = server.dir().ok().map(|d| d.join("server.properties"));
+        let editor = editing.read().clone().map(|text| {
+            PropertiesEditor {
+                server_id: self.server_id.clone(),
+                text,
+                editing,
+            }
+            .into_element()
+        });
         rect()
             .horizontal()
             .width(Size::fill())
             .height(Size::fill())
             .spacing(32.)
-            .child(sidebar(&server, &files, jump, props_path))
+            .child(sidebar(&server, &files, jump, editing, nav))
             .child(
                 rect()
                     .vertical()
@@ -600,6 +657,7 @@ impl Component for ServerSettings {
                             ),
                     ),
             )
+            .maybe_child(editor)
             .into_element()
     }
 }
@@ -608,13 +666,16 @@ fn sidebar(
     server: &LocalServer,
     files: &ServerFiles,
     jump: impl Fn(Section) + Clone + 'static,
-    props_path: Option<std::path::PathBuf>,
+    editing: State<Option<String>>,
+    nav: SectionNav,
 ) -> Element {
+    let edit_id = server.id.clone();
     let item = |icon: IconType, text: &'static str, on_press: EventHandler<()>| {
         SidebarItem {
             icon,
             text,
             on_press,
+            active: false,
         }
         .into_element()
     };
@@ -633,16 +694,17 @@ fn sidebar(
     };
     let link = |section: Section| {
         let jump = jump.clone();
-        item(
-            section.icon(),
-            section.label(),
-            (move |()| jump(section)).into(),
-        )
+        SectionLink {
+            section,
+            nav: nav.clone(),
+            on_press: (move |()| jump(section)).into(),
+        }
+        .into_element()
     };
 
     let java = server
         .java_major
-        .map_or_else(|| DASH.to_string(), |j| j.to_string());
+        .map_or_else(none, |j| j.to_string());
     let info = [
         format!(
             "{} {} \u{b7} Java {java}",
@@ -667,12 +729,7 @@ fn sidebar(
         .child(item(
             IconType::File02,
             "server.properties",
-            (move |()| {
-                if let Some(path) = &props_path {
-                    crate::platform::open_path(&path.to_string_lossy());
-                }
-            })
-            .into(),
+            (move |()| servers::load_properties(edit_id.clone(), editing)).into(),
         ))
         .child(
             rect()
@@ -691,10 +748,150 @@ fn sidebar(
 }
 
 #[derive(PartialEq)]
+struct PropertiesEditor {
+    server_id: String,
+    text: String,
+    editing: State<Option<String>>,
+}
+
+impl Component for PropertiesEditor {
+    fn render(&self) -> impl IntoElement {
+        let initial = self.text.clone();
+        let text = use_state(move || initial);
+        let mut editing = self.editing;
+        let id = self.server_id.clone();
+
+        OverlayPopup::new()
+            .overlay_level(OVERLAY_BASE_LEVEL + 3)
+            .on_close(move |_| editing.set(None))
+            .child(
+                rect()
+                    .width(Size::window_percent(100.))
+                    .height(Size::window_percent(100.))
+                    .center()
+                    .child(
+                        rect()
+                            .vertical()
+                            .width(Size::px(720.))
+                            .height(Size::window_percent(80.))
+                            .max_width(Size::window_percent(90.))
+                            .content(Content::Flex)
+                            .spacing(14.)
+                            .padding(Gaps::new_all(20.))
+                            .corner_radius(rounded(14.))
+                            .background(colors::card())
+                            .border(border_all_color(1., colors::component_border()))
+                            .child(
+                                rect()
+                                    .vertical()
+                                    .spacing(4.)
+                                    .child(
+                                        label()
+                                            .text("server.properties")
+                                            .font_size(text_size(16.))
+                                            .font_weight(FontWeight::SEMI_BOLD)
+                                            .color(colors::fg_primary()),
+                                    )
+                                    .child(
+                                        label()
+                                            .text(t(
+                                                "oneclient.servers.settings.properties.description",
+                                            ))
+                                            .font_size(text_size(12.))
+                                            .color(colors::fg_secondary()),
+                                    ),
+                            )
+                            .child(
+                                TextInput::new(text)
+                                    .multiline(true)
+                                    .auto_focus(true)
+                                    .width(Size::fill())
+                                    .height(Size::flex(1.0))
+                                    .font_family(crate::theme::mono_font())
+                                    .font_size(text_size(13.)),
+                            )
+                            .child(
+                                rect()
+                                    .horizontal()
+                                    .width(Size::fill())
+                                    .main_align(Alignment::End)
+                                    .spacing(8.)
+                                    .child(
+                                        Button::new()
+                                            .secondary()
+                                            .on_press(move |_| editing.set(None))
+                                            .text(t("oneclient.common.cancel")),
+                                    )
+                                    .child(
+                                        Button::new()
+                                            .primary()
+                                            .on_press(move |_| {
+                                                servers::write_properties(
+                                                    id.clone(),
+                                                    text.peek().clone(),
+                                                );
+                                                editing.set(None);
+                                            })
+                                            .text(t("oneclient.common.save")),
+                                    ),
+                            ),
+                    ),
+            )
+    }
+}
+
+#[derive(Clone, PartialEq)]
+struct SectionNav {
+    scroll: ScrollController,
+    offsets: State<HashMap<Section, f32>>,
+    top: State<f32>,
+    picked: State<Option<(Section, i32)>>,
+    shown: Vec<Section>,
+}
+
+impl SectionNav {
+    fn active(&self) -> Option<Section> {
+        let y = self.scroll.position().y as i32;
+        if let Some((section, at)) = *self.picked.read()
+            && at == y
+        {
+            return Some(section);
+        }
+        let scrolled = -y as f32 + 40.;
+        let base = *self.top.read();
+        let offsets = self.offsets.read();
+        self.shown
+            .iter()
+            .copied()
+            .rfind(|s| offsets.get(s).is_some_and(|o| o - base <= scrolled))
+            .or_else(|| self.shown.first().copied())
+    }
+}
+
+#[derive(PartialEq)]
+struct SectionLink {
+    section: Section,
+    nav: SectionNav,
+    on_press: EventHandler<()>,
+}
+
+impl Component for SectionLink {
+    fn render(&self) -> impl IntoElement {
+        SidebarItem {
+            icon: self.section.icon(),
+            text: self.section.label(),
+            on_press: self.on_press.clone(),
+            active: self.nav.active() == Some(self.section),
+        }
+    }
+}
+
+#[derive(PartialEq)]
 struct SidebarItem {
     icon: IconType,
     text: &'static str,
     on_press: EventHandler<()>,
+    active: bool,
 }
 
 impl Component for SidebarItem {
@@ -709,7 +906,9 @@ impl Component for SidebarItem {
             .spacing(10.)
             .padding(Gaps::new_symmetric(0., 10.))
             .corner_radius(rounded(7.))
-            .background(if *hovering.read() {
+            .background(if self.active {
+                colors::page_elevated()
+            } else if *hovering.read() {
                 colors::ghost_overlay()
             } else {
                 Color::TRANSPARENT
@@ -865,6 +1064,10 @@ impl Component for SegmentsControl {
                 .map(|(i, (_, label))| Segment::new(i).label(*label)),
         )
     }
+}
+
+pub(super) fn whitelist_on(files: &ServerFiles) -> bool {
+    files.props.get_or("white-list", "false") == "true"
 }
 
 pub(super) fn whitelist_row(id: &str, files: &ServerFiles, op: bool) -> Element {
@@ -1037,8 +1240,19 @@ impl Component for MotdRow {
     }
 
     fn render(&self) -> impl IntoElement {
-        let initial = self.files.props.get_or("motd", "A Minecraft Server");
-        let motd = use_state(move || initial);
+        let current = self.files.props.get_or("motd", super::motd::DEFAULT_MOTD);
+        let editor = super::motd::use_motd_editor(current.clone());
+        let mut motd = editor.value;
+        let mut synced = use_state({
+            let current = current.clone();
+            move || current
+        });
+        if *synced.peek() != current {
+            if *motd.peek() == *synced.peek() {
+                motd.set(current.clone());
+            }
+            synced.set(current);
+        }
         {
             let id = self.server.id.clone();
             use_debounced_save(
@@ -1052,90 +1266,43 @@ impl Component for MotdRow {
         let max = self.files.props.get_or("max-players", "20");
         let icon_id = self.server.id.clone();
 
-        rect()
-            .vertical()
-            .width(Size::fill())
-            .spacing(12.)
-            .padding(Gaps::new_symmetric(12., 16.))
-            .corner_radius(rounded(12.))
-            .background(colors::page_elevated())
-            .child(
-                rect()
-                    .horizontal()
-                    .width(Size::fill())
-                    .content(Content::Flex)
-                    .cross_align(Alignment::Center)
-                    .spacing(16.)
-                    .child(Icon::new(IconType::MessageTextSquare01))
-                    .child(
-                        rect()
-                            .vertical()
-                            .width(Size::flex(1.0))
-                            .spacing(2.)
-                            .child(
-                                label()
-                                    .text(t("oneclient.servers.settings.motd.title"))
-                                    .font_size(text_size(16.))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .color(colors::fg_primary()),
-                            )
-                            .child(
-                                label()
-                                    .text(t("oneclient.servers.settings.motd.description"))
-                                    .font_size(text_size(12.))
-                                    .color(colors::fg_secondary()),
-                            ),
-                    )
-                    .child(
-                        Button::new()
-                            .secondary()
-                            .on_press(move |_| {
-                                let id = icon_id.clone();
-                                spawn(async move {
-                                    let Some(file) = rfd::AsyncFileDialog::new()
-                                        .add_filter(
-                                            t("oneclient.servers.settings.motd.icon_filter"),
-                                            &["png", "jpg", "jpeg"],
-                                        )
-                                        .pick_file()
-                                        .await
-                                    else {
-                                        return;
-                                    };
-                                    let source = file.path().to_path_buf();
-                                    servers::run(
-                                        id.clone(),
-                                        t("oneclient.servers.settings.motd.icon_failed"),
-                                        async move {
-                                            core::set_icon(&core::server_dir(&id)?, source).await
-                                        },
-                                    );
-                                });
-                            })
-                            .text(t("oneclient.servers.settings.motd.change_icon")),
-                    ),
-            )
-            .child(
-                rect()
-                    .vertical()
-                    .width(Size::fill())
-                    .spacing(10.)
-                    .padding(Gaps::new(0., 0., 0., 40.))
-                    .child(list_preview(
-                        &self.server,
-                        self.files.icon.clone(),
-                        &motd.read(),
-                        format!("{}/{max}", live.players.len()),
-                    ))
-                    .child(
-                        TextInput::new(motd)
-                            .width(Size::fill())
-                            .font_family(crate::theme::mono_font())
-                            .placeholder("A Minecraft Server"),
-                    )
-                    .child(super::motd::code_picker(motd)),
-            )
-            .into_element()
+        let change_icon = Button::new()
+            .secondary()
+            .on_press(move |_| {
+                let id = icon_id.clone();
+                spawn(async move {
+                    let Some(file) = rfd::AsyncFileDialog::new()
+                        .add_filter(
+                            t("oneclient.servers.settings.motd.icon_filter"),
+                            &["png", "jpg", "jpeg"],
+                        )
+                        .pick_file()
+                        .await
+                    else {
+                        return;
+                    };
+                    let source = file.path().to_path_buf();
+                    servers::run(
+                        id.clone(),
+                        t("oneclient.servers.settings.motd.icon_failed"),
+                        async move {
+                            core::set_icon(&core::server_dir(&id)?, source).await
+                        },
+                    );
+                });
+            })
+            .text(t("oneclient.servers.settings.motd.change_icon"));
+
+        super::motd::motd_card(
+            editor,
+            list_preview(
+                &self.server,
+                self.files.icon.clone(),
+                &motd.read(),
+                format!("{}/{max}", live.players.len()),
+            ),
+            Some(change_icon.into_element()),
+        )
     }
 }
 
@@ -1211,7 +1378,7 @@ impl Component for JvmRow {
         let java = self
             .server
             .java_major
-            .map_or_else(|| DASH.to_string(), |j| j.to_string());
+            .map_or_else(none, |j| j.to_string());
         settings_row(
             IconType::CodeSnippet02,
             t("oneclient.servers.settings.jvm.title"),

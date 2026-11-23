@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use freya::query::{QueriesStorage, Query, QueryCapability, UseQuery, use_query};
 use oneclient_common::domain::ProviderId;
 use oneclient_core::LauncherError;
@@ -220,33 +218,6 @@ pub fn use_server_run(id: String) -> UseQuery<ServerRunQuery> {
     use_query(Query::new(id, ServerRunQuery))
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ServerLogQuery;
-
-impl QueryCapability for ServerLogQuery {
-    type Ok = Arc<Vec<Arc<str>>>;
-    type Err = LauncherError;
-    type Keys = String;
-
-    async fn run(&self, id: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        let id = id.clone();
-        crate::launcher::off_ui(async move {
-            let dir = servers::server_dir(&id)?;
-            let text = tokio::fs::read_to_string(dir.join("logs").join("latest.log"))
-                .await
-                .unwrap_or_default();
-            let lines: Vec<&str> = text.lines().collect();
-            let skip = lines.len().saturating_sub(crate::servers::MAX_LINES);
-            Ok(Arc::new(lines[skip..].iter().map(|l| Arc::from(*l)).collect()))
-        })
-        .await
-    }
-}
-
-pub fn use_server_log(id: String) -> UseQuery<ServerLogQuery> {
-    use_query(Query::new(id, ServerLogQuery))
-}
-
 pub async fn invalidate_server_settings(id: &str) {
     QueriesStorage::<ListServersQuery>::invalidate_all().await;
     QueriesStorage::<ServerFilesQuery>::invalidate_matching(id.to_string()).await;
@@ -257,5 +228,5 @@ pub async fn invalidate_server(id: &str) {
     QueriesStorage::<ServerModsQuery>::invalidate_matching(id.to_string()).await;
     QueriesStorage::<ServerModUpdatesQuery>::invalidate_matching(id.to_string()).await;
     QueriesStorage::<ServerRunQuery>::invalidate_matching(id.to_string()).await;
-    QueriesStorage::<ServerLogQuery>::invalidate_matching(id.to_string()).await;
+    QueriesStorage::<super::logs::ServerLogsQuery>::invalidate_matching(id.to_string()).await;
 }

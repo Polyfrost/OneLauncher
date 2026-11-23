@@ -118,18 +118,20 @@ pub fn status_line(status: ServerStatus, server: &LocalServer) -> String {
 }
 
 pub fn fmt_uptime(started: Instant) -> String {
-    let secs = started.elapsed().as_secs();
-    let (h, m) = (secs / 3600, (secs % 3600) / 60);
-    if h > 0 {
-        format!("{h}h {m}m")
-    } else if m > 0 {
-        format!("{m}m")
-    } else {
-        format!("{secs}s")
-    }
+    crate::utils::format_duration(started.elapsed().as_secs() as i64)
 }
 
-pub const DASH: &str = "-";
+pub fn none() -> String {
+    t("oneclient.servers.none").to_string()
+}
+
+pub fn size_label(bytes: u64) -> String {
+    if bytes == 0 {
+        "0 MB".to_string()
+    } else {
+        crate::utils::format_size(bytes)
+    }
+}
 
 pub fn head(live: &crate::servers::ServerLive, name: &str, size: f32) -> Element {
     let uuid = live.uuids.get(name).cloned().unwrap_or_default();

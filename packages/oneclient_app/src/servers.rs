@@ -639,6 +639,7 @@ pub fn start(station: Station, id: String) {
                             .await;
                     }
                     invalidate_server(&id).await;
+                    crate::hooks::invalidate_logs_queries().await;
                 }
             }
         }
@@ -986,6 +987,10 @@ pub fn stop(station: Station, id: String) {
     });
 }
 
+pub fn is_restarting(id: &str) -> bool {
+    RESTARTING.lock().unwrap().contains(id)
+}
+
 pub fn restart(station: Station, id: String) {
     if !station.peek().servers.status(&id).is_live() {
         start(station, id);
@@ -1053,6 +1058,28 @@ pub fn backup(id: String, quiet: bool) {
     });
 }
 
+async fn save_install_log(id: &str, text: String) {
+    if text.is_empty() {
+        return;
+    }
+    let id = id.to_string();
+    let name = format!(
+        "install-{}.log",
+        chrono::Local::now().format("%Y-%m-%d_%H-%M-%S")
+    );
+    let saved = off_ui(async move {
+        let dir = servers::server_dir(&id)?.join("logs");
+        tokio::fs::create_dir_all(&dir).await?;
+        tokio::fs::write(dir.join(name), text).await?;
+        Ok::<_, oneclient_core::LauncherError>(())
+    })
+    .await;
+    if let Err(err) = saved {
+        tracing::warn!(%err, "could not save the server install log");
+    }
+    crate::hooks::invalidate_logs_queries().await;
+}
+
 /// Installs in the background, the server shows as installing until it finishes
 pub fn install(station: Station, mut server: LocalServer, prepare: Prepare, port: Option<u16>) {
     let id = server.id.clone();
@@ -1065,9 +1092,14 @@ pub fn install(station: Station, mut server: LocalServer, prepare: Prepare, port
     spawn_in_window({
         let id = id.clone();
         async move {
+            let mut saved = String::new();
             while let Some(line) = log_rx.recv().await {
-                write_lines(station, &id, vec![strip_ansi(&line)]);
+                let line = strip_ansi(&line);
+                saved.push_str(&line);
+                saved.push('\n');
+                write_lines(station, &id, vec![line]);
             }
+            save_install_log(&id, saved).await;
         }
     });
     spawn_in_window(async move {
@@ -1411,6 +1443,45 @@ pub fn set_property(id: String, key: &'static str, value: String) {
                 let dir = servers::server_dir(&id)?;
                 let mut props = servers::Properties::load(&dir).await?;
                 props.set(key, &value);
+                props.write(&dir).await?;
+                Ok::<_, oneclient_core::LauncherError>(())
+            }
+        })
+        .await;
+        if let Err(err) = result {
+            notify_error(t("oneclient.servers.save_failed"), err);
+        }
+        invalidate_server_settings(&id).await;
+    });
+}
+
+pub fn load_properties(id: String, mut editing: freya::prelude::State<Option<String>>) {
+    use freya::prelude::*;
+    spawn_in_window(async move {
+        let loaded = off_ui(async move {
+            let dir = servers::server_dir(&id)?;
+            let props = servers::Properties::load(&dir).await?;
+            Ok::<_, oneclient_core::LauncherError>(props.to_string())
+        })
+        .await;
+        match loaded {
+            Ok(text) => editing.set(Some(text)),
+            Err(err) => notify_error(t("oneclient.servers.settings.properties.load_failed"), err),
+        }
+    });
+}
+
+pub fn write_properties(id: String, text: String) {
+    let saving = crate::hooks::SaveGuard::new();
+    spawn_in_window(async move {
+        let _saving = saving;
+        let result = off_ui({
+            let id = id.clone();
+            async move {
+                let _files = hold(&FILES, &id).await;
+                let dir = servers::server_dir(&id)?;
+                let mut props = servers::Properties::load(&dir).await?;
+                props.replace_text(&text);
                 props.write(&dir).await?;
                 Ok::<_, oneclient_core::LauncherError>(())
             }

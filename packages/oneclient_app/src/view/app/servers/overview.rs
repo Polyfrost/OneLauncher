@@ -1,9 +1,7 @@
 use freya::prelude::*;
-use freya::router::RouterContext;
 
 use super::console::ConsolePanel;
-use super::{DASH, card, card_head, fmt_uptime, head, list_preview, player_head};
-use crate::Route;
+use super::{card, card_head, fmt_uptime, head, list_preview, player_head};
 use crate::components::{Button, Icon, IconType, ScrollArea, copy_button};
 use crate::hooks::{
     ServerFiles, settled_or_loading, use_dispatch, use_server, use_server_files, use_server_hub,
@@ -13,7 +11,6 @@ use crate::i18n::{t, tf};
 use crate::servers::{self, ServerLive, ServerStatus};
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, centered_note};
-use crate::utils::format_size;
 use oneclient_core::servers::LocalServer;
 
 const PORT_GUIDE: &str =
@@ -35,8 +32,6 @@ impl Component for ServerOverview {
         let mod_count = settled_or_loading(&use_server_mods(self.server_id.clone()))
             .map_or(0, |mods| mods.len());
         let live = use_server_hub().get(&self.server_id);
-        let dispatch = use_dispatch();
-
         let Some(server) = server else {
             return centered_note(t("oneclient.servers.not_found"));
         };
@@ -53,11 +48,7 @@ impl Component for ServerOverview {
                         .secondary()
                         .on_press({
                             let server_id = self.server_id.clone();
-                            move |_| {
-                                let _ = RouterContext::get().replace(Route::ServerSettings {
-                                    server_id: server_id.clone(),
-                                });
-                            }
+                            move |_| super::settings::open_at_motd(server_id.clone())
                         })
                         .child(Icon::new(IconType::Pencil01).size(14.))
                         .text(t("oneclient.servers.preview.edit"))
@@ -112,7 +103,7 @@ impl Component for ServerOverview {
                                 server_id: self.server_id.clone(),
                                 height: Some(340.),
                             })
-                            .child(join_card(&port, dispatch.clone())),
+                            .child(join_card(&port)),
                     )
                     .child(
                         rect()
@@ -210,7 +201,7 @@ fn row(children: Vec<Element>) -> Element {
 fn stats(live: &ServerLive, files: &ServerFiles, world_size: u64, max_players: &str) -> Element {
     let running = live.status == ServerStatus::Running;
     let last_backup = files.backups.first().map_or_else(
-        || DASH.to_string(),
+        || super::none(),
         |b| b.created.format("%H:%M").to_string(),
     );
 
@@ -241,7 +232,7 @@ fn stats(live: &ServerLive, files: &ServerFiles, world_size: u64, max_players: &
                     t("oneclient.servers.stats.uptime"),
                     live.started
                         .filter(|_| running)
-                        .map_or_else(|| DASH.to_string(), fmt_uptime),
+                        .map_or_else(|| crate::utils::format_duration(0), fmt_uptime),
                     None,
                     false,
                     None,
@@ -251,7 +242,7 @@ fn stats(live: &ServerLive, files: &ServerFiles, world_size: u64, max_players: &
             tile(
                 t("oneclient.servers.stats.memory"),
                 live.memory_bytes
-                    .map_or_else(|| DASH.to_string(), format_size),
+                    .map_or_else(|| super::size_label(0), super::size_label),
                 None,
                 false,
                 None,
@@ -259,18 +250,14 @@ fn stats(live: &ServerLive, files: &ServerFiles, world_size: u64, max_players: &
             tile(
                 t("oneclient.servers.stats.cpu"),
                 live.cpu_percent
-                    .map_or_else(|| DASH.to_string(), |c| format!("{c:.0}%")),
+                    .map_or_else(|| "0%".to_string(), |c| format!("{c:.0}%")),
                 None,
                 false,
                 None,
             ),
             tile(
                 t("oneclient.servers.stats.world"),
-                if world_size == 0 {
-                    DASH.to_string()
-                } else {
-                    format_size(world_size)
-                },
+                super::size_label(world_size),
                 None,
                 false,
                 None,
@@ -286,50 +273,138 @@ fn stats(live: &ServerLive, files: &ServerFiles, world_size: u64, max_players: &
         .into_element()
 }
 
-fn address_row(
+#[derive(PartialEq)]
+struct AddressRow {
     icon: IconType,
     address: String,
     caption: &'static str,
-    dispatch: crate::Actions,
-) -> Element {
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .content(Content::Flex)
-        .cross_align(Alignment::Center)
-        .spacing(14.)
-        .padding(Gaps::new_symmetric(12., 16.))
-        .corner_radius(rounded(10.))
-        .background(colors::component_bg())
-        .child(Icon::new(icon).size(20.).color(colors::fg_secondary()))
-        .child(
-            rect()
-                .vertical()
-                .width(Size::flex(1.0))
-                .spacing(2.)
-                .child(
-                    label()
-                        .text(address.clone())
-                        .font_family(crate::theme::mono_font())
-                        .font_size(text_size(15.))
-                        .color(colors::fg_primary()),
-                )
-                .child(
-                    label()
-                        .text(caption)
-                        .font_size(text_size(12.))
-                        .color(colors::fg_secondary()),
-                ),
-        )
-        .child(copy_button(
-            address,
-            t("oneclient.servers.copied"),
-            dispatch,
-        ))
-        .into_element()
+    spoiler: bool,
 }
 
-fn join_card(port: &str, dispatch: crate::Actions) -> Element {
+fn masked(address: &str) -> String {
+    let (host, port) = address.rsplit_once(':').unwrap_or((address, ""));
+    let host: String = host
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { '\u{2022}' } else { c })
+        .collect();
+    if port.is_empty() {
+        host
+    } else {
+        format!("{host}:{port}")
+    }
+}
+
+impl Component for AddressRow {
+    fn render(&self) -> impl IntoElement {
+        let mut revealed = use_state(|| !self.spoiler);
+        let mut hovering = use_state(|| false);
+        let dispatch = use_dispatch();
+        let hidden = !*revealed.read();
+
+        let address = label()
+            .text(if hidden {
+                masked(&self.address)
+            } else {
+                self.address.clone()
+            })
+            .font_family(crate::theme::mono_font())
+            .font_size(text_size(15.))
+            .max_lines(1)
+            .color(if hidden {
+                colors::fg_secondary()
+            } else {
+                colors::fg_primary()
+            });
+
+        let address = rect()
+            .horizontal()
+            .cross_align(Alignment::Center)
+            .spacing(8.)
+            .padding(Gaps::new_symmetric(2., 8.))
+            .margin(Gaps::new_symmetric(0., -8.))
+            .corner_radius(rounded(6.))
+            .child(address)
+            .maybe(hidden, |el| {
+                el.background(if *hovering.read() {
+                    colors::ghost_overlay()
+                } else {
+                    Color::TRANSPARENT
+                })
+                .cursor(CursorIcon::Pointer)
+                .a11y_role(AccessibilityRole::Button)
+                .a11y_alt(t("oneclient.servers.join.show"))
+                .on_pointer_enter(move |_| hovering.set(true))
+                .on_pointer_leave(move |_| hovering.set(false))
+                .on_press(move |_| {
+                    hovering.set(false);
+                    revealed.set(true);
+                })
+                .child(
+                    label()
+                        .text(t("oneclient.servers.join.reveal"))
+                        .font_size(text_size(11.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .color(if *hovering.read() {
+                            colors::fg_primary()
+                        } else {
+                            colors::fg_secondary()
+                        }),
+                )
+            });
+
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .content(Content::Flex)
+            .cross_align(Alignment::Center)
+            .spacing(14.)
+            .padding(Gaps::new_symmetric(12., 16.))
+            .corner_radius(rounded(10.))
+            .background(colors::component_bg())
+            .child(Icon::new(self.icon).size(20.).color(colors::fg_secondary()))
+            .child(
+                rect()
+                    .vertical()
+                    .width(Size::flex(1.0))
+                    .spacing(2.)
+                    .child(address)
+                    .child(
+                        label()
+                            .text(self.caption)
+                            .font_size(text_size(12.))
+                            .color(colors::fg_secondary()),
+                    ),
+            )
+            .maybe_child(self.spoiler.then(|| {
+                Button::new()
+                    .ghost()
+                    .icon()
+                    .tooltip(if hidden {
+                        t("oneclient.servers.join.show")
+                    } else {
+                        t("oneclient.servers.join.hide")
+                    })
+                    .on_press(move |_| revealed.set(hidden))
+                    .child(
+                        Icon::new(IconType::Eye)
+                            .size(16.)
+                            .color(if hidden {
+                                colors::fg_secondary()
+                            } else {
+                                colors::fg_primary()
+                            }),
+                    )
+                    .into_element()
+            }))
+            .child(copy_button(
+                self.address.clone(),
+                t("oneclient.servers.copied"),
+                dispatch,
+            ))
+    }
+}
+
+fn join_card(port: &str) -> Element {
     let lan = oneclient_core::servers::lan_ip().map(|ip| format!("{ip}:{port}"));
     card()
         .child(card_head(
@@ -337,19 +412,20 @@ fn join_card(port: &str, dispatch: crate::Actions) -> Element {
             t("oneclient.servers.join.subtitle"),
             None,
         ))
-        .child(address_row(
-            IconType::LayoutTop,
-            format!("localhost:{port}"),
-            t("oneclient.servers.join.this_pc"),
-            dispatch.clone(),
-        ))
+        .child(AddressRow {
+            icon: IconType::LayoutTop,
+            address: format!("localhost:{port}"),
+            caption: t("oneclient.servers.join.this_pc"),
+            spoiler: false,
+        })
         .maybe_child(lan.map(|lan| {
-            address_row(
-                IconType::Globe01,
-                lan,
-                t("oneclient.servers.join.lan"),
-                dispatch,
-            )
+            AddressRow {
+                icon: IconType::Globe01,
+                address: lan,
+                caption: t("oneclient.servers.join.lan"),
+                spoiler: true,
+            }
+            .into_element()
         }))
         .child(
             rect()
@@ -566,7 +642,7 @@ fn requirements_card(
 ) -> Element {
     let total_gb = oneclient_common::memory::total_ram_mb() / 1024;
     let java = server.java_major.map_or_else(
-        || DASH.to_string(),
+        super::none,
         |major| {
             if server.java_path.is_some() {
                 major.to_string()
@@ -643,4 +719,18 @@ fn backups_card(server: &LocalServer, id: String) -> Element {
                 .text(t("oneclient.servers.backups.now")),
         )
         .into_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::masked;
+
+    #[test]
+    fn masks_the_host_and_keeps_the_port() {
+        assert_eq!(
+            masked("192.168.1.20:25565"),
+            "\u{2022}\u{2022}\u{2022}.\u{2022}\u{2022}\u{2022}.\u{2022}.\u{2022}\u{2022}:25565"
+        );
+        assert_eq!(masked("10.0.0.1"), "\u{2022}\u{2022}.\u{2022}.\u{2022}.\u{2022}");
+    }
 }

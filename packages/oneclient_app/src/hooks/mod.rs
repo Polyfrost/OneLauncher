@@ -103,7 +103,7 @@ pub(crate) use queries::{UNCREATED_CLUSTER, bundle_plan, bundle_taken, pkg_key};
 pub use queries::{
     ServerFiles, ServerIcon, ServerRun, invalidate_server, invalidate_server_settings, use_server,
     use_platform_available, use_plugin_versions, use_server_files, use_server_mod_updates,
-    use_server_log, use_server_mods, use_server_run,
+    use_server_logs, use_server_mods, use_server_run,
     use_servers,
 };
 pub use queries::{

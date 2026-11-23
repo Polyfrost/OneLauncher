@@ -7,8 +7,9 @@ use oneclient_core::servers::{LocalServer, Platform};
 
 use crate::components::{Button, Dropdown, IconType, TextInput, validate_number};
 use crate::hooks::{
-    game_versions, settled_or_loading, use_debounced_save, use_dispatch, use_game_versions,
-    use_platform_available, use_server_hub, use_version_loaders,
+    game_versions, java_runtimes, settled_or_loading, use_debounced_save, use_dispatch,
+    use_game_versions, use_java_runtimes, use_platform_available, use_server_hub,
+    use_version_loaders,
 };
 use crate::i18n::{t, tf};
 use crate::servers::{self, ServerStatus};
@@ -166,7 +167,7 @@ pub(super) fn update_row(server: &LocalServer, stopped: bool) -> Option<Element>
     let installed = server
         .loader_version
         .clone()
-        .unwrap_or_else(|| super::DASH.to_string());
+        .unwrap_or_else(super::none);
     Some(
         settings_row(
             IconType::Download01,
@@ -220,58 +221,84 @@ pub(super) fn jar_row(server: &LocalServer, stopped: bool) -> Element {
     .into_element()
 }
 
-pub(super) fn java_row(server: &LocalServer) -> Element {
-    let current = match &server.java_path {
-        Some(path) => path.display().to_string(),
-        None => tf(
+#[derive(PartialEq)]
+pub(super) struct JavaRow {
+    pub server: LocalServer,
+}
+
+impl Component for JavaRow {
+    fn render_key(&self) -> DiffKey {
+        row_key(&self.server, "java")
+    }
+
+    fn render(&self) -> impl IntoElement {
+        let runtimes = java_runtimes(&use_java_runtimes());
+        let server = &self.server;
+        let automatic = tf(
             "oneclient.servers.settings.java.automatic",
             &[&server
                 .java_major
-                .map_or_else(|| super::DASH.to_string(), |major| major.to_string())],
-        ),
-    };
-    let (pick_id, reset_id, custom) = (
-        server.id.clone(),
-        server.id.clone(),
-        server.java_path.is_some(),
-    );
-    settings_row(
-        IconType::CodeSnippet02,
-        t("oneclient.servers.settings.java.title"),
-        current,
-        rect()
-            .horizontal()
-            .spacing(8.)
-            .child(
-                Button::new()
-                    .small()
-                    .secondary()
-                    .on_press(move |_| {
-                        let id = pick_id.clone();
-                        spawn(async move {
-                            let Some(file) = rfd::AsyncFileDialog::new()
-                                .set_title(t("oneclient.servers.settings.java.pick"))
-                                .pick_file()
-                                .await
-                            else {
-                                return;
-                            };
-                            let path = file.path().to_path_buf();
-                            servers::update(id, move |s| s.java_path = Some(path));
-                        });
-                    })
-                    .text(t("oneclient.servers.settings.java.choose")),
-            )
-            .child(
-                Button::new()
-                    .small()
-                    .ghost()
-                    .enabled(custom)
-                    .on_press(move |_| servers::update(reset_id.clone(), |s| s.java_path = None))
-                    .text(t("oneclient.servers.settings.java.reset")),
-            ),
-    )
-    .into_element()
+                .map_or_else(super::none, |major| major.to_string())],
+        );
+        let runtime_label = |r: &oneclient_java::JavaRuntime| {
+            format!("{} {} ({})", r.vendor, r.major, r.version)
+        };
+        let selected = match &server.java_path {
+            None => automatic.clone(),
+            Some(path) => runtimes
+                .iter()
+                .find(|r| std::path::Path::new(&r.absolute_path) == path)
+                .map_or_else(|| path.display().to_string(), runtime_label),
+        };
+        let mut options = vec![automatic];
+        options.extend(runtimes.iter().map(runtime_label));
+        let paths: Vec<std::path::PathBuf> = runtimes
+            .iter()
+            .map(|r| r.absolute_path.clone().into())
+            .collect();
+        let (pick_id, select_id) = (server.id.clone(), server.id.clone());
+
+        settings_row(
+            IconType::CodeSnippet02,
+            t("oneclient.servers.settings.java.title"),
+            t("oneclient.servers.settings.java.description"),
+            rect()
+                .horizontal()
+                .cross_align(Alignment::Center)
+                .spacing(8.)
+                .child(
+                    Dropdown::new(selected, options)
+                        .width(Size::px(260.))
+                        .height(Size::px(34.))
+                        .on_select(move |idx: usize| {
+                            let path = idx.checked_sub(1).and_then(|i| paths.get(i).cloned());
+                            if idx == 0 || path.is_some() {
+                                servers::update(select_id.clone(), move |s| s.java_path = path);
+                            }
+                        }),
+                )
+                .child(
+                    Button::new()
+                        .small()
+                        .secondary()
+                        .on_press(move |_| {
+                            let id = pick_id.clone();
+                            spawn(async move {
+                                let Some(file) = rfd::AsyncFileDialog::new()
+                                    .set_title(t("oneclient.servers.settings.java.pick"))
+                                    .pick_file()
+                                    .await
+                                else {
+                                    return;
+                                };
+                                let path = file.path().to_path_buf();
+                                servers::update(id, move |s| s.java_path = Some(path));
+                            });
+                        })
+                        .text(t("oneclient.servers.settings.java.choose")),
+                ),
+        )
+    }
 }
 
 #[derive(PartialEq)]

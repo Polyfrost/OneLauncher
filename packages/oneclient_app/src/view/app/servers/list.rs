@@ -5,7 +5,7 @@ use freya::router::RouterContext;
 use oneclient_core::servers::LocalServer;
 
 use super::create::CreateServerModal;
-use super::{DASH, fmt_uptime, loader_label, server_icon, status_label, version_art};
+use super::{fmt_uptime, loader_label, server_icon, status_label, version_art};
 use crate::Route;
 use crate::components::{
     ART_PREVIEW_EDGE, Avatar, Button, ContextMenu, Icon, IconType, ScrollArea, open_menu_at,
@@ -162,8 +162,7 @@ impl Component for ServerCard {
         let max_players = props.get_or("max-players", "20");
         let world_size = run
             .map(|r| r.world_size)
-            .filter(|size| *size > 0)
-            .map_or_else(|| DASH.to_string(), format_size);
+            .map_or_else(|| super::size_label(0), super::size_label);
         let allocated = format_size(u64::from(self.server.memory_mb) * 1024 * 1024);
         let memory = match live.memory_bytes.filter(|_| live.status.is_live()) {
             Some(used) => format_size(used),
@@ -413,7 +412,7 @@ fn stats_strip(live: &CardLive, max_players: &str, memory: String, world: String
     let players = if online {
         format!("{}/{max_players}", live.players.len())
     } else {
-        format!("{DASH}/{max_players}")
+        format!("0/{max_players}")
     };
     let heads = (online && !live.players.is_empty()).then(|| {
         let extra = live.players.len().saturating_sub(HEADS);

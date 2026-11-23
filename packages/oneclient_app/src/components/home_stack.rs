@@ -61,7 +61,20 @@ pub struct WheelEdgeChain {
     pub pass_all: State<bool>,
     /// When the area last took the wheel, or held it at the edge
     pub inner_wheel_at: State<Option<std::time::Instant>>,
+    /// Last momentum event the stack swallowed after a touchpad lift settled it
+    pub coast_at: State<Option<std::time::Instant>>,
 }
+
+impl WheelEdgeChain {
+    /// A touchpad fling that already settled the stack is still coasting, so neither the
+    /// stack nor a list inside it should act on it
+    pub fn coasting(&self) -> bool {
+        self.coast_at.peek().is_some_and(|at| at.elapsed() < COAST_GAP)
+    }
+}
+
+/// Momentum events arrive every frame; a gap this long means the fling has died out
+pub const COAST_GAP: std::time::Duration = std::time::Duration::from_millis(100);
 
 /// How long the wheel must go quiet after scrolling a list before it may move the stack
 pub const EDGE_SETTLE: std::time::Duration = std::time::Duration::from_millis(300);

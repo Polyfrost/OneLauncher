@@ -4,12 +4,18 @@ use oneclient_common::parse_mc_version;
 
 use super::shell::RAIL_WIDTH;
 use crate::components::DynamicArt;
-use crate::theme::{rounded, text_size};
+use crate::theme::{colors, rounded, text_size};
 
 const HAIRLINE: Color = Color::from_argb(31, 255, 255, 255);
 const CHIP_BG: Color = Color::from_argb(26, 255, 255, 255);
-const SUB: Color = Color::from_argb(184, 213, 219, 255);
-const MUTED: Color = Color::from_argb(140, 213, 219, 255);
+
+fn sub() -> Color {
+    colors::on_media().with_a(184)
+}
+
+fn muted() -> Color {
+    colors::on_media().with_a(140)
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum RowState {
@@ -39,8 +45,8 @@ pub fn steps_card(rows: Vec<(&'static str, String, RowState)>) -> Element {
             .map(|(name, value, state)| {
                 let name_color = match state {
                     RowState::Current => Color::WHITE,
-                    RowState::Done => SUB,
-                    RowState::Pending => MUTED,
+                    RowState::Done => sub(),
+                    RowState::Pending => muted(),
                 };
                 row(name, &value, name_color)
             })
@@ -51,7 +57,7 @@ pub fn steps_card(rows: Vec<(&'static str, String, RowState)>) -> Element {
 pub fn facts_card(rows: Vec<(&'static str, String)>) -> Element {
     rows_list(
         rows.into_iter()
-            .map(|(name, value)| row(name, &value, SUB))
+            .map(|(name, value)| row(name, &value, sub()))
             .collect(),
     )
 }
@@ -150,7 +156,7 @@ pub fn rail(parts: Rail) -> Element {
                                 .font_size(text_size(13.))
                                 .line_height(1.45)
                                 .max_lines(3)
-                                .color(SUB),
+                                .color(sub()),
                         ),
                 )
                 .child(

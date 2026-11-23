@@ -321,3 +321,21 @@ jobs:
           archive: false
           if-no-files-found: error
           retention-days: 14
+
+  prune-caches:
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Delete superseded Rust caches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh cache list --key v0-rust- --ref refs/heads/main --limit 500 \
+            --sort created_at --order desc --json id,key \
+            --jq '.[] | "\(.id) \(.key | sub("(-[0-9a-f]{8}){2}$"; ""))"' |
+            awk 'seen[$2]++ { print $1 }' |
+            xargs -r -n1 gh cache delete

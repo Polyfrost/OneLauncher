@@ -35,9 +35,8 @@ runs:
       if: ${{ inputs.restore-cache == 'true' }}
       uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       with:
-        key: ${{ inputs.target }}
         save-if: ${{ inputs.save-cache }}
-        shared-key: ${{ inputs.cache-namespace }}
+        shared-key: ${{ inputs.cache-namespace }}${{ inputs.target && format('-{0}', inputs.target) || '' }}
         # Release builds are long and can fail late (signing, notarization,
         # upload). Without this the whole compile is thrown away on those runs.
         cache-on-failure: true

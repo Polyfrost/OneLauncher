@@ -21,6 +21,22 @@ use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 
 pub struct CurseForgeProvider;
 
+#[derive(Deserialize)]
+struct CfCategory {
+    id: u32,
+    name: String,
+}
+
+async fn fetch_categories(class_id: u32, ctx: &ContentCtx) -> ContentResult<Vec<CfCategory>> {
+    let mut url = Url::parse(&api_url("/categories"))?;
+    url.query_pairs_mut()
+        .append_pair("gameId", &CURSEFORGE_GAME_ID.to_string())
+        .append_pair("classId", &class_id.to_string());
+    let response: CfData<Vec<CfCategory>> =
+        fetch_json(&ctx.net, Method::GET, url.as_str(), None).await?;
+    Ok(response.data)
+}
+
 #[inline(always)]
 fn api_url(path: &str) -> String {
     format!("{CURSEFORGE_API_URL}{path}")
@@ -40,14 +56,26 @@ impl PackageProvider for CurseForgeProvider {
     ) -> ContentResult<Page<ProjectSummary>> {
         tracing::debug!(query = ?filters.query, "searching curseforge");
         let mut url = Url::parse(&api_url("/mods/search"))?;
+        let class_id = filters
+            .content_type
+            .map(cf_class_id)
+            .unwrap_or(CfClass::Mod as u32);
+
+        let category_ids: Vec<u32> = match filters.categories.as_deref() {
+            Some(names) if !names.is_empty() && names.len() <= 10 => {
+                fetch_categories(class_id, ctx)
+                    .await?
+                    .into_iter()
+                    .filter(|c| names.contains(&c.name))
+                    .map(|c| c.id)
+                    .collect()
+            }
+            _ => Vec::new(),
+        };
 
         {
             let mut params = url.query_pairs_mut();
             params.append_pair("gameId", &CURSEFORGE_GAME_ID.to_string());
-            let class_id = filters
-                .content_type
-                .map(cf_class_id)
-                .unwrap_or(CfClass::Mod as u32);
             params.append_pair("classId", &class_id.to_string());
             params.append_pair(
                 "pageSize",
@@ -80,6 +108,12 @@ impl PackageProvider for CurseForgeProvider {
                 .and_then(|l| cf_loader_type(*l))
             {
                 params.append_pair("modLoaderType", &loader.to_string());
+            }
+            if !category_ids.is_empty() {
+                params.append_pair(
+                    "categoryIds",
+                    &serde_json::to_string(&category_ids).unwrap_or_default(),
+                );
             }
         }
 
@@ -184,18 +218,11 @@ impl PackageProvider for CurseForgeProvider {
         content_type: ContentType,
         ctx: &ContentCtx,
     ) -> ContentResult<Vec<String>> {
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct CfCategory {
-            name: String,
-        }
-        let mut url = Url::parse(&api_url("/categories"))?;
-        url.query_pairs_mut()
-            .append_pair("gameId", &CURSEFORGE_GAME_ID.to_string())
-            .append_pair("classId", &cf_class_id(content_type).to_string());
-        let response: CfData<Vec<CfCategory>> =
-            fetch_json(&ctx.net, Method::GET, url.as_str(), None).await?;
-        Ok(response.data.into_iter().map(|c| c.name).collect())
+        Ok(fetch_categories(cf_class_id(content_type), ctx)
+            .await?
+            .into_iter()
+            .map(|c| c.name)
+            .collect())
     }
 
     #[tracing::instrument(level = "debug", skip(self, ctx))]

@@ -61,7 +61,9 @@ pub use bundles::{
     onboarding_bundles_items, use_available_bundles, use_bundle_overrides, use_bundle_updates,
     use_bundles_with_status, use_imported_modpacks, use_modpack_sources, use_onboarding_bundles,
 };
-pub(crate) use bundles::{UNCREATED_CLUSTER, bundle_plan, bundle_taken, pkg_key};
+pub(crate) use bundles::{
+    UNCREATED_CLUSTER, bundle_plan, bundle_taken, pkg_key, shared_mod_keys, toggle_keys,
+};
 pub use changelog::{
     changelog_entries, changelog_error, changelog_is_loading, latest_changelog_version,
     use_changelog,

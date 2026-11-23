@@ -245,6 +245,7 @@ pub(crate) fn style_picker(theme_id: &str, dense: bool, manage: bool) -> impl In
     };
 
     let styles = style_families();
+    let style_count = styles.len();
     let selected_index = styles.iter().position(|theme| theme.id == family);
     let families: Rc<[String]> = styles.iter().map(|theme| theme.id.clone()).collect();
     let radio = RadioGroup::use_options(styles.iter().map(|_| true));
@@ -269,7 +270,11 @@ pub(crate) fn style_picker(theme_id: &str, dense: bool, manage: bool) -> impl In
     let gap = if dense { 10. } else { 12. };
     // As many equal columns as fit, so a wide window fills its row instead of leaving space
     let mut width = use_state(|| 0f32);
-    let columns = style_columns(*width.read(), gap);
+    let columns = if manage {
+        style_columns(*width.read(), gap)
+    } else {
+        style_count.clamp(1, 2)
+    };
     let rows = std::iter::from_fn(move || {
         let row: Vec<Element> = tiles.by_ref().take(columns).collect();
         if row.is_empty() {

@@ -2389,12 +2389,16 @@ async fn import_from_dir(
         if manifest.is_some_and(|m| m.contains(&relative)) {
             continue;
         }
+        if content_type != ContentType::Mod && matches_disabled_link(services, cluster, &path).await
+        {
+            continue;
+        }
 
         match adopt_file(services, cluster, &path, content_type, true).await {
             Some(Ok(row)) => {
                 tracing::debug!(file = name, "registered manually-added content");
                 if discard_originals {
-                    discard_adopted_original(services, cluster, &row, &path, name).await;
+                    discard_adopted_original(&row, &path, name).await;
                 }
             }
             Some(Err(_)) => {
@@ -2455,22 +2459,10 @@ async fn adopt_file(
 }
 
 async fn discard_adopted_original(
-    services: &LauncherServices,
-    cluster: &Cluster,
     row: &oneclient_db::models::ArtifactRow,
     path: &Path,
     name: &str,
 ) {
-    let enabled = artifact_dao::get_cluster_artifact(&services.db, cluster.id, &row.hash)
-        .await
-        .ok()
-        .flatten()
-        .is_some_and(|link| link.enabled != 0);
-    if !enabled {
-        tracing::info!(file = name, "adopted content is switched off; leaving the original");
-        return;
-    }
-
     match artifact_absolute_path(&row.path) {
         Ok(cached) if polyio::try_exists(&cached).await.unwrap_or(false) => {}
         _ => {
@@ -2484,6 +2476,25 @@ async fn discard_adopted_original(
 
     if let Err(err) = polyio::remove_file(path).await {
         tracing::warn!(file = name, error = %err, "failed to clear the adopted original");
+    }
+}
+
+async fn matches_disabled_link(
+    services: &LauncherServices,
+    cluster: &Cluster,
+    path: &Path,
+) -> bool {
+    let Ok(hash) = polyio::sha1_file(path).await else {
+        return false;
+    };
+    let hash = polyio::normalize_hash(&hash);
+
+    match artifact_dao::get_cluster_artifact(&services.db, cluster.id, &hash).await {
+        Ok(link) => link.is_some_and(|link| link.enabled == 0),
+        Err(err) => {
+            tracing::warn!(file = %path.display(), error = %err, "failed to look up the dropped file; leaving it");
+            true
+        }
     }
 }
 

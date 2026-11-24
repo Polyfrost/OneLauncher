@@ -3,6 +3,7 @@
 use oneclient_common::domain::{ContentType, GameLoader};
 use oneclient_common::paths;
 use oneclient_content::packages::PackageStore;
+use oneclient_content::packages::store::manifest;
 use oneclient_core::clusters::{
     CreateClusterOptions, ExportMode, ModpackSource, create_modpack_instance, export_cluster,
     install_modpack_instance, prepare_modpack,
@@ -444,4 +445,71 @@ async fn a_renamed_pack_already_in_the_cache_keeps_its_name() {
         pack("mine")
     );
     assert!(!packs.join("renamed.zip").exists());
+}
+
+#[tokio::test]
+async fn a_dropped_copy_of_a_switched_off_pack_is_left_alone() {
+    let _shared_dir = SHARED_DIR.lock().await;
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let global = state.settings.read().global_game_settings.clone();
+    let ctx = state.services.content();
+    let cluster = state
+        .clusters
+        .create(
+            &global,
+            CreateClusterOptions::new("Dropped", "1.21.1", GameLoader::Fabric),
+        )
+        .await
+        .unwrap();
+
+    let incoming = cluster.dir().unwrap().join("incoming");
+    std::fs::create_dir_all(&incoming).unwrap();
+    let original = incoming.join("dropped.zip");
+    std::fs::write(&original, pack("dropped")).unwrap();
+    let row =
+        PackageStore::import_local_file(&original, ContentType::ResourcePack, cluster.id, &ctx)
+            .await
+            .unwrap();
+    PackageStore::set_artifact_enabled_to(cluster.id, &row.hash, false, &ctx)
+        .await
+        .unwrap();
+
+    let shared_dir = paths::shared_minecraft_dir().unwrap();
+    let packs = shared_dir.join("resourcepacks");
+    std::fs::create_dir_all(&packs).unwrap();
+    std::fs::write(packs.join("dropped (2).zip"), pack("dropped")).unwrap();
+
+    materialize_content(&state.services, &cluster, &shared_dir, false, false)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        std::fs::read(packs.join("dropped (2).zip")).unwrap(),
+        pack("dropped"),
+        "the dropped pack is still in the folder"
+    );
+    let link = PackageStore::list_linked_artifacts(cluster.id, &ctx)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|link| link.hash == row.hash)
+        .unwrap();
+    assert_eq!(link.cluster_file_name, "dropped.zip");
+    assert!(!link.enabled, "the switched-off pack stays off");
+
+    let relative = manifest::entry_path("resourcepacks", "dropped (2).zip");
+    let own = manifest::load(&shared_dir, manifest::MANIFEST_NAME).await;
+    let global = manifest::load(
+        &paths::cluster_shared_dir(&cluster.folder_name).unwrap(),
+        manifest::GLOBAL_MANIFEST_NAME,
+    )
+    .await;
+    assert!(
+        ![own, global]
+            .iter()
+            .flatten()
+            .any(|loaded| loaded.contains(&relative)),
+        "the copy stays a plain file the launcher does not manage"
+    );
+    std::fs::remove_file(packs.join("dropped (2).zip")).unwrap();
 }

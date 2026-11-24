@@ -263,6 +263,7 @@ impl Component for ClusterLogs {
         let line_numbers: Arc<Vec<usize>> =
             Arc::new(lines.iter().map(|line| line.number).collect());
         let jump_target = *jump.read();
+        let filtering = !search.read().trim().is_empty() || level.read().to_level().is_some();
         let on_jump = {
             let mut search = search;
             let mut level = level;
@@ -296,7 +297,7 @@ impl Component for ClusterLogs {
                     LogViewer::new("", viewer_lines)
                         .line_numbers(Some(line_numbers))
                         .jump_to(jump_target)
-                        .on_jump(on_jump)
+                        .on_jump(filtering.then(|| EventHandler::new(on_jump)))
                         .header(viewer_header(
                             search,
                             level,

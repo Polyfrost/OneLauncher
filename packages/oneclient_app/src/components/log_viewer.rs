@@ -218,8 +218,8 @@ impl LogViewer {
         self
     }
 
-    pub fn on_jump(mut self, handler: impl Into<EventHandler<usize>>) -> Self {
-        self.on_jump = Some(handler.into());
+    pub fn on_jump(mut self, handler: Option<EventHandler<usize>>) -> Self {
+        self.on_jump = handler;
         self
     }
 }
@@ -250,14 +250,18 @@ impl Component for LogViewer {
         line_count.set_if_modified(count);
         let viewport_h = use_hook(|| std::rc::Rc::new(std::cell::Cell::new(0_f32)));
 
+        let highlight = use_state::<Option<usize>>(|| None);
         let jump_to = self.jump_to;
         let mut jump_scroll = scroll;
         let mut jump_auto_scroll = auto_scroll;
+        let mut jump_highlight = highlight;
         let effect_viewport_h = viewport_h.clone();
         use_side_effect_with_deps(&jump_to, move |target| {
             let Some((number, _)) = target else {
+                jump_highlight.set(None);
                 return;
             };
+            jump_highlight.set(Some(*number));
             let count = *line_count.peek();
             if count == 0 {
                 return;
@@ -315,6 +319,7 @@ impl Component for LogViewer {
                             selecting,
                             line_numbers: line_numbers.clone(),
                             on_jump: on_jump.clone(),
+                            highlight: *highlight.read(),
                         })
                     }),
             )
@@ -423,6 +428,7 @@ struct BodyArgs {
     selecting: State<bool>,
     line_numbers: Option<Arc<Vec<usize>>>,
     on_jump: Option<EventHandler<usize>>,
+    highlight: Option<usize>,
 }
 
 fn scroll_body(args: BodyArgs) -> Element {
@@ -439,6 +445,7 @@ fn scroll_body(args: BodyArgs) -> Element {
         mut selecting,
         line_numbers,
         on_jump,
+        highlight,
     } = args;
 
     let corrected_y = ctx.corrected_y;
@@ -559,6 +566,7 @@ fn scroll_body(args: BodyArgs) -> Element {
             selection,
             line_numbers.as_deref().map(|numbers| numbers.as_slice()),
             on_jump,
+            highlight,
         ))
         .into_element()
 }
@@ -574,6 +582,7 @@ fn log_body(
     selection: Option<((usize, usize), (usize, usize))>,
     line_numbers: Option<&[usize]>,
     on_jump: Option<EventHandler<usize>>,
+    highlight: Option<usize>,
 ) -> impl IntoElement {
     let count = lines.len();
     let scrolled = -corrected_y;
@@ -605,11 +614,13 @@ fn log_body(
             num_col_w,
             sel_cols,
             on_jump.clone(),
+            highlight == Some(number),
         ));
     }
     body
 }
 
+#[allow(clippy::too_many_arguments)]
 fn log_line_row(
     number: usize,
     parsed: &ParsedLine,
@@ -618,6 +629,7 @@ fn log_line_row(
     num_col_w: f32,
     sel_cols: Option<(usize, usize)>,
     on_jump: Option<EventHandler<usize>>,
+    jumped: bool,
 ) -> impl IntoElement {
     let mut message = paragraph()
         .max_lines(1)
@@ -629,7 +641,7 @@ fn log_line_row(
         message = message.span(Span::new(text.clone()).color(*color));
     }
 
-    let highlight = sel_cols.map(|(c0, c1)| {
+    let selection_highlight = sel_cols.map(|(c0, c1)| {
         rect()
             .position(
                 Position::new_absolute()
@@ -642,40 +654,51 @@ fn log_line_row(
             .background(colors::selection_bg())
             .into_element()
     });
+    let jumped_highlight = jumped.then(|| {
+        rect()
+            .position(Position::new_absolute().top(0.).left(0.))
+            .width(Size::fill())
+            .height(Size::fill())
+            .corner_radius(rounded(4.))
+            .background(colors::brand().with_a(38))
+            .into_element()
+    });
 
-    let number_label = label()
-        .text(format!("{number}"))
-        .font_family(theme::mono_font())
-        .font_size(text_size(LINE_FONT_SIZE))
-        .text_align(TextAlign::Right)
-        .width(Size::fill())
-        .color(colors::code_muted());
-    let number_col = match on_jump {
-        Some(handler) => rect()
-            .width(Size::px(num_col_w))
-            .cursor(CursorIcon::Pointer)
-            .on_press(move |e: Event<PressEventData>| {
-                e.stop_propagation();
-                handler.call(number);
-            })
-            .child(number_label)
-            .into_element(),
-        None => rect()
-            .width(Size::px(num_col_w))
-            .child(number_label)
-            .into_element(),
-    };
+    let number_col = rect()
+        .width(Size::px(num_col_w))
+        .child(
+            label()
+                .text(format!("{number}"))
+                .font_family(theme::mono_font())
+                .font_size(text_size(LINE_FONT_SIZE))
+                .text_align(TextAlign::Right)
+                .width(Size::fill())
+                .color(colors::code_muted()),
+        )
+        .into_element();
 
-    rect()
+    let row = rect()
         .horizontal()
         .position(Position::new_absolute().top(y).left(ROW_PAD_X))
         .width(Size::px((body_w - ROW_PAD_X * 2.).max(0.)))
         .height(Size::px(LINE_H))
         .cross_align(Alignment::Center)
         .spacing(NUM_GAP)
-        .maybe_child(highlight)
+        .maybe_child(jumped_highlight)
+        .maybe_child(selection_highlight)
         .child(number_col)
-        .child(message)
+        .child(message);
+
+    match on_jump {
+        Some(handler) => row
+            .cursor(CursorIcon::Pointer)
+            .on_pointer_down(|e: Event<PointerEventData>| e.stop_propagation())
+            .on_press(move |e: Event<PressEventData>| {
+                e.stop_propagation();
+                handler.call(number);
+            }),
+        None => row,
+    }
 }
 
 #[cfg(test)]

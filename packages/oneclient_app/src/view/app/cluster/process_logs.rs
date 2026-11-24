@@ -87,7 +87,7 @@ impl Component for ProcessLogs {
                 .streaming(true)
                 .line_numbers(numbers)
                 .jump_to(jump_target)
-                .on_jump(on_jump)
+                .on_jump(filtering.then(|| EventHandler::new(on_jump)))
                 .actions(viewer_controls(
                     search,
                     level,

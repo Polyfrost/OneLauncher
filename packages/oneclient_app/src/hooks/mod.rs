@@ -2,6 +2,7 @@ mod actions;
 mod active_cluster;
 mod chat;
 mod debounce;
+mod hold_countdown;
 mod overlay_claims;
 mod queries;
 mod selection;
@@ -16,6 +17,7 @@ pub use chat::{
 };
 
 pub use debounce::use_debounced;
+pub use hold_countdown::use_hold_countdown;
 pub use overlay_claims::{
     OverlayClaims, use_overlay_claim, use_overlay_claim_when, use_overlay_claims,
     use_provide_overlay_claims,

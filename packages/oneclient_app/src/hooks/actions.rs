@@ -1608,8 +1608,11 @@ impl Actions {
                     super::invalidate_cluster_queries().await;
                     if copied {
                         let mods = crate::routes::Route::ClusterMods { cluster_id };
+                        // RouterContext::current() reads Freya's child-route
+                        // context, which is unset in a global task and panics.
+                        // The raw path is safe to read from here.
                         if let Some(router) = &router
-                            && router.current::<crate::routes::Route>() != mods
+                            && router.full_route_string() != mods.to_string()
                         {
                             let _ = router.push(mods);
                         }

@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, RwLock};
@@ -15,6 +15,8 @@ const DISTRIBUTION_URL: &str = "https://translations.r2.polyfrost.org/oneclient/
 const FILE_NAME: &str = "oneclient.json";
 const MANIFEST_TTL: Duration = Duration::from_secs(6 * 60 * 60);
 const RETRY_DELAY: Duration = Duration::from_secs(10 * 60);
+
+const BUNDLED: &[(&str, &str)] = &[("zh_CN", include_str!("../lang/zh_cn.json"))];
 
 const NAMES: &[(&str, &str, &str)] = &[
     ("ar_SA", "العربية", "Arabic"),
@@ -76,7 +78,15 @@ pub fn subscribe() -> watch::Receiver<u64> {
 }
 
 pub fn available() -> Vec<String> {
-    AVAILABLE.read().unwrap_or_else(|e| e.into_inner()).clone()
+    AVAILABLE
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .cloned()
+        .chain(BUNDLED.iter().map(|(code, _)| (*code).to_string()))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 pub fn names(code: Option<&str>) -> (String, String) {
@@ -103,7 +113,8 @@ pub fn coverage(code: Option<&str>) -> Option<u32> {
         Some(code) if WANTED.read().unwrap_or_else(|e| e.into_inner()).as_deref() == Some(code) => {
             i18n::coverage()
         }
-        Some(_) => None,
+        Some(code) => bundled_translations(code)
+            .map(|table| (table.len() * 100 / i18n::source().len().max(1)) as u32),
     }
 }
 
@@ -222,12 +233,29 @@ fn notify_changed() {
 }
 
 fn install_cached(code: Option<&str>) {
-    let table = code
-        .and_then(newest_cached)
-        .and_then(|path| std::fs::read(path).ok())
-        .and_then(|bytes| parse_translations(&bytes));
+    let table = code.and_then(|code| {
+        let bytes = newest_cached(code).and_then(|path| std::fs::read(path).ok());
+        translation_table(code, bytes.as_deref())
+    });
     i18n::install(table);
     notify_changed();
+}
+
+fn bundled_translations(code: &str) -> Option<HashMap<String, String>> {
+    BUNDLED
+        .iter()
+        .find(|(known, _)| *known == code)
+        .and_then(|(_, json)| parse_translations(json.as_bytes()))
+}
+
+fn translation_table(code: &str, cached: Option<&[u8]>) -> Option<HashMap<String, String>> {
+    // Community updates override bundled entries, while untranslated or invalid
+    // entries keep the bundled translation even without a network connection.
+    let mut table = bundled_translations(code).unwrap_or_default();
+    if let Some(cached) = cached.and_then(parse_translations) {
+        table.extend(cached);
+    }
+    (!table.is_empty()).then_some(table)
 }
 
 fn valid_code(code: &str) -> bool {
@@ -326,6 +354,85 @@ fn prune_older(dir: &Path, current: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bundled_languages_are_available_without_a_manifest() {
+        let choices = choices();
+        assert_eq!(choices.first(), Some(&None));
+        assert_eq!(
+            choices
+                .iter()
+                .filter(|code| code.as_deref() == Some("zh_CN"))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn bundled_chinese_is_complete_and_preserves_arguments() {
+        let table: HashMap<String, String> =
+            serde_json::from_str(include_str!("../lang/zh_cn.json")).unwrap();
+        let source = i18n::source();
+        assert_eq!(
+            table.keys().collect::<BTreeSet<_>>(),
+            source.keys().collect::<BTreeSet<_>>()
+        );
+        let pattern = regex::Regex::new(r"%%|%s|%(\d+)\$s").unwrap();
+        let arguments = |text: &str| {
+            let mut next = 0usize;
+            let mut indices = Vec::new();
+            for found in pattern.captures_iter(text) {
+                if &found[0] == "%%" {
+                    continue;
+                }
+                indices.push(match found.get(1) {
+                    Some(index) => index.as_str().parse::<usize>().unwrap(),
+                    None => {
+                        next += 1;
+                        next
+                    }
+                });
+            }
+            indices.sort_unstable();
+            indices
+        };
+        for (key, english) in source {
+            let chinese = &table[key];
+            assert!(!chinese.trim().is_empty(), "empty translation: {key}");
+            assert_eq!(
+                arguments(english),
+                arguments(chinese),
+                "arguments changed: {key}"
+            );
+        }
+        assert_eq!(bundled_translations("zh_CN").unwrap().len(), source.len());
+    }
+
+    #[test]
+    fn cached_updates_preserve_bundled_fallbacks() {
+        let bundled = translation_table("zh_CN", None).unwrap();
+        let updated = translation_table(
+            "zh_CN",
+            Some(
+                br#"{
+            "oneclient.common.cancel":"Updated cancel",
+            "oneclient.components.package_row.copies":"missing arguments"
+        }"#,
+            ),
+        )
+        .unwrap();
+        assert_eq!(updated.len(), bundled.len());
+        assert_eq!(updated["oneclient.common.cancel"], "Updated cancel");
+        assert_eq!(
+            updated["oneclient.components.package_row.copies"],
+            bundled["oneclient.components.package_row.copies"]
+        );
+        assert_eq!(
+            translation_table("zh_CN", Some(b"not json")).unwrap(),
+            bundled
+        );
+        assert!(translation_table("unknown", None).is_none());
+    }
 
     #[test]
     fn manifest_keeps_only_safe_launcher_files() {

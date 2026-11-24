@@ -19,10 +19,10 @@ use crate::view::app::settings::appearance_picker::{compose_theme, split_theme};
 
 const BORDER_OPACITIES: [u8; 7] = [5, 10, 15, 20, 30, 45, 60];
 const CORNERS: [(&str, f32); 4] = [
-    ("Square", 0.),
-    ("Subtle", 0.5),
-    ("Default", 1.),
-    ("Round", 1.5),
+    ("oneclient.settings.theme_editor.corners.square", 0.),
+    ("oneclient.settings.theme_editor.corners.subtle", 0.5),
+    ("oneclient.settings.theme_editor.corners.default", 1.),
+    ("oneclient.settings.theme_editor.corners.round", 1.5),
 ];
 
 /// Edits both variants of the family `id` belongs to; name, corners, fonts and icons are
@@ -93,7 +93,7 @@ impl Component for SettingsThemeEditor {
                             saving.set(false);
                             tracing::error!("Failed to save theme: {err:#}");
                             dispatch
-                                .notify("Couldn't save the theme")
+                                .notify(t("oneclient.settings.theme_editor.save_failed"))
                                 .body(format!("{err:#}"))
                                 .error()
                                 .toast_only()
@@ -107,11 +107,12 @@ impl Component for SettingsThemeEditor {
         settings_page()
             .child(settings_row(
                 IconType::Pencil01,
-                "Name",
-                "Saved as a JSON file in the launcher's themes folder.",
-                rect()
-                    .width(Size::px(220.))
-                    .child(TextInput::new(name).placeholder("My theme")),
+                t("oneclient.settings.theme_editor.name.title"),
+                t("oneclient.settings.theme_editor.name.description"),
+                rect().width(Size::px(220.)).child(
+                    TextInput::new(name)
+                        .placeholder(t("oneclient.settings.appearance.theme.new_name")),
+                ),
             ))
             .child(settings_row(
                 IconType::Moon01,
@@ -125,90 +126,96 @@ impl Component for SettingsThemeEditor {
                         Segment::new(true).label(t("oneclient.settings.appearance.theme.light")),
                     ),
             ))
-            .child(section_header("Colors"))
+            .child(section_header(t(
+                "oneclient.settings.theme_editor.section.colors",
+            )))
             .child(color_row(
                 draft,
                 IconType::LayoutTop,
-                "Background",
-                "Behind every page.",
+                t("oneclient.settings.theme_editor.background.title"),
+                t("oneclient.settings.theme_editor.background.description"),
                 |palette| &mut palette.page,
             ))
             .child(color_row(
                 draft,
                 IconType::Copy01,
-                "Surface",
-                "Settings rows, dialogs and menus.",
+                t("oneclient.settings.theme_editor.surface.title"),
+                t("oneclient.settings.theme_editor.surface.description"),
                 |palette| &mut palette.page_elevated,
             ))
             .child(color_row(
                 draft,
                 IconType::Square,
-                "Cards",
-                "Version, package and stat cards.",
+                t("oneclient.settings.theme_editor.cards.title"),
+                t("oneclient.settings.theme_editor.cards.description"),
                 |palette| &mut palette.card,
             ))
             .child(color_row(
                 draft,
                 IconType::Sliders04,
-                "Controls",
-                "Inputs, dropdowns and secondary buttons.",
+                t("oneclient.settings.theme_editor.controls.title"),
+                t("oneclient.settings.theme_editor.controls.description"),
                 |palette| &mut palette.component,
             ))
             .child(color_row(
                 draft,
                 IconType::ParagraphWrap,
-                "Text",
-                "Titles and body text.",
+                t("oneclient.settings.theme_editor.text.title"),
+                t("oneclient.settings.theme_editor.text.description"),
                 |palette| &mut palette.text,
             ))
             .child(color_row(
                 draft,
                 IconType::MessageTextSquare01,
-                "Secondary text",
-                "Descriptions, hints and muted labels.",
+                t("oneclient.settings.theme_editor.secondary_text.title"),
+                t("oneclient.settings.theme_editor.secondary_text.description"),
                 |palette| &mut palette.text_secondary,
             ))
             .child(color_row(
                 draft,
                 IconType::PaintPour,
-                "Accent",
-                "Primary buttons and highlights, unless you set an accent color.",
+                t("oneclient.settings.theme_editor.accent.title"),
+                t("oneclient.settings.theme_editor.accent.description"),
                 |palette| &mut palette.accent,
             ))
-            .child(section_header("Borders"))
+            .child(section_header(t(
+                "oneclient.settings.theme_editor.section.borders",
+            )))
             .child(border_color_row(draft))
             .child(border_opacity_row(draft))
             .child(settings_row(
                 IconType::Square,
-                "Corners",
-                "How rounded cards, buttons and dialogs are.",
+                t("oneclient.settings.theme_editor.corners.title"),
+                t("oneclient.settings.theme_editor.corners.description"),
                 SegmentedControl::new(radius).segments(
                     CORNERS
                         .iter()
-                        .map(|(label, scale)| Segment::new(*scale).label(*label)),
+                        .map(|(label, scale)| Segment::new(*scale).label(t(label))),
                 ),
             ))
-            .child(section_header("Fonts"))
+            .child(section_header(t(
+                "oneclient.settings.theme_editor.section.fonts",
+            )))
             .child(font_row(
                 [dark, light],
                 IconType::ParagraphWrap,
-                "Font",
-                "Used for all launcher text.",
+                t("oneclient.settings.theme_editor.font.title"),
+                t("oneclient.settings.theme_editor.font.description"),
                 edited.font.clone(),
                 |theme| &mut theme.font,
             ))
             .child(font_row(
                 [dark, light],
                 IconType::CodeSnippet02,
-                "Code font",
-                "Used for logs and code blocks.",
+                t("oneclient.settings.theme_editor.code_font.title"),
+                t("oneclient.settings.theme_editor.code_font.description"),
                 edited.mono_font.clone(),
                 |theme| &mut theme.mono_font,
             ))
             .child(settings_row(
                 IconType::DotsGrid,
-                "Pixel icons",
-                "Use blocky pixel-art icons, like the Minecraft themes.",
+                t("oneclient.settings.theme_editor.pixel_icons.title"),
+                t("oneclient.settings.theme_editor.pixel_icons.description"),
                 toggle(pixel_icons),
             ))
             .child(
@@ -224,14 +231,14 @@ impl Component for SettingsThemeEditor {
                             .on_press(|_| {
                                 let _ = RouterContext::get().push(Route::SettingsAppearance {});
                             })
-                            .text("Discard"),
+                            .text(t("oneclient.settings.theme_editor.discard")),
                     )
                     .child(
                         Button::new()
                             .primary()
                             .enabled(valid && !*saving.read())
                             .on_press(save)
-                            .text("Save theme"),
+                            .text(t("oneclient.settings.theme_editor.save")),
                     ),
             )
             .into_element()
@@ -263,8 +270,8 @@ fn border_color_row(draft: State<Theme>) -> impl IntoElement {
     let border = draft.read().colors.border.0;
     settings_row(
         IconType::Square,
-        "Border color",
-        "Outlines around cards, inputs and dialogs.",
+        t("oneclient.settings.theme_editor.border_color.title"),
+        t("oneclient.settings.theme_editor.border_color.description"),
         ColorPicker::new(colors::with_alpha(border, 255), move |picked: Color| {
             let mut draft = draft;
             let alpha = draft.peek().colors.border.0.a();
@@ -286,8 +293,8 @@ fn border_opacity_row(draft: State<Theme>) -> impl IntoElement {
 
     settings_row(
         IconType::Eye,
-        "Border opacity",
-        "Hovered and pressed borders get stronger from here.",
+        t("oneclient.settings.theme_editor.border_opacity.title"),
+        t("oneclient.settings.theme_editor.border_opacity.description"),
         Dropdown::new(format!("{selected}%"), options)
             .outlined()
             .on_select(move |index: usize| {

@@ -554,7 +554,9 @@ impl Component for StyleCard {
         let card = radio.accessibility(card, index, self.selected_index);
         rect()
             .width(Size::flex(1.))
-            .maybe(self.manage, |el| el.on_secondary_down(open_menu_at(menu_at)))
+            .maybe(self.manage, |el| {
+                el.on_secondary_down(open_menu_at(menu_at))
+            })
             .child(radio.keyboard(card, index, key_select))
             .maybe_child(self.manage.then(|| ThemeFileMenu {
                 id: theme.id.clone(),
@@ -670,7 +672,11 @@ fn miniature(theme: &Theme, pixel: bool, dense: bool) -> Element {
                 .vertical()
                 .width(Size::flex(1.))
                 .spacing(3.)
-                .child(text("Survival", body_size, palette.text.0))
+                .child(text(
+                    t("oneclient.settings.appearance.preview.survival"),
+                    body_size,
+                    palette.text.0,
+                ))
                 .maybe_child((!dense).then(|| {
                     text("26.1 Fabric", meta_size, palette.text_secondary.0).into_element()
                 })),
@@ -704,7 +710,7 @@ fn play_button(theme: &Theme, pixel: bool, dense: bool) -> Element {
         .background(theme.colors.accent.0)
         .child(
             label()
-                .text("Play")
+                .text(t("oneclient.common.play"))
                 .font_family(theme.font.clone())
                 .font_size(if pixel { 12. } else { 11. })
                 .font_weight(if pixel {

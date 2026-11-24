@@ -1,0 +1,27 @@
+name: Bundled Translations Check
+
+on:
+  push:
+    paths:
+      - 'packages/oneclient_app/lang/**'
+      - 'packages/oneclient_app/src/**'
+      - '.github/crowdin/check_translations.py'
+      - '.github/workflows/translations_check.yml'
+  pull_request:
+    paths:
+      - 'packages/oneclient_app/lang/**'
+      - 'packages/oneclient_app/src/**'
+      - '.github/crowdin/check_translations.py'
+      - '.github/workflows/translations_check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  translations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Check bundled translation keys and placeholders
+        run: python3 .github/crowdin/check_translations.py

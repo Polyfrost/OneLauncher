@@ -282,7 +282,11 @@ fn main() {
         )
         .with_plugin(freya::borderless::BorderlessPlugin::new())
         .with_plugin(freya::metrics::MetricsPlugin::default())
-        .with_default_font(theme::DEFAULT_FONT);
+        .with_default_font(theme::DEFAULT_FONT)
+        .with_fallback_font("Microsoft YaHei")
+        .with_fallback_font("PingFang SC")
+        .with_fallback_font("Noto Sans CJK SC")
+        .with_fallback_font("Noto Sans SC");
 
     #[cfg(target_os = "windows")]
     {

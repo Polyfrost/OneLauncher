@@ -30,12 +30,33 @@ const ROW_WINDOW_STEP: usize = 100;
 const EMOJI_CELL_PX: f32 = 34.;
 const EMOJI_GAP_PX: f32 = 2.;
 const EMOJI_SIDE_PX: f32 = 14.;
+const EMOJI_RESULT_LIMIT: usize = 48;
 
 const EMOJI: [&str; 40] = [
     "😀", "😂", "🥲", "😍", "😎", "🤔", "😭", "😤", "👍", "👎", "👏", "🙏", "🔥", "✨", "💀", "🎉",
     "❤️", "💙", "⭐", "👀", "💯", "✅", "❌", "🎮", "⚔️", "🛡️", "⛏️", "🏹", "💎", "🧱", "🪵", "🌲",
     "🍞", "🍎", "🐷", "🐑", "🐔", "🏠", "🌋", "🚀",
 ];
+
+fn search_emojis(query: &str) -> Vec<&'static str> {
+    let trimmed = query.trim();
+    let needle = trimmed.to_lowercase();
+    if needle.is_empty() {
+        return EMOJI.to_vec();
+    }
+
+    emojis::iter()
+        .filter(|emoji| {
+            emoji.as_str() == trimmed
+                || emoji.name().to_lowercase().contains(&needle)
+                || emoji
+                    .shortcode()
+                    .is_some_and(|shortcode| shortcode.contains(&needle))
+        })
+        .take(EMOJI_RESULT_LIMIT)
+        .map(|emoji| emoji.as_str())
+        .collect()
+}
 
 const EDIT_PAD_X_PX: f32 = 6.;
 const EDIT_PAD_Y_PX: f32 = 2.;
@@ -983,6 +1004,7 @@ impl Component for Composer {
         let group_id = self.group_id;
         let mut draft = use_state(|| chat_draft(own_id, group_id));
         let mut emoji_open = use_state(|| false);
+        let emoji_search = use_state(String::new);
         let mut picker_area = use_state(Area::default);
         let mut toggle_area = use_state(Area::default);
         let mut loaded_edit = use_state(|| None::<i64>);
@@ -1049,6 +1071,9 @@ impl Component for Composer {
         let sent_by_press = self.on_sent.clone();
 
         let picker = emoji_open().then(|| {
+            let query = emoji_search.read().clone();
+            let results = search_emojis(&query);
+
             rect()
                 .position(Position::new_absolute().left(12.).bottom(56.))
                 .layer(Layer::Overlay)
@@ -1079,8 +1104,27 @@ impl Component for Composer {
                             .color(colors::fg_secondary()),
                     ),
                 )
+                .child(
+                    TextInput::new(emoji_search)
+                        .width(Size::fill())
+                        .height(Size::px(32.))
+                        .font_size(text_size(12.))
+                        .placeholder(t("oneclient.chat.thread.emoji_search_placeholder"))
+                        .leading(
+                            Icon::new(IconType::SearchMd)
+                                .size(14.)
+                                .color(colors::fg_secondary())
+                                .into_element(),
+                        ),
+                )
+                .maybe_child(results.is_empty().then(|| {
+                    label()
+                        .text(t("oneclient.chat.thread.emoji_no_results"))
+                        .font_size(text_size(12.))
+                        .color(colors::fg_secondary())
+                }))
                 .children(
-                    EMOJI
+                    results
                         .chunks(8)
                         .map(|row| {
                             rect()
@@ -1089,6 +1133,7 @@ impl Component for Composer {
                                 .children(
                                     row.iter()
                                         .map(|emoji| {
+                                            let emoji = *emoji;
                                             EmojiCell {
                                                 emoji,
                                                 on_pick: EventHandler::new(move |_| {
@@ -1282,5 +1327,19 @@ mod tests {
         assert_eq!(seconds_until(None), 0);
         assert_eq!(seconds_until(Some(chrono::Utc::now().fixed_offset() - chrono::Duration::hours(1))), 0);
         assert_eq!(seconds_until(Some(chrono::Utc::now().fixed_offset() + chrono::Duration::milliseconds(300))), 1);
+    }
+
+    #[test]
+    fn emoji_search_returns_defaults_without_a_query() {
+        assert_eq!(search_emojis(""), EMOJI.to_vec());
+        assert_eq!(search_emojis("   "), EMOJI.to_vec());
+    }
+
+    #[test]
+    fn emoji_search_matches_names_shortcodes_and_characters() {
+        assert!(search_emojis("rocket").contains(&"🚀"));
+        assert!(search_emojis("FIRE").contains(&"🔥"));
+        assert!(search_emojis("🔥").contains(&"🔥"));
+        assert!(search_emojis("not-an-emoji").is_empty());
     }
 }

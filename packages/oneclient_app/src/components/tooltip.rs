@@ -267,11 +267,11 @@ impl Component for TooltipBubble {
                 }
             })
             .child(
+                // Longer help text must wrap fully; a line cap silently cuts it off.
                 label()
                     .text(self.text.to_string())
                     .font_size(text_size(12.))
                     .font_weight(FontWeight::MEDIUM)
-                    .max_lines(2)
                     .color(colors::fg_primary()),
             )
     }

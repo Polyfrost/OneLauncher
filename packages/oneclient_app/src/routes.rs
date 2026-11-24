@@ -140,6 +140,13 @@ pub enum Route {
 }
 
 impl Route {
+    pub fn start(tab: oneclient_core::settings::StartTab) -> Self {
+        match tab {
+            oneclient_core::settings::StartTab::Wardrobe => Route::Wardrobe {},
+            _ => Route::Home {},
+        }
+    }
+
     pub fn title(&self) -> String {
         let title = match self {
             Route::Startup { .. } => t("oneclient.routes.startup"),

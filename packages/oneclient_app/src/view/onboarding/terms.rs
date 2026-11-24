@@ -42,7 +42,7 @@ impl Component for OnboardingTerms {
 
         let returning = settings.seen_onboarding;
         let next = if returning {
-            Route::Home {}
+            Route::start(settings.start_tab)
         } else if has_migration_data(&migration_query) {
             Route::OnboardingMigration {}
         } else {

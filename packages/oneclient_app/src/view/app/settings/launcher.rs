@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_core::relocate::RelocationPlan;
-use oneclient_core::settings::{LaunchBehaviour, LauncherSettings, data_dir};
+use oneclient_core::settings::{LaunchBehaviour, LauncherSettings, StartTab, data_dir};
 use oneclient_core::storage::format_bytes;
 
 use super::{resettable, section_header, settings_page, settings_row};
@@ -64,6 +64,11 @@ impl Component for SettingsLauncher {
             move || v
         });
 
+        let start_tab = use_state({
+            let v = settings.start_tab;
+            move || v
+        });
+
         let mut first = use_state(|| true);
         use_side_effect(move || {
             let discord = *discord_rpc.read();
@@ -73,6 +78,7 @@ impl Component for SettingsLauncher {
             let tray = *show_tray_icon.read();
             let behaviour = *launch_behaviour.read();
             let game_log = *open_game_log.read();
+            let tab = *start_tab.read();
             if *first.peek() {
                 first.set(false);
                 return;
@@ -85,6 +91,7 @@ impl Component for SettingsLauncher {
                 next.show_tray_icon = tray;
                 next.launch_behaviour = behaviour;
                 next.open_game_log_on_launch = game_log;
+                next.start_tab = tab;
             });
         });
 
@@ -133,6 +140,16 @@ impl Component for SettingsLauncher {
                 ),
             ))
             .child(settings_row(
+                IconType::LayoutRight,
+                t("oneclient.settings.launcher.start_tab.title"),
+                t("oneclient.settings.launcher.start_tab.description"),
+                resettable(
+                    enum_dropdown(start_tab, &StartTab::ALL, start_tab_label),
+                    start_tab,
+                    defaults.start_tab,
+                ),
+            ))
+            .child(settings_row(
                 IconType::File02,
                 t("oneclient.settings.launcher.terms.title"),
                 consent_summary,
@@ -146,7 +163,7 @@ impl Component for SettingsLauncher {
                 t("oneclient.settings.launcher.launch_behaviour.title"),
                 t("oneclient.settings.launcher.launch_behaviour.description"),
                 resettable(
-                    launch_behaviour_field(launch_behaviour),
+                    enum_dropdown(launch_behaviour, &LaunchBehaviour::ALL, LaunchBehaviour::label),
                     launch_behaviour,
                     defaults.launch_behaviour,
                 ),
@@ -189,20 +206,29 @@ impl Component for SettingsLauncher {
     }
 }
 
-fn launch_behaviour_field(mut selected: State<LaunchBehaviour>) -> impl IntoElement {
-    let options: Vec<String> = LaunchBehaviour::ALL
-        .iter()
-        .map(|behaviour| behaviour.label().to_string())
-        .collect();
+fn enum_dropdown<T: Copy + 'static>(
+    mut selected: State<T>,
+    all: &'static [T],
+    label: fn(T) -> &'static str,
+) -> impl IntoElement {
+    let options: Vec<String> = all.iter().map(|item| label(*item).to_string()).collect();
 
-    Dropdown::new(selected.read().label(), options)
+    Dropdown::new(label(*selected.read()), options)
         .width(Size::px(220.))
         .height(Size::px(34.))
         .on_select(move |idx: usize| {
-            if let Some(behaviour) = LaunchBehaviour::ALL.get(idx).copied() {
-                selected.set(behaviour);
+            if let Some(item) = all.get(idx).copied() {
+                selected.set(item);
             }
         })
+}
+
+fn start_tab_label(tab: StartTab) -> &'static str {
+    match tab {
+        StartTab::Home => t("oneclient.components.navbar.home"),
+        StartTab::Versions => t("oneclient.components.navbar.versions"),
+        StartTab::Wardrobe => t("oneclient.components.navbar.wardrobe"),
+    }
 }
 
 /// Backed by `run_in_background` so existing settings files carry over unchanged
@@ -568,6 +594,17 @@ inventory::submit! {
         title: "oneclient.settings.launcher.start_maximized.title",
         description: "oneclient.settings.launcher.start_maximized.description",
         keywords: &["maximized", "window", "fullscreen", "startup"],
+        route: Route::SettingsLauncher {},
+    }
+}
+
+inventory::submit! {
+    SearchItem {
+        id: "launcher.start_tab",
+        icon: IconType::LayoutRight,
+        title: "oneclient.settings.launcher.start_tab.title",
+        description: "oneclient.settings.launcher.start_tab.description",
+        keywords: &["start", "startup", "tab", "page", "open", "home", "default"],
         route: Route::SettingsLauncher {},
     }
 }

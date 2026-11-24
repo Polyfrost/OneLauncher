@@ -39,6 +39,19 @@ impl LaunchBehaviour {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum StartTab {
+    #[default]
+    Home,
+    Versions,
+    Wardrobe,
+}
+
+impl StartTab {
+    pub const ALL: [Self; 3] = [Self::Home, Self::Versions, Self::Wardrobe];
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 #[serde(default)]
 pub struct ViewState {
@@ -63,6 +76,7 @@ pub struct LauncherSettings {
     pub global_game_settings: GameSettingsProfile,
     pub allow_parallel_running_clusters: bool,
     pub launch_behaviour: LaunchBehaviour,
+    pub start_tab: StartTab,
     pub open_game_log_on_launch: bool,
     pub run_in_background: bool,
     pub show_tray_icon: bool,
@@ -130,6 +144,7 @@ impl Default for LauncherSettings {
             global_game_settings: GameSettingsProfile::default_global_profile(),
             allow_parallel_running_clusters: true,
             launch_behaviour: LaunchBehaviour::default(),
+            start_tab: StartTab::default(),
             open_game_log_on_launch: true,
             // Mac apps stay in the Dock when their window closes
             run_in_background: cfg!(target_os = "macos"),

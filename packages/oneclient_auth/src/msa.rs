@@ -188,15 +188,15 @@ async fn wait_for_redirect(pending: &PendingBrowserLogin) -> Result<String, Mine
             }
         }
 
+        if state.as_deref() != Some(pending.csrf_state.as_str()) {
+            respond(&mut stream, RedirectPage::Failed).await;
+            continue;
+        }
+
         if let Some(error) = error {
             tracing::warn!(%error, "browser authorization failed");
             respond(&mut stream, RedirectPage::Failed).await;
             return Err(MinecraftAuthError::BrowserAuthorizationFailed { error });
-        }
-
-        if state.as_deref() != Some(pending.csrf_state.as_str()) {
-            respond(&mut stream, RedirectPage::Failed).await;
-            continue;
         }
 
         if let Some(code) = code {

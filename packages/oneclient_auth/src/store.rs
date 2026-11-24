@@ -37,6 +37,16 @@ impl CredentialsStore {
         let path = paths::auth_file()?;
 
         polyio::write_json_atomic(&path, self).await?;
+
+        // The auth file holds Microsoft refresh tokens, so other local users
+        // must not be able to read it (same reasoning as the IPC socket).
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+                .map_err(polyio::IOError::from)?;
+        }
+
         Ok(())
     }
 

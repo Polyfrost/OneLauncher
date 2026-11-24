@@ -2394,7 +2394,7 @@ async fn import_from_dir(
             Some(Ok(row)) => {
                 tracing::debug!(file = name, "registered manually-added content");
                 if discard_originals {
-                    discard_adopted_original(&row, &path, name).await;
+                    discard_adopted_original(services, cluster, &row, &path, name).await;
                 }
             }
             Some(Err(_)) => {
@@ -2455,10 +2455,22 @@ async fn adopt_file(
 }
 
 async fn discard_adopted_original(
+    services: &LauncherServices,
+    cluster: &Cluster,
     row: &oneclient_db::models::ArtifactRow,
     path: &Path,
     name: &str,
 ) {
+    let enabled = artifact_dao::get_cluster_artifact(&services.db, cluster.id, &row.hash)
+        .await
+        .ok()
+        .flatten()
+        .is_some_and(|link| link.enabled != 0);
+    if !enabled {
+        tracing::info!(file = name, "adopted content is switched off; leaving the original");
+        return;
+    }
+
     match artifact_absolute_path(&row.path) {
         Ok(cached) if polyio::try_exists(&cached).await.unwrap_or(false) => {}
         _ => {

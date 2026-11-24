@@ -172,6 +172,11 @@ impl Component for ClusterSettings {
         } else {
             Vec::new()
         };
+        let take_bundles_row: Vec<Element> = if mod_loader && !cluster.uses_bundles() {
+            vec![TakeBundlesRow { cluster_id }.into_element()]
+        } else {
+            Vec::new()
+        };
         let problem_mod_row: Vec<Element> = if mod_loader {
             vec![super::FindProblemModRow { cluster_id }.into_element()]
         } else {
@@ -258,6 +263,7 @@ impl Component for ClusterSettings {
                         }
                         .into_element(),
                     ))
+                    .append_children(take_bundles_row)
                     .append_children(copy_mod_files_row)
                     .append_children(migrate_row)
                     .child(section_header(t(
@@ -722,6 +728,37 @@ impl Component for VerifyFilesRow {
             IconType::ClipboardCheck,
             t("oneclient.cluster.settings.verify.title"),
             t("oneclient.cluster.settings.verify.description"),
+            button,
+        )
+    }
+}
+
+#[derive(PartialEq)]
+struct TakeBundlesRow {
+    cluster_id: i64,
+}
+
+impl Component for TakeBundlesRow {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let mutation = use_cluster_mutation();
+        let running = mutation_is_running(&mutation);
+
+        let button = Button::new()
+            .small()
+            .secondary()
+            .enabled(!running)
+            .maybe(!running, |el| {
+                el.on_press(move |_| {
+                    mutation.mutate(ClusterAction::TakeBundles { cluster_id });
+                })
+            })
+            .text(t("oneclient.cluster.settings.take_bundles.button"));
+
+        settings_row(
+            IconType::LayersThree01,
+            t("oneclient.cluster.settings.take_bundles.title"),
+            t("oneclient.cluster.settings.take_bundles.description"),
             button,
         )
     }

@@ -153,6 +153,7 @@ freya-core = "0.5.4"
 freya-testing = "0.5.4"
 freya-winit = "0.5.4"
 freya-skia-safe = "=0.104.0" # draws the plusrenderer player model
+mundy = { version = "=0.2.3", default-features = false, features = ["color-scheme", "callback", "async-io"] }
 plusrenderer = {git = "https://github.com/Polyfrost/plusrenderer", rev = "914ddf8cae388126407d86925a05fa3db085ebbc"}
 image = {version = "=0.25.10", default-features = false, features = ["png", "jpeg", "ico"]}
 

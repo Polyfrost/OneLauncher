@@ -12,6 +12,7 @@ use crate::{
         use_remove_account, use_settings_snapshot,
     },
     i18n::{t, tf},
+    system_theme,
     theme::{colors, counterpart, rounded, system_aware, text_size},
     ui::{border_all_color, divider},
 };
@@ -274,7 +275,7 @@ impl Component for QuickSettings {
         };
 
         let system_dark =
-            *Platform::get().current_window().preferred_theme.read() == PreferredTheme::Dark;
+            system_theme::system_dark(*Platform::get().current_window().preferred_theme.read());
         let active = system_aware(&settings.theme, system_dark);
         let flipped = counterpart(&active);
         let dark_on = !colors::active_theme().colors.light;

@@ -28,6 +28,7 @@ pub mod recovery;
 mod routes;
 pub mod shortcut;
 pub mod state;
+pub mod system_theme;
 pub mod theme;
 mod transfer;
 pub mod translations;

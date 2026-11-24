@@ -10,7 +10,7 @@ use oneclient_app::state::{AppState, LauncherInit};
 use oneclient_app::{
     Actions, ConfirmLinkOverlay, DisableConfirmState, DisableDependentsOverlay,
     EssentialConfirmOverlay, EssentialGuardState, EventPump, LinkConfirmState, StartMaximizedState,
-    cli, constants, events, microsoft_java, platform, router, theme, translations,
+    cli, constants, events, microsoft_java, platform, router, system_theme, theme, translations,
     use_provide_actions, use_provide_disable_confirm, use_provide_essential_guard,
     use_provide_link_confirm, use_provide_start_maximized, use_provide_station,
     use_settings_snapshot,
@@ -114,9 +114,19 @@ impl App for OneClientApp {
 
         let mut palette_revision = use_state(|| 0u32);
         theme::colors::bind_revision(palette_revision);
+        use_hook(move || {
+            let mut revision = palette_revision;
+            if let Some(mut rx) = system_theme::subscribe() {
+                spawn(async move {
+                    while rx.changed().await.is_ok() {
+                        *revision.write() += 1;
+                    }
+                });
+            }
+        });
         let appearance = use_settings_snapshot().settings;
         let platform = Platform::get().current_window();
-        let system_dark = *platform.preferred_theme.read() == PreferredTheme::Dark;
+        let system_dark = system_theme::system_dark(*platform.preferred_theme.read());
         let scale_factor = *platform.scale_factor.read() as f32;
         let theme_id = theme::system_aware(&appearance.theme, system_dark);
         theme::colors::apply(&theme_id, appearance.accent_color.as_deref());
@@ -242,7 +252,12 @@ fn main() {
     #[cfg(target_os = "macos")]
     oneclient_app::platform::macos::loop_memory_collector();
 
-    theme::colors::apply(&settings.theme, settings.accent_color.as_deref());
+    system_theme::start();
+    let boot_theme = theme::system_aware(
+        &settings.theme,
+        system_theme::system_dark(PreferredTheme::Light),
+    );
+    theme::colors::apply(&boot_theme, settings.accent_color.as_deref());
     translations::init(settings.language.clone());
 
     let start_maximized = settings.start_maximized;

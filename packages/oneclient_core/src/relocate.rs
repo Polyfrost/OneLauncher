@@ -341,17 +341,59 @@ pub async fn adopt_legacy_dir() -> Result<Option<PathBuf>, String> {
     }
 
     let new = polyio::canonicalize(&to).unwrap_or_else(|_| to.clone());
-    repoint_links(&new, &old, &from).await.map_err(|err| {
-        format!(
-            "Moved to {} but a link could not be repointed: {err}",
-            to.display()
-        )
-    })?;
+    repoint_links(&new, &old, &from, &new)
+        .await
+        .map_err(|err| {
+            format!(
+                "Moved to {} but a link could not be repointed: {err}",
+                to.display()
+            )
+        })?;
 
     Ok(Some(from))
 }
 
-async fn repoint_links(root: &Path, old: &Path, raw_old: &Path) -> Result<(), polyio::IOError> {
+/// macOS vanilla uses a visible `minecraft` folder. Move an older OneClient
+/// shared game dir to that name so users can actually find it, and repoint any
+/// symlinks that still target the hidden path.
+pub async fn migrate_shared_minecraft_dir() -> Result<Option<PathBuf>, String> {
+    if !cfg!(target_os = "macos") {
+        return Ok(None);
+    }
+
+    let data = paths::data_dir().map_err(|err| format!("Couldn't find the data folder: {err}"))?;
+    let from = data.join(paths::LEGACY_SHARED_MINECRAFT_DIR);
+    let to = data.join(paths::SHARED_MINECRAFT_DIR);
+
+    if !from.is_dir() || to.exists() {
+        return Ok(None);
+    }
+
+    let old = polyio::canonicalize(&from).unwrap_or_else(|_| from.clone());
+    polyio::rename(&from, &to).await.map_err(|err| {
+        format!(
+            "Couldn't move {} to {}: {err}",
+            from.display(),
+            to.display()
+        )
+    })?;
+
+    if let Err(err) = repoint_links(data, &old, &from, &to).await {
+        return Err(format!(
+            "Moved to {} but a link could not be repointed: {err}",
+            to.display()
+        ));
+    }
+
+    Ok(Some(from))
+}
+
+async fn repoint_links(
+    root: &Path,
+    old: &Path,
+    raw_old: &Path,
+    new_base: &Path,
+) -> Result<(), polyio::IOError> {
     let mut stack = vec![root.to_path_buf()];
 
     while let Some(dir) = stack.pop() {
@@ -382,7 +424,7 @@ async fn repoint_links(root: &Path, old: &Path, raw_old: &Path) -> Result<(), po
                 continue;
             };
 
-            let target = root.join(rest);
+            let target = new_base.join(rest);
             if target.is_dir() {
                 polyio::remove_symlink_dir(&path).await?;
                 polyio::symlink_dir(&target, &path).await?;
@@ -844,6 +886,13 @@ async fn remove_children_except(dir: &Path, keep: &[OsString]) -> Result<(), Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn the_shared_game_dir_rename_only_runs_on_macos() {
+        if !cfg!(target_os = "macos") {
+            assert!(migrate_shared_minecraft_dir().await.unwrap().is_none());
+        }
+    }
 
     #[tokio::test]
     async fn a_shared_folder_nobody_uses_forgets_its_links_too() {

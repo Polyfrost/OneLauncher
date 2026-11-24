@@ -182,6 +182,14 @@ mod tests {
     }
 
     #[test]
+    fn filtered_lines_keep_their_original_numbers() {
+        let mut filter = LiveLogFilter::new();
+        let lines = Arc::new(vec![Arc::from("[INFO] a"), Arc::from("[WARN] needle")]);
+        let (_, numbers) = filter.update(&lines, "needle", LevelFilter::All);
+        assert_eq!(*numbers.unwrap(), vec![2]);
+    }
+
+    #[test]
     fn a_new_log_or_filter_rebuilds_results() {
         let mut filter = LiveLogFilter::new();
         let first = Arc::new(vec![Arc::from("[WARN] First needle")]);

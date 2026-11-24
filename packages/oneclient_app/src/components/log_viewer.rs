@@ -425,6 +425,9 @@ fn scroll_body(args: BodyArgs) -> Element {
     let corrected_x = ctx.corrected_x;
     let viewport_h = ctx.viewport_h;
 
+    if on_jump.is_some() {
+        jump_to.set_if_modified(None);
+    }
     let pending = *jump_to.peek();
     if on_jump.is_none()
         && count > 0
@@ -499,8 +502,9 @@ fn scroll_body(args: BodyArgs) -> Element {
         }
     };
 
+    let jumpable = on_jump.is_some();
     let numbers_click = numbers.clone();
-    let on_global_release = move |_: Event<PointerEventData>| {
+    let on_global_release = move |e: Event<PointerEventData>| {
         if !*selecting.read() {
             return;
         }
@@ -512,7 +516,11 @@ fn scroll_body(args: BodyArgs) -> Element {
         let Some((line, _)) = anchor.filter(|_| anchor == focus) else {
             return;
         };
-        if line >= count {
+        let band_y = e.global_location().y as f32
+            - *geom.viewport_top.peek()
+            - geom.corrected_y
+            - BODY_PAD_TOP;
+        if line >= count || band_y < 0. || band_y >= count as f32 * LINE_H {
             return;
         }
         let number = numbers_click
@@ -563,6 +571,7 @@ fn scroll_body(args: BodyArgs) -> Element {
     rect()
         .width(Size::px(body_w))
         .height(Size::px(content_h))
+        .cursor(jumpable.then_some(CursorIcon::Pointer))
         .on_pointer_down(on_body_down)
         .on_capture_global_pointer_move(on_global_move)
         .on_capture_global_pointer_up(on_global_release)

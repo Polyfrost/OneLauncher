@@ -131,6 +131,8 @@ impl Component for ClusterLogs {
         let mut category = use_state(|| Category::Logs);
         let mut selected = use_state(PathBuf::new);
         let search_id = use_a11y();
+        let jump = use_state(|| None::<(usize, u64)>);
+        let jump_seq = use_state(|| 0u64);
         let open_game_output = use_hook(try_consume_root_context::<OpenGameOutput>);
         let dispatch = use_dispatch();
         let mut dumping = use_state(|| false);
@@ -258,6 +260,22 @@ impl Component for ClusterLogs {
                 .map(|line| Arc::<str>::from(line.text.as_str()))
                 .collect(),
         );
+        let line_numbers: Arc<Vec<usize>> =
+            Arc::new(lines.iter().map(|line| line.number).collect());
+        let jump_target = *jump.read();
+        let on_jump = {
+            let mut search = search;
+            let mut level = level;
+            let mut jump = jump;
+            let mut jump_seq = jump_seq;
+            move |number: usize| {
+                search.set(String::new());
+                level.set(LevelFilter::All);
+                let next = *jump_seq.peek() + 1;
+                jump_seq.set(next);
+                jump.set(Some((number, next)));
+            }
+        };
 
         let body = rect()
             .vertical()
@@ -273,16 +291,22 @@ impl Component for ClusterLogs {
                 category,
                 dump_button,
             ))
-            .child(rect().width(Size::fill()).height(Size::flex(1.0)).child(
-                LogViewer::new("", viewer_lines).header(viewer_header(
-                    search,
-                    level,
-                    confirm,
-                    has_log,
-                    upload_path,
-                    search_id,
-                )),
-            ));
+            .child(
+                rect().width(Size::fill()).height(Size::flex(1.0)).child(
+                    LogViewer::new("", viewer_lines)
+                        .line_numbers(Some(line_numbers))
+                        .jump_to(jump_target)
+                        .on_jump(on_jump)
+                        .header(viewer_header(
+                            search,
+                            level,
+                            confirm,
+                            has_log,
+                            upload_path,
+                            search_id,
+                        )),
+                ),
+            );
 
         cluster_content()
             .child(body.into_element())

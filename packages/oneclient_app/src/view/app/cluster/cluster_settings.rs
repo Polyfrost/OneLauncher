@@ -20,9 +20,10 @@ use crate::hooks::{
     ClusterAction, java_runtimes, load_is_shared, load_setting_files, load_sync_left_out,
     loader_versions, mutation_is_running, query_error, settled_or_loading, try_game_profile,
     use_cloud_sync, use_cluster_mutation, use_clusters, use_dispatch, use_game_profile,
-    use_game_snapshot, use_graphics_backend, use_has_game_options, use_is_migration_source,
-    use_java_runtimes, use_launcher, use_loader_versions, use_migratable_routes,
-    use_release_migration_checking, use_settings_snapshot, use_shared_groups,
+    use_game_snapshot, use_graphics_backend, use_has_game_options, use_installs_snapshot,
+    use_is_migration_source, use_java_runtimes, use_launcher, use_loader_versions,
+    use_migratable_routes, use_release_migration_checking, use_settings_snapshot,
+    use_shared_groups,
 };
 use crate::i18n::{t, tf};
 use crate::layout::cluster_content;
@@ -173,7 +174,13 @@ impl Component for ClusterSettings {
             Vec::new()
         };
         let take_bundles_row: Vec<Element> = if mod_loader && !cluster.uses_bundles() {
-            vec![TakeBundlesRow { cluster_id }.into_element()]
+            vec![
+                TakeBundlesRow {
+                    cluster_id,
+                    name: cluster.name.clone(),
+                }
+                .into_element(),
+            ]
         } else {
             Vec::new()
         };
@@ -736,22 +743,23 @@ impl Component for VerifyFilesRow {
 #[derive(PartialEq)]
 struct TakeBundlesRow {
     cluster_id: i64,
+    name: String,
 }
 
 impl Component for TakeBundlesRow {
     fn render(&self) -> impl IntoElement {
-        let cluster_id = self.cluster_id;
-        let mutation = use_cluster_mutation();
-        let running = mutation_is_running(&mutation);
+        let (cluster_id, name) = (self.cluster_id, self.name.clone());
+        let dispatch = use_dispatch();
+        let active = use_game_snapshot().is_active(cluster_id);
+        let busy = use_installs_snapshot().modpack_busy;
+        let enabled = !active && !busy;
 
         let button = Button::new()
             .small()
             .secondary()
-            .enabled(!running)
-            .maybe(!running, |el| {
-                el.on_press(move |_| {
-                    mutation.mutate(ClusterAction::TakeBundles { cluster_id });
-                })
+            .enabled(enabled)
+            .maybe(enabled, |el| {
+                el.on_press(move |_| dispatch.take_offered_bundles(cluster_id, name.clone()))
             })
             .text(t("oneclient.cluster.settings.take_bundles.button"));
 

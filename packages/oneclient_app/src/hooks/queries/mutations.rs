@@ -167,6 +167,35 @@ pub(crate) async fn take_bundles(
     }
 }
 
+pub(crate) async fn take_offered_bundles(
+    state: &std::sync::Arc<oneclient_core::LauncherState>,
+    cluster_id: ClusterId,
+) -> Result<(), String> {
+    let cluster = state
+        .clusters
+        .get(cluster_id)
+        .await
+        .map_err(|err| err.to_string())?;
+    let offered = state
+        .bundles
+        .archives_for(
+            &state.services.content(),
+            &cluster.mc_version,
+            cluster.mc_loader,
+        )
+        .await
+        .unwrap_or_default();
+    if offered.is_empty() {
+        return Err(tf(
+            "oneclient.mutations.take_bundles_unsupported",
+            &[&cluster.mc_version, &cluster.mc_loader],
+        ));
+    }
+    turn_on_bundles(state, cluster_id, None)
+        .await
+        .map_or(Ok(()), Err)
+}
+
 async fn turn_on_bundles(
     state: &std::sync::Arc<oneclient_core::LauncherState>,
     cluster_id: ClusterId,
@@ -305,9 +334,6 @@ pub enum ClusterAction {
     VerifyFiles {
         cluster_id: ClusterId,
     },
-    TakeBundles {
-        cluster_id: ClusterId,
-    },
     CreateInstance {
         kind: ClusterKind,
         name: String,
@@ -381,7 +407,6 @@ impl MutationCapability for ClusterMutation {
             | ClusterAction::SetBundlePackageRemoved { cluster_id, .. }
             | ClusterAction::SetDirTarget { cluster_id, .. }
             | ClusterAction::VerifyFiles { cluster_id }
-            | ClusterAction::TakeBundles { cluster_id }
             | ClusterAction::DeleteInstance { cluster_id }
             | ClusterAction::ResetInstance { cluster_id }
                 if crate::hooks::update_check_running(*cluster_id) =>
@@ -616,34 +641,6 @@ impl MutationCapability for ClusterMutation {
                         reason: err.to_string(),
                     }),
                 }
-            }
-            ClusterAction::TakeBundles { cluster_id } => {
-                let (state, cluster_id) = (state.clone(), *cluster_id);
-                crate::launcher::off_ui(async move {
-                    let cluster = state
-                        .clusters
-                        .get(cluster_id)
-                        .await
-                        .map_err(|err| err.to_string())?;
-                    let offered = state
-                        .bundles
-                        .archives_for(
-                            &state.services.content(),
-                            &cluster.mc_version,
-                            cluster.mc_loader,
-                        )
-                        .await
-                        .unwrap_or_default();
-                    if offered.is_empty() {
-                        return Err(tf(
-                            "oneclient.mutations.take_bundles_unsupported",
-                            &[&cluster.mc_version, &cluster.mc_loader],
-                        ));
-                    }
-                    turn_on_bundles(&state, cluster_id, None).await.map_or(Ok(()), Err)
-                })
-                .await
-                .map_err(|reason| oneclient_content::ContentError::InvalidData { reason })
             }
             ClusterAction::CreateInstance {
                 kind,

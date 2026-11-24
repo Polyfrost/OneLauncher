@@ -20,6 +20,15 @@ use crate::theme::{colors, rounded, rounded_px, text_size};
 use crate::ui::border_all_color;
 use crate::{Actions, utils};
 
+/// Copy groups touched by a recent import, in the order they are shown.
+fn matching_copy_groups(groups: &[(String, Vec<String>)], wanted: &[String]) -> Vec<String> {
+    groups
+        .iter()
+        .filter(|(_, hashes)| hashes.iter().any(|hash| wanted.contains(hash)))
+        .map(|(package_id, _)| package_id.clone())
+        .collect()
+}
+
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum SortMode {
     NameAsc,
@@ -988,20 +997,32 @@ impl Component for ContentBox {
             })
             .collect();
         use_side_effect_with_deps(&copy_groups, move |groups| {
-            let mut request = crate::hooks::COPIES_REQUEST.lock().unwrap();
-            let Some((_, wanted)) = request.as_ref().filter(|(cluster, _)| *cluster == cluster_id)
-            else {
+            // State writes below can re-enter this component, so the shared
+            // request is read in its own short critical section instead of
+            // holding the mutex guard across them.
+            let wanted = {
+                let request = crate::hooks::COPIES_REQUEST.lock().unwrap();
+                request
+                    .as_ref()
+                    .filter(|(cluster, _)| *cluster == cluster_id)
+                    .map(|(_, hashes)| hashes.clone())
+            };
+            let Some(wanted) = wanted else {
                 return;
             };
-            let mut found: Vec<String> = groups
-                .iter()
-                .filter(|(_, hashes)| hashes.iter().any(|hash| wanted.contains(hash)))
-                .map(|(package_id, _)| package_id.clone())
-                .collect();
+            let mut found = matching_copy_groups(groups, &wanted);
             if found.is_empty() {
                 return;
             }
-            *request = None;
+            {
+                let mut request = crate::hooks::COPIES_REQUEST.lock().unwrap();
+                if request
+                    .as_ref()
+                    .is_some_and(|(cluster, _)| *cluster == cluster_id)
+                {
+                    *request = None;
+                }
+            }
             if copies_of.peek().is_none() {
                 copies_of.set(Some(found.remove(0)));
             }
@@ -1135,7 +1156,6 @@ impl Component for ContentBox {
                     rect()
                         .width(Size::window_percent(100.))
                         .height(Size::window_percent(100.))
-                        .on_global_file_hover(move |_| copies_of.set(None))
                         .on_pointer_press(move |_| copies_of.set(None))
                         .center()
                         .child(
@@ -1374,4 +1394,29 @@ fn local_empty(
         .child(rect().height(Size::px(6.)))
         .child(add_from_file_button(cluster_id, content_type, dispatch))
         .into_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::matching_copy_groups;
+
+    #[test]
+    fn import_only_opens_its_own_copy_groups() {
+        let groups = vec![
+            ("first".to_string(), vec!["a".to_string(), "b".to_string()]),
+            ("second".to_string(), vec!["c".to_string()]),
+            ("third".to_string(), vec!["d".to_string()]),
+        ];
+
+        assert_eq!(
+            matching_copy_groups(&groups, &["c".to_string()]),
+            vec!["second"]
+        );
+        assert_eq!(
+            matching_copy_groups(&groups, &["b".to_string(), "d".to_string()]),
+            vec!["first", "third"]
+        );
+        assert!(matching_copy_groups(&groups, &[]).is_empty());
+        assert!(matching_copy_groups(&groups, &["missing".to_string()]).is_empty());
+    }
 }

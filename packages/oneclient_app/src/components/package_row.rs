@@ -192,6 +192,8 @@ pub struct PackageRow {
     selecting: bool,
     on_select: EventHandler<()>,
     on_copies: Option<EventHandler<()>>,
+    /// The copies popup compares versions, which list rows otherwise leave out
+    show_version: bool,
     key: DiffKey,
 }
 
@@ -207,6 +209,7 @@ impl PackageRow {
             selecting: false,
             on_select: (|()| {}).into(),
             on_copies: None,
+            show_version: false,
             key: DiffKey::None,
         }
     }
@@ -223,6 +226,11 @@ impl PackageRow {
 
     pub fn on_copies(mut self, on_copies: impl Into<EventHandler<()>>) -> Self {
         self.on_copies = Some(on_copies.into());
+        self
+    }
+
+    pub fn show_version(mut self, show: bool) -> Self {
+        self.show_version = show;
         self
     }
 
@@ -294,6 +302,7 @@ impl Component for PackageRow {
 
         let on_context = Some(self.on_context.clone());
         let on_copies = self.on_copies.clone().filter(|_| !item.copies.is_empty());
+        let show_version = self.show_version;
 
         let (card, radius) = match layout {
             CardLayout::List => (
@@ -305,6 +314,7 @@ impl Component for PackageRow {
                     on_toggle,
                     on_context.clone(),
                     on_copies,
+                    show_version,
                 ),
                 8.,
             ),
@@ -659,6 +669,7 @@ pub(crate) fn on_secondary(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn list_card(
     item: &PackageEntry,
     package_type: &'static str,
@@ -667,6 +678,7 @@ fn list_card(
     on_toggle: EventHandler<()>,
     on_context: Option<EventHandler<(f32, f32)>>,
     on_copies: Option<EventHandler<()>>,
+    show_version: bool,
 ) -> Element {
     let copies = item.copies.len();
     rect()
@@ -683,7 +695,13 @@ fn list_card(
             el.opacity(0.5)
         })
         .on_secondary_down(on_secondary(on_context.clone()))
-        .child(package_info(item, package_type, cluster_id, icon))
+        .child(package_info(
+            item,
+            package_type,
+            cluster_id,
+            icon,
+            show_version,
+        ))
         .maybe_child(on_copies.map(|on_press| copies_button(copies, on_press)))
         .child(meta_size(item.size))
         .child(toggle_controlled(item.enabled, on_toggle).disabled(item.locked))
@@ -1030,11 +1048,31 @@ fn reveal_in_cluster(cluster_id: i64, content_type: ContentType, file_name: Stri
     });
 }
 
+fn byline(
+    author: Option<String>,
+    added: Option<String>,
+    version: Option<String>,
+    show_version: bool,
+) -> String {
+    let version = if show_version {
+        version.filter(|v| !v.is_empty())
+    } else {
+        None
+    };
+    author
+        .into_iter()
+        .chain(added)
+        .chain(version)
+        .collect::<Vec<_>>()
+        .join(" \u{b7} ")
+}
+
 fn package_info(
     item: &PackageEntry,
     package_type: &'static str,
     cluster_id: i64,
     icon: impl IntoElement,
+    show_version: bool,
 ) -> impl IntoElement {
     let remote = item.is_remote();
     let provider = item.provider;
@@ -1047,11 +1085,12 @@ fn package_info(
             &[&item.author],
         )
     });
-    let byline = author
-        .into_iter()
-        .chain(item.added_label())
-        .collect::<Vec<_>>()
-        .join(" \u{b7} ");
+    let byline = byline(
+        author,
+        item.added_label(),
+        item.version.clone(),
+        show_version,
+    );
 
     rect()
         .horizontal()
@@ -1311,4 +1350,41 @@ pub(crate) fn pill(icon: Option<Element>, text: String, accent: Color) -> Elemen
                 .color(accent),
         )
         .into_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::byline;
+
+    #[test]
+    fn copies_byline_shows_the_version_when_asked() {
+        assert_eq!(
+            byline(
+                Some("by Polyfrost".into()),
+                Some("Added 11/17/2026".into()),
+                Some("1.0.0".into()),
+                true,
+            ),
+            "by Polyfrost \u{b7} Added 11/17/2026 \u{b7} 1.0.0"
+        );
+    }
+
+    #[test]
+    fn ordinary_rows_keep_the_version_hidden() {
+        assert_eq!(
+            byline(
+                Some("by Polyfrost".into()),
+                None,
+                Some("1.0.0".into()),
+                false,
+            ),
+            "by Polyfrost"
+        );
+    }
+
+    #[test]
+    fn copies_byline_skips_missing_and_empty_versions() {
+        assert_eq!(byline(None, None, None, true), "");
+        assert_eq!(byline(None, None, Some(String::new()), true), "");
+    }
 }

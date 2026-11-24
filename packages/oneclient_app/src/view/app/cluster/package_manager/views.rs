@@ -1124,6 +1124,7 @@ impl Component for ContentBox {
                         .height(Size::px(CARD_H))
                         .child(
                             PackageRow::new(entry, cluster_id, package_type)
+                                .show_version(true)
                                 .on_context(move |(x, y)| menu.set(Some((x, y, for_menu.clone()))))
                                 .key(key),
                         )

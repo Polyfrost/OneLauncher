@@ -551,6 +551,8 @@
   "oneclient.chat.thread.editing": "Editing message",
   "oneclient.chat.thread.emoji": "Emoji",
   "oneclient.chat.thread.emoji_heading": "EMOJI",
+  "oneclient.chat.thread.emoji_no_results": "No emoji found",
+  "oneclient.chat.thread.emoji_search_placeholder": "Search emoji",
   "oneclient.chat.thread.empty": "No messages yet.",
   "oneclient.chat.thread.loading": "Loading messages…",
   "oneclient.chat.thread.message_placeholder": "Message %s",

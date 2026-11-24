@@ -194,15 +194,23 @@ impl StyleExt for TextInput {
     }
 }
 
-fn submit_on_modifier_enter(
+pub fn submit_on_enter(
     value: Writable<String>,
     on_submit: EventHandler<String>,
+    needs_modifier: bool,
 ) -> Callback<Event<KeyboardEventData>, bool> {
     Callback::new(move |e: Event<KeyboardEventData>| match &e.key {
-        Key::Named(NamedKey::Enter) if e.modifiers.contains(Modifiers::ctrl_or_meta()) => {
+        Key::Named(NamedKey::Enter)
+            if if needs_modifier {
+                e.modifiers.contains(Modifiers::ctrl_or_meta())
+            } else {
+                !e.modifiers.contains(Modifiers::SHIFT)
+            } =>
+        {
             e.stop_propagation();
             e.prevent_default();
-            on_submit.call(value.read().clone());
+            let text = value.read().clone();
+            on_submit.call(text);
             false
         }
         Key::Named(NamedKey::Escape) | Key::Named(NamedKey::Shift) => true,
@@ -234,7 +242,7 @@ impl Component for TextInput {
         if self.multiline
             && let Some(on_submit) = self.on_submit.clone()
         {
-            input = input.on_pre_key_down(submit_on_modifier_enter(self.value.clone(), on_submit));
+            input = input.on_pre_key_down(submit_on_enter(self.value.clone(), on_submit, true));
         }
         if !matches!(self.layout.height, Size::Inner) {
             input = input.height(Size::fill());
@@ -316,5 +324,56 @@ impl Component for TextInput {
 
     fn render_key(&self) -> DiffKey {
         self.key.clone().or(self.default_key())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use freya_testing::prelude::*;
+
+    use super::*;
+
+    fn composer() -> impl IntoElement {
+        let mut draft = use_state(String::new);
+        let mut sent = use_consume::<State<Vec<String>>>();
+        TextInput::new(draft)
+            .multiline(true)
+            .auto_focus(true)
+            .on_pre_key_down(submit_on_enter(
+                draft.into(),
+                EventHandler::new(move |text| {
+                    sent.write().push(text);
+                    draft.set(String::new());
+                }),
+                false,
+            ))
+    }
+
+    fn enter(test: &mut TestingRunner, modifiers: Modifiers) {
+        test.send_event(PlatformEvent::Keyboard {
+            name: KeyboardEventName::KeyDown,
+            key: Key::Named(NamedKey::Enter),
+            code: Code::Enter,
+            modifiers,
+        });
+        test.sync_and_update();
+    }
+
+    #[test]
+    fn shift_enter_breaks_the_line_and_enter_submits() {
+        let (mut test, sent) = TestingRunner::new(
+            composer,
+            (300., 300.).into(),
+            |runner| runner.provide_root_context(|| State::create(Vec::<String>::new())),
+            1.,
+        );
+        test.sync_and_update();
+        test.write_text("a");
+        enter(&mut test, Modifiers::SHIFT);
+        test.write_text("b");
+        assert!(sent.peek().is_empty());
+
+        enter(&mut test, Modifiers::default());
+        assert_eq!(*sent.peek(), vec!["a\nb".to_string()]);
     }
 }

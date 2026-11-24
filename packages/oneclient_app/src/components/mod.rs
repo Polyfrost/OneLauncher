@@ -157,7 +157,7 @@ pub use spinner::{Spinner, centered_spinner};
 pub use splash_curtain::SplashCurtain;
 pub use status_bar::StatusBar;
 pub use tab_bar::{TabBar, TabItem};
-pub use text_input::{TextInput, validate_memory, validate_number};
+pub use text_input::{TextInput, submit_on_enter, validate_memory, validate_number};
 pub use toasts::Toasts;
 pub use toggle::{toggle, toggle_controlled};
 pub use tooltip::{TooltipHost, TooltipPlacement, use_provide_tooltips, use_tooltip_anchor};

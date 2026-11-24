@@ -6,6 +6,7 @@ use oneclient_polyplus::{GroupKind, MAX_MESSAGE_LENGTH};
 use crate::chat::{ChatConversation, ChatMessage, MessageInvite, PendingMessage, ThreadStatus};
 use crate::components::{
     Avatar, Button, ContextMenu, Icon, IconType, OVERLAY_MAX_LEVEL, ScrollArea, TextInput,
+    submit_on_enter,
 };
 use crate::hooks::{
     Actions, chat_draft, save_chat_draft, use_chat_invite_game, use_chat_online_count,
@@ -1143,7 +1144,6 @@ impl Component for Composer {
                     .key("input")
                     .horizontal()
                     .width(Size::fill())
-                    .height(Size::px(38.))
                     .padding(Gaps::new_all(4.))
                     .spacing(4.)
                     .content(Content::Flex)
@@ -1168,17 +1168,30 @@ impl Component for Composer {
                             )),
                     )
                     .child(
-                        TextInput::new(draft)
-                            .bare()
+                        ScrollArea::new()
                             .width(Size::flex(1.0))
-                            .font_size(text_size(14.))
-                            .auto_focus(*edit_ended.peek())
-                            .placeholder(tf("oneclient.chat.thread.message_placeholder", &[&title]))
-                            .on_submit(move |_| {
-                                emoji_open.set(false);
-                                submit_draft(&on_key, draft, editing, group_id, cooling, &sent_by_key);
-                            })
-                            .key(edit_id),
+                            .height(Size::Inner)
+                            .max_height(Size::px(6. * text_size(19.)))
+                            .stick_bottom(true)
+                            .child(
+                            TextInput::new(draft)
+                                .bare()
+                                .width(Size::fill())
+                                .height(Size::Inner)
+                                .font_size(text_size(14.))
+                                .multiline(true)
+                                .auto_focus(*edit_ended.peek())
+                                .placeholder(tf("oneclient.chat.thread.message_placeholder", &[&title]))
+                                .on_pre_key_down(submit_on_enter(
+                                    draft.into(),
+                                    EventHandler::new(move |_| {
+                                        emoji_open.set(false);
+                                        submit_draft(&on_key, draft, editing, group_id, cooling, &sent_by_key);
+                                    }),
+                                    false,
+                                ))
+                                .key(edit_id),
+                            ),
                     )
                     .child(
                         rect()

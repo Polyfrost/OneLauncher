@@ -226,7 +226,7 @@ pub fn memory_presets_mb() -> Vec<u32> {
 }
 
 fn presets_for_total_gb(total_gb: u32) -> Vec<u32> {
-    let usable_gb = total_gb.saturating_sub(MEMORY_HEADROOM_GB);
+    let usable_gb = total_gb.saturating_sub(MEMORY_HEADROOM_GB).min(total_gb / 2);
     if usable_gb == 0 {
         return vec![1024];
     }
@@ -588,20 +588,18 @@ mod tests {
     }
 
     #[test]
-    fn presets_stop_two_gigabytes_short_of_the_machine() {
-        assert_eq!(
-            presets_for_total_gb(16),
-            vec![2048, 3072, 4096, 6144, 8192, 12288, 14336]
-        );
+    fn presets_stop_at_half_the_machine() {
+        assert_eq!(presets_for_total_gb(16), vec![2048, 3072, 4096, 6144, 8192]);
         assert_eq!(
             presets_for_total_gb(32),
-            vec![2048, 3072, 4096, 6144, 8192, 12288, 16384, 24576, 30720]
+            vec![2048, 3072, 4096, 6144, 8192, 12288, 16384]
         );
+        assert_eq!(presets_for_total_gb(6), vec![2048, 3072]);
     }
 
     #[test]
     fn a_ceiling_landing_on_a_round_step_is_not_repeated() {
-        assert_eq!(presets_for_total_gb(8), vec![2048, 3072, 4096, 6144]);
+        assert_eq!(presets_for_total_gb(8), vec![2048, 3072, 4096]);
     }
 
     #[test]

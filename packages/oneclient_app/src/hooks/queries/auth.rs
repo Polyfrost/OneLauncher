@@ -209,6 +209,33 @@ impl MutationCapability for AddMicrosoftAccountMutation {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct AddMicrosoftAccountFromTokenMutation;
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct AddMicrosoftAccountFromTokenKeys {
+    pub token: String,
+}
+
+impl MutationCapability for AddMicrosoftAccountFromTokenMutation {
+    type Ok = MinecraftAccount;
+    type Err = LauncherError;
+    type Keys = AddMicrosoftAccountFromTokenKeys;
+
+    async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        Ok(crate::launcher::state()?
+            .auth
+            .add_microsoft_account_from_token(keys.token.clone())
+            .await?)
+    }
+
+    async fn on_settled(&self, _keys: &Self::Keys, result: &Result<Self::Ok, Self::Err>) {
+        if let Ok(account) = result {
+            invalidate_auth_queries(Some(account.id)).await;
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AddOfflineAccountMutation;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -360,6 +387,7 @@ impl MutationCapability for RefreshAllAccountsMutation {
 pub type UseSetDefaultAccount = UseMutation<SetDefaultAccountMutation>;
 pub type UseRemoveAccount = UseMutation<RemoveAccountMutation>;
 pub type UseRefreshAccount = UseMutation<RefreshAccountMutation>;
+pub type UseAddMicrosoftAccountFromToken = UseMutation<AddMicrosoftAccountFromTokenMutation>;
 
 pub fn use_begin_microsoft_login() -> UseMutation<BeginMicrosoftLoginMutation> {
     use_mutation(Mutation::new(BeginMicrosoftLoginMutation))
@@ -375,6 +403,10 @@ pub fn use_cancel_microsoft_login() -> UseMutation<CancelMicrosoftLoginMutation>
 
 pub fn use_add_microsoft_account() -> UseMutation<AddMicrosoftAccountMutation> {
     use_mutation(Mutation::new(AddMicrosoftAccountMutation))
+}
+
+pub fn use_add_microsoft_account_from_token() -> UseAddMicrosoftAccountFromToken {
+    use_mutation(Mutation::new(AddMicrosoftAccountFromTokenMutation))
 }
 
 pub fn use_add_offline_account() -> UseMutation<AddOfflineAccountMutation> {

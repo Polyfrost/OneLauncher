@@ -1,7 +1,9 @@
 use freya::prelude::*;
 use oneclient_auth::MinecraftAccount;
 
-use crate::components::{Avatar, Button, Icon, IconType, use_microsoft_login};
+use crate::components::{
+    Avatar, Button, Icon, IconType, use_microsoft_login, use_microsoft_token_login,
+};
 use crate::hooks::{try_default_account, use_current_account};
 use crate::i18n::t;
 use crate::routes::Route;
@@ -17,6 +19,7 @@ impl Component for OnboardingAccount {
     fn render(&self) -> impl IntoElement {
         let account_query = use_current_account();
         let msa = use_microsoft_login();
+        let token_login = use_microsoft_token_login();
 
         let account = try_default_account(&account_query);
         let has_account = account.is_some();
@@ -33,8 +36,14 @@ impl Component for OnboardingAccount {
                 Some(account) => account_preview(account).into_element(),
                 None => {
                     let start = msa.clone();
-                    sign_in_card(msa.pending, msa.error.clone(), move |_| start.start())
-                        .into_element()
+                    let start_token = token_login.clone();
+                    sign_in_card(
+                        msa.pending,
+                        msa.error.clone(),
+                        move |_| start.start(),
+                        move |_| start_token.start(),
+                    )
+                    .into_element()
                 }
             })
             .into_element();
@@ -54,6 +63,7 @@ impl Component for OnboardingAccount {
             .height(Size::fill())
             .child(page)
             .maybe_child(msa.popup())
+            .maybe_child(token_login.popup())
     }
 }
 
@@ -98,6 +108,7 @@ fn sign_in_card(
     pending: bool,
     error: Option<String>,
     on_add: impl FnMut(Event<PressEventData>) + 'static,
+    on_token: impl FnMut(Event<PressEventData>) + 'static,
 ) -> impl IntoElement {
     rect()
         .vertical()
@@ -115,6 +126,15 @@ fn sign_in_card(
                 } else {
                     t("oneclient.onboarding.account.add")
                 }),
+        )
+        .child(
+            Button::new()
+                .secondary()
+                .large()
+                .enabled(!pending)
+                .on_press(on_token)
+                .child(Icon::new(IconType::Key01).size(16.))
+                .text(t("oneclient.onboarding.account.token_login")),
         )
         .maybe_child(error.map(|message| {
             rect()

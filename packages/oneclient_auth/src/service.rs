@@ -189,6 +189,28 @@ impl AuthService {
         login.browser = None;
     }
 
+    /// Adds a Microsoft account from a pasted access token or OAuth refresh token.
+    #[tracing::instrument(skip(self, token), fields(token_len = token.len()))]
+    pub async fn add_microsoft_account_from_token(
+        &self,
+        token: String,
+    ) -> AuthResult<MinecraftAccount> {
+        let events = self.events.clone();
+        let account =
+            msa::account_from_raw_token(self.net.http(), &token, |label, current, total| {
+                events.progress(MICROSOFT_LOGIN_PROGRESS, label, current, total);
+            })
+            .await?;
+
+        events.progress(MICROSOFT_LOGIN_PROGRESS, "Signed in", 1, 1);
+        tracing::info!(username = %account.username, "Microsoft token login succeeded");
+        self.store
+            .lock()
+            .await
+            .commit_account(account, &self.events)
+            .await
+    }
+
     #[tracing::instrument(skip(self), fields(username = %username))]
     pub async fn add_offline_account(&self, username: String) -> AuthResult<MinecraftAccount> {
         self.store

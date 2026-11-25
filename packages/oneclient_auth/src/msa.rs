@@ -340,6 +340,54 @@ fn pkce_challenge(verifier: &str) -> String {
     BASE64_URL_SAFE_NO_PAD.encode(digest)
 }
 
+/// The two token shapes accepted by the manual sign-in field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RawTokenKind {
+    /// A Microsoft access token (a three-part JWT beginning with `eyJ`).
+    AccessToken,
+    /// An OAuth refresh token issued by Microsoft.
+    RefreshToken,
+}
+
+#[must_use]
+pub fn classify_raw_token(raw: &str) -> Option<RawTokenKind> {
+    let raw = raw.trim();
+    if raw.starts_with("eyJ") && raw.matches('.').count() >= 2 {
+        Some(RawTokenKind::AccessToken)
+    } else if raw.starts_with("M.") {
+        Some(RawTokenKind::RefreshToken)
+    } else {
+        None
+    }
+}
+
+/// Signs in from a token the user pasted. An access token is used as-is; a
+/// refresh token is exchanged for a fresh Microsoft token pair first.
+#[tracing::instrument(level = "debug", skip_all)]
+pub async fn account_from_raw_token(
+    client: &Client,
+    raw: &str,
+    on_progress: impl Fn(&str, u64, u64),
+) -> Result<MinecraftAccount, MinecraftAuthError> {
+    let raw = raw.trim();
+    match classify_raw_token(raw) {
+        Some(RawTokenKind::AccessToken) => {
+            let msa = MsaToken {
+                access_token: raw.to_string(),
+                // An access token cannot renew itself; the account will need
+                // another manual sign-in when the Minecraft token expires.
+                refresh_token: String::new(),
+            };
+            account_from_msa_token(client, msa, on_progress).await
+        }
+        Some(RawTokenKind::RefreshToken) => {
+            let msa = refresh_msa_token(client, raw).await?;
+            account_from_msa_token(client, msa, on_progress).await
+        }
+        None => Err(MinecraftAuthError::InvalidToken),
+    }
+}
+
 #[tracing::instrument(level = "debug", skip_all, fields(username = %creds.username))]
 pub async fn refresh_microsoft_account(
     client: &Client,
@@ -848,4 +896,24 @@ where
     }
 
     resp
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_pasted_token_is_classified_by_its_shape() {
+        assert_eq!(
+            classify_raw_token("  eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.signature  "),
+            Some(RawTokenKind::AccessToken)
+        );
+        assert_eq!(
+            classify_raw_token("M.C543_SN1.0.U.some-refresh-token"),
+            Some(RawTokenKind::RefreshToken)
+        );
+        assert_eq!(classify_raw_token(""), None);
+        assert_eq!(classify_raw_token("not-a-token"), None);
+        assert_eq!(classify_raw_token("eyJonlyonepart"), None);
+    }
 }

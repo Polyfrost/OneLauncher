@@ -24,9 +24,7 @@ use crate::notifications::{
     BlockedDownloads, ExistingPackView, FlaggedChoice, ModpackConfirm, ModpackImportView,
 };
 use crate::state::AppChannel;
-use crate::utils::count_label;
-
-const MAX_LISTED: usize = 3;
+use crate::utils::{count_label, listed as listed_names};
 
 enum JobSlot {
     Idle,
@@ -1091,17 +1089,7 @@ fn notify_outcome(
 }
 
 pub(crate) fn listed(names: impl Iterator<Item = String>) -> String {
-    let names: Vec<String> = names.collect();
-    let shown = names
-        .iter()
-        .take(MAX_LISTED)
-        .cloned()
-        .collect::<Vec<_>>()
-        .join(", ");
-    match names.len().saturating_sub(MAX_LISTED) {
-        0 => shown,
-        extra => tf("oneclient.actions.listed.more", &[&shown, &extra]),
-    }
+    listed_names(&names.collect::<Vec<_>>())
 }
 
 #[cfg(test)]

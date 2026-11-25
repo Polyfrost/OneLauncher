@@ -1163,7 +1163,8 @@ mod tests {
             .execute(&mut *conn)
             .await
             .expect("disable foreign keys");
-        sqlx::query!("DELETE FROM artifacts WHERE hash = ?", "hash_local")
+        sqlx::query("DELETE FROM artifacts WHERE hash = ?")
+            .bind("hash_local")
             .execute(&mut *conn)
             .await
             .expect("drop artifact row");

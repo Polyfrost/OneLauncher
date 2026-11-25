@@ -25,7 +25,7 @@ use crate::i18n::{t, tf};
 use crate::launcher::{self, off_ui};
 use crate::notifications::{SharedPreview, SharedPreviewFile};
 use crate::state::{AppChannel, OwnerCheck, OwnerShare, ShareProgress, ShareReady};
-use crate::utils::count_label;
+use crate::utils::{count_label, listed};
 
 const UPDATE_CHECK_LIMIT: Duration = Duration::from_secs(6);
 const MAX_PREVIEW_FILES: usize = 200;
@@ -45,8 +45,6 @@ enum UpdateAnswer {
     Skip,
     Unlink,
 }
-
-const MAX_LISTED: usize = 3;
 
 const NOT_EXPORTING: i64 = -1;
 
@@ -930,19 +928,6 @@ fn export_details(report: &ShareExportReport) -> String {
         ));
     }
     body
-}
-
-fn listed(names: &[String]) -> String {
-    let shown = names
-        .iter()
-        .take(MAX_LISTED)
-        .cloned()
-        .collect::<Vec<_>>()
-        .join(", ");
-    match names.len().saturating_sub(MAX_LISTED) {
-        0 => shown,
-        extra => tf("oneclient.actions.listed.more", &[&shown, &extra]),
-    }
 }
 
 #[cfg(test)]

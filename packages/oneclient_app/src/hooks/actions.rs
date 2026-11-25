@@ -1608,8 +1608,11 @@ impl Actions {
                     super::invalidate_cluster_queries().await;
                     if copied {
                         let mods = crate::routes::Route::ClusterMods { cluster_id };
+                        // `current()` reads a component context this global task doesn't
+                        // have, so parse the plain route string instead
                         if let Some(router) = &router
-                            && router.current::<crate::routes::Route>() != mods
+                            && router.full_route_string().parse::<crate::routes::Route>().ok()
+                                != Some(mods.clone())
                         {
                             let _ = router.push(mods);
                         }

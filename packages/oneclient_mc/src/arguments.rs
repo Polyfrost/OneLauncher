@@ -67,6 +67,7 @@ pub fn java_arguments(
         oneclient_common::total_ram_mb(),
         &custom,
     ));
+    parsed.extend(code_cache_flags(java_arch, &custom));
 
     if java_major >= 21 {
         parsed.push("--add-modules=jdk.incubator.vector".to_string());
@@ -130,6 +131,27 @@ pub fn performance_flags(
         flags.push("-XX:+UseCompactObjectHeaders".to_string());
     }
 
+    flags
+}
+
+#[must_use]
+pub fn code_cache_flags(java_arch: &str, custom_args: &[String]) -> Vec<String> {
+    let mut flags = Vec::new();
+    if !is_64_bit(java_arch) {
+        return flags;
+    }
+    if !custom_args
+        .iter()
+        .any(|arg| arg.starts_with("-XX:ReservedCodeCacheSize="))
+    {
+        flags.push("-XX:ReservedCodeCacheSize=512m".to_string());
+    }
+    if !custom_args
+        .iter()
+        .any(|arg| arg.ends_with("UseCodeCacheFlushing"))
+    {
+        flags.push("-XX:-UseCodeCacheFlushing".to_string());
+    }
     flags
 }
 
@@ -619,8 +641,9 @@ where
 mod tests {
     use super::{
         HashMap, Library, Path, SidedDataEntry, ZGC_MIN_HEAP_MB, append_profile_game_arguments,
-        classpaths, drop_repeated_arguments, get_library, is_collector_flag, java_arguments,
-        minecraft_arguments, performance_flags, processor_arguments, split_custom_args,
+        classpaths, code_cache_flags, drop_repeated_arguments, get_library, is_collector_flag,
+        java_arguments, minecraft_arguments, performance_flags, processor_arguments,
+        split_custom_args,
     };
     use oneclient_common::Resolution;
 
@@ -904,6 +927,26 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn code_cache_flags_respect_custom_arguments() {
+        assert_eq!(
+            code_cache_flags("amd64", &[]),
+            vec![
+                "-XX:ReservedCodeCacheSize=512m",
+                "-XX:-UseCodeCacheFlushing"
+            ]
+        );
+        assert_eq!(
+            code_cache_flags("aarch64", &custom("-XX:ReservedCodeCacheSize=256m")),
+            vec!["-XX:-UseCodeCacheFlushing"]
+        );
+        assert_eq!(
+            code_cache_flags("amd64", &custom("-XX:+UseCodeCacheFlushing")),
+            vec!["-XX:ReservedCodeCacheSize=512m"]
+        );
+        assert!(code_cache_flags("x86", &[]).is_empty());
     }
 
     #[test]

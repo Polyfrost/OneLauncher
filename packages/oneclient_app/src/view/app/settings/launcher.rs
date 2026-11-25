@@ -163,10 +163,10 @@ impl Component for SettingsLauncher {
             ))
             .child(settings_row(
                 IconType::Moon01,
-                t("oneclient.settings.launcher.run_in_background.title"),
-                t("oneclient.settings.launcher.run_in_background.description"),
+                t("oneclient.settings.launcher.close_behaviour.title"),
+                t("oneclient.settings.launcher.close_behaviour.description"),
                 resettable(
-                    toggle(run_in_background),
+                    close_behaviour_field(run_in_background),
                     run_in_background,
                     defaults.run_in_background,
                 ),
@@ -203,6 +203,18 @@ fn launch_behaviour_field(mut selected: State<LaunchBehaviour>) -> impl IntoElem
                 selected.set(behaviour);
             }
         })
+}
+
+/// Backed by `run_in_background` so existing settings files carry over unchanged
+fn close_behaviour_field(mut background: State<bool>) -> impl IntoElement {
+    let exit = t("oneclient.settings.launcher.close_behaviour.exit");
+    let to_background = t("oneclient.settings.launcher.close_behaviour.background");
+    let current = if *background.read() { to_background } else { exit };
+
+    Dropdown::new(current, vec![exit.to_string(), to_background.to_string()])
+        .width(Size::px(220.))
+        .height(Size::px(34.))
+        .on_select(move |idx: usize| background.set(idx == 1))
 }
 
 #[derive(PartialEq)]
@@ -595,11 +607,11 @@ inventory::submit! {
 
 inventory::submit! {
     SearchItem {
-        id: "launcher.run_in_background",
+        id: "launcher.close_behaviour",
         icon: IconType::Moon01,
-        title: "oneclient.settings.launcher.run_in_background.title",
-        description: "oneclient.settings.launcher.run_in_background.description",
-        keywords: &["background", "tray", "close", "minimize"],
+        title: "oneclient.settings.launcher.close_behaviour.title",
+        description: "oneclient.settings.launcher.close_behaviour.description",
+        keywords: &["background", "tray", "close", "exit", "quit", "minimize"],
         route: Route::SettingsLauncher {},
     }
 }

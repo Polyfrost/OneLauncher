@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
-use freya::prelude::{GlobalContexts, spawn_in_window};
+use freya::prelude::{GlobalContexts, spawn_global};
 use freya::radio::RadioStation;
 use oneclient_core::servers::{self, LocalServer};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -490,7 +490,7 @@ pub fn start(station: Station, id: String) {
         };
     });
 
-    spawn_in_window(async move {
+    spawn_global(async move {
         let spawned = off_ui({
             let id = id.clone();
             async move {
@@ -807,7 +807,7 @@ pub fn disable_mods_and_restart(
     file_names: Vec<String>,
     notice: Option<String>,
 ) {
-    spawn_in_window(async move {
+    spawn_global(async move {
         let result = off_ui({
             let id = id.clone();
             async move {
@@ -939,7 +939,7 @@ pub fn stop(station: Station, id: String) {
     let Some(armed) = live.pid else {
         return;
     };
-    spawn_in_window(async move {
+    spawn_global(async move {
         let still_stopping = || {
             let now = station.peek().servers.get(&id);
             now.status == ServerStatus::Stopping && now.pid == Some(armed)
@@ -1000,7 +1000,7 @@ pub fn restart(station: Station, id: String) {
         return;
     }
     stop(station, id.clone());
-    spawn_in_window(async move {
+    spawn_global(async move {
         while station.peek().servers.status(&id) == ServerStatus::Stopping {
             tokio::time::sleep(Duration::from_millis(250)).await;
         }
@@ -1013,7 +1013,7 @@ pub fn restart(station: Station, id: String) {
 
 /// While running, saving is paused so the copy is not torn mid-write
 pub fn backup(id: String, quiet: bool) {
-    spawn_in_window(async move {
+    spawn_global(async move {
         let _turn = hold(&BACKUPS, &id).await;
         let saved = saved_signal(&id);
         let confirmed = saved.notified();
@@ -1089,7 +1089,7 @@ pub fn install(station: Station, mut server: LocalServer, prepare: Prepare, port
         live.lines = Arc::default();
     });
     let (log_tx, mut log_rx) = mpsc::unbounded_channel::<String>();
-    spawn_in_window({
+    spawn_global({
         let id = id.clone();
         async move {
             let mut saved = String::new();
@@ -1102,7 +1102,7 @@ pub fn install(station: Station, mut server: LocalServer, prepare: Prepare, port
             save_install_log(&id, saved).await;
         }
     });
-    spawn_in_window(async move {
+    spawn_global(async move {
         let files = hold(&FILES, &id).await;
         let listed = off_ui({
             let server = server.clone();
@@ -1190,7 +1190,7 @@ pub fn retry_install(station: Station, id: String) {
         return;
     }
     write(station, &id, |live| live.status = ServerStatus::Installing);
-    spawn_in_window(async move {
+    spawn_global(async move {
         let loaded = off_ui({
             let id = id.clone();
             async move { servers::load_server(&id).await }
@@ -1214,7 +1214,7 @@ pub fn update_software(station: Station, id: String, mc_version: Option<String>)
         return;
     }
     write(station, &id, |live| live.status = ServerStatus::Installing);
-    spawn_in_window(async move {
+    spawn_global(async move {
         let prepared = off_ui({
             let id = id.clone();
             async move {
@@ -1278,7 +1278,7 @@ pub fn use_custom_jar(station: Station, id: String, jar: std::path::PathBuf) {
         return;
     }
     write(station, &id, |live| live.status = ServerStatus::Installing);
-    spawn_in_window(async move {
+    spawn_global(async move {
         let prepared = off_ui({
             let id = id.clone();
             async move {
@@ -1309,7 +1309,7 @@ pub fn delete_server(id: String) {
     if !stopped_or_warn(&id) {
         return;
     }
-    spawn_in_window(async move {
+    spawn_global(async move {
         let result = off_ui({
             let id = id.clone();
             async move {
@@ -1384,7 +1384,7 @@ pub enum Prepare {
 }
 
 pub fn spawn_autostart(station: Station) {
-    spawn_in_window(async move {
+    spawn_global(async move {
         let listed = off_ui(async {
             let listed = servers::list_servers().await.unwrap_or_default();
             for server in &listed {
@@ -1409,7 +1409,7 @@ pub fn spawn_autostart(station: Station) {
 /// Saves a change to the server's own settings
 pub fn update(id: String, change: impl FnOnce(&mut LocalServer) + Send + 'static) {
     let saving = crate::hooks::SaveGuard::new();
-    spawn_in_window(async move {
+    spawn_global(async move {
         let _saving = saving;
         let result = off_ui({
             let id = id.clone();
@@ -1434,7 +1434,7 @@ pub fn update(id: String, change: impl FnOnce(&mut LocalServer) + Send + 'static
 
 pub fn set_property(id: String, key: &'static str, value: String) {
     let saving = crate::hooks::SaveGuard::new();
-    spawn_in_window(async move {
+    spawn_global(async move {
         let _saving = saving;
         let result = off_ui({
             let id = id.clone();
@@ -1457,7 +1457,7 @@ pub fn set_property(id: String, key: &'static str, value: String) {
 
 pub fn load_properties(id: String, mut editing: freya::prelude::State<Option<String>>) {
     use freya::prelude::*;
-    spawn_in_window(async move {
+    spawn_global(async move {
         let loaded = off_ui(async move {
             let dir = servers::server_dir(&id)?;
             let props = servers::Properties::load(&dir).await?;
@@ -1473,7 +1473,7 @@ pub fn load_properties(id: String, mut editing: freya::prelude::State<Option<Str
 
 pub fn write_properties(id: String, text: String) {
     let saving = crate::hooks::SaveGuard::new();
-    spawn_in_window(async move {
+    spawn_global(async move {
         let _saving = saving;
         let result = off_ui({
             let id = id.clone();
@@ -1499,7 +1499,7 @@ pub fn run<F>(id: String, failure: &'static str, work: F)
 where
     F: Future<Output = oneclient_core::LauncherResult<()>> + Send + 'static,
 {
-    spawn_in_window(async move {
+    spawn_global(async move {
         if let Err(err) = off_ui(work).await {
             notify_error(failure, err);
         }
@@ -1545,7 +1545,7 @@ pub fn restore_backup(id: String, backup: std::path::PathBuf) {
 }
 
 pub fn identify_mods(id: String) {
-    spawn_in_window(async move {
+    spawn_global(async move {
         let result = off_ui({
             let id = id.clone();
             async move {
@@ -1577,7 +1577,7 @@ pub fn install_mod(
     write(station, &id, |live| {
         live.installing.push(project_id.clone())
     });
-    spawn_in_window(async move {
+    spawn_global(async move {
         let result = off_ui({
             let (id, project_id) = (id.clone(), project_id.clone());
             async move {
@@ -1599,7 +1599,7 @@ pub fn install_mod(
 }
 
 fn refresh_after_command(id: String) {
-    spawn_in_window(async move {
+    spawn_global(async move {
         tokio::time::sleep(Duration::from_secs(1)).await;
         invalidate_server_settings(&id).await;
     });

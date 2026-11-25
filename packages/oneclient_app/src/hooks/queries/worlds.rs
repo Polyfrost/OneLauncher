@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::path::{Path, PathBuf};
 
-use freya::prelude::spawn_in_window;
+use freya::prelude::spawn_global;
 use freya::query::{QueriesStorage, Query, QueryCapability, UseQuery, use_query};
 use notify::{Event, EventKind};
 use oneclient_core::{ClusterError, DataPackInfo, LEVEL_DAT, LauncherError, WORLD_ICON, WorldInfo};
@@ -138,7 +138,7 @@ pub fn spawn_world_task(
     failure_title: &'static str,
     task: impl Future<Output = Result<(), LauncherError>> + 'static,
 ) {
-    spawn_in_window(async move {
+    spawn_global(async move {
         if let Err(err) = task.await {
             dispatch
                 .notify(failure_title)

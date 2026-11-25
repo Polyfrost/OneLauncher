@@ -754,7 +754,7 @@ fn watch_purchases(account: Uuid) {
     if !started {
         return;
     }
-    freya::prelude::spawn_in_window(async move {
+    freya::prelude::spawn_global(async move {
         let mut minecraft = None;
         let mut baseline = None;
         loop {
@@ -814,10 +814,10 @@ pub async fn invalidate_wardrobe_queries() {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum WardrobeAction {
+    /// Slot changes sent together, so moving a cosmetic between slots is one request
     Equip {
         account: Uuid,
-        slot: BodySlot,
-        cosmetic: Option<i32>,
+        changes: Vec<(BodySlot, Option<i32>)>,
         name: String,
     },
     MojangCape {
@@ -914,16 +914,11 @@ pub enum WardrobeAction {
 impl WardrobeAction {
     pub fn pending(&self) -> Option<String> {
         match self {
-            Self::Equip {
-                cosmetic: Some(_),
-                name,
-                ..
-            } => Some(tf("oneclient.wardrobe.pending.equipping", &[&name])),
-            Self::Equip {
-                cosmetic: None,
-                name,
-                ..
-            } => Some(tf("oneclient.wardrobe.pending.unequipping", &[&name])),
+            Self::Equip { changes, name, .. } => Some(if equips(changes) {
+                tf("oneclient.wardrobe.pending.equipping", &[&name])
+            } else {
+                tf("oneclient.wardrobe.pending.unequipping", &[&name])
+            }),
             Self::MojangCape {
                 cape: Some(_),
                 name,
@@ -1145,22 +1140,21 @@ async fn save_worn_skin(
     ))
 }
 
+fn equips(changes: &[(BodySlot, Option<i32>)]) -> bool {
+    changes.iter().any(|(_, cosmetic)| cosmetic.is_some())
+}
+
 async fn run_action(account: &MinecraftAccount, action: &WardrobeAction) -> Result<String, String> {
     let state = crate::launcher::state().map_err(|err| err.to_string())?;
     let requester = &state.services.requester;
 
     match action {
-        WardrobeAction::Equip {
-            slot,
-            cosmetic,
-            name,
-            ..
-        } => {
-            let changes = HashMap::from([(*slot, *cosmetic)]);
-            api::set_equipped(account, &changes)
+        WardrobeAction::Equip { changes, name, .. } => {
+            let map: HashMap<_, _> = changes.iter().copied().collect();
+            api::set_equipped(account, &map)
                 .await
                 .map_err(plus_message)?;
-            Ok(if cosmetic.is_some() {
+            Ok(if equips(changes) {
                 tf("oneclient.wardrobe.equip.equipped", &[&name])
             } else {
                 tf("oneclient.wardrobe.equip.unequipped", &[&name])

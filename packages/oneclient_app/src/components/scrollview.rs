@@ -623,7 +623,7 @@ impl ScrollArea {
             }
 
             // Inside the home stack: while the stack itself is moving, it owns the wheel
-            if edge_chain.is_some_and(|chain| *chain.pass_all.peek()) {
+            if edge_chain.is_some_and(|chain| *chain.pass_all.peek() || chain.coasting()) {
                 return;
             }
 

@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::net::IpAddr;
 
 use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, TimeZone, Timelike, Utc};
@@ -173,6 +173,7 @@ impl PlaytimeStats {
         let mut session_count = 0usize;
         let mut by_day: BTreeMap<NaiveDate, i64> = BTreeMap::new();
         let mut session_secs: Vec<i64> = Vec::new();
+        let mut played_days: BTreeSet<NaiveDate> = BTreeSet::new();
 
         for span in spans {
             let Some(ended) = span.ended_at.as_deref() else {
@@ -186,7 +187,11 @@ impl PlaytimeStats {
             };
 
             let secs = (end - start).num_seconds();
-            if secs <= 0 {
+            if secs < 0 {
+                continue;
+            }
+            played_days.insert(start.with_timezone(&Local).date_naive());
+            if secs == 0 {
                 continue;
             }
 
@@ -210,7 +215,8 @@ impl PlaytimeStats {
         }
 
         let longest_session_secs = session_secs.iter().copied().max().unwrap_or(0);
-        let dates: Vec<NaiveDate> = by_day.keys().copied().collect();
+        played_days.extend(by_day.keys().copied());
+        let dates: Vec<NaiveDate> = played_days.into_iter().collect();
         let (current_streak, longest_streak) = streaks(&dates, today);
         let daily: Vec<DayPlaytime> = by_day
             .iter()
@@ -588,6 +594,20 @@ mod tests {
             (0, 3),
             "yesterday was missed"
         );
+    }
+
+    #[test]
+    fn a_session_with_no_recovered_end_still_counts_towards_the_streak() {
+        let spans = vec![
+            local_span("2026-07-15 12:00:00", "2026-07-15 13:00:00"),
+            local_span("2026-07-16 12:00:00", "2026-07-16 12:00:00"),
+            local_span("2026-07-17 12:00:00", "2026-07-17 13:00:00"),
+        ];
+        let stats = PlaytimeStats::from_spans_on(&spans, day("2026-07-17"));
+
+        assert_eq!((stats.current_streak, stats.longest_streak), (3, 3));
+        assert_eq!(stats.session_count, 2, "no playtime is invented for it");
+        assert_eq!(stats.active_days, 2);
     }
 
     #[test]

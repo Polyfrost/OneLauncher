@@ -102,6 +102,12 @@ impl PackageProvider for CurseForgeProvider {
             {
                 params.append_pair("modLoaderType", &loader.to_string());
             }
+            if !category_ids.is_empty() {
+                params.append_pair(
+                    "categoryIds",
+                    &serde_json::to_string(&category_ids).unwrap_or_default(),
+                );
+            }
         }
 
         let response: CfPaged<Vec<CfMod>> =

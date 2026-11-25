@@ -4,10 +4,11 @@ use freya::prelude::*;
 use oneclient_content::packages::ProviderId;
 use oneclient_core::BundleArchive;
 
-use crate::components::{GRID_GAP, ScrollArea};
+use crate::components::{Button, CARD_GRID_H, GRID_GAP, OptionalModCard, ScrollArea};
 use crate::hooks::{
     ClusterBundles, onboarding_bundles_items, package_meta_batch, query_error, query_is_loading,
-    use_onboarding_bundles, use_onboarding_selection, use_package_meta_batch,
+    shared_mod_keys, toggle_keys, use_onboarding_bundles, use_onboarding_selection,
+    use_package_meta_batch,
 };
 use crate::i18n::{t, tf};
 use crate::routes::Route;
@@ -17,11 +18,16 @@ use crate::utils::bundle_display_name;
 use crate::view::app::{
     BUNDLE_CARD_H, BUNDLE_COLUMNS, CellCard, bundle_blurb, cell_card, file_keys, package_names,
 };
+use crate::view::app::cluster::package_manager::make_row;
 use crate::view::onboarding::{
-    bundle_taken, is_default_file, onboarding_nav, onboarding_slide, step_heading, version_chip,
+    UNCREATED_CLUSTER, bundle_taken, is_default_file, onboarding_nav, onboarding_slide,
+    step_heading, version_chip,
 };
 
+type MetaMap = HashMap<String, oneclient_content::packages::CachedPackageMeta>;
+
 const FPS_WARNING_BUNDLE: &str = "SkyBlock";
+const MOD_COLUMNS: usize = 3;
 
 fn fps_warning_runs() -> [(&'static str, bool, bool); 7] {
     [
@@ -89,11 +95,13 @@ fn fps_warning_banner() -> Element {
         .into_element()
 }
 
+/// (cluster id, minecraft version, archive), one per instance offering this bundle
+type Member = (i64, String, BundleArchive);
+
 #[derive(Clone)]
 struct BundleGroup {
     display_name: String,
-    /// (cluster id, minecraft version, archive), one per instance offering this bundle
-    members: Vec<(i64, String, BundleArchive)>,
+    members: Vec<Member>,
 }
 
 impl BundleGroup {
@@ -174,8 +182,6 @@ fn toggle_member(
     selected.set(next);
 }
 
-const CHIPS_PER_ROW: usize = 4;
-
 /// Per-version control for a picked bundle offered by more than one instance
 fn version_picker(
     group: &BundleGroup,
@@ -183,24 +189,21 @@ fn version_picker(
     selected: State<HashSet<String>>,
     user_touched: State<bool>,
 ) -> Element {
-    let rows: Vec<Element> = group
-        .members
-        .chunks(CHIPS_PER_ROW)
-        .map(|chunk| {
-            rect()
-                .horizontal()
-                .spacing(8.)
-                .children(chunk.iter().map(|(cluster_id, version, archive)| {
-                    let active = bundle_taken(*cluster_id, archive, selected_set);
-                    let cluster_id = *cluster_id;
-                    let archive = archive.clone();
-                    version_chip(version, active, move |()| {
-                        toggle_member(selected, user_touched, cluster_id, &archive)
-                    })
-                }))
-                .into_element()
+    let chips = rect()
+        .horizontal()
+        .width(Size::fill())
+        .content(Content::Wrap {
+            wrap_spacing: Some(8.),
         })
-        .collect();
+        .spacing(8.)
+        .children(group.members.iter().map(|(cluster_id, version, archive)| {
+            let active = bundle_taken(*cluster_id, archive, selected_set);
+            let cluster_id = *cluster_id;
+            let archive = archive.clone();
+            version_chip(version, active, move |()| {
+                toggle_member(selected, user_touched, cluster_id, &archive)
+            })
+        }));
 
     rect()
         .vertical()
@@ -215,7 +218,192 @@ fn version_picker(
                 .font_size(text_size(13.))
                 .color(colors::fg_secondary()),
         )
-        .children(rows)
+        .child(chips)
+        .into_element()
+}
+
+#[derive(Clone, PartialEq)]
+struct Editing {
+    name: String,
+    versions: Vec<i64>,
+}
+
+fn picked_versions(group: &BundleGroup, selected: &HashSet<String>) -> Vec<i64> {
+    group
+        .members
+        .iter()
+        .filter(|(cluster_id, _, archive)| bundle_taken(*cluster_id, archive, selected))
+        .map(|(cluster_id, _, _)| *cluster_id)
+        .collect()
+}
+
+fn edit_scope<'a>(
+    group: &'a BundleGroup,
+    selected: &HashSet<String>,
+    remembered: &[i64],
+) -> Vec<&'a Member> {
+    let picked = picked_versions(group, selected);
+    let wanted = if picked.is_empty() { remembered } else { &picked };
+    let members: Vec<&Member> = group
+        .members
+        .iter()
+        .filter(|(cluster_id, _, _)| wanted.contains(cluster_id))
+        .collect();
+    if members.is_empty() {
+        group.members.iter().collect()
+    } else {
+        members
+    }
+}
+
+fn mod_keys(
+    clusters: &[ClusterBundles],
+    scope: &[&Member],
+    selected: &HashSet<String>,
+    package_id: &str,
+) -> Vec<String> {
+    scope
+        .iter()
+        .flat_map(|(cluster_id, _, archive)| {
+            let archives = clusters
+                .iter()
+                .find(|cb| cb.cluster.id == *cluster_id)
+                .map_or(&[][..], |cb| &cb.archives[..]);
+            shared_mod_keys(*cluster_id, archives, &archive.manifest.name, package_id, selected)
+        })
+        .collect()
+}
+
+fn toggle_mod(
+    mut selected: State<HashSet<String>>,
+    mut user_touched: State<bool>,
+    mut editing: State<Option<Editing>>,
+    edit: Editing,
+    keys: &[String],
+) {
+    let mut next = selected.peek().clone();
+    toggle_keys(&mut next, keys);
+    user_touched.set(true);
+    selected.set(next);
+    editing.set(Some(edit));
+}
+
+struct Catalog<'a> {
+    clusters: &'a [ClusterBundles],
+    modrinth: &'a MetaMap,
+    curseforge: &'a MetaMap,
+    names: &'a HashMap<String, String>,
+}
+
+fn bundle_editor(
+    group: &BundleGroup,
+    selected_set: &HashSet<String>,
+    catalog: &Catalog,
+    selected: State<HashSet<String>>,
+    user_touched: State<bool>,
+    remembered: &[i64],
+    mut editing: State<Option<Editing>>,
+) -> Element {
+    let scope = edit_scope(group, selected_set, remembered);
+    let edit = Editing {
+        name: group.display_name.clone(),
+        versions: scope.iter().map(|(cluster_id, _, _)| *cluster_id).collect(),
+    };
+    let mut seen = HashSet::new();
+    let cards: Vec<Element> = scope
+        .iter()
+        .flat_map(|(_, _, archive)| {
+            archive
+                .manifest
+                .files
+                .iter()
+                .filter(|f| is_default_file(f))
+                .map(move |file| (archive, file))
+        })
+        .filter(|(_, file)| seen.insert(file.kind.package_id()))
+        .map(|(archive, file)| {
+            let package_id = file.kind.package_id();
+            let provider = file.kind.metadata_provider();
+            let meta = match provider {
+                ProviderId::Modrinth => catalog.modrinth.get(&package_id),
+                ProviderId::CurseForge => catalog.curseforge.get(&package_id),
+                ProviderId::Local | ProviderId::Hangar => None,
+            };
+            let keys = mod_keys(catalog.clusters, &scope, selected_set, &package_id);
+            let enabled = keys.iter().any(|k| selected_set.contains(k));
+            let entry = make_row(
+                package_id.clone(),
+                Some(archive.manifest.name.clone()),
+                provider,
+                file.size,
+                Vec::new(),
+                enabled,
+                file.enabled,
+                file.is_github_hosted(),
+                None,
+                meta,
+                catalog
+                    .names
+                    .get(&package_id)
+                    .cloned()
+                    .unwrap_or_else(|| file.display_name()),
+                false,
+                false,
+                true,
+            );
+
+            OptionalModCard {
+                entry,
+                cluster_id: UNCREATED_CLUSTER,
+                on_toggle: {
+                    let edit = edit.clone();
+                    (move |()| toggle_mod(selected, user_touched, editing, edit.clone(), &keys))
+                        .into()
+                },
+            }
+            .into_element()
+        })
+        .collect();
+
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .height(Size::fill())
+        .content(Content::Flex)
+        .spacing(12.)
+        .child(
+            rect()
+                .horizontal()
+                .width(Size::fill())
+                .cross_align(Alignment::Center)
+                .spacing(10.)
+                .child(
+                    Button::new()
+                        .secondary()
+                        .small()
+                        .text(t("oneclient.common.back"))
+                        .on_press(move |_: Event<PressEventData>| editing.set(None)),
+                )
+                .child(
+                    label()
+                        .text(group.display_name.clone())
+                        .font_size(text_size(14.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .max_lines(1)
+                        .color(colors::fg_primary()),
+                ),
+        )
+        .maybe_child(
+            (group.members.len() > 1)
+                .then(|| version_picker(group, selected_set, selected, user_touched)),
+        )
+        .child(
+            ScrollArea::new()
+                .width(Size::fill())
+                .height(Size::flex(1.0))
+                .scrollbar_gutter(true)
+                .child(fixed_grid(cards, MOD_COLUMNS, CARD_GRID_H, GRID_GAP)),
+        )
         .into_element()
 }
 
@@ -225,11 +413,25 @@ fn group_card(
     names: &HashMap<String, String>,
     selected: State<HashSet<String>>,
     user_touched: State<bool>,
+    mut editing: State<Option<Editing>>,
 ) -> Element {
     let archive = &group.members[0].2;
     let offered = || archive.manifest.files.iter().filter(|f| is_default_file(f));
     let count = offered().count();
     let toggle = group.clone();
+    let open = Editing {
+        name: group.display_name.clone(),
+        versions: picked_versions(group, selected_set),
+    };
+    let edit = Button::new()
+        .secondary()
+        .small()
+        .text(t("oneclient.common.edit"))
+        .on_press(move |e: Event<PressEventData>| {
+            e.stop_propagation();
+            editing.set(Some(open.clone()));
+        })
+        .into_element();
 
     cell_card(CellCard {
         id: group.display_name.clone(),
@@ -242,7 +444,7 @@ fn group_card(
                 &[&many],
             ),
         }),
-        corner: None,
+        corner: Some(edit),
         selected: group.taken(selected_set),
         checkbox: true,
         on_press: (move |()| toggle_group(selected, user_touched, &toggle)).into(),
@@ -258,6 +460,7 @@ impl Component for OnboardingBundlePicker {
         let selection = use_onboarding_selection();
         let selected = selection.selected;
         let user_touched = selection.user_touched;
+        let editing = use_state(|| None::<Editing>);
 
         let clusters = onboarding_bundles_items(&bundles_query).unwrap_or_default();
         let bundles_loaded = onboarding_bundles_items(&bundles_query).is_some();
@@ -270,7 +473,10 @@ impl Component for OnboardingBundlePicker {
         };
 
         let groups = bundle_groups(&clusters);
-        let shown: Vec<BundleArchive> = groups.iter().map(|g| g.members[0].2.clone()).collect();
+        let shown: Vec<BundleArchive> = groups
+            .iter()
+            .flat_map(|g| g.members.iter().map(|(_, _, archive)| archive.clone()))
+            .collect();
 
         let mut mr_ids = Vec::new();
         let mut cf_ids = Vec::new();
@@ -286,20 +492,38 @@ impl Component for OnboardingBundlePicker {
         let names = package_names(&shown, &mr_meta, &cf_meta);
 
         let selected_set = selected.read().clone();
+        let edit_state = editing.read().clone();
+        let edited = edit_state.as_ref().and_then(|edit| {
+            groups
+                .iter()
+                .find(|g| g.display_name == edit.name)
+                .map(|g| (g, &edit.versions))
+        });
         let cards: Vec<Element> = groups
             .iter()
-            .map(|g| group_card(g, &selected_set, &names, selected, user_touched))
-            .collect();
-        let version_pickers: Vec<Element> = groups
-            .iter()
-            .filter(|g| g.members.len() > 1 && g.taken(&selected_set))
-            .map(|g| version_picker(g, &selected_set, selected, user_touched))
+            .map(|g| group_card(g, &selected_set, &names, selected, user_touched, editing))
             .collect();
         let fps_warning = groups.iter().any(|g| {
             g.display_name.eq_ignore_ascii_case(FPS_WARNING_BUNDLE) && g.taken(&selected_set)
         });
 
-        let body = if cards.is_empty() {
+        let body = if let Some((group, remembered)) = edited {
+            let catalog = Catalog {
+                clusters: &clusters,
+                modrinth: &mr_meta,
+                curseforge: &cf_meta,
+                names: &names,
+            };
+            bundle_editor(
+                group,
+                &selected_set,
+                &catalog,
+                selected,
+                user_touched,
+                remembered,
+                editing,
+            )
+        } else if cards.is_empty() {
             centered_note(&catalog_msg)
         } else {
             ScrollArea::new()
@@ -311,7 +535,6 @@ impl Component for OnboardingBundlePicker {
                         .then(fps_warning_banner)
                         .into_iter()
                         .chain([fixed_grid(cards, BUNDLE_COLUMNS, BUNDLE_CARD_H, GRID_GAP)])
-                        .chain(version_pickers)
                         .collect::<Vec<_>>(),
                 )
                 .into_element()
@@ -395,6 +618,60 @@ mod tests {
 
         on.insert(pkg_key(1, name, "sb-opt"));
         assert!(groups[0].toggled(&on).is_empty());
+    }
+
+    #[test]
+    fn editing_a_mod_only_touches_picked_versions() {
+        let clusters = catalog();
+        let groups = bundle_groups(&clusters);
+        let name = "OneClient 1.21.11 Fabric [SkyBlock]";
+
+        let keys = |selected: &HashSet<String>, remembered: &[i64]| {
+            let scope = edit_scope(&groups[0], selected, remembered);
+            mod_keys(&clusters, &scope, selected, "sb-a")
+        };
+
+        assert_eq!(
+            keys(&HashSet::new(), &[]),
+            vec![pkg_key(1, name, "sb-a"), pkg_key(2, name, "sb-a")]
+        );
+
+        let only_second = HashSet::from([pkg_key(2, name, "sb-a")]);
+        assert_eq!(keys(&only_second, &[]), vec![pkg_key(2, name, "sb-a")]);
+        assert_eq!(keys(&HashSet::new(), &[2]), vec![pkg_key(2, name, "sb-a")]);
+    }
+
+    #[test]
+    fn disabling_a_shared_mod_disables_it_in_every_picked_bundle() {
+        use oneclient_db::models::OverrideType;
+
+        let clusters = vec![ClusterBundles {
+            cluster: cluster(1),
+            archives: vec![
+                archive("QoL", true, vec![file("polyplus", true, false), file("qol-a", true, false)]),
+                archive("HUD", true, vec![file("polyplus", true, false), file("hud-a", true, false)]),
+                archive("SkyBlock", false, vec![file("polyplus", true, false), file("sb-a", true, false)]),
+            ],
+        }];
+        let groups = bundle_groups(&clusters);
+        let mut selected = crate::view::onboarding::default_selection(&clusters, None);
+
+        let keys = mod_keys(&clusters, &edit_scope(&groups[0], &selected, &[]), &selected, "polyplus");
+        toggle_keys(&mut selected, &keys);
+
+        let (overrides, _) = crate::hooks::bundle_plan(1, &clusters[0].archives, &selected);
+        let polyplus: Vec<(&str, OverrideType)> = overrides
+            .iter()
+            .filter(|(_, id, _)| id.contains("polyplus"))
+            .map(|(bundle, _, kind)| (bundle.as_str(), *kind))
+            .collect();
+        assert_eq!(
+            polyplus,
+            vec![
+                ("OneClient 1.21.11 Fabric [QoL]", OverrideType::Disabled),
+                ("OneClient 1.21.11 Fabric [HUD]", OverrideType::Disabled),
+            ]
+        );
     }
 
     #[test]

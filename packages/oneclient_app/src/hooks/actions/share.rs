@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use freya::prelude::spawn_in_window;
+use freya::prelude::spawn_global;
 use oneclient_cluster::ClusterManager;
 use oneclient_content::modpacks::{SHARE_EXTENSION, SettingFile, ShareExportReport};
 use oneclient_core::LauncherState;
@@ -120,7 +120,7 @@ impl Actions {
             return;
         };
         let actions = self.clone();
-        spawn_in_window(async move {
+        spawn_global(async move {
             let _slot = slot;
             let Ok(state) = launcher::state() else { return };
 
@@ -184,7 +184,7 @@ impl Actions {
             return;
         };
         let actions = self.clone();
-        spawn_in_window(async move {
+        spawn_global(async move {
             let _slot = slot;
             let Ok(state) = launcher::state() else { return };
 
@@ -268,7 +268,7 @@ impl Actions {
         }
         self.set_share(cluster_id, ShareProgress::Stopping(ready.clone()));
         let actions = self.clone();
-        spawn_in_window(async move {
+        spawn_global(async move {
             let stopped = off_ui(async move {
                 let state = launcher::state()?;
                 let store = sharing::default_store(state.auth.clone());
@@ -326,7 +326,7 @@ impl Actions {
             return;
         }
         let actions = self.clone();
-        spawn_in_window(async move {
+        spawn_global(async move {
             let fetched = off_ui(async move {
                 let state = launcher::state()?;
                 let store = sharing::default_store(state.auth.clone());

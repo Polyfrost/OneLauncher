@@ -102,7 +102,9 @@ pub use queries::{
     BisectAction, BisectMutation, bisect_report, use_bisect, use_bisect_mutation,
 };
 pub use queries::{GraphicsBackendQuery, use_graphics_backend, use_has_game_options};
-pub(crate) use queries::{UNCREATED_CLUSTER, bundle_plan, bundle_taken, pkg_key};
+pub(crate) use queries::{
+    UNCREATED_CLUSTER, bundle_plan, bundle_taken, pkg_key, shared_mod_keys, toggle_keys,
+};
 pub use queries::{
     ServerFiles, ServerIcon, ServerRun, invalidate_server, invalidate_server_settings, use_server,
     use_platform_available, use_plugin_versions, use_server_files, use_server_mod_updates,

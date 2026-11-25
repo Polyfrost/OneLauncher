@@ -6,7 +6,7 @@ use freya::prelude::*;
 use oneclient_core::LogFileInfo;
 
 use super::{card, card_head};
-use crate::components::{Button, Icon, IconType, LogViewer, TextInput, auto_scroll_toggle};
+use crate::components::{Button, Icon, IconType, LogViewer, TextInput};
 use crate::hooks::{
     settled_or_loading, use_dispatch, use_log_action, use_server_console, use_server_hub,
     use_server_logs, use_upload_log,
@@ -42,7 +42,6 @@ impl Component for ConsolePanel {
         let level = use_state(|| LevelFilter::All);
         let confirm = use_state(|| None::<Confirm>);
         let search_id = use_a11y();
-        let auto_scroll = use_state(|| true);
         let filter = use_hook(|| Rc::new(RefCell::new(LiveLogFilter::new())));
         let upload = use_upload_log();
         let action = use_log_action();
@@ -71,7 +70,6 @@ impl Component for ConsolePanel {
             .horizontal()
             .cross_align(Alignment::Center)
             .spacing(10.)
-            .child(auto_scroll_toggle(auto_scroll))
             .child(
                 Button::new()
                     .secondary()
@@ -143,7 +141,6 @@ impl Component for ConsolePanel {
                     .child(
                         LogViewer::new("", lines)
                             .streaming(true)
-                            .auto_scroll(auto_scroll)
                             .header(viewer_header_inset(
                                 search,
                                 level,

@@ -1,3 +1,18 @@
+## 2.12.1 (2026-11-23)
+
+### Fixes
+
+- Fix auto-hide functionality by [LynithDev](https://github.com/LynithDev)
+- Picking categories now filters CurseForge search results by [Wyvest](https://github.com/Wyvest)
+- Scrolling between Home and Versions with a macOS touchpad now settles when you lift your finger, instead of the fling dragging the page or scrolling the versions list by [LynithDev](https://github.com/LynithDev)
+- Play streaks no longer break when a session's playtime couldn't be recorded, for example after a crash by [Wyvest](https://github.com/Wyvest)
+- Redesigned the bundles step in onboarding by [rozwader](https://github.com/rozwader)
+- Fixed the themes step in onboarding by [rozwader](https://github.com/rozwader)
+- Text on artwork, screenshots, accent buttons and the instance sidebar now follows your theme's colours instead of staying blue on custom themes by [lukalul](https://github.com/lukalul)
+- Brought back the Versions button in the navbar by [rozwader](https://github.com/rozwader)
+- Make the window close to background instead of closing entirely. Default only on macOS by [LynithDev](https://github.com/LynithDev)
+- With 8 GB or more of memory and ZGC, the game now gives unused memory back by [Wyvest](https://github.com/Wyvest)
+
 ## 2.12.0 (2026-11-22)
 
 ### Features

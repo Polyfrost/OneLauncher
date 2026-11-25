@@ -180,7 +180,7 @@ pub(super) struct WardrobeData {
     pub grid_width: f32,
     pub sort: Sort,
     pub query: String,
-    pub variant_picks: HashMap<i32, i32>,
+    pub variant_picks: HashMap<i32, Pick>,
     pub store_picks: HashMap<i32, i32>,
     pub cart_keys: Vec<String>,
     pub owned: HashSet<i32>,
@@ -248,26 +248,55 @@ impl WardrobeData {
             })
     }
 
-    pub fn equipped_slot(&self, group: &CosmeticGroup) -> Option<(BodySlot, i32)> {
-        let plus = self.plus.as_ref()?;
-        let mut entries: Vec<(BodySlot, i32)> = plus
-            .equipped
+    /// The slots this group is worn in, with the variant in each
+    pub fn worn(&self, group: &CosmeticGroup) -> Pick {
+        let mut worn: Pick = self
+            .plus
             .iter()
+            .flat_map(|plus| plus.equipped.iter())
+            .filter(|(_, id)| group.variants.iter().any(|variant| variant.id == **id))
             .map(|(slot, id)| (*slot, *id))
             .collect();
-        entries.sort_by_key(|(slot, _)| *slot);
-        entries
+        worn.sort();
+        worn
+    }
+
+    /// What the preview shows and Equip applies: the user's pick, else what is worn, else the first variant
+    pub fn pick(&self, group: &CosmeticGroup) -> Pick {
+        if let Some(pick) = self.variant_picks.get(&group.id) {
+            return pick.clone();
+        }
+        let worn = self.worn(group);
+        if !worn.is_empty() {
+            return worn;
+        }
+        group
+            .variants
+            .first()
+            .map(|variant| variant_pick(group, variant))
+            .unwrap_or_default()
+    }
+
+    /// The pick with each variant swapped for the one matching the skin's arm model
+    pub fn resolved_pick(&self, group: &CosmeticGroup) -> Pick {
+        let mut pick: Pick = self
+            .pick(group)
             .into_iter()
-            .find(|(_, id)| group.variants.iter().any(|variant| variant.id == *id))
+            .map(|(slot, id)| (slot, group.variant_for_skin(id, self.slim)))
+            .collect();
+        pick.sort();
+        pick
+    }
+
+    pub fn pick_worn(&self, group: &CosmeticGroup) -> bool {
+        let worn = self.worn(group);
+        !worn.is_empty() && worn == self.resolved_pick(group)
     }
 
     pub fn selected_variant<'a>(&self, group: &'a CosmeticGroup) -> Option<&'a CosmeticVariant> {
-        let wanted = self
-            .equipped_slot(group)
-            .map(|(_, id)| id)
-            .or_else(|| self.variant_picks.get(&group.id).copied());
-        wanted
-            .and_then(|id| group.variants.iter().find(|variant| variant.id == id))
+        self.pick(group)
+            .first()
+            .and_then(|(_, id)| group.variants.iter().find(|variant| variant.id == *id))
             .or_else(|| group.variants.first())
     }
 
@@ -438,12 +467,12 @@ impl WardrobeData {
     pub fn look_cosmetics(
         &self,
         equipped: &HashMap<BodySlot, i32>,
-        try_on: Option<(BodySlot, String)>,
+        try_on: Vec<(BodySlot, String)>,
     ) -> Vec<(BodySlot, String)> {
-        let tried = try_on.as_ref().map(|(slot, _)| *slot);
+        let tried: Vec<BodySlot> = try_on.iter().map(|(slot, _)| *slot).collect();
         let mut cosmetics: Vec<(BodySlot, String)> = equipped
             .iter()
-            .filter(|(slot, _)| Some(**slot) != tried)
+            .filter(|(slot, _)| !tried.contains(slot))
             .filter_map(|(slot, id)| Some((*slot, self.variant(*id)?.1.url.clone()?)))
             .chain(try_on)
             .filter(|(slot, _)| *slot != BodySlot::Cape)
@@ -546,7 +575,7 @@ pub(super) fn shop_thumbnail(
             uuid: data.uuid.clone(),
             skin: None,
             cape: data.current_cape(),
-            cosmetics: data.look_cosmetics(&data.equipped(), try_on),
+            cosmetics: data.look_cosmetics(&data.equipped(), try_on.into_iter().collect()),
             emote: emote.then_some(url),
             particle_color: data.particle_color(),
             yaw: if BACK_VIEW_TYPES.contains(&item.kind) {
@@ -569,98 +598,167 @@ pub(super) fn shop_thumbnail(
 }
 
 pub(super) fn equip_slot(group: &CosmeticGroup, variant: &CosmeticVariant) -> Option<BodySlot> {
-    let allowed = |slot: BodySlot| {
-        (variant.allowed_slots.is_empty() && group.allowed_slots.is_empty())
-            || variant.allowed_slots.contains(&slot)
-            || group.allowed_slots.contains(&slot)
+    // A variant's own slots win: a group can list both hands while each variant fits only one
+    let slots = if variant.allowed_slots.is_empty() {
+        &group.allowed_slots
+    } else {
+        &variant.allowed_slots
     };
     group
         .kind
         .default_slot()
-        .filter(|slot| allowed(*slot))
+        .filter(|slot| slots.is_empty() || slots.contains(slot))
         .or_else(|| {
-            variant
-                .allowed_slots
+            slots
                 .iter()
-                .chain(group.allowed_slots.iter())
                 .copied()
                 .find(|slot| *slot != BodySlot::Unknown)
         })
 }
 
-fn equip_action(
-    data: &WardrobeData,
-    group: &CosmeticGroup,
-    variant: &CosmeticVariant,
-) -> Option<WardrobeAction> {
-    equip_slot(group, variant).map(|slot| WardrobeAction::Equip {
-        account: data.account,
-        slot,
-        cosmetic: Some(group.variant_for_skin(variant.id, data.slim)),
-        name: group.name.clone(),
-    })
+/// Variants by the slot each is worn in; Poly+'s "Both" fills two slots at once
+pub(super) type Pick = Vec<(BodySlot, i32)>;
+
+pub(super) fn variant_pick(group: &CosmeticGroup, variant: &CosmeticVariant) -> Pick {
+    equip_slot(group, variant)
+        .map(|slot| vec![(slot, variant.id)])
+        .unwrap_or_default()
 }
 
+/// The hand a variant is limited to, if only one
+fn hand_side(group: &CosmeticGroup, variant: &CosmeticVariant) -> Option<BodySlot> {
+    let allows = |slot| {
+        if variant.allowed_slots.is_empty() {
+            group.kind == CosmeticType::Glove
+        } else {
+            variant.allowed_slots.contains(&slot)
+        }
+    };
+    match (allows(BodySlot::LeftHand), allows(BodySlot::RightHand)) {
+        (true, false) => Some(BodySlot::LeftHand),
+        (false, true) => Some(BodySlot::RightHand),
+        _ => None,
+    }
+}
+
+/// The variant chips as Poly+ builds them: one per name and hand, "Left"/"Right" added when both
+/// hands share a name, and a "Both" chip after each left and right pair
+pub(super) fn variant_options(group: &CosmeticGroup) -> Vec<(String, Pick)> {
+    let mut chips: Vec<(&str, Option<BodySlot>, &CosmeticVariant)> = Vec::new();
+    for variant in &group.variants {
+        let side = hand_side(group, variant);
+        if !chips
+            .iter()
+            .any(|(name, other, _)| *name == variant.name && *other == side)
+        {
+            chips.push((&variant.name, side, variant));
+        }
+    }
+    let labelled: Vec<(String, Option<BodySlot>, &CosmeticVariant)> = chips
+        .iter()
+        .map(|&(name, side, variant)| {
+            let shared = |other| {
+                chips
+                    .iter()
+                    .any(|(n, s, _)| *n == name && *s == Some(other))
+            };
+            let label = match side {
+                Some(BodySlot::LeftHand) if shared(BodySlot::RightHand) => format!("Left {name}"),
+                Some(BodySlot::RightHand) if shared(BodySlot::LeftHand) => format!("Right {name}"),
+                _ => name.to_string(),
+            };
+            (label, side, variant)
+        })
+        .collect();
+
+    let finish = |name: &str| {
+        name.split(' ')
+            .filter(|word| {
+                !word.eq_ignore_ascii_case("left") && !word.eq_ignore_ascii_case("right")
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let mut done: Vec<String> = Vec::new();
+    let mut out = Vec::new();
+    for (label, side, variant) in &labelled {
+        if side.is_none() {
+            out.push((label.clone(), variant_pick(group, variant)));
+            continue;
+        }
+        let rest = finish(label);
+        if done.contains(&rest) {
+            continue;
+        }
+        let find = |want| {
+            labelled
+                .iter()
+                .find(|(l, s, _)| *s == Some(want) && finish(l) == rest)
+        };
+        let left = find(BodySlot::LeftHand);
+        let right = find(BodySlot::RightHand);
+        for (label, side, variant) in left.iter().chain(right.iter()) {
+            out.push((
+                label.clone(),
+                vec![(side.unwrap_or(BodySlot::RightHand), variant.id)],
+            ));
+        }
+        if let (Some((_, _, left)), Some((_, _, right))) = (left, right) {
+            let label = if rest.is_empty() {
+                t("oneclient.wardrobe.preview.both").to_string()
+            } else {
+                tf("oneclient.wardrobe.preview.both_named", &[&rest])
+            };
+            out.push((
+                label,
+                vec![
+                    (BodySlot::LeftHand, left.id),
+                    (BodySlot::RightHand, right.id),
+                ],
+            ));
+        }
+        done.push(rest);
+    }
+    out
+}
+
+/// Slot and variant name per piece, so slim/wide copies of a variant count as the same pick
+pub(super) fn pick_key(group: &CosmeticGroup, pick: &Pick) -> Vec<(BodySlot, String)> {
+    let mut key: Vec<_> = pick
+        .iter()
+        .filter_map(|(slot, id)| {
+            let variant = group.variants.iter().find(|variant| variant.id == *id)?;
+            Some((*slot, variant.name.clone()))
+        })
+        .collect();
+    key.sort();
+    key
+}
+
+/// Equips the picked variants, clearing any other slot the group is in, or unequips when the pick is already worn
 pub(super) fn toggle_owned(
     data: &WardrobeData,
     group: &CosmeticGroup,
 ) -> Result<WardrobeAction, String> {
-    let Some(variant) = data.selected_variant(group) else {
-        return Err(tf("oneclient.wardrobe.error.no_variant", &[&group.name]));
+    let worn = data.worn(group);
+    let pick = data.resolved_pick(group);
+    if pick.is_empty() {
+        return Err(tf("oneclient.wardrobe.error.cannot_equip", &[&group.name]));
+    }
+    let changes = if worn == pick {
+        worn.iter().map(|(slot, _)| (*slot, None)).collect()
+    } else {
+        worn.iter()
+            .filter(|(slot, _)| !pick.iter().any(|(picked, _)| picked == slot))
+            .map(|(slot, _)| (*slot, None))
+            .chain(pick.iter().map(|(slot, id)| (*slot, Some(*id))))
+            .collect()
     };
-    let wearing = |id: i32| {
-        group
-            .variants
-            .iter()
-            .any(|equipped| equipped.id == id && equipped.name == variant.name)
-    };
-    match data.equipped_slot(group) {
-        Some((slot, id)) if wearing(id) => Ok(WardrobeAction::Equip {
-            account: data.account,
-            slot,
-            cosmetic: None,
-            name: group.name.clone(),
-        }),
-        _ => equip_action(data, group, variant)
-            .ok_or_else(|| tf("oneclient.wardrobe.error.cannot_equip", &[&group.name])),
-    }
-}
-
-#[derive(Clone)]
-pub(super) struct VariantPick {
-    account: Uuid,
-    group: CosmeticGroup,
-    equipped: Option<(BodySlot, i32)>,
-    slim: bool,
-}
-
-impl VariantPick {
-    pub fn new(data: &WardrobeData, group: &CosmeticGroup) -> Self {
-        Self {
-            account: data.account,
-            group: group.clone(),
-            equipped: data.equipped_slot(group),
-            slim: data.slim,
-        }
-    }
-
-    pub fn action(&self, variant_id: i32) -> Option<WardrobeAction> {
-        let (slot, equipped) = self.equipped?;
-        let resolved = self.group.variant_for_skin(variant_id, self.slim);
-        if equipped == resolved {
-            return None;
-        }
-        self.group
-            .variants
-            .iter()
-            .any(|variant| variant.id == variant_id)
-            .then(|| WardrobeAction::Equip {
-                account: self.account,
-                slot,
-                cosmetic: Some(resolved),
-                name: self.group.name.clone(),
-            })
-    }
+    Ok(WardrobeAction::Equip {
+        account: data.account,
+        changes,
+        name: group.name.clone(),
+    })
 }
 
 pub(super) fn toggle_mojang_action(data: &WardrobeData, cape: &MojangCape) -> WardrobeAction {
@@ -705,7 +803,7 @@ pub(super) fn perform_then(
     if let Some(pending) = keys.pending() {
         status.set(Some(pending));
     }
-    spawn_in_window(async move {
+    spawn_global(async move {
         let reader = action.mutate_async(keys).await;
         let outcome = match &*reader.state() {
             MutationStateData::Settled { res, .. } => Some(res.clone()),
@@ -749,7 +847,7 @@ pub(super) fn add_to_cart(
     let discount_percent = item.discount_percent();
     let cover_asset_id = variant.cover_asset_id.or(item.cover_asset_id);
     let variant_id = variant.id;
-    spawn_in_window(async move {
+    spawn_global(async move {
         let message = match api::store_product_id(variant_id).await {
             Ok(Some(product_id)) => {
                 if cart
@@ -815,7 +913,7 @@ pub(super) struct Shared {
     pub adding_skin: State<bool>,
     pub show_cart: State<bool>,
     pub cart: State<Vec<CartEntry>>,
-    pub variant_picks: State<HashMap<i32, i32>>,
+    pub variant_picks: State<HashMap<i32, Pick>>,
     pub store_picks: State<HashMap<i32, i32>>,
     pub status: State<Option<String>>,
     pub deleting: State<Option<(Selection, String, WardrobeAction)>>,
@@ -907,7 +1005,7 @@ impl Component for WardrobeBody {
             adding_skin: use_state(|| false),
             show_cart: use_state(|| false),
             cart: use_state(Vec::<CartEntry>::new),
-            variant_picks: use_state(HashMap::<i32, i32>::new),
+            variant_picks: use_state(HashMap::<i32, Pick>::new),
             store_picks: use_state(HashMap::<i32, i32>::new),
             status: use_state(|| None::<String>),
             deleting: use_state(|| None::<(Selection, String, WardrobeAction)>),
@@ -2227,8 +2325,9 @@ fn mojang_card(ctx: &GridCtx, cape: &MojangCape) -> Element {
 fn owned_card(ctx: &GridCtx, group: &CosmeticGroup) -> Element {
     let data = ctx.data;
     let variant = data.selected_variant(group);
-    let equipped = data.equipped_slot(group).is_some();
-    let (action_label, action_icon) = equip_strip(equipped);
+    let worn = data.pick_worn(group);
+    let equipped = !data.worn(group).is_empty();
+    let (action_label, action_icon) = equip_strip(worn);
     let picked = Selection::Owned(group.id);
     let mut status = ctx.shared.status;
 
@@ -2243,28 +2342,32 @@ fn owned_card(ctx: &GridCtx, group: &CosmeticGroup) -> Element {
     }
     .into_element();
 
-    let swatches: Vec<Swatch> = group
-        .ui_variants()
-        .into_iter()
-        .map(|option| Swatch {
-            id: option.id,
-            name: option.name.clone(),
-            texture: option.url.clone(),
+    // Swatch ids are indexes into the chip list, since a Both chip has no single variant id
+    let options = variant_options(group);
+    let current = pick_key(group, &data.pick(group));
+    let swatches: Vec<Swatch> = options
+        .iter()
+        .enumerate()
+        .map(|(index, (name, pick))| Swatch {
+            id: index as i32,
+            name: name.clone(),
+            texture: pick
+                .last()
+                .and_then(|(_, id)| data.variant(*id))
+                .and_then(|(_, variant)| variant.url.clone()),
             cape: group.kind == CosmeticType::Cape,
-            selected: variant.is_some_and(|variant| variant.name == option.name),
+            selected: pick_key(group, pick) == current,
         })
         .collect();
     let on_pick = {
         let mut picks = ctx.shared.variant_picks;
-        let action = ctx.shared.action;
-        let status = ctx.shared.status;
+        let preview = ctx.select(picked.clone());
         let group_id = group.id;
-        let pick = VariantPick::new(data, group);
-        EventHandler::new(move |variant_id: i32| {
-            picks.write().insert(group_id, variant_id);
-            if let Some(keys) = pick.action(variant_id) {
-                perform(action, status, keys);
+        EventHandler::new(move |index: i32| {
+            if let Some((_, pick)) = usize::try_from(index).ok().and_then(|i| options.get(i)) {
+                picks.write().insert(group_id, pick.clone());
             }
+            preview.call(());
         })
     };
 
@@ -2292,12 +2395,12 @@ fn owned_card(ctx: &GridCtx, group: &CosmeticGroup) -> Element {
             {
                 let on_equip = on_equip.clone();
                 MenuAction::new(
-                    if equipped {
+                    if worn {
                         IconType::XClose
                     } else {
                         IconType::Plus
                     },
-                    if equipped {
+                    if worn {
                         t("oneclient.wardrobe.action.unequip")
                     } else {
                         t("oneclient.wardrobe.action.equip")
@@ -2671,7 +2774,7 @@ fn outfit_card(ctx: &GridCtx, outfit: &OutfitInfo) -> Element {
         badge: outfit.favorite.then(Badge::favorite),
         thumbnail: LookThumb {
             uuid: data.uuid.clone(),
-            cosmetics: data.look_cosmetics(&outfit.equipped, None),
+            cosmetics: data.look_cosmetics(&outfit.equipped, Vec::new()),
             emote: None,
             particle_color: outfit.particle_color,
             skin,
@@ -2937,5 +3040,87 @@ mod tests {
         assert_eq!(columns, MAX_COLUMNS);
         let used = width * columns as f32 + GRID_GAP * (columns as f32 - 1.);
         assert!((used - 5000.).abs() < 0.01);
+    }
+
+    #[test]
+    fn glove_variants_equip_to_their_own_hand() {
+        let variant = |id, slots: Vec<BodySlot>| CosmeticVariant {
+            id,
+            name: id.to_string(),
+            model: None,
+            allowed_slots: slots,
+            url: None,
+            cover_url: None,
+            hash: String::new(),
+        };
+        let both = vec![BodySlot::LeftHand, BodySlot::RightHand];
+        let group = CosmeticGroup {
+            id: 1,
+            kind: CosmeticType::Glove,
+            name: "Glove".into(),
+            allowed_slots: both.clone(),
+            variants: Vec::new(),
+        };
+        let slot = |v: &CosmeticVariant| equip_slot(&group, v);
+        assert_eq!(
+            slot(&variant(1, vec![BodySlot::LeftHand])),
+            Some(BodySlot::LeftHand)
+        );
+        assert_eq!(
+            slot(&variant(2, vec![BodySlot::RightHand])),
+            Some(BodySlot::RightHand)
+        );
+        assert_eq!(slot(&variant(3, both)), Some(BodySlot::RightHand));
+        assert_eq!(slot(&variant(4, Vec::new())), Some(BodySlot::RightHand));
+    }
+
+    #[test]
+    fn variant_options_match_poly_plus_chips() {
+        let variant = |id, name: &str, slot| CosmeticVariant {
+            id,
+            name: name.into(),
+            model: None,
+            allowed_slots: vec![slot],
+            url: None,
+            cover_url: None,
+            hash: String::new(),
+        };
+        let group = |variants| CosmeticGroup {
+            id: 1,
+            kind: CosmeticType::Glove,
+            name: "Glove".into(),
+            allowed_slots: Vec::new(),
+            variants,
+        };
+        let labels = |group: &CosmeticGroup| -> Vec<(String, Pick)> { variant_options(group) };
+
+        let nature = group(vec![
+            variant(1, "Right", BodySlot::RightHand),
+            variant(2, "Left", BodySlot::LeftHand),
+        ]);
+        let chips = labels(&nature);
+        assert_eq!(chips.len(), 3);
+        assert_eq!(chips[0], ("Left".into(), vec![(BodySlot::LeftHand, 2)]));
+        assert_eq!(chips[1], ("Right".into(), vec![(BodySlot::RightHand, 1)]));
+        assert_eq!(
+            chips[2].1,
+            vec![(BodySlot::LeftHand, 2), (BodySlot::RightHand, 1)]
+        );
+
+        // Same name on both hands stays two chips plus a Both
+        let gauntlet = group(vec![
+            variant(1, "Silver", BodySlot::RightHand),
+            variant(2, "Silver", BodySlot::LeftHand),
+            variant(3, "Gold", BodySlot::RightHand),
+        ]);
+        let chips = labels(&gauntlet);
+        let names: Vec<&str> = chips.iter().map(|(name, _)| name.as_str()).collect();
+        assert_eq!(names[..2], ["Left Silver", "Right Silver"]);
+        assert_eq!(
+            chips[2].1,
+            vec![(BodySlot::LeftHand, 2), (BodySlot::RightHand, 1)]
+        );
+        assert_eq!(names[3], "Gold");
+        assert_eq!(chips.len(), 4);
     }
 }

@@ -485,7 +485,7 @@ impl Component for CreateServerModal {
                     .then(|| form.jar.read().clone())
                     .flatten();
                 close_done.call(());
-                spawn_in_window(async move {
+                spawn_global(async move {
                     let name = server.name.clone();
                     match off_ui(async move { servers::allocate_id(&name).await }).await {
                         Ok(id) => {

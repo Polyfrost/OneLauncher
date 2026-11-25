@@ -113,7 +113,7 @@ pub use link_confirm::ConfirmLinkOverlay;
 pub(crate) use lobby::modal;
 pub use lobby::{LobbyHeroChip, PartyTab, use_player_name, use_provide_lobby};
 pub use local_image::LocalImage;
-pub use log_viewer::{LogViewer, auto_scroll_toggle, clean_line};
+pub use log_viewer::{LogViewer, clean_line};
 pub use markdown::{Markdown, MarkdownStyle};
 pub use memory_field::memory_field;
 pub use microsoft_java_prompt::MicrosoftJavaPromptOverlay;

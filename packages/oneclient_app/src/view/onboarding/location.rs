@@ -86,7 +86,7 @@ impl Component for OnboardingLocation {
             waiting.set(true);
             error.set(None);
 
-            spawn_in_window(async move {
+            spawn_global(async move {
                 if !answered {
                     if let Err(message) = data_dir::apply(chosen).await {
                         error.set(Some(message));

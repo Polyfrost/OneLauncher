@@ -5,9 +5,9 @@ use oneclient_polyplus::api::{self, SkinModel};
 use uuid::Uuid;
 
 use super::page::{
-    BACK_VIEW_TYPES, Section, Selection, Shared, VariantPick, WardrobeData, add_to_cart, cart_key,
-    cart_name, collection_label, equip_slot, is_new, perform, perform_then, shop_thumbnail,
-    type_label, variant_label,
+    BACK_VIEW_TYPES, Section, Selection, Shared, WardrobeData, add_to_cart, cart_key, cart_name,
+    collection_label, is_new, perform, perform_then, pick_key, shop_thumbnail, toggle_owned,
+    type_label, variant_label, variant_options,
 };
 use super::parts::{BACK_YAW, CapeSource, CoverThumb, FRONT_YAW, LookThumb, money, price_label};
 use crate::components::{
@@ -348,33 +348,32 @@ impl Component for PreviewPanel {
             || (picked.is_none() && self.section == Section::Cosmetics);
 
         let variants = owned
-            .filter(|group| group.ui_variants().len() > 1)
-            .map(|group| {
-                let selected = data
-                    .selected_variant(group)
-                    .map(|variant| variant.name.clone());
-                let pick = VariantPick::new(data, group);
-                let chips: Vec<Element> = group
-                    .ui_variants()
+            .map(|group| (group, variant_options(group)))
+            .filter(|(_, options)| options.len() > 1)
+            .map(|(group, options)| {
+                let current = pick_key(group, &data.pick(group));
+                let chips: Vec<Element> = options
                     .into_iter()
-                    .map(|option| {
-                        let option_id = option.id;
+                    .map(|(text, pick)| {
                         let group_id = group.id;
                         let mut picks = shared.variant_picks;
-                        let pick = pick.clone();
+                        let mut trying_on = shared.trying_on;
                         VariantChip {
-                            text: option.name.clone(),
-                            selected: selected.as_deref() == Some(option.name.as_str()),
+                            selected: !pick.is_empty() && pick_key(group, &pick) == current,
+                            text,
+                            // Picking only previews; the Equip button below applies it
                             on_press: EventHandler::new(move |()| {
-                                picks.write().insert(group_id, option_id);
-                                if let Some(keys) = pick.action(option_id) {
-                                    perform(shared.action, shared.status, keys);
-                                }
+                                picks.write().insert(group_id, pick.clone());
+                                trying_on.set(true);
                             }),
                         }
                         .into_element()
                     })
                     .collect();
+                let equip = toggle_owned(data, group);
+                let worn = data.pick_worn(group);
+                let mut status = shared.status;
+                let mut trying_on = shared.trying_on;
                 rect()
                     .vertical()
                     .width(Size::fill())
@@ -390,6 +389,32 @@ impl Component for PreviewPanel {
                             .color(colors::fg_secondary()),
                     )
                     .child(chip_rows(chips))
+                    .child(
+                        Button::new()
+                            .primary()
+                            .width(Size::fill())
+                            .enabled(!data.busy)
+                            .on_press(move |_| match &equip {
+                                Ok(keys) => {
+                                    trying_on.set(false);
+                                    perform(shared.action, shared.status, keys.clone());
+                                }
+                                Err(message) => status.set(Some(message.clone())),
+                            })
+                            .child(
+                                Icon::new(if worn {
+                                    IconType::XClose
+                                } else {
+                                    IconType::Plus
+                                })
+                                .size(14.),
+                            )
+                            .text(if worn {
+                                t("oneclient.wardrobe.action.unequip")
+                            } else {
+                                t("oneclient.wardrobe.action.equip")
+                            }),
+                    )
                     .into_element()
             });
 
@@ -517,11 +542,15 @@ impl Component for PreviewPanel {
         let equipped = outfit.map_or_else(|| data.equipped(), |outfit| outfit.equipped.clone());
         let particle_color =
             outfit.map_or_else(|| data.particle_color(), |outfit| outfit.particle_color);
-        let try_on = owned.filter(|_| trying_on).and_then(|group| {
-            let variant = data.selected_variant(group)?;
-            let slot = equip_slot(group, variant)?;
-            let resolved = group.variant_for_skin(variant.id, data.slim);
-            Some((slot, data.variant(resolved)?.1.url.clone()?))
+        let tried = owned.filter(|_| trying_on);
+        let mut equipped = equipped;
+        let try_on: Vec<_> = tried.map_or_else(Vec::new, |group| {
+            // Hide the group's other slots so switching hands doesn't show both
+            equipped.retain(|_, id| group.variants.iter().all(|variant| variant.id != *id));
+            data.resolved_pick(group)
+                .into_iter()
+                .filter_map(|(slot, id)| Some((slot, data.variant(id)?.1.url.clone()?)))
+                .collect()
         });
         let cosmetics = data.look_cosmetics(&equipped, try_on);
         let emote = match &picked {

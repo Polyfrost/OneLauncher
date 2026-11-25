@@ -45,7 +45,7 @@ where
         pending.set(this);
         let (pending, save, value) = (pending.clone(), save.clone(), value.clone());
         let saving = SaveGuard::new();
-        spawn_in_window(async move {
+        spawn_global(async move {
             tokio::time::sleep(delay).await;
             if pending.get() == this {
                 save(value);

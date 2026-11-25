@@ -772,7 +772,7 @@ impl Component for ResetInstanceRow {
                         let on_reset = on_reset.clone();
                         let (done_tx, done_rx) = tokio::sync::oneshot::channel();
                         // Detached like `mutate` so leaving the page can't cut the reset short
-                        spawn_in_window(async move {
+                        spawn_global(async move {
                             mutation
                                 .mutate_async(ClusterAction::ResetInstance { cluster_id })
                                 .await;
@@ -918,7 +918,7 @@ impl Component for DirTargetRow {
             }
             // The new folder starts empty, so offer to bring the shared worlds and settings along
             let dispatch = dispatch.clone();
-            spawn_in_window(async move {
+            spawn_global(async move {
                 let reader = mutation.mutate_async(action).await;
                 if matches!(
                     &*reader.state(),

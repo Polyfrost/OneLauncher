@@ -131,7 +131,8 @@ impl Default for LauncherSettings {
             allow_parallel_running_clusters: true,
             launch_behaviour: LaunchBehaviour::default(),
             open_game_log_on_launch: true,
-            run_in_background: false,
+            // Mac apps stay in the Dock when their window closes
+            run_in_background: cfg!(target_os = "macos"),
             show_tray_icon: true,
             dynamic_background_enabled: true,
             start_maximized: false,

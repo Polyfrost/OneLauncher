@@ -34,7 +34,7 @@ pub fn open_log_console() {
     raise_to_debug();
 
     let platform = Platform::get();
-    spawn_in_window(async move {
+    spawn_global(async move {
         let _opening = opening;
         platform.launch_window(window_config()).await;
     });

@@ -103,7 +103,8 @@ pub fn performance_flags(
         && total_ram_mb / ZGC_RAM_PER_HEAP >= mem_max;
     let use_g1 = !collector_chosen && !use_zgc && java_major >= 8;
 
-    if (use_zgc || use_g1) && java_major == 24 {
+    let compact_headers = java_major >= 24 && is_64_bit(java_arch);
+    if compact_headers && java_major == 24 {
         flags.push("-XX:+UnlockExperimentalVMOptions".to_string());
     }
 
@@ -112,12 +113,20 @@ pub fn performance_flags(
         if java_major <= 22 {
             flags.push("-XX:+ZGenerational".to_string());
         }
+        let heap_chosen = custom_args.iter().any(|arg| {
+            arg.starts_with("-Xmx")
+                || arg.starts_with("-XX:MaxHeapSize=")
+                || arg.starts_with("-XX:SoftMaxHeapSize=")
+        });
+        if !heap_chosen {
+            flags.push(format!("-XX:SoftMaxHeapSize={}M", mem_max / 2));
+        }
     } else if use_g1 {
         flags.push("-XX:+UseG1GC".to_string());
         flags.push("-XX:+ParallelRefProcEnabled".to_string());
     }
 
-    if (use_zgc || use_g1) && java_major >= 24 && is_64_bit(java_arch) {
+    if compact_headers {
         flags.push("-XX:+UseCompactObjectHeaders".to_string());
     }
 
@@ -841,6 +850,7 @@ mod tests {
         for mem in [ZGC_MIN_HEAP_MB, 12288, 16384] {
             let flags = flags(21, "amd64", mem);
             assert!(flags.contains(&"-XX:+UseZGC".to_string()));
+            assert!(flags.contains(&format!("-XX:SoftMaxHeapSize={}M", mem / 2)));
             assert!(
                 !flags.contains(&"-XX:+UseG1GC".to_string()),
                 "only one collector may be selected"
@@ -898,6 +908,31 @@ mod tests {
                 flags,
                 vec!["-Xms512M"],
                 "{arg} should leave only the collector-independent flags"
+            );
+        }
+    }
+
+    #[test]
+    fn a_custom_heap_limit_drops_our_soft_max() {
+        for arg in ["-Xmx2048M", "-XX:MaxHeapSize=2g", "-XX:SoftMaxHeapSize=1g"] {
+            let flags = performance_flags(21, "amd64", 16384, 65536, &custom(arg));
+            assert!(flags.contains(&"-XX:+UseZGC".to_string()));
+            assert!(
+                !flags.iter().any(|f| f.starts_with("-XX:SoftMaxHeapSize")),
+                "{arg} should leave the soft limit to the user"
+            );
+        }
+    }
+
+    #[test]
+    fn a_custom_collector_keeps_compact_headers() {
+        for major in [24, 25] {
+            let flags = performance_flags(major, "amd64", 4096, 65536, &custom("-XX:+UseG1GC"));
+            assert!(!flags.contains(&"-XX:+UseG1GC".to_string()));
+            assert!(flags.contains(&"-XX:+UseCompactObjectHeaders".to_string()));
+            assert_eq!(
+                flags.contains(&"-XX:+UnlockExperimentalVMOptions".to_string()),
+                major == 24
             );
         }
     }
@@ -995,7 +1030,12 @@ mod tests {
     fn a_modern_runtime_gets_the_full_set() {
         assert_eq!(
             flags(25, "aarch64", 16384),
-            vec!["-Xms512M", "-XX:+UseZGC", "-XX:+UseCompactObjectHeaders"]
+            vec![
+                "-Xms512M",
+                "-XX:+UseZGC",
+                "-XX:SoftMaxHeapSize=8192M",
+                "-XX:+UseCompactObjectHeaders"
+            ]
         );
     }
 

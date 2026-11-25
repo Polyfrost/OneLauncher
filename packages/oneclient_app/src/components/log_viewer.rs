@@ -157,7 +157,6 @@ pub struct LogViewer {
     lines: Arc<Vec<Arc<str>>>,
     streaming: bool,
     header: Option<Element>,
-    auto_scroll: Option<State<bool>>,
     actions: Option<Element>,
 }
 
@@ -168,19 +167,12 @@ impl LogViewer {
             lines: lines.into(),
             streaming: false,
             header: None,
-            auto_scroll: None,
             actions: None,
         }
     }
 
     pub fn streaming(mut self, streaming: bool) -> Self {
         self.streaming = streaming;
-        self
-    }
-
-    /// Auto scroll owned by the caller, which then shows [`auto_scroll_toggle`] itself
-    pub fn auto_scroll(mut self, auto_scroll: State<bool>) -> Self {
-        self.auto_scroll = Some(auto_scroll);
         self
     }
 
@@ -212,9 +204,7 @@ impl Component for LogViewer {
         let content_w = ROW_PAD_X + num_col_w + NUM_GAP + max_chars as f32 * CHAR_W + ROW_PAD_X;
 
         let scroll = use_scroll_controller(ScrollConfig::default);
-        let own_auto_scroll = use_state(|| streaming);
-        let mut auto_scroll = self.auto_scroll.unwrap_or(own_auto_scroll);
-        let own_toggle = streaming && self.auto_scroll.is_none();
+        let mut auto_scroll = use_state(|| streaming);
 
         let sel_anchor = use_state::<Option<(usize, usize)>>(|| None);
         let sel_focus = use_state::<Option<(usize, usize)>>(|| None);
@@ -264,7 +254,7 @@ impl Component for LogViewer {
                         })
                     }),
             )
-            .maybe_child(own_toggle.then(|| AutoScrollFab { auto_scroll }.into_element()))
+            .maybe_child(streaming.then(|| AutoScrollFab { auto_scroll }.into_element()))
     }
 }
 
@@ -299,39 +289,6 @@ fn toolbar(title: String, actions: Option<Element>) -> impl IntoElement {
         .width(Size::fill())
         .child(row)
         .maybe_child(has_actions.then(crate::ui::divider))
-        .into_element()
-}
-
-pub fn auto_scroll_toggle(mut auto_scroll: State<bool>) -> impl IntoElement {
-    let on = *auto_scroll.read();
-    rect()
-        .horizontal()
-        .cross_align(Alignment::Center)
-        .spacing(6.)
-        .padding(Gaps::new_symmetric(5., 10.))
-        .corner_radius(rounded(7.))
-        .background(if on {
-            colors::brand().with_a(40)
-        } else {
-            colors::component_bg()
-        })
-        .cursor(CursorIcon::Pointer)
-        .on_press(move |_| auto_scroll.toggle())
-        .child(Icon::new(IconType::ChevronDown).size(13.).color(if on {
-            colors::brand()
-        } else {
-            colors::fg_secondary()
-        }))
-        .child(
-            label()
-                .text(t("oneclient.components.log_viewer.auto_scroll"))
-                .font_size(text_size(11.))
-                .color(if on {
-                    colors::brand()
-                } else {
-                    colors::fg_secondary()
-                }),
-        )
         .into_element()
 }
 

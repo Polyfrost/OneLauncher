@@ -24,9 +24,6 @@ mod mods;
 use markup::{SegmentStyle, display_line, host_of, links_in, resolve_placeholders, segments};
 use mods::{mods_card, mods_height};
 
-const DISCORD_BG: Color = Color::from_argb(46, 43, 75, 255);
-const DISCORD_BORDER: Color = Color::from_argb(120, 43, 75, 255);
-
 const MAX_LINK_CHIPS: usize = 3;
 
 const CHAR_W_TEXT: f32 = 7.8;
@@ -480,8 +477,8 @@ fn discord_card(mut confirm: State<Option<String>>) -> impl IntoElement {
         .content(Content::Flex)
         .padding(Gaps::new_all(14.))
         .corner_radius(rounded(10.))
-        .background(DISCORD_BG)
-        .border(crate::ui::border_all_color(1., DISCORD_BORDER))
+        .background(colors::brand().with_a(46))
+        .border(crate::ui::border_all_color(1., colors::brand().with_a(120)))
         .child(
             Icon::new(IconType::MessageTextSquare01)
                 .size(22.)

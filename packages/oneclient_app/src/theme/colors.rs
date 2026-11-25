@@ -4,7 +4,7 @@ use std::rc::Rc;
 use freya::prelude::{Color, State};
 use serde::{Deserialize, Serialize};
 
-use super::{Theme, resolve_theme};
+use super::{Theme, counterpart, resolve_theme};
 
 pub const MODRINTH_COLOR: Color = Color::from_rgb(27, 217, 106);
 pub const CURSEFORGE_COLOR: Color = Color::from_rgb(241, 100, 54);
@@ -200,8 +200,31 @@ pub fn fg_strong() -> Color {
     color(strong_rgb())
 }
 
+/// The text colour of the active theme family's dark or light variant, so text drawn on top of
+/// art, media or the accent follows custom themes instead of the built-in palette
+fn variant_text(light: bool, fallback: Rgb) -> Rgb {
+    let theme = active_theme();
+    if theme.colors.light == light {
+        return theme.colors.text.rgb();
+    }
+    counterpart(&theme.id)
+        .map(|id| resolve_theme(&id))
+        .filter(|other| other.colors.light == light)
+        .map_or(fallback, |other| other.colors.text.rgb())
+}
+
+/// Light text for dark backgrounds
+fn light_text_rgb() -> Rgb {
+    variant_text(false, ON_DARK_BG)
+}
+
+/// Dark text for light backgrounds
+fn dark_text_rgb() -> Rgb {
+    variant_text(true, ON_LIGHT_BG)
+}
+
 pub fn on_media() -> Color {
-    Color::from_rgb(213, 219, 255)
+    color(light_text_rgb())
 }
 
 pub fn is_light() -> bool {
@@ -230,7 +253,6 @@ pub fn shade() -> Color {
 
 const ON_LIGHT_BG: Rgb = (22, 30, 54);
 const ON_DARK_BG: Rgb = (213, 219, 255);
-const ON_DARK_BG_DISABLED: Rgb = (205, 209, 235);
 
 const MIN_LIGHT_TEXT_CONTRAST: f32 = 3.;
 
@@ -252,30 +274,28 @@ fn contrast(a: Rgb, b: Rgb) -> f32 {
 }
 
 fn needs_dark_text(background: Rgb) -> bool {
-    contrast(ON_DARK_BG, background) < MIN_LIGHT_TEXT_CONTRAST
+    contrast(light_text_rgb(), background) < MIN_LIGHT_TEXT_CONTRAST
+}
+
+fn text_on(background: Rgb) -> Rgb {
+    if needs_dark_text(background) {
+        dark_text_rgb()
+    } else {
+        light_text_rgb()
+    }
 }
 
 pub fn on_color(background: Color) -> Color {
-    let rgb = (background.r(), background.g(), background.b());
-    color(if needs_dark_text(rgb) {
-        ON_LIGHT_BG
-    } else {
-        ON_DARK_BG
-    })
+    color(text_on((background.r(), background.g(), background.b())))
 }
 
 pub fn on_brand() -> Color {
-    let brand = brand_rgb();
-    color(if needs_dark_text(brand) {
-        ON_LIGHT_BG
-    } else {
-        ON_DARK_BG
-    })
+    color(text_on(brand_rgb()))
 }
 
 pub fn on_brand_strong() -> Color {
     if needs_dark_text(brand_rgb()) {
-        color(ON_LIGHT_BG)
+        color(dark_text_rgb())
     } else {
         Color::WHITE
     }
@@ -284,9 +304,9 @@ pub fn on_brand_strong() -> Color {
 pub fn on_brand_disabled() -> Color {
     let background = brand_disabled_rgb();
     if needs_dark_text(background) {
-        color(mix(ON_LIGHT_BG, background, 0.35))
+        color(mix(dark_text_rgb(), background, 0.35))
     } else {
-        color(ON_DARK_BG_DISABLED)
+        color(mix(light_text_rgb(), background, 0.06))
     }
 }
 
@@ -434,7 +454,7 @@ pub fn code_muted() -> Color {
 }
 
 pub fn selection_bg() -> Color {
-    Color::from_rgb(97, 175, 239).with_a(60)
+    brand().with_a(60)
 }
 
 pub fn toast_action() -> Color {

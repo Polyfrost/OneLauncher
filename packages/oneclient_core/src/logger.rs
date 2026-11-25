@@ -240,6 +240,16 @@ pub fn init_filtered(filter: impl FnOnce() -> String) -> LauncherResult<()> {
         tracing::info!(path = %log_path.display(), "writing logs to file");
     }
 
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        tracing::error!(
+            sentry = false,
+            "{info}\n{}",
+            std::backtrace::Backtrace::force_capture()
+        );
+        previous(info);
+    }));
+
     tracing::info!(
         "{} on {} {}",
         oneclient_common::constants::LAUNCHER_LABEL,

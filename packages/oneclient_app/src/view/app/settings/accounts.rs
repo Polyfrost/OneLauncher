@@ -9,7 +9,7 @@ use super::{section_header, settings_page};
 use crate::Route;
 use crate::components::{
     Avatar, Button, Icon, IconType, MicrosoftLogin, OverlayPopup, PlayerModel, TextInput,
-    use_microsoft_login,
+    use_microsoft_login, use_microsoft_token_login,
 };
 use crate::hooks::{
     AddOfflineAccountKeys, RefreshAccountKeys, RemoveAccountKeys, SetDefaultAccountKeys,
@@ -37,6 +37,7 @@ impl Component for SettingsAccounts {
         let default_query = use_current_account();
 
         let msa = use_microsoft_login();
+        let token_login = use_microsoft_token_login();
         let add_offline = use_add_offline_account();
         let set_default = use_set_default_account();
         let remove = use_remove_account();
@@ -116,6 +117,10 @@ impl Component for SettingsAccounts {
                     let msa = msa.clone();
                     move |_| msa.start()
                 },
+                {
+                    let token_login = token_login.clone();
+                    move |_| token_login.start()
+                },
             ))
             .child(section_header(t(
                 "oneclient.settings.accounts.section.your_accounts",
@@ -131,6 +136,7 @@ impl Component for SettingsAccounts {
                 )
             }))
             .maybe_child(msa.popup())
+            .maybe_child(token_login.popup())
             .into_element()
     }
 }
@@ -142,6 +148,7 @@ fn hero(
     error: Option<String>,
     on_open_offline: impl FnMut(Event<PressEventData>) + 'static,
     on_add_microsoft: impl FnMut(Event<PressEventData>) + 'static,
+    on_add_token: impl FnMut(Event<PressEventData>) + 'static,
 ) -> impl IntoElement {
     let (name, subtitle) = match &account {
         Some(account) if account.needs_sign_in() => (
@@ -228,6 +235,14 @@ fn hero(
                                         .on_press(on_open_offline)
                                         .child(Icon::new(IconType::Plus).size(16.))
                                         .text(t("oneclient.settings.accounts.add_offline")),
+                                )
+                                .child(
+                                    Button::new()
+                                        .secondary()
+                                        .enabled(!microsoft_pending)
+                                        .on_press(on_add_token)
+                                        .child(Icon::new(IconType::Key01).size(16.))
+                                        .text(t("oneclient.onboarding.account.token_login")),
                                 ),
                         )
                         .map(error, |el, msg| {

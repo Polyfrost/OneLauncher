@@ -62,8 +62,10 @@ pub enum MinecraftAuthError {
     BrowserAuthorizationFailed { error: String },
     #[error("failed to read user hash from Xbox token")]
     HashError,
-    #[error("this is not a Microsoft access token or OAuth refresh token")]
+    #[error("this is not a Microsoft, Xbox or Minecraft token")]
     InvalidToken,
+    #[error("this token has expired; export a fresh one and try again")]
+    TokenExpired,
     #[error("{message}")]
     XboxError {
         step: MinecraftAuthStep,

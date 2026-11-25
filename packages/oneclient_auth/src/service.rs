@@ -196,11 +196,15 @@ impl AuthService {
         token: String,
     ) -> AuthResult<MinecraftAccount> {
         let events = self.events.clone();
-        let account =
+        let result =
             msa::account_from_raw_token(self.net.http(), &token, |label, current, total| {
                 events.progress(MICROSOFT_LOGIN_PROGRESS, label, current, total);
             })
-            .await?;
+            .await;
+        if let Err(err) = &result {
+            tracing::warn!("Microsoft token login failed: {err}");
+        }
+        let account = result?;
 
         events.progress(MICROSOFT_LOGIN_PROGRESS, "Signed in", 1, 1);
         tracing::info!(username = %account.username, "Microsoft token login succeeded");

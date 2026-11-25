@@ -87,7 +87,9 @@ fn token_dialog(login: MicrosoftTokenLogin) -> impl IntoElement {
     let close_cancel = login.clone();
     let submit = login.clone();
     let token_field = login.token;
-    let token_empty = login.token.peek().trim().is_empty();
+    // `read` subscribes this component to edits; `peek` would leave the
+    // Sign in button disabled until some other state change forced a render.
+    let token_empty = login.token.read().trim().is_empty();
 
     OverlayPopup::new()
         .on_close(move |()| close_scrim.close())

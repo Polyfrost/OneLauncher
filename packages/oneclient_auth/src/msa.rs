@@ -341,19 +341,57 @@ fn pkce_challenge(verifier: &str) -> String {
 }
 
 /// The two token shapes accepted by the manual sign-in field.
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RawTokenKind {
-    /// A Microsoft access token (a three-part JWT beginning with `eyJ`).
-    AccessToken,
+    /// An XSTS token carrying the Xbox user hash.
+    XstsToken,
+    /// A Minecraft bearer token; the profile endpoint validates it directly.
+    MinecraftToken,
     /// An OAuth refresh token issued by Microsoft.
     RefreshToken,
+}
+
+const LEGACY_MSA_CLIENT_ID: &str = "00000000402b5328";
+const LEGACY_TOKEN_URL: &str = "https://login.live.com/oauth20_token.srf";
+const LEGACY_TOKEN_SCOPES: [&str; 2] = [
+    "service::user.auth.xboxlive.com::MBI_SSL",
+    "XboxLive.signin offline_access",
+];
+
+fn jwt_payload(raw: &str) -> Option<serde_json::Value> {
+    let part = raw.split('.').nth(1)?;
+    let padded = part.replace('-', "+").replace('_', "/");
+    let decoded = BASE64_URL_SAFE_NO_PAD.decode(padded).ok()?;
+    serde_json::from_slice(&decoded).ok()
+}
+
+fn jwt_uhs(payload: &serde_json::Value) -> Option<String> {
+    payload
+        .get("uhs")
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| {
+            payload
+                .get("xui")
+                .and_then(|xui| xui.get(0))
+                .and_then(|first| first.get("uhs"))
+                .and_then(serde_json::Value::as_str)
+        })
+        .map(str::to_string)
 }
 
 #[must_use]
 pub fn classify_raw_token(raw: &str) -> Option<RawTokenKind> {
     let raw = raw.trim();
     if raw.starts_with("eyJ") && raw.matches('.').count() >= 2 {
-        Some(RawTokenKind::AccessToken)
+        if jwt_payload(raw)
+            .as_ref()
+            .is_some_and(|payload| jwt_uhs(payload).is_some())
+        {
+            Some(RawTokenKind::XstsToken)
+        } else {
+            Some(RawTokenKind::MinecraftToken)
+        }
     } else if raw.starts_with("M.") {
         Some(RawTokenKind::RefreshToken)
     } else {
@@ -361,8 +399,8 @@ pub fn classify_raw_token(raw: &str) -> Option<RawTokenKind> {
     }
 }
 
-/// Signs in from a token the user pasted. An access token is used as-is; a
-/// refresh token is exchanged for a fresh Microsoft token pair first.
+/// Signs in from a token the user pasted: a Minecraft bearer token, an XSTS
+/// token, or an OAuth refresh token from the official Minecraft launcher.
 #[tracing::instrument(level = "debug", skip_all)]
 pub async fn account_from_raw_token(
     client: &Client,
@@ -370,22 +408,50 @@ pub async fn account_from_raw_token(
     on_progress: impl Fn(&str, u64, u64),
 ) -> Result<MinecraftAccount, MinecraftAuthError> {
     let raw = raw.trim();
-    match classify_raw_token(raw) {
-        Some(RawTokenKind::AccessToken) => {
-            let msa = MsaToken {
-                access_token: raw.to_string(),
-                // An access token cannot renew itself; the account will need
-                // another manual sign-in when the Minecraft token expires.
-                refresh_token: String::new(),
-            };
-            account_from_msa_token(client, msa, on_progress).await
+    let kind = classify_raw_token(raw).ok_or(MinecraftAuthError::InvalidToken)?;
+
+    if matches!(kind, RawTokenKind::XstsToken | RawTokenKind::MinecraftToken) {
+        let expired = jwt_payload(raw)
+            .and_then(|payload| payload.get("exp").and_then(serde_json::Value::as_i64))
+            .is_some_and(|exp| Utc::now().timestamp() >= exp);
+        if expired {
+            return Err(MinecraftAuthError::TokenExpired);
         }
-        Some(RawTokenKind::RefreshToken) => {
-            let msa = refresh_msa_token(client, raw).await?;
-            account_from_msa_token(client, msa, on_progress).await
-        }
-        None => Err(MinecraftAuthError::InvalidToken),
     }
+
+    match kind {
+        RawTokenKind::XstsToken => {
+            let uhs = jwt_payload(raw)
+                .and_then(|payload| jwt_uhs(&payload))
+                .ok_or(MinecraftAuthError::HashError)?;
+            account_from_xsts(client, &uhs, raw, String::new(), on_progress).await
+        }
+        RawTokenKind::MinecraftToken => account_from_minecraft_token(client, raw).await,
+        RawTokenKind::RefreshToken => {
+            account_from_legacy_refresh_token(client, raw, on_progress).await
+        }
+    }
+}
+
+async fn account_from_minecraft_token(
+    client: &Client,
+    token: &str,
+) -> Result<MinecraftAccount, MinecraftAuthError> {
+    let profile = minecraft_profile(client, token).await?;
+    let expires = jwt_payload(token)
+        .and_then(|payload| payload.get("exp").and_then(serde_json::Value::as_i64))
+        .and_then(|exp| chrono::DateTime::from_timestamp(exp, 0))
+        .unwrap_or_else(|| Utc::now() + chrono::TimeDelta::hours(24));
+
+    Ok(MinecraftAccount {
+        id: profile.id.unwrap_or_default(),
+        username: profile.name,
+        access_token: token.to_string(),
+        refresh_token: String::new(),
+        expires,
+        kind: AccountKind::Microsoft,
+        signed_out: false,
+    })
 }
 
 #[tracing::instrument(level = "debug", skip_all, fields(username = %creds.username))]
@@ -556,6 +622,168 @@ fn is_revoked_refresh_error(error: &str) -> bool {
     matches!(error, "invalid_grant" | "interaction_required")
 }
 
+/// Refresh tokens exported from the official Minecraft launcher belong to its
+/// client id, not to OneClient's. Exchange them with that client and its scopes.
+async fn legacy_refresh_msa_token(
+    client: &Client,
+    refresh_token: &str,
+) -> Result<MsaToken, MinecraftAuthError> {
+    let mut last_error = None;
+    for scope in LEGACY_TOKEN_SCOPES {
+        let body = [
+            ("client_id", LEGACY_MSA_CLIENT_ID),
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh_token),
+            ("scope", scope),
+        ];
+        let res = auth_retry(|| {
+            client
+                .post(LEGACY_TOKEN_URL)
+                .header("Accept", "application/json")
+                .form(&body)
+                .send()
+        })
+        .await
+        .map_err(|source| MinecraftAuthError::RequestError {
+            step: MinecraftAuthStep::RefreshToken,
+            source,
+        })?;
+
+        let status = res.status();
+        let text = res
+            .text()
+            .await
+            .map_err(|source| MinecraftAuthError::RequestError {
+                step: MinecraftAuthStep::RefreshToken,
+                source,
+            })?;
+        if status.is_success() {
+            let raw: MsaTokenResponse = serde_json::from_str(&text).map_err(|source| {
+                MinecraftAuthError::DeserializeError {
+                    step: MinecraftAuthStep::RefreshToken,
+                    raw: text,
+                    source,
+                    status_code: status,
+                }
+            })?;
+            return Ok(MsaToken::from_response(raw));
+        }
+
+        let error = serde_json::from_str::<OAuthErrorResponse>(&text)
+            .map(|err| err.error)
+            .unwrap_or_else(|_| status.to_string());
+        if is_revoked_refresh_error(&error) {
+            return Err(MinecraftAuthError::RefreshTokenRevoked { error });
+        }
+        last_error = Some(error);
+    }
+
+    Err(MinecraftAuthError::RefreshTokenRevoked {
+        error: last_error.unwrap_or_else(|| "unknown error".to_string()),
+    })
+}
+
+/// The legacy token can be an MSA token for either Xbox endpoint and ticket
+/// shape, so try the same variants launchers use before giving up.
+async fn legacy_xbl_authenticate(
+    client: &Client,
+    access_token: &str,
+) -> Result<(XblUserToken, Option<String>), MinecraftAuthError> {
+    let attempts = [
+        (
+            "https://xbox.auth.xboxlive.com/xbox/user/authenticate",
+            "http://xboxlive.com",
+            format!("t={access_token}"),
+        ),
+        (
+            "https://user.auth.xboxlive.com/user/authenticate",
+            "http://auth.xboxlive.com",
+            format!("d={access_token}"),
+        ),
+        (
+            "https://user.auth.xboxlive.com/user/authenticate",
+            "http://auth.xboxlive.com",
+            access_token.to_string(),
+        ),
+    ];
+    let mut last_error = None;
+
+    for (url, relying_party, ticket) in attempts {
+        let res = auth_retry(|| {
+            client
+                .post(url)
+                .header("Accept", "application/json")
+                .header("x-xbl-contract-version", "1")
+                .json(&json!({
+                    "Properties": {
+                        "AuthMethod": "RPS",
+                        "SiteName": "user.auth.xboxlive.com",
+                        "RpsTicket": ticket
+                    },
+                    "RelyingParty": relying_party,
+                    "TokenType": "JWT"
+                }))
+                .send()
+        })
+        .await;
+        let res = match res {
+            Ok(res) => res,
+            Err(source) => {
+                last_error = Some(MinecraftAuthError::RequestError {
+                    step: MinecraftAuthStep::XblAuthenticate,
+                    source,
+                });
+                continue;
+            }
+        };
+
+        let response: XboxTokenResponse =
+            match parse_json_response(res, MinecraftAuthStep::XblAuthenticate).await {
+                Ok(response) => response,
+                Err(err) => {
+                    last_error = Some(err);
+                    continue;
+                }
+            };
+        if let Err(err) = check_xbox_error(MinecraftAuthStep::XblAuthenticate, &response) {
+            last_error = Some(err);
+            continue;
+        }
+
+        let Some(token) = response.token else {
+            last_error = Some(MinecraftAuthError::HashError);
+            continue;
+        };
+        let uhs = response
+            .display_claims
+            .and_then(|claims| claims.xui.first().map(|first| first.uhs.clone()));
+        return Ok((XblUserToken { token }, uhs));
+    }
+
+    Err(last_error.unwrap_or(MinecraftAuthError::HashError))
+}
+
+async fn account_from_legacy_refresh_token(
+    client: &Client,
+    refresh_token: &str,
+    on_progress: impl Fn(&str, u64, u64),
+) -> Result<MinecraftAccount, MinecraftAuthError> {
+    let msa = legacy_refresh_msa_token(client, refresh_token).await?;
+    on_progress("Authenticating with Xbox Live", 1, AUTH_STEPS);
+    let (xbl, xbl_uhs) = legacy_xbl_authenticate(client, &msa.access_token).await?;
+    on_progress("Authorizing access (XSTS)", 2, AUTH_STEPS);
+    let xsts = xsts_authorize(client, &xbl.token).await?;
+    let uhs = xsts
+        .display_claims
+        .as_ref()
+        .and_then(|claims| claims.xui.first().map(|first| first.uhs.clone()))
+        .or(xbl_uhs)
+        .ok_or(MinecraftAuthError::HashError)?;
+    let token = xsts.token.ok_or(MinecraftAuthError::HashError)?;
+
+    account_from_xsts(client, &uhs, &token, msa.refresh_token, on_progress).await
+}
+
 struct MsaToken {
     access_token: String,
     refresh_token: String,
@@ -565,7 +793,7 @@ impl MsaToken {
     fn from_response(raw: MsaTokenResponse) -> Self {
         Self {
             access_token: raw.access_token,
-            refresh_token: raw.refresh_token,
+            refresh_token: raw.refresh_token.unwrap_or_default(),
         }
     }
 }
@@ -591,8 +819,19 @@ async fn account_from_msa_token(
         .map(|x| x.uhs.as_str())
         .ok_or(MinecraftAuthError::HashError)?;
 
+    account_from_xsts(client, uhs, &xsts_token, msa.refresh_token, on_progress).await
+}
+
+#[tracing::instrument(level = "debug", skip_all)]
+async fn account_from_xsts(
+    client: &Client,
+    uhs: &str,
+    xsts_token: &str,
+    refresh_token: String,
+    on_progress: impl Fn(&str, u64, u64),
+) -> Result<MinecraftAccount, MinecraftAuthError> {
     on_progress("Requesting Minecraft token", 3, AUTH_STEPS);
-    let minecraft_token = minecraft_login(client, uhs, &xsts_token).await?;
+    let minecraft_token = minecraft_login(client, uhs, xsts_token).await?;
     on_progress("Verifying game ownership", 4, AUTH_STEPS);
     minecraft_entitlements(client, &minecraft_token.access_token).await?;
     let profile = minecraft_profile(client, &minecraft_token.access_token).await?;
@@ -602,7 +841,7 @@ async fn account_from_msa_token(
         id: profile.id.unwrap_or_default(),
         username: profile.name,
         access_token: minecraft_token.access_token,
-        refresh_token: msa.refresh_token,
+        refresh_token,
         // The Minecraft token outlives the Microsoft one (24h vs 1h) keying off
         // it means the refresh token is only rotated when the game token lapses
         #[allow(clippy::cast_possible_wrap)]
@@ -776,7 +1015,8 @@ struct OAuthErrorResponse {
 #[derive(Deserialize)]
 struct MsaTokenResponse {
     access_token: String,
-    refresh_token: String,
+    #[serde(default)]
+    refresh_token: Option<String>,
 }
 
 struct XblUserToken {
@@ -906,11 +1146,16 @@ mod tests {
     fn a_pasted_token_is_classified_by_its_shape() {
         assert_eq!(
             classify_raw_token("  eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.signature  "),
-            Some(RawTokenKind::AccessToken)
+            Some(RawTokenKind::MinecraftToken)
         );
         assert_eq!(
             classify_raw_token("M.C543_SN1.0.U.some-refresh-token"),
             Some(RawTokenKind::RefreshToken)
+        );
+        let payload = BASE64_URL_SAFE_NO_PAD.encode(br#"{"uhs":"123"}"#);
+        assert_eq!(
+            classify_raw_token(&format!("eyJhbGciOiJSUzI1NiJ9.{payload}.sig")),
+            Some(RawTokenKind::XstsToken)
         );
         assert_eq!(classify_raw_token(""), None);
         assert_eq!(classify_raw_token("not-a-token"), None);

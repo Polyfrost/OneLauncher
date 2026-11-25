@@ -1365,6 +1365,7 @@
   "oneclient.common.save": "Save",
   "oneclient.common.try_again": "Try again",
   "oneclient.common.yes": "Yes",
+  "oneclient.home.wrong_account": "Wrong Account",
   "oneclient.components.account_switcher.active": "Active",
   "oneclient.components.account_switcher.back": "Back to control center",
   "oneclient.components.account_switcher.empty": "No accounts yet",

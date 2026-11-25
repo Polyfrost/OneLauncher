@@ -4,7 +4,9 @@ use oneclient_auth::MinecraftAccount;
 use crate::components::{
     Avatar, Button, Icon, IconType, use_microsoft_login, use_microsoft_token_login,
 };
-use crate::hooks::{try_default_account, use_current_account};
+use crate::hooks::{
+    RemoveAccountKeys, try_default_account, use_current_account, use_remove_account,
+};
 use crate::i18n::t;
 use crate::routes::Route;
 use crate::theme::{colors, text_size};
@@ -20,10 +22,26 @@ impl Component for OnboardingAccount {
         let account_query = use_current_account();
         let msa = use_microsoft_login();
         let token_login = use_microsoft_token_login();
+        let remove = use_remove_account();
 
         let account = try_default_account(&account_query);
         let has_account = account.is_some();
 
+        let preview: Option<Element> = account
+            .as_ref()
+            .map(|account| account_preview(account).into_element());
+        let wrong_account: Option<Element> = account.as_ref().map(|account| {
+            let remove = remove.clone();
+            let id = account.id;
+            Button::new()
+                .ghost()
+                .on_press(move |_| remove.mutate(RemoveAccountKeys { id }))
+                .text(t("oneclient.home.wrong_account"))
+                .into_element()
+        });
+
+        let start = msa.clone();
+        let start_token = token_login.clone();
         let content = rect()
             .vertical()
             .width(Size::fill())
@@ -32,19 +50,15 @@ impl Component for OnboardingAccount {
                 t("oneclient.onboarding.account.title"),
                 t("oneclient.onboarding.account.subtitle"),
             ))
-            .child(match &account {
-                Some(account) => account_preview(account).into_element(),
-                None => {
-                    let start = msa.clone();
-                    let start_token = token_login.clone();
-                    sign_in_card(
-                        msa.pending,
-                        msa.error.clone(),
-                        move |_| start.start(),
-                        move |_| start_token.start(),
-                    )
-                    .into_element()
-                }
+            .maybe_child(preview)
+            .maybe_child(wrong_account)
+            .maybe(account.is_none(), |page| {
+                page.child(sign_in_card(
+                    msa.pending,
+                    msa.error.clone(),
+                    move |_| start.start(),
+                    move |_| start_token.start(),
+                ))
             })
             .into_element();
 

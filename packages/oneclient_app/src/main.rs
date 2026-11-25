@@ -116,6 +116,23 @@ impl App for OneClientApp {
         theme::colors::bind_revision(palette_revision);
         let appearance = use_settings_snapshot().settings;
         let platform = Platform::get().current_window();
+        #[cfg(target_os = "linux")]
+        use_hook(move || {
+            let mut preferred = platform.preferred_theme;
+            spawn(async move {
+                // ponytail: polls every few seconds, a SettingChanged signal subscription
+                // would react instantly if that ever matters
+                while let Ok(Some(dark)) =
+                    tokio::task::spawn_blocking(oneclient_app::platform::portal_prefers_dark).await
+                {
+                    let want = if dark { PreferredTheme::Dark } else { PreferredTheme::Light };
+                    if *preferred.peek() != want {
+                        preferred.set(want);
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                }
+            });
+        });
         let system_dark = *platform.preferred_theme.read() == PreferredTheme::Dark;
         let scale_factor = *platform.scale_factor.read() as f32;
         let theme_id = theme::system_aware(&appearance.theme, system_dark);

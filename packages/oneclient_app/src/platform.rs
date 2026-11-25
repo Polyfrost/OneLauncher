@@ -189,6 +189,36 @@ fn select_in_file_manager(path: &std::path::Path) -> std::io::Result<()> {
         .map_err(std::io::Error::other)
 }
 
+/// winit can't see the desktop color scheme on Linux, so ask the settings portal.
+/// `None` when there is no portal, `Some(true)` for dark
+#[cfg(target_os = "linux")]
+pub fn portal_prefers_dark() -> Option<bool> {
+    use zbus::zvariant::Value;
+
+    let reply = zbus::blocking::Connection::session()
+        .ok()?
+        .call_method(
+            Some("org.freedesktop.portal.Desktop"),
+            "/org/freedesktop/portal/desktop",
+            Some("org.freedesktop.portal.Settings"),
+            "ReadOne",
+            &("org.freedesktop.appearance", "color-scheme"),
+        )
+        .ok()?;
+    let body = reply.body();
+    let value: Value<'_> = body.deserialize().ok()?;
+    // 0 no preference, 1 dark, 2 light; the u32 can come wrapped in a variant
+    let scheme = match value {
+        Value::U32(n) => n,
+        Value::Value(inner) => match *inner {
+            Value::U32(n) => n,
+            _ => return None,
+        },
+        _ => return None,
+    };
+    Some(scheme == 1)
+}
+
 fn has_allowed_scheme(url: &str) -> bool {
     let Some((scheme, _)) = url.split_once(':') else {
         return false;

@@ -13,6 +13,8 @@ use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const BODY_MAX_H: f32 = 400.;
+/// Seconds before a warned mod can be turned off, so the warning gets read first
+const CONFIRM_DELAY: u32 = 5;
 
 #[derive(PartialEq)]
 pub struct EssentialConfirmOverlay;
@@ -92,24 +94,20 @@ impl Component for EssentialConfirmOverlay {
                                     .width(Size::fill())
                                     .main_align(Alignment::End)
                                     .spacing(8.)
-                                    .child(
-                                        Button::new()
-                                            .secondary()
-                                            .on_press(move |_| {
-                                                match then.clone() {
-                                                    Guarded::Mutate(action) => {
-                                                        cluster.mutate(action)
-                                                    }
-                                                    Guarded::Disable(request) => disable::request(
-                                                        request,
-                                                        pending_disable,
-                                                        dispatch.clone(),
-                                                    ),
-                                                }
-                                                pending.set(None);
-                                            })
-                                            .text(confirm_label),
-                                    )
+                                    .child(CountdownButton {
+                                        label: confirm_label.to_string(),
+                                        on_press: EventHandler::new(move |_| {
+                                            match then.clone() {
+                                                Guarded::Mutate(action) => cluster.mutate(action),
+                                                Guarded::Disable(request) => disable::request(
+                                                    request,
+                                                    pending_disable,
+                                                    dispatch.clone(),
+                                                ),
+                                            }
+                                            pending.set(None);
+                                        }),
+                                    })
                                     .child(
                                         Button::new()
                                             .primary()
@@ -170,5 +168,39 @@ impl Component for WarningBody {
                             )),
                     ),
             )
+    }
+}
+
+/// Starts disabled with a countdown in its label and unlocks at zero. It mounts
+/// fresh with each warning, so every warning gets its own countdown
+#[derive(PartialEq)]
+struct CountdownButton {
+    label: String,
+    on_press: EventHandler<Event<PressEventData>>,
+}
+
+impl Component for CountdownButton {
+    fn render(&self) -> impl IntoElement {
+        let mut left = use_state(|| CONFIRM_DELAY);
+        use_hook(move || {
+            spawn(async move {
+                while *left.peek() > 0 {
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    let next = left.peek().saturating_sub(1);
+                    left.set(next);
+                }
+            });
+        });
+        let left = *left.read();
+        let on_press = self.on_press.clone();
+        Button::new()
+            .secondary()
+            .enabled(left == 0)
+            .on_press(move |e| on_press.call(e))
+            .text(if left == 0 {
+                self.label.clone()
+            } else {
+                format!("{} ({left})", self.label)
+            })
     }
 }

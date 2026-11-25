@@ -466,6 +466,18 @@ pub async fn refresh_microsoft_account(
     Ok(account)
 }
 
+/// Refreshes a token that was exported from the official Minecraft launcher.
+#[tracing::instrument(level = "debug", skip_all, fields(username = %creds.username))]
+pub async fn refresh_microsoft_account_legacy(
+    client: &Client,
+    creds: &MinecraftAccount,
+) -> Result<MinecraftAccount, MinecraftAuthError> {
+    let mut account =
+        account_from_legacy_refresh_token(client, &creds.refresh_token, |_, _, _| {}).await?;
+    account.id = creds.id;
+    Ok(account)
+}
+
 #[tracing::instrument(level = "debug", skip_all)]
 async fn request_device_code(client: &Client) -> Result<DeviceCodeLogin, MinecraftAuthError> {
     let body = [

@@ -303,6 +303,14 @@ impl AuthService {
         {
             return Ok(existing);
         }
+        // Accounts imported from a Minecraft or XSTS token have no OAuth
+        // refresh token. Asking Microsoft to refresh with an empty one yields
+        // a confusing 400; these need another token import instead.
+        if existing.refresh_token.is_empty() {
+            return Err(AuthError::SessionExpired {
+                username: existing.username,
+            });
+        }
 
         let guard = self.refresh_guard(id);
         let _serialised = guard.lock().await;
@@ -321,7 +329,17 @@ impl AuthService {
         }
 
         tracing::info!(username = %existing.username, "renewing Microsoft access token");
-        match msa::refresh_microsoft_account(self.net.http(), &existing).await {
+        let result = match msa::refresh_microsoft_account(self.net.http(), &existing).await {
+            // A Minecraft launcher refresh token belongs to its client id, so
+            // OneClient's own exchange rejects it. Retry with that client
+            // before deciding the session is gone.
+            Err(MinecraftAuthError::RefreshTokenRevoked { .. }) => {
+                tracing::info!(username = %existing.username, "retrying refresh with the Minecraft launcher client");
+                msa::refresh_microsoft_account_legacy(self.net.http(), &existing).await
+            }
+            result => result,
+        };
+        match result {
             Ok(refreshed) => {
                 self.store
                     .lock()
@@ -550,6 +568,40 @@ mod tests {
         let (events, _rx) = EventBus::channel();
         let net = RequestClient::new(NetConfig::default()).expect("net client");
         (AuthService::with_store(store, net, events), id)
+    }
+
+    fn token_import_service() -> (AuthService, Uuid) {
+        let mut account = crate::offline::offline_account("TokenUser".to_string());
+        account.kind = crate::data::AccountKind::Microsoft;
+        account.access_token = "token".to_string();
+        account.refresh_token.clear();
+        account.expires = chrono::Utc::now() + chrono::TimeDelta::hours(12);
+        let id = account.id;
+
+        let mut store = CredentialsStore::default();
+        store.users.insert(id, account);
+        store.default_user = Some(id);
+
+        let (events, _rx) = EventBus::channel();
+        let net = RequestClient::new(NetConfig::default()).expect("net client");
+        (AuthService::with_store(store, net, events), id)
+    }
+
+    #[tokio::test]
+    async fn a_token_imported_account_does_not_send_an_empty_refresh_token() {
+        let (service, id) = token_import_service();
+
+        assert!(matches!(
+            service.refresh_account(id).await,
+            Err(AuthError::SessionExpired { .. })
+        ));
+        // A still-live token must continue to launch normally
+        let account = service
+            .default_account_for_launch()
+            .await
+            .unwrap()
+            .expect("the token account is still the default");
+        assert_eq!(account.id, id);
     }
 
     #[tokio::test]

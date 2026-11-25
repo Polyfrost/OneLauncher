@@ -137,15 +137,14 @@ pub fn performance_flags(
 #[must_use]
 pub fn code_cache_flags(java_arch: &str, custom_args: &[String]) -> Vec<String> {
     let mut flags = Vec::new();
-    if !is_64_bit(java_arch) {
+    if !is_64_bit(java_arch)
+        || custom_args
+            .iter()
+            .any(|arg| arg.contains("CodeCacheSize=") || arg.contains("CodeHeapSize="))
+    {
         return flags;
     }
-    if !custom_args
-        .iter()
-        .any(|arg| arg.starts_with("-XX:ReservedCodeCacheSize="))
-    {
-        flags.push("-XX:ReservedCodeCacheSize=512m".to_string());
-    }
+    flags.push("-XX:ReservedCodeCacheSize=512m".to_string());
     if !custom_args
         .iter()
         .any(|arg| arg.ends_with("UseCodeCacheFlushing"))
@@ -938,10 +937,8 @@ mod tests {
                 "-XX:-UseCodeCacheFlushing"
             ]
         );
-        assert_eq!(
-            code_cache_flags("aarch64", &custom("-XX:ReservedCodeCacheSize=256m")),
-            vec!["-XX:-UseCodeCacheFlushing"]
-        );
+        assert!(code_cache_flags("aarch64", &custom("-XX:ReservedCodeCacheSize=256m")).is_empty());
+        assert!(code_cache_flags("amd64", &custom("-XX:NonProfiledCodeHeapSize=116m")).is_empty());
         assert_eq!(
             code_cache_flags("amd64", &custom("-XX:+UseCodeCacheFlushing")),
             vec!["-XX:ReservedCodeCacheSize=512m"]

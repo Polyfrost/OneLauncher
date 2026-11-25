@@ -103,7 +103,8 @@ pub fn performance_flags(
         && total_ram_mb / ZGC_RAM_PER_HEAP >= mem_max;
     let use_g1 = !collector_chosen && !use_zgc && java_major >= 8;
 
-    if (use_zgc || use_g1) && java_major == 24 {
+    let compact_headers = java_major >= 24 && is_64_bit(java_arch);
+    if compact_headers && java_major == 24 {
         flags.push("-XX:+UnlockExperimentalVMOptions".to_string());
     }
 
@@ -125,7 +126,7 @@ pub fn performance_flags(
         flags.push("-XX:+ParallelRefProcEnabled".to_string());
     }
 
-    if (use_zgc || use_g1) && java_major >= 24 && is_64_bit(java_arch) {
+    if compact_headers {
         flags.push("-XX:+UseCompactObjectHeaders".to_string());
     }
 
@@ -809,6 +810,19 @@ mod tests {
             assert!(
                 !flags.iter().any(|f| f.starts_with("-XX:SoftMaxHeapSize")),
                 "{arg} should leave the soft limit to the user"
+            );
+        }
+    }
+
+    #[test]
+    fn a_custom_collector_keeps_compact_headers() {
+        for major in [24, 25] {
+            let flags = performance_flags(major, "amd64", 4096, 65536, &custom("-XX:+UseG1GC"));
+            assert!(!flags.contains(&"-XX:+UseG1GC".to_string()));
+            assert!(flags.contains(&"-XX:+UseCompactObjectHeaders".to_string()));
+            assert_eq!(
+                flags.contains(&"-XX:+UnlockExperimentalVMOptions".to_string()),
+                major == 24
             );
         }
     }

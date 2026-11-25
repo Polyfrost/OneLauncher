@@ -510,9 +510,11 @@ fn cluster_caption(cluster: &Cluster) -> String {
     format!("{} \u{b7} {}", cluster.mc_version, cluster.mc_loader)
 }
 
+// Every option shares the line's version, and the title above already shows it,
+// so a named instance only needs its name
 fn picker_caption(cluster: &Cluster) -> String {
     if cluster.user_created {
-        format!("{} \u{b7} {}", cluster.name, cluster_caption(cluster))
+        cluster.name.clone()
     } else {
         cluster_caption(cluster)
     }

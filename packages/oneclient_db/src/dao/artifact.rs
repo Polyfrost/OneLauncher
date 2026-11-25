@@ -627,9 +627,11 @@ pub async fn link_cluster_artifact_recording_addition(
     use std::sync::atomic::{AtomicI64, Ordering};
     static LAST_LINK: AtomicI64 = AtomicI64::new(0);
     let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
-    let previous = LAST_LINK.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |last| {
-        Some(now.max(last + 1))
-    }).unwrap_or_else(|last| last);
+    let previous = LAST_LINK
+        .try_update(Ordering::Relaxed, Ordering::Relaxed, |last| {
+            Some(now.max(last + 1))
+        })
+        .unwrap_or_else(|last| last);
     let added_at = chrono::DateTime::from_timestamp_nanos(now.max(previous + 1))
         .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true);
 

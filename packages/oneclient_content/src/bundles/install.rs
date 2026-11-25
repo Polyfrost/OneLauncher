@@ -911,6 +911,7 @@ pub(crate) fn heal_restores<'a>(
 }
 
 #[tracing::instrument(level = "debug", skip(archive, all_archives, progress, ctx), fields(bundle = %archive.manifest.name))]
+#[allow(clippy::too_many_arguments)]
 pub async fn install_enabled_bundle_files(
     archive: &BundleArchive,
     all_archives: &[BundleArchive],

@@ -1764,7 +1764,7 @@ mod tests {
             unreachable_file(),
             external_revision,
         ] {
-            let _ = shared_prefetch(&file, None, &ctx);
+            drop(shared_prefetch(&file, None, &ctx));
         }
 
         assert_eq!(ctx.prefetches.running.lock().unwrap().len(), 7);

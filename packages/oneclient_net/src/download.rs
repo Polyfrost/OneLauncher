@@ -568,6 +568,8 @@ pub async fn fetch_verified(
 
 #[cfg(test)]
 mod tests {
+    type RangeLabel = (&'static str, fn(usize, usize, usize) -> String);
+
     use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
 
@@ -1039,7 +1041,7 @@ mod tests {
                 .map(|i| (i % 251) as u8)
                 .collect(),
         );
-        let labels: [(&str, fn(usize, usize, usize) -> String); 2] = [
+        let labels: [RangeLabel; 2] = [
             ("start", |a, b, length| {
                 format!("bytes {}-{b}/{length}", a + 1)
             }),

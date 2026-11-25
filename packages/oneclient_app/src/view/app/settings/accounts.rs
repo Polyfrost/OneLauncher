@@ -8,7 +8,7 @@ use uuid::Uuid;
 use super::{section_header, settings_page};
 use crate::Route;
 use crate::components::{
-    Avatar, Button, Icon, IconType, MicrosoftLogin, OverlayPopup, PlayerModel, TextInput,
+    Avatar, Button, Icon, IconType, MicrosoftTokenLogin, OverlayPopup, PlayerModel, TextInput,
     use_microsoft_login, use_microsoft_token_login,
 };
 use crate::hooks::{
@@ -97,7 +97,7 @@ impl Component for SettingsAccounts {
                     set_default,
                     remove,
                     refresh,
-                    sign_in: msa.clone(),
+                    sign_in: token_login.clone(),
                 }
                 .into_element()
             })
@@ -439,7 +439,7 @@ struct AccountRow {
     set_default: crate::hooks::UseSetDefaultAccount,
     remove: crate::hooks::UseRemoveAccount,
     refresh: crate::hooks::UseRefreshAccount,
-    sign_in: MicrosoftLogin,
+    sign_in: MicrosoftTokenLogin,
 }
 
 impl PartialEq for AccountRow {

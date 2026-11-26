@@ -1455,6 +1455,20 @@ pub async fn install_cluster_bundles(
         bundles = archives.len(),
         "installing enabled bundle content"
     );
+    let deadline = match deadline {
+        Some(_)
+            if bundle_dao::list_bundle_tracked(&ctx.db, cluster_id)
+                .await?
+                .is_empty() =>
+        {
+            tracing::info!(
+                cluster_id,
+                "first bundle install for this instance, waiting for every file before launch"
+            );
+            None
+        }
+        deadline => deadline,
+    };
     let accepted = accepted_bundles(cluster_id, ctx).await?;
     for archive in &archives {
         let taken = takes_bundle(archive, &accepted);

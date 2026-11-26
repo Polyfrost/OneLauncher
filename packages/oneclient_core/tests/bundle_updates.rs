@@ -2925,6 +2925,37 @@ async fn launch_install_stops_waiting_at_the_deadline() {
 }
 
 #[tokio::test]
+async fn first_launch_install_waits_past_the_deadline() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let body: Vec<u8> = (0..64 * 1024).map(|i| (i % 211) as u8).collect();
+    let sha1 = polyio::sha1_bytes(&body);
+    let size = body.len() as u64;
+    let (url, _) = serve_jar(body, Some(std::time::Duration::from_millis(1000))).await;
+    seed_bundle_with_pack(&state, manifest(vec![github_mod_served(&url, &sha1, size)])).await;
+    let global = state.settings.read().global_game_settings.clone();
+    let untouched = state
+        .clusters
+        .create(
+            &global,
+            CreateClusterOptions::new("Untouched", MC_VERSION, GameLoader::Fabric),
+        )
+        .await
+        .unwrap()
+        .id;
+    let ctx = state.services.content();
+
+    let deadline = Some(std::time::Instant::now() + std::time::Duration::from_millis(300));
+    install_cluster_bundles(untouched, state.bundles.as_ref(), None, &ctx, deadline)
+        .await
+        .unwrap();
+
+    assert!(
+        linked(&state, untouched, &sha1).await,
+        "an instance with no bundle content yet must not launch without it"
+    );
+}
+
+#[tokio::test]
 async fn launch_install_links_nothing_while_part_of_the_bundle_is_downloading() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
     let fast_body: Vec<u8> = (0..64 * 1024).map(|i| (i % 227) as u8).collect();

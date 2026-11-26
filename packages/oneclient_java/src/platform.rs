@@ -208,7 +208,12 @@ const GPU_PREFERENCES_KEY: &str = r"HKCU\Software\Microsoft\DirectX\UserGpuPrefe
 
 /// A JVM is started through either stub so both are registered
 #[cfg(windows)]
-const GPU_PREFERENCE_EXECUTABLES: [&str; 2] = ["javaw.exe", "java.exe"];
+const GPU_PREFERENCE_EXECUTABLES: [&str; 4] = [
+    "javaw.exe",
+    "java.exe",
+    "javaw-legacygl.exe",
+    "java-legacygl.exe",
+];
 
 /// Absolute so a `reg.exe` earlier in the search order cannot run in its place
 #[cfg(windows)]
@@ -386,6 +391,8 @@ async fn has_legacy_intel_gpu() -> bool {
 
 #[cfg(windows)]
 pub async fn legacy_gl_executable(java_path: &std::path::Path) -> std::path::PathBuf {
+    use std::sync::atomic::{AtomicU32, Ordering};
+
     let original = java_path.to_path_buf();
     if !has_legacy_intel_gpu().await {
         return original;
@@ -409,9 +416,22 @@ pub async fn legacy_gl_executable(java_path: &std::path::Path) -> std::path::Pat
         tracing::warn!(path = %java_path.display(), "no Windows 10 manifest entry to strip");
         return original;
     };
-    if let Err(err) = polyio::write(&patched, bytes).await {
+    static NEXT_TEMP: AtomicU32 = AtomicU32::new(0);
+    let temp = patched.with_extension(format!(
+        "{}-{}.tmp",
+        std::process::id(),
+        NEXT_TEMP.fetch_add(1, Ordering::Relaxed)
+    ));
+    if let Err(err) = polyio::write(&temp, bytes).await {
         tracing::warn!(%err, "could not write the legacy OpenGL java executable");
         return original;
+    }
+    if let Err(err) = polyio::rename(&temp, &patched).await {
+        let _ = polyio::remove_file(&temp).await;
+        if !polyio::try_exists(&patched).await.unwrap_or(false) {
+            tracing::warn!(%err, "could not write the legacy OpenGL java executable");
+            return original;
+        }
     }
     tracing::info!(path = %patched.display(), "launching through the legacy OpenGL java executable");
     patched

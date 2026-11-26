@@ -41,7 +41,7 @@ impl Component for Home {
 
         // Shared with the navbar / outlet backdrop; provided by `AppShell`
         let stack = use_hook(consume_context::<HomeStack>);
-        let mut open = stack.open;
+        let open = stack.open;
         let wheel_claims = use_overlay_claims();
         let key_claims = wheel_claims.clone();
         let home_focus = use_a11y();

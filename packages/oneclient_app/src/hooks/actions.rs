@@ -1919,7 +1919,7 @@ impl Actions {
             }
         }
 
-        spawn_in_window(async move {
+        spawn_global(async move {
             let finish = |actions: &Actions| {
                 let mut channel = actions
                     .station

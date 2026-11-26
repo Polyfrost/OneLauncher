@@ -64,7 +64,7 @@ impl WorkspaceDialog {
                 in_instance: true, ..
             } => Self::Instance,
             Route::SettingsAppearance {}
-            | Route::SettingsThemeEditor {}
+            | Route::SettingsThemeEditor { .. }
             | Route::SettingsMinecraft {}
             | Route::SettingsAccounts {}
             | Route::SettingsLauncher {}

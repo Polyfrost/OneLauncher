@@ -6,7 +6,7 @@ use oneclient_db::dao::applied_migration as migration_dao;
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::cluster_bisect as bisect_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
-use oneclient_db::models::{ArtifactRow, ClusterArtifactRow, ClusterRow};
+use oneclient_db::models::{ClusterArtifactRow, ClusterRow};
 use oneclient_db::models::OverrideType;
 
 use crate::bundles::error::BundleError;
@@ -21,7 +21,7 @@ use crate::packages::store::{
     LiveSync, PackageStore, artifact_absolute_path, drop_unmanaged_mod, evict_if_unused,
     try_unlink_materialized,
 };
-use crate::packages::types::{ExternalFile, LinkedArtifactInfo, ProjectDetail, VersionDetail};
+use crate::packages::types::{ExternalFile, LinkedArtifactInfo, VersionDetail};
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use oneclient_events::{GroupedProgressChild, GroupedProgressSession, TaskCategory, TaskPhase};
 
@@ -1510,40 +1510,6 @@ pub async fn set_artifact_enabled_to(
     }
 
     Ok(live)
-}
-
-#[allow(clippy::too_many_arguments)]
-#[tracing::instrument(skip(project, version, child, ctx), fields(project_id = %project.id, version_id = %version.version_id))]
-pub async fn install_package_enabled(
-    provider: ProviderId,
-    project: &ProjectDetail,
-    version: &VersionDetail,
-    cluster_id: i64,
-    skip_compatibility: bool,
-    child: Option<&GroupedProgressChild>,
-    ctx: &ContentCtx,
-) -> ContentResult<(ArtifactRow, LiveSync)> {
-    let (artifact, live) = PackageStore::install_to_cluster(
-        provider,
-        project,
-        version,
-        cluster_id,
-        skip_compatibility,
-        false,
-        child,
-        ctx,
-    )
-    .await?;
-
-    let disabled = artifact_dao::get_cluster_artifact(&ctx.db, cluster_id, &artifact.hash)
-        .await?
-        .is_some_and(|link| link.enabled == 0);
-    if !disabled {
-        return Ok((artifact, live));
-    }
-
-    let live = set_artifact_enabled_to(cluster_id, &artifact.hash, true, ctx).await?;
-    Ok((artifact, live))
 }
 
 // which clusters have to record what the user just did

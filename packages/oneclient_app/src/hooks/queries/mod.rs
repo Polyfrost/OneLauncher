@@ -93,7 +93,7 @@ pub use logs::{
     use_log_action, use_log_content, use_upload_log,
 };
 pub use migration::{MigrationQuery, has_migration_data, migration_detection, use_migration};
-pub(crate) use mutations::{take_bundles, take_offered_bundles};
+pub(crate) use mutations::{take_bundles, turn_on_bundles};
 pub use mutations::{
     ClusterAction, ClusterMutation, invalidate_cluster_content_queries, invalidate_cluster_queries,
     invalidate_profile_queries, use_cluster_mutation,

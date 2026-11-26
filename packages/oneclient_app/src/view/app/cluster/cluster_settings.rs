@@ -17,13 +17,13 @@ use crate::components::{
     toggle_controlled, validate_number,
 };
 use crate::hooks::{
-    ClusterAction, java_runtimes, load_is_shared, load_setting_files, load_sync_left_out,
-    loader_versions, mutation_is_running, query_error, settled_or_loading, try_game_profile,
-    use_cloud_sync, use_cluster_mutation, use_clusters, use_dispatch, use_game_profile,
-    use_game_snapshot, use_graphics_backend, use_has_game_options, use_installs_snapshot,
-    use_is_migration_source, use_java_runtimes, use_launcher, use_loader_versions,
-    use_migratable_routes, use_release_migration_checking, use_settings_snapshot,
-    use_shared_groups,
+    ClusterAction, available_bundles, java_runtimes, load_is_shared, load_setting_files,
+    load_sync_left_out, loader_versions, mutation_is_running, query_error, settled_or_loading,
+    try_game_profile, use_available_bundles, use_cloud_sync, use_cluster_mutation, use_clusters,
+    use_dispatch, use_game_profile, use_game_snapshot, use_graphics_backend, use_has_game_options,
+    use_installs_snapshot, use_is_migration_source, use_java_runtimes, use_launcher,
+    use_loader_versions, use_migratable_routes, use_release_migration_checking,
+    use_settings_snapshot, use_shared_groups,
 };
 use crate::i18n::{t, tf};
 use crate::layout::cluster_content;
@@ -178,6 +178,8 @@ impl Component for ClusterSettings {
                 TakeBundlesRow {
                     cluster_id,
                     name: cluster.name.clone(),
+                    mc_version: cluster.mc_version.clone(),
+                    loader: cluster.mc_loader,
                 }
                 .into_element(),
             ]
@@ -744,6 +746,8 @@ impl Component for VerifyFilesRow {
 struct TakeBundlesRow {
     cluster_id: i64,
     name: String,
+    mc_version: String,
+    loader: GameLoader,
 }
 
 impl Component for TakeBundlesRow {
@@ -753,6 +757,10 @@ impl Component for TakeBundlesRow {
         let active = use_game_snapshot().is_active(cluster_id);
         let busy = use_installs_snapshot().modpack_busy;
         let enabled = !active && !busy;
+        let bundles = use_available_bundles(self.mc_version.clone(), self.loader);
+        if available_bundles(&bundles).is_none_or(|bundles| bundles.is_empty()) {
+            return rect().into_element();
+        }
 
         let button = Button::new()
             .small()
@@ -769,6 +777,7 @@ impl Component for TakeBundlesRow {
             t("oneclient.cluster.settings.take_bundles.description"),
             button,
         )
+        .into_element()
     }
 }
 

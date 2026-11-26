@@ -50,9 +50,15 @@ async fn each_shared_folder_holds_only_its_own_clusters_packs() {
             let source = dir.join(name);
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::write(&source, pack(name)).unwrap();
-            PackageStore::import_local_file(&source, ContentType::ResourcePack, cluster_id, &ctx)
-                .await
-                .unwrap();
+            PackageStore::import_local_file(
+                &source,
+                None,
+                ContentType::ResourcePack,
+                cluster_id,
+                &ctx,
+            )
+            .await
+            .unwrap();
             std::fs::remove_file(&source).ok();
         }
     };

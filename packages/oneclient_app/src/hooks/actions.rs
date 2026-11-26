@@ -1389,12 +1389,16 @@ impl Actions {
 
         let unchecked = check.unchecked.len();
         if unchecked > 0 {
-            let body = match packages.as_slice() {
-                [package] => tf(
+            let unchecked_package = match check.unchecked.as_slice() {
+                [hash] => packages.iter().find(|package| &package.hash == hash),
+                _ => None,
+            };
+            let body = match unchecked_package {
+                Some(package) => tf(
                     "oneclient.actions.package_check.unchecked.body.one",
                     &[&package.name],
                 ),
-                _ => tf(
+                None => tf(
                     "oneclient.actions.package_check.unchecked.body.other",
                     &[&unchecked],
                 ),

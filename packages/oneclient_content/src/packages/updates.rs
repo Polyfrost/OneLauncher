@@ -351,7 +351,6 @@ async fn refresh(
     let check = check_updates(cluster_id, only, &cached, ctx).await?;
 
     let mut keep: Vec<String> = check.unchecked.clone();
-    keep.extend(check.managed.iter().cloned());
     if let Some(only) = only {
         keep.extend(outside(cached.into_iter().map(|row| row.hash), only));
     }

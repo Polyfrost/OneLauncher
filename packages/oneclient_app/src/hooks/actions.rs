@@ -1362,8 +1362,12 @@ impl Actions {
 
         let managed = check.managed.len();
         if managed > 0 {
-            let body = match packages.as_slice() {
-                [package] => match &package.modpack {
+            let managed_package = match check.managed.as_slice() {
+                [hash] => packages.iter().find(|package| &package.hash == hash),
+                _ => None,
+            };
+            let body = match managed_package {
+                Some(package) => match &package.modpack {
                     Some(pack) => tf(
                         "oneclient.actions.package_check.managed.body.one",
                         &[&package.name, pack],
@@ -1373,7 +1377,7 @@ impl Actions {
                         &[&package.name],
                     ),
                 },
-                _ => tf(
+                None => tf(
                     "oneclient.actions.package_check.managed.body.other",
                     &[&managed],
                 ),

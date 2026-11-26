@@ -1,3 +1,28 @@
+## 2.13.0 (2026-11-26)
+
+### Features
+
+- Turning off a mod with a warning now waits a few seconds so the warning gets read first by [LynithDev](https://github.com/LynithDev)
+- Imported instances can now turn on OneClient bundles from their settings by [Wyvest](https://github.com/Wyvest)
+
+### Fixes
+
+- Clean up compiler warnings and duplicated helpers by [FlawlessGG](https://github.com/FlawlessGG)
+- Custom JVM args that pick a garbage collector no longer turn off compact object headers
+- The mod copies prompt shows each copy's version so it's clear why one was skipped by [tunaseckin](https://github.com/tunaseckin)
+- First launch now waits longer for bundle files so the game doesn't start with an empty mods folder by [Wyvest](https://github.com/Wyvest)
+- Added jumping to lines in logs by [rozwader](https://github.com/rozwader)
+- Resource packs you dropped into the packs folder by hand are no longer removed when their link is switched off by [Wyvest](https://github.com/Wyvest)
+- Older Intel graphics without Windows 10 drivers can launch the game again by [Wyvest](https://github.com/Wyvest)
+- 1.8.9 and other legacy versions now use the profile resolution by [Wyvest](https://github.com/Wyvest)
+- Crashes inside the launcher are now written to the launcher log file by [Wyvest](https://github.com/Wyvest)
+- Memory presets now stop at half of your computer's RAM by [Wyvest](https://github.com/Wyvest)
+- Adding a mod that the bundles already ship no longer crashes the launcher when the copies prompt opens by [tunaseckin](https://github.com/tunaseckin)
+- Checking a modpack's mods for updates now says they update with their modpack instead of looking for updates on their own by [Wyvest](https://github.com/Wyvest)
+- Reinstalling a disabled mod now turns it back on by [Wyvest](https://github.com/Wyvest)
+- Long tooltips are no longer cut off after two lines by [Wyvest](https://github.com/Wyvest)
+- The version dropdown no longer lists the version that is already selected by [rozwader](https://github.com/rozwader)
+
 ## 2.12.1 (2026-11-23)
 
 ### Fixes

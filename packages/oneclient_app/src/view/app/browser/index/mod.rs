@@ -1000,7 +1000,7 @@ impl Component for ClusterPicker {
             .iter()
             .find(|c| c.id == self.cluster_id)
             .map(|c| format!("{} · {}", c.name, version_name(&metadata, c)))
-            .unwrap_or_else(|| t("oneclient.browser.index.select_version").to_string());
+            .unwrap_or_else(|| t("oneclient.browser.index.choose_instance").to_string());
 
         let package_type = self.package_type.clone();
         let from_key = state_key(self.cluster_id, &package_type, true);

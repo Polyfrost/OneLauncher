@@ -149,7 +149,6 @@ impl Component for ClusterCard {
         let active = *active_id.read() == Some(self.cluster.id);
         let mut hovering = use_state(|| false);
         let mut menu = use_state(|| None);
-        let menu_trigger = use_instance_menu_trigger(menu);
 
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
@@ -191,80 +190,77 @@ impl Component for ClusterCard {
             .offset_y(rise)
             .opacity(eased)
             .child(
-                menu_trigger(
-                    rect()
-                        .width(Size::fill())
-                        .height(Size::fill())
-                        .position(Position::new_absolute())
-                        .corner_radius(rounded(12.))
-                        .overflow(Overflow::Clip)
-                        .border(
-                            if active || focused {
-                                border_all_color(2., colors::brand())
-                            } else if *hovering.read() {
-                                border_all_color(1., colors::component_border_hover())
-                            } else {
-                                border_all(1.)
-                            }
-                            .alignment(BorderAlignment::Outer),
-                        )
-                        .a11y_id(a11y_id)
-                        .a11y_focusable(true)
-                        .a11y_role(AccessibilityRole::Button)
-                        .a11y_alt(title.clone())
-                        .on_pointer_over(move |_| {
-                            if !*hovering.peek() {
-                                *hovering.write() = true;
-                            }
-                        })
-                        .on_pointer_out(move |_| {
-                            *hovering.write() = false;
-                        })
-                        .shadow(
-                            Shadow::new()
-                                .blur(24.)
-                                .spread(12.)
-                                .x(0.)
-                                .y(0.)
-                                .color(Color::from_af32rgb(0.3, 0, 0, 0)),
-                        )
-                        .on_press(on_press),
-                )
-                .child(
-                    rect()
-                        .width(Size::fill())
-                        .height(Size::fill())
-                        .child(if modpack {
-                            BlurredArt {
-                                art: DynamicArt::for_cluster(&self.cluster)
-                                    .max_edge(ART_PREVIEW_EDGE),
-                            }
-                            .into_element()
+                use_instance_menu_trigger(menu, true, on_press)
+                    .width(Size::fill())
+                    .height(Size::fill())
+                    .position(Position::new_absolute())
+                    .corner_radius(rounded(12.))
+                    .overflow(Overflow::Clip)
+                    .border(
+                        if active || focused {
+                            border_all_color(2., colors::brand())
+                        } else if *hovering.read() {
+                            border_all_color(1., colors::component_border_hover())
                         } else {
-                            rect()
-                                .width(Size::fill())
-                                .height(Size::fill())
-                                .position(Position::new_absolute())
-                                .layer(Layer::Relative(1))
-                                .scale(art_scale)
-                                .child(
-                                    DynamicArt::for_cluster(&self.cluster)
+                            border_all(1.)
+                        }
+                        .alignment(BorderAlignment::Outer),
+                    )
+                    .a11y_id(a11y_id)
+                    .a11y_focusable(true)
+                    .a11y_role(AccessibilityRole::Button)
+                    .a11y_alt(title.clone())
+                    .on_pointer_over(move |_| {
+                        if !*hovering.peek() {
+                            *hovering.write() = true;
+                        }
+                    })
+                    .on_pointer_out(move |_| {
+                        *hovering.write() = false;
+                    })
+                    .shadow(
+                        Shadow::new()
+                            .blur(24.)
+                            .spread(12.)
+                            .x(0.)
+                            .y(0.)
+                            .color(Color::from_af32rgb(0.3, 0, 0, 0)),
+                    )
+                    .child(
+                        rect()
+                            .width(Size::fill())
+                            .height(Size::fill())
+                            .child(if modpack {
+                                BlurredArt {
+                                    art: DynamicArt::for_cluster(&self.cluster)
                                         .max_edge(ART_PREVIEW_EDGE),
-                                )
+                                }
                                 .into_element()
-                        })
-                        .maybe_child(modpack_icon.map(|icon| {
-                            rect()
-                                .width(Size::fill())
-                                .height(Size::fill())
-                                .position(Position::new_absolute())
-                                .center()
-                                .layer(Layer::Relative(5))
-                                .child(modpack_badge(icon))
-                                .into_element()
-                        }))
-                        .child(recent_card_title(title, modpack, *hovering.read(), branded)),
-                ),
+                            } else {
+                                rect()
+                                    .width(Size::fill())
+                                    .height(Size::fill())
+                                    .position(Position::new_absolute())
+                                    .layer(Layer::Relative(1))
+                                    .scale(art_scale)
+                                    .child(
+                                        DynamicArt::for_cluster(&self.cluster)
+                                            .max_edge(ART_PREVIEW_EDGE),
+                                    )
+                                    .into_element()
+                            })
+                            .maybe_child(modpack_icon.map(|icon| {
+                                rect()
+                                    .width(Size::fill())
+                                    .height(Size::fill())
+                                    .position(Position::new_absolute())
+                                    .center()
+                                    .layer(Layer::Relative(5))
+                                    .child(modpack_badge(icon))
+                                    .into_element()
+                            }))
+                            .child(recent_card_title(title, modpack, *hovering.read(), branded)),
+                    ),
             )
             .maybe_child(menu_overlay)
     }

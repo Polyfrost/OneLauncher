@@ -125,24 +125,30 @@ pub(crate) fn open_menu_at<T: From<(f32, f32)> + 'static>(
 /// The menu key and Shift+F10 anchor to the focused card or row.
 pub(crate) fn use_instance_menu_trigger(
     mut menu: State<Option<(f32, f32)>>,
-) -> impl FnOnce(Rect) -> Rect {
+    has_menu: bool,
+    on_press: impl Into<EventHandler<Event<PressEventData>>>,
+) -> Rect {
     let mut anchor = use_state(|| (0., 0.));
-    move |el| {
-        el.on_secondary_down(open_menu_at(menu))
-            .on_sized(move |e: Event<SizedEventData>| {
-                anchor.set_if_modified((e.area.min_x() + 12., e.area.min_y() + 12.));
-            })
-            .on_key_down(move |e: Event<KeyboardEventData>| {
-                if e.key == Key::Named(NamedKey::ContextMenu)
-                    || (e.key == Key::Named(NamedKey::F10)
-                        && e.modifiers.contains(Modifiers::SHIFT))
-                {
-                    e.prevent_default();
-                    e.stop_propagation();
-                    menu.set(Some(*anchor.peek()));
-                }
-            })
+    let on_press = on_press.into();
+    let el = rect().on_press(on_press.clone());
+    if !has_menu {
+        return el;
     }
+    el.on_secondary_down(open_menu_at(menu))
+        .on_sized(move |e: Event<SizedEventData>| {
+            anchor.set_if_modified((e.area.min_x() + 12., e.area.min_y() + 12.));
+        })
+        .on_key_down(move |e: Event<KeyboardEventData>| {
+            if e.key == Key::Named(NamedKey::ContextMenu)
+                || (e.key == Key::Named(NamedKey::F10) && e.modifiers.contains(Modifiers::SHIFT))
+            {
+                e.prevent_default();
+                e.stop_propagation();
+                menu.set(Some(*anchor.peek()));
+            } else if e.is_press_event() {
+                on_press.call(e.map(PressEventData::Keyboard));
+            }
+        })
 }
 
 pub(super) const OVERVIEW_BUTTON_PX: f32 = 32.;
@@ -302,6 +308,7 @@ impl Component for ClusterContextMenu {
 mod tests {
     use super::*;
     use freya_testing::prelude::*;
+    use std::{cell::Cell, rc::Rc, time::Duration};
 
     #[tokio::test]
     async fn overview_shortcut_clears_hover_with_tooltips_enabled() {
@@ -365,5 +372,58 @@ mod tests {
         }
         test.move_cursor((70., 70.));
         assert_eq!(button_pixel(&mut test), skia_safe::Color::BLUE);
+    }
+
+    #[test]
+    fn a_focused_menu_trigger_handles_activation_and_menu_shortcuts() {
+        let menu_position = Rc::new(Cell::new(None));
+        let activations = Rc::new(Cell::new(0));
+        let position = menu_position.clone();
+        let pressed = activations.clone();
+        let id = AccessibilityId(481);
+        let (mut runner, ()) = TestingRunner::new(
+            move || {
+                let menu = use_state(|| None);
+                position.set(menu());
+                let pressed = pressed.clone();
+                use_instance_menu_trigger(menu, true, move |_| pressed.set(pressed.get() + 1))
+                    .width(Size::fill())
+                    .height(Size::fill())
+                    .a11y_id(id)
+                    .a11y_focusable(true)
+            },
+            (120., 80.).into(),
+            |_| (),
+            1.,
+        );
+        runner.poll_n(Duration::ZERO, 3);
+        runner.run_in(|| {
+            Platform::get()
+                .current_window()
+                .send(UserEvent::FocusAccessibilityNode(
+                    AccessibilityFocusStrategy::Node(id),
+                ));
+        });
+        runner.poll_n(Duration::ZERO, 3);
+
+        runner.press_key(Key::Named(NamedKey::Enter));
+        runner.press_key(Key::Character(" ".into()));
+        runner.poll_n(Duration::ZERO, 3);
+        assert_eq!(activations.get(), 2);
+        assert!(menu_position.get().is_none());
+
+        runner.press_key(Key::Named(NamedKey::F10));
+        runner.poll_n(Duration::ZERO, 3);
+        assert!(menu_position.get().is_none());
+
+        runner.send_event(PlatformEvent::Keyboard {
+            name: KeyboardEventName::KeyDown,
+            key: Key::Named(NamedKey::F10),
+            code: Code::Unidentified,
+            modifiers: Modifiers::SHIFT,
+        });
+        runner.poll_n(Duration::ZERO, 3);
+        assert_eq!(activations.get(), 2);
+        assert_eq!(menu_position.get(), Some((12., 12.)));
     }
 }

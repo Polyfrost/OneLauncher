@@ -19,20 +19,10 @@ pub async fn cluster_display_name(
     cluster_id: i64,
     services: &oneclient_core::LauncherServices,
 ) -> String {
-    PackageStore::get_cluster(cluster_id, &services.content())
+    oneclient_core::clusters::ClusterManager::new(services.db.clone())
+        .get(cluster_id)
         .await
-        .map(|cluster| {
-            crate::utils::builtin_version_title(
-                &cluster.mc_version,
-                cluster.kind(),
-                cluster.user_created != 0,
-            )
-            .and_then(|title| {
-                oneclient_common::domain::GameLoader::from_repr(cluster.mc_loader as u8)
-                    .map(|loader| format!("{title} {loader}"))
-            })
-            .unwrap_or(cluster.name)
-        })
+        .map(|cluster| crate::utils::instance_display_name(&cluster))
         .unwrap_or_else(|_| t("oneclient.install.cluster_fallback").to_string())
 }
 
@@ -422,7 +412,9 @@ async fn remove_install_group(
         return Ok(());
     }
 
-    // Provider requests can be slow. Backfill before taking the guard, then
+    // Don't undo a dependency between resolution and linking in this instance.
+    let _instance = instance_install_guard(cluster_id).await;
+    // Provider requests can be slow. Backfill before taking the global guard, then
     // verify that every currently linked remote package can be checked.
     packages::ensure_cluster_dependencies(cluster_id, content).await?;
     let _exclusive = packages::exclusive_package_mutation_guard().await;
@@ -446,12 +438,15 @@ async fn remove_install_group(
         anyhow::bail!(t("oneclient.actions.undo.dependencies_unverified"));
     }
 
+    let mut blocked =
+        packages::dependents::removal_blockers(cluster_id, &candidates, content).await?;
     let candidate_mods: HashSet<_> = undo
         .packages
         .iter()
         .filter(|package| {
             package.content_type == packages::ContentType::Mod
                 && candidates.contains(package.hash.as_str())
+                && !blocked.contains_key(&package.hash)
         })
         .map(|package| package.hash.as_str())
         .collect();
@@ -462,9 +457,9 @@ async fn remove_install_group(
             anyhow::bail!(t("oneclient.actions.undo.local_dependencies_unverified"));
         }
         candidates.retain(|hash| !candidate_mods.contains(hash));
+        blocked = packages::dependents::removal_blockers(cluster_id, &candidates, content).await?;
     }
 
-    let blocked = packages::dependents::removal_blockers(cluster_id, &candidates, content).await?;
     if let Some(dependents) = blocked.get(&target.hash) {
         let names = dependents
             .iter()
@@ -637,7 +632,6 @@ pub async fn install_package_with(
     offer_undo: bool,
 ) -> Result<PackageInstall, InstallBlocked> {
     let _instance = instance_install_guard(cluster_id).await;
-    let _mutation = oneclient_content::packages::package_mutation_guard().await;
     let lookup = async {
         let provider_impl = state.services.packages.get(provider)?;
         let project = provider_impl
@@ -915,6 +909,7 @@ async fn install_datapack(
         )
         .await?;
         let path = oneclient_content::packages::store::artifact_absolute_path(&artifact.path)?;
+        let _mutation = oneclient_content::packages::package_mutation_guard().await;
         let cluster = state.clusters.get(cluster_id).await?;
         oneclient_core::add_world_datapacks(&cluster, &world, &[path]).await?;
         anyhow::Ok(())

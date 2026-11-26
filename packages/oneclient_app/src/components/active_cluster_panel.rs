@@ -14,7 +14,9 @@ use crate::i18n::t;
 use crate::routes::Route;
 use crate::theme::{colors, text_size};
 use crate::utils::{builtin_oneclient_title, sort_clusters_for_home};
-use crate::view::app::{launch_button_label, launch_button_state, launch_syncing, shared_dir_taken};
+use crate::view::app::{
+    launch_button_label, launch_button_state, launch_syncing, shared_dir_taken,
+};
 
 #[derive(PartialEq)]
 pub struct ActiveClusterPanel;
@@ -99,7 +101,7 @@ impl Component for ActiveClusterPanel {
                 version
             };
             parts.extend(metadata.map(|m| m.name.clone()));
-            (title, parts.join(" Â· "))
+            (title, parts.join(" \u{b7} "))
         };
         let cluster_id = cluster.id;
         let syncing = launch_syncing(&launcher, cluster.uses_bundles());

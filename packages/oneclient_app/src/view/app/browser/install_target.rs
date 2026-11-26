@@ -107,7 +107,11 @@ fn target_intent(
                 if version.bundle.is_some() && !version.enabled {
                     return Some(TargetIntent::OtherVersionEnabled);
                 }
-                return Some(TargetIntent::AlreadyInstalled);
+                return Some(if version.hash.is_some() {
+                    TargetIntent::AlreadyInstalled
+                } else {
+                    TargetIntent::Install(id.clone())
+                });
             }
             if installed.conflicts_with_bundle(id) {
                 return Some(TargetIntent::BundleConflict(PendingBundledInstall {
@@ -122,12 +126,18 @@ fn target_intent(
                 }));
             }
         } else if installed.source == InstallSource::Bundled {
-            return Some(
-                installed
-                    .disabled_bundled()
-                    .and_then(|entry| entry.enable_action(cluster_id))
-                    .map_or(TargetIntent::AlreadyInstalled, TargetIntent::Enable),
-            );
+            if let Some(action) = installed
+                .disabled_bundled()
+                .and_then(|entry| entry.enable_action(cluster_id))
+            {
+                return Some(TargetIntent::Enable(action));
+            }
+            if installed.has_link() {
+                return Some(TargetIntent::AlreadyInstalled);
+            }
+            if let Some(pin) = &installed.bundled_version {
+                return Some(TargetIntent::Install(pin.clone()));
+            }
         }
         if version.is_some_and(|version| installed.is_version(version)) {
             return Some(TargetIntent::AlreadyInstalled);
@@ -217,7 +227,8 @@ impl Component for SelectedInstall {
         let on_close = self.on_close.clone();
         let install_close = on_close.clone();
         let install_project = project_id.clone();
-        let instance_name = self.cluster.name.clone();
+        let instance_name = crate::utils::instance_display_name(&self.cluster);
+        let toast_instance = instance_name.clone();
         use_side_effect_with_deps(&intent, move |intent| {
             let Some(intent) = intent else { return };
             if *started.peek() || matches!(intent, TargetIntent::Enable(_)) {
@@ -230,7 +241,7 @@ impl Component for SelectedInstall {
                         .notify(t("oneclient.browser.install.other_version_enabled"))
                         .body(tf(
                             "oneclient.browser.install.other_version_enabled.body",
-                            &[&instance_name],
+                            &[&toast_instance],
                         ))
                         .info()
                         .toast_only()
@@ -242,7 +253,7 @@ impl Component for SelectedInstall {
                         .notify(t("oneclient.browser.common.source.installed"))
                         .body(tf(
                             "oneclient.browser.install.already_installed",
-                            &[&instance_name],
+                            &[&toast_instance],
                         ))
                         .info()
                         .toast_only()
@@ -326,7 +337,7 @@ impl Component for SelectedInstall {
                     mutation_error(&enable).unwrap_or_else(|| {
                         tf(
                             "oneclient.browser.install.enable_bundled",
-                            &[&self.install.project_name, &self.cluster.name],
+                            &[&self.install.project_name, &instance_name],
                         )
                     }),
                     None,
@@ -353,7 +364,7 @@ impl Component for SelectedInstall {
                     });
                 let change = Button::new()
                     .ghost()
-                    .text(t("oneclient.browser.index.select_version"))
+                    .text(t("oneclient.browser.index.choose_instance"))
                     .on_press(move |_| on_back.call(()));
                 (
                     error.unwrap_or_default(),
@@ -362,7 +373,7 @@ impl Component for SelectedInstall {
                 )
             }
             _ => (
-                self.cluster.name.clone(),
+                instance_name,
                 Some(centered_spinner(t("oneclient.browser.install.finding")).into_element()),
                 Button::new()
                     .primary()
@@ -421,7 +432,7 @@ mod tests {
                     manifest_default: enabled,
                 }),
             }],
-            has_enabled_unversioned: false,
+            unversioned_enabled: None,
         }
     }
 
@@ -440,6 +451,28 @@ mod tests {
         assert_eq!(warning.version_id, "2");
         assert_eq!(warning.version_label, "Version 2");
         assert_eq!(warning.bundled_version.as_deref(), Some("One"));
+    }
+
+    #[test]
+    fn enabled_bundle_pin_is_only_already_installed_when_linked() {
+        let mut missing = bundled(true);
+        missing.versions[0].hash = None;
+        for version in [None, Some("1")] {
+            for installed in [&missing, &bundled(true)] {
+                let intent = target_intent(
+                    &request(version),
+                    ProviderId::Modrinth,
+                    3,
+                    Some(installed),
+                    version.or(Some("2")),
+                );
+                if installed.has_link() {
+                    assert!(matches!(intent, Some(TargetIntent::AlreadyInstalled)));
+                } else {
+                    assert!(matches!(intent, Some(TargetIntent::Install(id)) if id == "1"));
+                }
+            }
+        }
     }
 
     #[test]

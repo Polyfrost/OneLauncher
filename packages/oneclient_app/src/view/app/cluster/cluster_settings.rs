@@ -109,6 +109,28 @@ impl Component for ClusterSettings {
         // reset bumps this to remount them with the profile it put back
         let mut resets = use_state(|| 0u32);
         let generation = *resets.read();
+        let reset = use_cluster_mutation();
+        let reset_running = mutation_is_running(&reset);
+        let settings_scope = current_scope_id();
+        let on_reset = move |()| {
+            let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+            // Let the mutation finish if the user leaves settings, but only
+            // remount controls while this page still owns their generation.
+            spawn_in_window(async move {
+                reset
+                    .mutate_async(ClusterAction::ResetInstance { cluster_id })
+                    .await;
+                let _ = done_tx.send(());
+            });
+            spawn_in_scope(
+                async move {
+                    if done_rx.await.is_ok() {
+                        *resets.write() += 1;
+                    }
+                },
+                settings_scope,
+            );
+        };
 
         let Some(cluster) = cluster else {
             return cluster_not_found();
@@ -387,7 +409,8 @@ impl Component for ClusterSettings {
                     ResetInstanceRow {
                         cluster_id,
                         name: cluster.name.clone(),
-                        on_reset: (move |()| *resets.write() += 1).into(),
+                        running: reset_running,
+                        on_reset: on_reset.into(),
                     }
                     .into_element(),
                 ),
@@ -780,6 +803,7 @@ impl Component for VerifyFilesRow {
 struct ResetInstanceRow {
     cluster_id: i64,
     name: String,
+    running: bool,
     on_reset: EventHandler<()>,
 }
 
@@ -788,12 +812,8 @@ impl Component for ResetInstanceRow {
         let mut confirming = use_state(|| false);
         let cluster_id = self.cluster_id;
         let name = self.name.clone();
-        let mutation = use_cluster_mutation();
-        let running = mutation_is_running(&mutation);
+        let running = self.running;
         let on_reset = self.on_reset.clone();
-        // The confirm modal unmounts as soon as Reset is pressed, so the wait for the reset
-        // runs in this row's scope to still report back once it has finished
-        let scope = current_scope_id();
 
         let button = Button::new()
             .small()
@@ -812,30 +832,11 @@ impl Component for ResetInstanceRow {
                 button,
             ))
             .maybe_child(confirming.read().then(|| {
-                let on_reset = on_reset.clone();
                 ResetInstanceModal::new(
                     cluster_id,
                     name.clone(),
                     move |()| confirming.set(false),
-                    move |()| {
-                        let on_reset = on_reset.clone();
-                        let (done_tx, done_rx) = tokio::sync::oneshot::channel();
-                        // Detached like `mutate` so leaving the page can't cut the reset short
-                        spawn_in_window(async move {
-                            mutation
-                                .mutate_async(ClusterAction::ResetInstance { cluster_id })
-                                .await;
-                            let _ = done_tx.send(());
-                        });
-                        spawn_in_scope(
-                            async move {
-                                if done_rx.await.is_ok() {
-                                    on_reset.call(());
-                                }
-                            },
-                            scope,
-                        );
-                    },
+                    on_reset,
                 )
                 .into_element()
             }))

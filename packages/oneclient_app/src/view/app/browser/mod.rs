@@ -71,7 +71,9 @@ use std::collections::HashMap;
 use freya::prelude::*;
 use oneclient_common::domain::GameLoader;
 use oneclient_content::packages::{ContentType, ProviderId};
-use oneclient_core::{BundleFileKind, BundleWithUpdateStatus, FileUpdateStatus, LinkedArtifactInfo};
+use oneclient_core::{
+    BundleFileKind, BundleWithUpdateStatus, FileUpdateStatus, LinkedArtifactInfo,
+};
 use oneclient_db::models::OverrideType;
 
 use crate::components::{Button, Icon, IconType, set_enabled_action};
@@ -156,12 +158,18 @@ pub(crate) struct Installed {
     pub source: InstallSource,
     pub bundled_version: Option<String>,
     pub versions: Vec<InstalledVersion>,
-    has_enabled_unversioned: bool,
+    unversioned_enabled: Option<bool>,
 }
 
 impl Installed {
     pub fn is_version(&self, version_id: &str) -> bool {
-        self.find_version(version_id).is_some()
+        self.versions
+            .iter()
+            .any(|v| v.version_id == version_id && v.hash.is_some())
+    }
+
+    fn has_link(&self) -> bool {
+        self.unversioned_enabled.is_some() || self.versions.iter().any(|v| v.hash.is_some())
     }
 
     pub fn find_version(&self, version_id: &str) -> Option<&InstalledVersion> {
@@ -188,7 +196,7 @@ impl Installed {
     }
 
     pub fn disabled_bundled(&self) -> Option<&InstalledVersion> {
-        if self.has_enabled_unversioned || self.versions.iter().any(|v| v.enabled) {
+        if self.unversioned_enabled == Some(true) || self.versions.iter().any(|v| v.enabled) {
             return None;
         }
         self.versions.iter().find(|v| v.bundle.is_some())
@@ -213,7 +221,7 @@ pub(crate) fn installed_map(
             source: InstallSource::Manual,
             bundled_version: None,
             versions: Vec::new(),
-            has_enabled_unversioned: false,
+            unversioned_enabled: None,
         });
 
         if let Some(version_id) = item.version_id {
@@ -226,7 +234,8 @@ pub(crate) fn installed_map(
                 bundle: None,
             });
         } else {
-            installed.has_enabled_unversioned |= item.enabled;
+            installed.unversioned_enabled =
+                Some(installed.unversioned_enabled.unwrap_or(false) || item.enabled);
         }
     }
 
@@ -235,17 +244,23 @@ pub(crate) fn installed_map(
     for bundle in bundles {
         let bundle_name = &bundle.archive.manifest.name;
         for (file, status) in &bundle.files {
+            if !bundle.opted_in_types.contains(&file.content_type()) {
+                continue;
+            }
             let BundleFileKind::Managed {
                 provider,
                 project_id,
                 version_id,
                 ..
-            } = &file.kind else {
+            } = &file.kind
+            else {
                 continue;
             };
             let bundle_version = match status {
-                FileUpdateStatus::UpdateAvailable { installed_version_id, .. }
-                    if !installed_version_id.is_empty() => installed_version_id,
+                FileUpdateStatus::UpdateAvailable {
+                    installed_version_id,
+                    ..
+                } if !installed_version_id.is_empty() => installed_version_id,
                 _ => version_id,
             };
             let pin = BundlePin {
@@ -253,16 +268,22 @@ pub(crate) fn installed_map(
                 package_id: file.kind.package_id(),
                 manifest_default: file.enabled,
             };
-            let installed = map.entry((*provider, project_id.clone())).or_insert_with(|| Installed {
-                source: InstallSource::Bundled,
-                bundled_version: None,
-                versions: Vec::new(),
-                has_enabled_unversioned: false,
-            });
+            let installed = map
+                .entry((*provider, project_id.clone()))
+                .or_insert_with(|| Installed {
+                    source: InstallSource::Bundled,
+                    bundled_version: None,
+                    versions: Vec::new(),
+                    unversioned_enabled: None,
+                });
             installed.source = InstallSource::Bundled;
             installed.bundled_version = Some(bundle_version.clone());
 
-            if let Some(version) = installed.versions.iter_mut().find(|v| v.version_id == *bundle_version) {
+            if let Some(version) = installed
+                .versions
+                .iter_mut()
+                .find(|v| v.version_id == *bundle_version)
+            {
                 version.source = InstallSource::Bundled;
                 version.bundle.get_or_insert(pin);
             } else {
@@ -741,11 +762,26 @@ mod tests {
 
         let sodium = entry(&map, "sodium");
         assert_eq!(sodium.source, InstallSource::Bundled);
+        assert!(!sodium.has_link());
+        assert!(!sodium.is_version("v1"));
         assert_eq!(
             sodium.find_version("v1").map(|v| v.hash.clone()),
             Some(None),
             "nothing is linked, so there is no artifact to remove"
         );
+    }
+
+    #[test]
+    fn a_declined_bundle_does_not_claim_a_manual_link_or_an_unlinked_pin() {
+        let mut declined = bundles(vec![managed("sodium", "v1"), managed("lithium", "v1")]);
+        declined[0].opted_in_types.clear();
+        let map = installed_map(vec![linked("sodium", Some("v1"), "hash-1")], &declined);
+
+        let sodium = entry(&map, "sodium");
+        assert_eq!(sodium.source, InstallSource::Manual);
+        assert!(sodium.is_version("v1"));
+        assert!(!sodium.conflicts_with_bundle("v2"));
+        assert!(!map.contains_key(&(ProviderId::Modrinth, "lithium".into())));
     }
 
     #[test]
@@ -920,7 +956,10 @@ mod tests {
         );
 
         let sodium = entry(&map, "sodium");
-        assert_eq!(sodium.disabled_bundled().unwrap().hash.as_deref(), Some("hash-1"));
+        assert_eq!(
+            sodium.disabled_bundled().unwrap().hash.as_deref(),
+            Some("hash-1")
+        );
         assert!(sodium.conflicts_with_bundle("v2"));
     }
 

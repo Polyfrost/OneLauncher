@@ -566,6 +566,16 @@ fn query_score(p: &PackageEntry, query: &SearchQuery) -> Option<MatchScore> {
     query.best_score([p.name.as_str(), p.file_name.as_str()])
 }
 
+fn hidden_filter(stored: Option<&str>, query: &SearchQuery) -> HiddenFilter {
+    if query.is_empty() {
+        stored
+            .and_then(HiddenFilter::from_key)
+            .unwrap_or(HiddenFilter::Hide)
+    } else {
+        HiddenFilter::Show
+    }
+}
+
 /// Search is scoped to the active tab a package must match the tab *and* the query
 /// `Tab::All` searches the whole cluster
 fn visible_packages(
@@ -771,17 +781,13 @@ impl Component for PackageManager {
             .get(EnabledFilter::STORAGE_KEY)
             .and_then(|key| EnabledFilter::from_key(key))
             .unwrap_or(EnabledFilter::All);
-        let hidden = filters
-            .read()
-            .get(HiddenFilter::STORAGE_KEY)
-            .and_then(|key| HiddenFilter::from_key(key))
-            .unwrap_or_else(|| {
-                if query.is_empty() {
-                    HiddenFilter::Hide
-                } else {
-                    HiddenFilter::Show
-                }
-            });
+        let hidden = hidden_filter(
+            filters
+                .read()
+                .get(HiddenFilter::STORAGE_KEY)
+                .map(String::as_str),
+            &query,
+        );
         let card_layout = CardLayout::from(*layout.read());
 
         let bisecting = self.bisecting;
@@ -1113,6 +1119,38 @@ mod tests {
                 HashSet::new()
             },
             taken: true,
+        }
+    }
+
+    #[test]
+    fn search_shows_matching_hidden_mods_with_hide_saved() {
+        let bundles = [bundle(
+            "Taken",
+            true,
+            vec![file("hidden-library", true, true)],
+        )];
+        let rows = bundle_packages(
+            Vec::new(),
+            &bundles,
+            &HashMap::new(),
+            &PackageMetaMap::new(),
+            &HashSet::new(),
+            ContentType::Mod,
+        );
+
+        for (search, count) in [("", 0), ("hidden-library", 1), ("unrelated", 0)] {
+            let query = SearchQuery::new(search);
+            assert_eq!(
+                visible_packages(
+                    &rows,
+                    Some(&Tab::All),
+                    &query,
+                    EnabledFilter::All,
+                    hidden_filter(Some("hide"), &query),
+                )
+                .len(),
+                count,
+            );
         }
     }
 

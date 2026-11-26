@@ -145,7 +145,6 @@ impl Component for VersionCard {
     fn render(&self) -> impl IntoElement {
         let mut hovering = use_state(|| false);
         let menu_at = use_state(|| None);
-        let menu_trigger = use_instance_menu_trigger(menu_at);
 
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
@@ -153,7 +152,6 @@ impl Component for VersionCard {
         let selected = self.selected;
         let hovered = *hovering.read();
         let keyboard = focus() == Focus::Keyboard;
-        let on_press = self.on_press.clone();
 
         // Selection is a brand ring around the whole card. Keyboard focus is a neutral ring
         // outside it, so a focused selection shows both instead of one hiding the other.
@@ -169,7 +167,7 @@ impl Component for VersionCard {
         } else {
             colors::page()
         };
-        rect()
+        use_instance_menu_trigger(menu_at, self.menu.is_some(), self.on_press.clone())
             .key(self.key)
             .vertical()
             .width(Size::fill())
@@ -178,11 +176,9 @@ impl Component for VersionCard {
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
             .maybe(!self.show_play, |el| {
-                el.a11y_alt(format!("{} ? {}", self.title, self.caption))
+                el.a11y_alt(format!("{} \u{b7} {}", self.title, self.caption))
                     .cursor(CursorIcon::Pointer)
             })
-            .on_press(move |e| on_press.call(e))
-            .maybe(self.menu.is_some(), menu_trigger)
             .on_pointer_over(move |_| {
                 hovering.set_if_modified(true);
             })

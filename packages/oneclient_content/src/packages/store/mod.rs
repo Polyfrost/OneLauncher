@@ -2,8 +2,8 @@ mod download;
 mod gc;
 mod link;
 pub mod manifest;
-pub mod undo;
 mod paths;
+pub mod undo;
 
 pub(crate) use download::store_release_dependencies;
 pub use download::{download_external, download_version_file, ensure_artifact_file};
@@ -116,8 +116,16 @@ impl PackageStore {
         child: Option<&GroupedProgressChild>,
         ctx: &ContentCtx,
     ) -> ContentResult<(ArtifactRow, LiveSync)> {
-        Self::install_to_cluster_recording_link(
-            provider_id, project, version, cluster_id, skip_compatibility, force_download, child, ctx,
+        Self::install_to_cluster_inner(
+            provider_id,
+            project,
+            version,
+            cluster_id,
+            skip_compatibility,
+            force_download,
+            false,
+            child,
+            ctx,
         )
         .await
         .map(|(artifact, live, _)| (artifact, live))
@@ -125,8 +133,9 @@ impl PackageStore {
 
     /// Returns the new link's timestamp when this install created it. Upserts of
     /// existing links return no timestamp, so an Undo cannot claim them.
+    /// Acquires the package mutation guard for linking only. Callers that already
+    /// hold the guard use `install_to_cluster`.
     #[allow(clippy::too_many_arguments)]
-    #[tracing::instrument(skip(project, version, child, ctx), fields(project_id = %project.id, version_id = %version.version_id))]
     pub async fn install_to_cluster_recording_link(
         provider_id: ProviderId,
         project: &ProjectDetail,
@@ -134,6 +143,33 @@ impl PackageStore {
         cluster_id: i64,
         skip_compatibility: bool,
         force_download: bool,
+        child: Option<&GroupedProgressChild>,
+        ctx: &ContentCtx,
+    ) -> ContentResult<(ArtifactRow, LiveSync, Option<String>)> {
+        Self::install_to_cluster_inner(
+            provider_id,
+            project,
+            version,
+            cluster_id,
+            skip_compatibility,
+            force_download,
+            true,
+            child,
+            ctx,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[tracing::instrument(skip(project, version, child, ctx), fields(project_id = %project.id, version_id = %version.version_id))]
+    async fn install_to_cluster_inner(
+        provider_id: ProviderId,
+        project: &ProjectDetail,
+        version: &VersionDetail,
+        cluster_id: i64,
+        skip_compatibility: bool,
+        force_download: bool,
+        guard_link: bool,
         child: Option<&GroupedProgressChild>,
         ctx: &ContentCtx,
     ) -> ContentResult<(ArtifactRow, LiveSync, Option<String>)> {
@@ -148,7 +184,13 @@ impl PackageStore {
             Self::download_and_cache(provider_id, project, version, force_download, child, ctx)
                 .await?;
 
-        let (enabled, added_at) = Self::link_artifact_recording_addition(&artifact, &cluster, None, ctx).await?;
+        let _mutation = if guard_link {
+            Some(crate::packages::package_mutation_guard().await)
+        } else {
+            None
+        };
+        let (enabled, added_at) =
+            Self::link_artifact_recording_addition(&artifact, &cluster, None, ctx).await?;
 
         Self::replace_other_versions(cluster_id, provider_id, &project.id, &artifact.hash, ctx)
             .await?;
@@ -266,8 +308,13 @@ impl PackageStore {
 
         let name = cluster_file_name.unwrap_or(&artifact.file_name);
 
-        let (link, added_at) =
-            artifact_dao::link_cluster_artifact_recording_addition(&ctx.db, cluster.id, &artifact.hash, name).await?;
+        let (link, added_at) = artifact_dao::link_cluster_artifact_recording_addition(
+            &ctx.db,
+            cluster.id,
+            &artifact.hash,
+            name,
+        )
+        .await?;
 
         Ok((link.enabled != 0, added_at))
     }

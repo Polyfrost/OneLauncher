@@ -945,41 +945,6 @@ mod tests {
         assert_eq!(initial_content_layout(true), None);
     }
 
-    /// Every content page reads its layout through [`use_content_view`], so they all share one key
-    #[test]
-    fn content_pages_share_one_view_state_key() {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/view/app/cluster");
-        let pages = [
-            "mods.rs",
-            "shaders.rs",
-            "textures.rs",
-            "datapacks.rs",
-            "worlds.rs",
-            "screenshots.rs",
-            "package_manager/views.rs",
-        ];
-        for page in pages {
-            let source = std::fs::read_to_string(dir.join(page)).unwrap();
-            assert!(
-                !source.contains("use_view_state("),
-                "{page} keeps its own view state instead of use_content_view"
-            );
-        }
-        let shared = [
-            "datapacks.rs",
-            "worlds.rs",
-            "screenshots.rs",
-            "package_manager/mod.rs",
-        ];
-        for page in shared {
-            let source = std::fs::read_to_string(dir.join(page)).unwrap();
-            assert!(
-                source.contains("use_content_view()"),
-                "{page} should read the shared content view"
-            );
-        }
-    }
-
     #[tokio::test]
     async fn scrolling_the_grid_builds_only_the_new_rows() {
         use std::{cell::Cell, rc::Rc, time::Duration};

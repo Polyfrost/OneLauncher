@@ -114,7 +114,6 @@ impl Component for InstanceRow {
         let mut hovering = use_state(|| false);
         let mut row_width = use_state(|| None::<f32>);
         let menu_at = use_state(|| None);
-        let menu_trigger = use_instance_menu_trigger(menu_at);
 
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
@@ -122,7 +121,6 @@ impl Component for InstanceRow {
         let selected = self.selected;
         let hovered = *hovering.read();
         let focused = focus().is_focused();
-        let on_press = self.on_press.clone();
 
         let background = if selected {
             colors::brand().with_a(36)
@@ -150,6 +148,21 @@ impl Component for InstanceRow {
             format!("{} \u{b7} {}", self.subtitle, self.played)
         };
 
+        let row = use_instance_menu_trigger(menu_at, self.menu.is_some(), self.on_press.clone())
+            .horizontal()
+            .width(Size::fill())
+            .height(Size::fill())
+            .padding(Gaps::new_symmetric(0., 10.))
+            .spacing(14.)
+            .cross_align(Alignment::Center)
+            .content(Content::Flex)
+            .corner_radius(rounded(12.))
+            .background(background)
+            .border(border_all_color(1., border_color).alignment(BorderAlignment::Inner))
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::Button);
+
         // The measuring wrapper never depends on its content's width, so it cannot loop
         rect()
             .key(self.key)
@@ -159,23 +172,7 @@ impl Component for InstanceRow {
                 row_width.set_if_modified(Some(e.area.width()));
             })
             .child(
-                rect()
-                    .horizontal()
-                    .width(Size::fill())
-                    .height(Size::fill())
-                    .padding(Gaps::new_symmetric(0., 10.))
-                    .spacing(14.)
-                    .cross_align(Alignment::Center)
-                    .content(Content::Flex)
-                    .corner_radius(rounded(12.))
-                    .background(background)
-                    .border(border_all_color(1., border_color).alignment(BorderAlignment::Inner))
-                    .a11y_id(a11y_id)
-                    .a11y_focusable(true)
-                    .a11y_role(AccessibilityRole::Button)
-                    .on_press(move |e| on_press.call(e))
-                    .maybe(self.menu.is_some(), menu_trigger)
-                    .on_pointer_over(move |_| hovering.set_if_modified(true))
+                row.on_pointer_over(move |_| hovering.set_if_modified(true))
                     .on_pointer_move(move |_| hovering.set_if_modified(true))
                     .on_pointer_leave(move |_| hovering.set(false))
                     .child(

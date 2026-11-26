@@ -39,6 +39,16 @@ fn release_key(cluster: &Cluster) -> String {
     .key()
 }
 
+// A validation failure leaves the offer available on the next startup.
+async fn validate_and_consume_offer<T>(
+    validation: impl Future<Output = oneclient_content::ContentResult<T>>,
+    consume: impl FnOnce(),
+) -> oneclient_content::ContentResult<T> {
+    let plan = validation.await?;
+    consume();
+    Ok(plan)
+}
+
 enum SourcePlan {
     Offer(ReleaseMigrationPlan),
     Nothing,
@@ -748,18 +758,16 @@ impl Actions {
         if self.refuse_during_update_check(target.id) {
             return;
         }
-        match prompt.origin {
+        let pending = match prompt.origin {
             PromptOrigin::Fake => {
                 self.notify(t("oneclient.actions.release_migration.fake.title"))
                     .body(t("oneclient.actions.release_migration.fake.body"))
                     .send();
                 return;
             }
-            PromptOrigin::Simulated => {}
-            PromptOrigin::NewRelease | PromptOrigin::Manual => {
-                self.remove_pending_release_migrations(vec![release_key(&target)]);
-            }
-        }
+            PromptOrigin::Simulated => Vec::new(),
+            PromptOrigin::NewRelease | PromptOrigin::Manual => vec![release_key(&target)],
+        };
 
         let (source_id, target_id) = (source.id, target.id);
         spawn_global(async move {
@@ -776,6 +784,7 @@ impl Actions {
         });
 
         if packages.is_empty() {
+            self.remove_pending_release_migrations(pending);
             return;
         }
 
@@ -799,11 +808,9 @@ impl Actions {
             let source = copy_configs_too.then_some(source);
             let target_title = crate::utils::instance_display_name(&target);
             let mutation = oneclient_content::packages::package_mutation_guard().await;
-            let (packages, dependencies) = match revalidate_release_migration(
-                target.id,
-                packages,
-                state.bundles.as_ref(),
-                &content,
+            let (packages, dependencies) = match validate_and_consume_offer(
+                revalidate_release_migration(target.id, packages, state.bundles.as_ref(), &content),
+                || actions.remove_pending_release_migrations(pending),
             )
             .await
             {
@@ -953,5 +960,30 @@ impl Actions {
 
             super::super::invalidate_cluster_queries().await;
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::future::ready;
+
+    #[tokio::test]
+    async fn failed_recheck_keeps_the_pending_offer_for_a_successful_retry() {
+        let mut pending = vec!["release-offer".to_owned()];
+        let failed = ready(Err::<(), _>(oneclient_content::ContentError::InvalidData {
+            reason: "a required build disappeared".into(),
+        }));
+        assert!(
+            validate_and_consume_offer(failed, || pending.clear())
+                .await
+                .is_err()
+        );
+        assert_eq!(pending, ["release-offer"]);
+
+        validate_and_consume_offer(ready(Ok(())), || pending.clear())
+            .await
+            .unwrap();
+        assert!(pending.is_empty());
     }
 }

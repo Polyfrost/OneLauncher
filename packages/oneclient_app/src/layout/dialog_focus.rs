@@ -531,12 +531,15 @@ mod tests {
     fn borderless_integration_dispatches_tab_in_keyboard_mode() {
         let plugin = DialogFocusPlugin::default();
         let tabs = plugin.tabs.clone();
+        let mut plugins = freya_winit::plugins::PluginsManager::default();
+        plugins.add_plugin(plugin);
+        plugins.add_plugin(freya::metrics::MetricsPlugin::default());
         let platform_tab_calls = Rc::new(RefCell::new(0));
         let original_calls = platform_tab_calls.clone();
         let (mut runner, ()) = freya_testing::TestingRunner::new(
             move || {
                 let original_calls = original_calls.clone();
-                plugin.root_component(
+                plugins.wrap_root(
                     rect()
                         .on_global_key_down(move |event: Event<KeyboardEventData>| {
                             if event.key == Key::Named(NamedKey::Tab) {

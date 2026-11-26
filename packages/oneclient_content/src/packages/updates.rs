@@ -706,7 +706,7 @@ mod tests {
         assert_eq!(picked[0].hash, "a");
         assert!(
             unchecked.is_empty(),
-            "a file the modpack owns is not a failed check, it updates with the modpack"
+            "modpack-owned files should not be reported as unchecked"
         );
     }
 

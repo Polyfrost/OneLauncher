@@ -242,7 +242,8 @@ pub fn init_filtered(filter: impl FnOnce() -> String) -> LauncherResult<()> {
 
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        tracing::error!(sentry = false, "{info}");
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        tracing::error!(sentry = false, "{info}\n{backtrace}");
         previous(info);
     }));
 

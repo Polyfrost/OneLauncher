@@ -643,6 +643,55 @@ impl Actions {
         });
     }
 
+    pub fn take_offered_bundles(&self, cluster_id: ClusterId, name: String) {
+        if crate::hooks::update_check_running(cluster_id) {
+            self.notify(tf("oneclient.mutations.take_bundles_failed", &[&name]))
+                .body(t("oneclient.mutations.blocked.update_check"))
+                .error()
+                .send();
+            return;
+        }
+        if self.refuse_while_running(cluster_id) || !self.claim_modpack_job(Some(cluster_id)) {
+            return;
+        }
+        let actions = self.clone();
+        spawn_global(async move {
+            if crate::hooks::sync_actions::sync_launch_block(cluster_id)
+                .await
+                .is_some()
+            {
+                actions
+                    .notify(t("oneclient.actions.launch.syncing"))
+                    .body(t("oneclient.actions.modpacks.sync_busy"))
+                    .error()
+                    .send();
+                actions.release_modpack_job();
+                return;
+            }
+            actions.lock_modpack_cluster(cluster_id);
+            let failure = match launcher::state() {
+                Ok(state) => {
+                    let work =
+                        async move { crate::hooks::take_offered_bundles(&state, cluster_id).await };
+                    match tokio::spawn(work).await {
+                        Ok(result) => result.err(),
+                        Err(err) => Some(err.to_string()),
+                    }
+                }
+                Err(err) => Some(err.to_string()),
+            };
+            crate::hooks::invalidate_cluster_queries().await;
+            if let Some(reason) = failure {
+                actions
+                    .notify(tf("oneclient.mutations.take_bundles_failed", &[&name]))
+                    .body(reason)
+                    .error()
+                    .send();
+            }
+            actions.release_modpack_job();
+        });
+    }
+
     pub fn cancel_modpack(&self) {
         self.with_engine(|app| app.notifications.close_modpack_confirm());
         let waiting = with_slot(|slot| {

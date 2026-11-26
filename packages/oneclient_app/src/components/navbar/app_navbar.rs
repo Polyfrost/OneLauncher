@@ -347,7 +347,7 @@ fn navbar_center(is_small: bool, over_art: bool, room: f32) -> impl IntoElement 
         (
             (at_home && !home_page_in_view(&route, stack)) || route == Route::Clusters {},
             NavTarget::Versions,
-            t("oneclient.routes.clusters"),
+            t("oneclient.components.navbar.versions"),
         ),
         (
             matches!(

@@ -675,12 +675,13 @@ fn line_picker(
         return None;
     }
 
-    let options: Vec<String> = siblings.iter().map(picker_caption).collect();
     let current = siblings
         .iter()
-        .position(|c| c.id == cluster.id)
-        .unwrap_or(0);
-    let ids: Vec<i64> = siblings.iter().map(|c| c.id).collect();
+        .find(|c| c.id == cluster.id)
+        .unwrap_or(&siblings[0]);
+    let others: Vec<&Cluster> = siblings.iter().filter(|c| c.id != current.id).collect();
+    let options: Vec<String> = others.iter().map(|c| picker_caption(c)).collect();
+    let ids: Vec<i64> = others.iter().map(|c| c.id).collect();
 
     Some(
         rect()
@@ -698,7 +699,7 @@ fn line_picker(
                     .color(colors::fg_secondary()),
             )
             .child(
-                Dropdown::new(options[current].clone(), options)
+                Dropdown::new(picker_caption(current), options)
                     .outlined()
                     .width(Size::fill())
                     .height(Size::px(40.))

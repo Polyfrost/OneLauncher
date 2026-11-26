@@ -38,8 +38,8 @@ pub use active_cluster::{
 
 pub(crate) use actions::listed;
 pub use actions::{
-    Actions, AlternativePick, COPIES_REQUEST, ExternalImportJob, NotificationBuilder, PumpSignal,
-    exporting,
+    Actions, AlternativePick, COPIES_REQUEST, ExternalImportJob, NotificationBuilder, PackageCheck,
+    PumpSignal, exporting,
     modpack_job_running, update_check_running,
 };
 pub use actions::{

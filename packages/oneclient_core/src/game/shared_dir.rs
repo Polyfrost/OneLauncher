@@ -2389,6 +2389,10 @@ async fn import_from_dir(
         if manifest.is_some_and(|m| m.contains(&relative)) {
             continue;
         }
+        if content_type != ContentType::Mod && matches_disabled_link(services, cluster, &path).await
+        {
+            continue;
+        }
 
         match adopt_file(services, cluster, &path, content_type, true).await {
             Some(Ok(row)) => {
@@ -2472,6 +2476,25 @@ async fn discard_adopted_original(
 
     if let Err(err) = polyio::remove_file(path).await {
         tracing::warn!(file = name, error = %err, "failed to clear the adopted original");
+    }
+}
+
+async fn matches_disabled_link(
+    services: &LauncherServices,
+    cluster: &Cluster,
+    path: &Path,
+) -> bool {
+    let Ok(hash) = polyio::sha1_file(path).await else {
+        return false;
+    };
+    let hash = polyio::normalize_hash(&hash);
+
+    match artifact_dao::get_cluster_artifact(&services.db, cluster.id, &hash).await {
+        Ok(link) => link.is_some_and(|link| link.enabled == 0),
+        Err(err) => {
+            tracing::warn!(file = %path.display(), error = %err, "failed to look up the dropped file, leaving it");
+            true
+        }
     }
 }
 

@@ -658,6 +658,7 @@ fn target_pill(verb: &'static str, name: &str) -> impl IntoElement {
         )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn results_toolbar(
     total: usize,
     current_page: usize,

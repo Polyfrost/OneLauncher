@@ -583,6 +583,16 @@ async fn start(
     // so stdout and stderr interleave instead of overwriting
     let handles = match tokio::fs::File::create(&log_path).await {
         Ok(mut out) => {
+            // The file starts with the command line so it must not be readable
+            // by other local users even for the moment before the header is in
+            #[cfg(unix)]
+            if let Err(err) = set_owner_only(&log_path) {
+                tracing::warn!(
+                    cluster_id,
+                    error = %err,
+                    "failed to restrict the game log permissions"
+                );
+            }
             if let Err(err) = out.write_all(header.as_bytes()).await {
                 tracing::warn!(cluster_id, error = %err, "failed to write the launch header");
             }
@@ -1106,13 +1116,45 @@ fn gamemode_wrapper(profile: &GameSettingsProfile, wrapper: Option<&str>) -> Opt
     })
 }
 
+/// Arguments that carry a credential in the argument after them so the pair
+/// has to be redacted together rather than one argument at a time
+const SECRET_FLAGS: &[&str] = &["--accessToken", "--session", "--sessionId"];
+
+fn is_secret_flag(arg: &str) -> bool {
+    let arg = arg.split_once('=').map_or(arg, |(flag, _)| flag);
+    SECRET_FLAGS.iter().any(|flag| flag.eq_ignore_ascii_case(arg))
+}
+
+/// Environment keys the launch profile is allowed to set that hold something
+/// that must not end up in a log file
+fn is_secret_key(key: &str) -> bool {
+    let key = key.to_ascii_uppercase();
+    [
+        "TOKEN",
+        "SECRET",
+        "PASSWORD",
+        "PASSWD",
+        "APIKEY",
+        "API_KEY",
+        "SESSION",
+        "CREDENTIAL",
+    ]
+    .iter()
+    .any(|needle| key.contains(needle))
+}
+
 fn command_line(command: &std::process::Command) -> String {
     let mut out = String::new();
     for (key, value) in command.get_envs() {
         let (key, Some(value)) = (key.to_string_lossy(), value) else {
             continue;
         };
-        let value = shell_quote(&value.to_string_lossy());
+        let value = value.to_string_lossy();
+        let value = if is_secret_key(&key) {
+            "[censored]".to_string()
+        } else {
+            shell_quote(&oneclient_cluster::logs::censor(&value))
+        };
         #[cfg(not(windows))]
         let _ = write!(out, "{key}={value} ");
         #[cfg(windows)]
@@ -1125,9 +1167,25 @@ fn command_line(command: &std::process::Command) -> String {
     }
     out += &shell_quote(&command.get_program().to_string_lossy());
 
+    let mut hide_next = false;
     for arg in command.get_args() {
+        let arg = arg.to_string_lossy();
         out += " ";
-        out += &shell_quote(&oneclient_cluster::logs::censor(&arg.to_string_lossy()));
+        if hide_next {
+            out += "[censored]";
+            hide_next = false;
+            continue;
+        }
+        if let Some((flag, _)) = arg.split_once('=')
+            && is_secret_flag(flag)
+        {
+            let _ = write!(out, "{flag}=[censored]");
+            continue;
+        }
+        if is_secret_flag(&arg) {
+            hide_next = true;
+        }
+        out += &shell_quote(&oneclient_cluster::logs::censor(&arg));
     }
 
     out
@@ -1327,6 +1385,53 @@ mod tests {
     fn an_unobserved_exit_counts_when_the_game_wrote_a_crash_report() {
         assert!(counts_as_crash(&Exit::Inferred, None, true));
         assert!(!counts_as_crash(&Exit::Inferred, None, false));
+    }
+}
+
+#[cfg(unix)]
+fn set_owner_only(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+}
+
+#[cfg(test)]
+mod command_line_tests {
+    use super::command_line;
+
+    #[test]
+    fn a_secret_argument_pair_is_never_written_down() {
+        let mut command = std::process::Command::new("java");
+        command.args(["--accessToken", "abc123OPAQUE", "--uuid", "1234"]);
+
+        let line = command_line(&command);
+
+        assert!(!line.contains("abc123OPAQUE"), "{line}");
+        assert!(line.contains("--uuid"), "{line}");
+        assert!(line.contains("1234"), "{line}");
+    }
+
+    #[test]
+    fn a_secret_flag_with_an_equals_sign_is_never_written_down() {
+        let mut command = std::process::Command::new("java");
+        command.args(["--session=abc123OPAQUE", "-Xmx2G"]);
+
+        let line = command_line(&command);
+
+        assert!(!line.contains("abc123OPAQUE"), "{line}");
+        assert!(line.contains("-Xmx2G"), "{line}");
+    }
+
+    #[test]
+    fn a_secret_environment_value_is_never_written_down() {
+        let mut command = std::process::Command::new("java");
+        command.env("ONECLIENT_SESSION_TOKEN", "abc123OPAQUE");
+        command.env("ONECLIENT_GAME_DIR", "games");
+
+        let line = command_line(&command);
+
+        assert!(!line.contains("abc123OPAQUE"), "{line}");
+        assert!(line.contains("games"), "{line}");
     }
 }
 

@@ -1218,19 +1218,12 @@ impl Component for WardrobeBody {
                             .font_weight(FontWeight::SEMI_BOLD)
                             .color(colors::fg_primary()),
                     )
-                    .child(
-                        TextInput::new(query)
-                            .placeholder(t("oneclient.wardrobe.search"))
-                            .compact()
-                            .width(Size::px(260.))
-                            .max_width(Size::fill())
-                            .leading(
-                                Icon::new(IconType::SearchMd)
-                                    .size(14.)
-                                    .color(colors::fg_secondary())
-                                    .into_element(),
-                            ),
-                    )
+                    .child(StoreSearch {
+                        data: data.clone(),
+                        query,
+                        shared,
+                        suggest: data.plus_available() && current_section == Section::Cosmetics,
+                    })
                     .child(
                         rect()
                             .horizontal()
@@ -1375,6 +1368,7 @@ impl Component for StoreSearch {
 
         rect()
             .width(Size::px(SEARCH_WIDTH))
+            .max_width(Size::fill())
             .on_global_pointer_up(on_global_pointer_up)
             .on_global_key_down(move |e: Event<KeyboardEventData>| {
                 if e.key == Key::Named(NamedKey::Escape) {

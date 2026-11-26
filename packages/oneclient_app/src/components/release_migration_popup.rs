@@ -85,7 +85,7 @@ fn blocked_by_route(route: &Route) -> bool {
 }
 
 fn cluster_title(cluster: &Cluster) -> String {
-    cluster.name.clone()
+    crate::utils::instance_display_name(cluster)
 }
 
 fn selection_key(package: &ReleaseMigrationPackage, source_id: i64) -> SelectionKey {

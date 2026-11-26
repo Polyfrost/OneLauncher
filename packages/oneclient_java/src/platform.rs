@@ -403,8 +403,7 @@ pub async fn legacy_gl_executable(java_path: &std::path::Path) -> std::path::Pat
     if let (Ok(src), Ok(copy)) = (
         tokio::fs::metadata(java_path).await,
         tokio::fs::metadata(&patched).await,
-    )
-        && src.len() == copy.len()
+    ) && src.len() == copy.len()
         && src.modified().ok() <= copy.modified().ok()
     {
         return patched;

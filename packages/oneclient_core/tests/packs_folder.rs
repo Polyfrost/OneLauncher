@@ -63,9 +63,15 @@ async fn packs_survive_hand_edits_and_dedicated_clusters_keep_their_own() {
             let source = dir.join(name);
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::write(&source, pack(name)).unwrap();
-            PackageStore::import_local_file(&source, ContentType::ResourcePack, cluster_id, &ctx)
-                .await
-                .unwrap();
+            PackageStore::import_local_file(
+                &source,
+                None,
+                ContentType::ResourcePack,
+                cluster_id,
+                &ctx,
+            )
+            .await
+            .unwrap();
             std::fs::remove_file(&source).ok();
         }
     };
@@ -87,7 +93,7 @@ async fn packs_survive_hand_edits_and_dedicated_clusters_keep_their_own() {
     let source = shared.dir().unwrap().join("pack.zip");
     std::fs::create_dir_all(source.parent().unwrap()).unwrap();
     std::fs::write(&source, pack("one")).unwrap();
-    PackageStore::import_local_file(&source, ContentType::ResourcePack, shared.id, &ctx)
+    PackageStore::import_local_file(&source, None, ContentType::ResourcePack, shared.id, &ctx)
         .await
         .unwrap();
     std::fs::remove_file(&source).unwrap();
@@ -466,10 +472,15 @@ async fn a_dropped_copy_of_a_switched_off_pack_is_left_alone() {
     std::fs::create_dir_all(&incoming).unwrap();
     let original = incoming.join("dropped.zip");
     std::fs::write(&original, pack("dropped")).unwrap();
-    let row =
-        PackageStore::import_local_file(&original, ContentType::ResourcePack, cluster.id, &ctx)
-            .await
-            .unwrap();
+    let row = PackageStore::import_local_file(
+        &original,
+        None,
+        ContentType::ResourcePack,
+        cluster.id,
+        &ctx,
+    )
+    .await
+    .unwrap();
     PackageStore::set_artifact_enabled_to(cluster.id, &row.hash, false, &ctx)
         .await
         .unwrap();

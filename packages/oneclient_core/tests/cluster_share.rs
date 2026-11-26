@@ -384,7 +384,7 @@ async fn the_enabled_build_wins_when_two_share_a_file_name() {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("same.jar");
         std::fs::write(&path, jar(tag)).unwrap();
-        let row = PackageStore::import_local_file(&path, ContentType::Mod, source.id, &ctx)
+        let row = PackageStore::import_local_file(&path, None, ContentType::Mod, source.id, &ctx)
             .await
             .unwrap();
         hashes.push(row.hash);

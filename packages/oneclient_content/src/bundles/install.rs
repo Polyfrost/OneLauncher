@@ -1463,7 +1463,7 @@ pub async fn install_cluster_bundles(
         {
             tracing::info!(
                 cluster_id,
-                "first bundle install for this instance, waiting for every file before launch"
+                "first bundle install, waiting for every file before launch"
             );
             None
         }

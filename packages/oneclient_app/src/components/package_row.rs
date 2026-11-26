@@ -305,6 +305,7 @@ impl Component for PackageRow {
                     on_toggle,
                     on_context.clone(),
                     on_copies,
+                    hovered,
                 ),
                 8.,
             ),
@@ -577,6 +578,7 @@ pub fn package_context_menu(
                     package_type: package_type.clone(),
                     package_id: format!("{}:{}", provider as u8, package_id),
                     add_to_cluster: false,
+                    in_instance: true,
                 });
             },
         );
@@ -667,6 +669,7 @@ fn list_card(
     on_toggle: EventHandler<()>,
     on_context: Option<EventHandler<(f32, f32)>>,
     on_copies: Option<EventHandler<()>>,
+    mut hovered: State<bool>,
 ) -> Element {
     let copies = item.copies.len();
     rect()
@@ -678,6 +681,19 @@ fn list_card(
         .padding(Gaps::new_all(10.))
         .corner_radius(rounded(8.))
         .background(colors::card())
+        .border(
+            border_all_color(
+                1.,
+                if hovered() {
+                    colors::component_border_hover()
+                } else {
+                    Color::TRANSPARENT
+                },
+            )
+            .alignment(BorderAlignment::Inner),
+        )
+        .on_pointer_enter(move |_| hovered.set_if_modified(true))
+        .on_pointer_leave(move |_| hovered.set_if_modified(false))
         .content(Content::Flex)
         .maybe(item.copy_status == Some(CopyStatus::Skipped), |el| {
             el.opacity(0.5)
@@ -704,34 +720,39 @@ pub(crate) fn grid_card(
     mut hovered: State<bool>,
 ) -> Element {
     let enabled = item.enabled;
+    let instance_mod = navigable && package_type == "mod";
     let title = item.name.clone();
     let hovering = *hovered.read();
 
-    let alpha = if enabled && item.copy_status != Some(CopyStatus::Skipped) {
-        255u8
+    let alpha = if item.copy_status == Some(CopyStatus::Skipped) {
+        204
     } else {
-        115u8
+        255
     };
 
-    let bg = match (enabled, hovering) {
-        (_, true) => colors::component_bg_hover().with_a(alpha),
-        (true, false) => colors::brand().with_a(scale_a(alpha, 38. / 255.)),
-        (false, false) => colors::component_bg_disabled().with_a(alpha),
+    let background = if instance_mod && enabled {
+        colors::brand().with_a(if hovering { 54 } else { 42 })
+    } else {
+        colors::card()
     };
-
-    let border = match (enabled, hovering) {
-        (_, true) => colors::component_border_hover(),
-        (true, false) => colors::brand(),
-        (false, false) => colors::component_border(),
+    let border = if instance_mod && enabled {
+        colors::brand().with_a(if hovering { 108 } else { 74 })
+    } else if hovering {
+        colors::component_border_hover()
+    } else {
+        colors::component_border()
     };
 
     let header = rect()
         .horizontal()
         .width(Size::fill())
-        // .cross_align(Alignment::Center)
         .spacing(11.)
         .content(Content::Flex)
-        .child(rect().opacity(alpha as f32 / 255.).child(icon))
+        .child(
+            rect()
+                .opacity(alpha as f32 / 255. * if instance_mod && !enabled { 0.65 } else { 1. })
+                .child(icon),
+        )
         .child(
             rect()
                 .vertical()
@@ -745,14 +766,26 @@ pub(crate) fn grid_card(
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis)
                         .width(Size::fill())
-                        .color(if enabled {
-                            colors::fg_strong()
-                        } else {
-                            colors::fg_primary().with_a(alpha)
-                        }),
+                        .color(colors::fg_strong().with_a(alpha)),
                 )
                 .child(grid_meta(item, package_type, cluster_id, navigable, alpha)),
         )
+        .maybe(!instance_mod && !enabled, |header| {
+            header.child(
+                rect()
+                    .height(Size::px(22.))
+                    .padding(Gaps::new_symmetric(0., 6.))
+                    .center()
+                    .corner_radius(rounded(5.))
+                    .background(colors::component_bg())
+                    .child(
+                        label()
+                            .text(t("oneclient.common.off"))
+                            .font_size(text_size(11.))
+                            .color(colors::fg_secondary()),
+                    ),
+            )
+        })
         .maybe_child(on_context.clone().map(kebab_button))
         .into_element();
 
@@ -804,12 +837,12 @@ pub(crate) fn grid_card(
         .spacing(9.)
         .padding(Gaps::new_all(GRID_CARD_PADDING))
         .corner_radius(rounded(6.))
-        .background(bg)
-        .border(border_all_color(1., border))
+        .background(background)
+        .border(border_all_color(1., border).alignment(BorderAlignment::Inner))
         .content(Content::Flex)
         .cursor(CursorIcon::Pointer)
-        .on_pointer_enter(move |_| hovered.set(true))
-        .on_pointer_leave(move |_| hovered.set(false))
+        .on_pointer_enter(move |_| hovered.set_if_modified(true))
+        .on_pointer_leave(move |_| hovered.set_if_modified(false))
         .on_secondary_down(on_secondary(on_context))
         .on_press(move |_| on_toggle.call(()))
         .child(header)
@@ -858,6 +891,7 @@ fn grid_meta(
                     package_type: package_type.to_string(),
                     package_id: format!("{}:{}", provider as u8, package_id),
                     add_to_cluster: false,
+                    in_instance: true,
                 });
             }),
             alpha,
@@ -1066,6 +1100,7 @@ fn package_info(
                     package_type: package_type.clone(),
                     package_id: format!("{}:{}", provider as u8, package_id),
                     add_to_cluster: false,
+                    in_instance: true,
                 });
             })
         })

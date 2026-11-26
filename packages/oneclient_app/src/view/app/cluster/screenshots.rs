@@ -6,7 +6,7 @@ use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
     Button, ContextMenu, Icon, IconType, LocalImage, OverlayPopup, ScreenshotViewer, ScrollArea,
-    Segment, SegmentedControl, open_folder_button, screenshot_context_menu,
+    Segment, SegmentedControl, screenshot_context_menu,
 };
 use crate::hooks::{
     ScreenshotAction, Selection, query_is_loading, try_cluster_screenshots,
@@ -253,12 +253,12 @@ fn toolbar_row(
         .horizontal()
         .cross_align(Alignment::Center)
         .spacing(10.)
-        .maybe_child(
-            (!editing)
-                .then_some(folder)
-                .flatten()
-                .map(open_folder_button),
-        );
+        .maybe_child((!editing).then_some(folder).flatten().map(|folder| {
+            super::folder_list::folder_button(
+                folder,
+                t("oneclient.layout.cluster.screenshots_folder"),
+            )
+        }));
 
     if editing {
         let every = count > 0 && count == all_paths.len();
@@ -349,21 +349,16 @@ fn toolbar_row(
 }
 
 fn empty_state(loading: bool) -> impl IntoElement {
-    rect()
-        .width(Size::fill())
-        .height(Size::flex(1.0))
-        .center()
-        .child(
-            label()
-                .text(if loading {
-                    t("oneclient.cluster.screenshots.loading")
-                } else {
-                    t("oneclient.cluster.screenshots.empty")
-                })
-                .font_size(text_size(13.))
-                .color(colors::fg_secondary()),
-        )
-        .into_element()
+    use super::package_manager::{empty_hint, empty_shell, empty_title};
+
+    let shell = empty_shell(IconType::Eye);
+    if loading {
+        shell.child(empty_title(t("oneclient.cluster.screenshots.loading")))
+    } else {
+        shell
+            .child(empty_title(t("oneclient.cluster.screenshots.no_images")))
+            .child(empty_hint(t("oneclient.cluster.screenshots.empty")))
+    }
 }
 
 fn confirm_panel(

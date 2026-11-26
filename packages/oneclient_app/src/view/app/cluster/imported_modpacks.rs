@@ -39,6 +39,7 @@ fn browse_modpacks(cluster_id: i64) {
         cluster_id,
         package_type: MODPACK_BROWSE_TYPE.to_string(),
         pick_cluster: false,
+        in_instance: true,
     });
 }
 

@@ -110,13 +110,11 @@ pub fn search_items(query: &UseQuery<PackageSearchQuery>) -> Vec<ProjectSummary>
 }
 
 pub fn search_total(query: &UseQuery<PackageSearchQuery>) -> usize {
-    super::state::settled_or_loading(query)
-        .map(|page| page.total)
-        .unwrap_or(0)
+    query.read().state().ok().map_or(0, |page| page.total)
 }
 
 pub fn search_pending(query: &UseQuery<PackageSearchQuery>) -> bool {
-    super::state::query_is_busy(query) && super::state::settled_or_loading(query).is_none()
+    super::state::query_is_busy(query) && query.read().state().ok().is_none()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -356,9 +354,7 @@ pub fn version_list(query: &UseQuery<PackageVersionsQuery>) -> Vec<VersionSummar
 }
 
 pub fn versions_total(query: &UseQuery<PackageVersionsQuery>) -> usize {
-    super::state::settled_or_loading(query)
-        .map(|page| page.total)
-        .unwrap_or(0)
+    query.read().state().ok().map_or(0, |page| page.total)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

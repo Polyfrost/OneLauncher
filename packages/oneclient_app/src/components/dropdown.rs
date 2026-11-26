@@ -2,7 +2,7 @@ use freya::prelude::*;
 
 use crate::components::{Icon, IconType, ScrollArea, TooltipPlacement, use_tooltip_anchor};
 use crate::hooks::use_overlay_claim_when;
-use crate::theme::{colors, rounded, text_size};
+use crate::theme::{colors, glass, rounded, rounded_px, text_size};
 use crate::ui::{border_all_color, window_logical_size};
 
 const OPTION_HEIGHT: f32 = 28.;
@@ -18,6 +18,7 @@ pub struct Dropdown {
     width: Size,
     height: Size,
     outlined: bool,
+    solid_menu: bool,
     checked: Option<Vec<bool>>,
     tooltip: Option<Box<str>>,
     key: DiffKey,
@@ -33,6 +34,7 @@ impl Dropdown {
             width: Size::px(72.),
             height: Size::px(24.),
             outlined: false,
+            solid_menu: false,
             checked: None,
             tooltip: None,
             key: DiffKey::None,
@@ -53,6 +55,11 @@ impl Dropdown {
 
     pub fn outlined(mut self) -> Self {
         self.outlined = true;
+        self
+    }
+
+    pub(crate) fn solid_menu(mut self) -> Self {
+        self.solid_menu = true;
         self
     }
 
@@ -102,9 +109,14 @@ impl Component for Dropdown {
         let outlined = self.outlined;
         let checked = self.checked.clone();
         let multi = checked.is_some();
-        let is_open = open();
+        let requested_open = open();
+        let (is_open, escape) =
+            super::overlay_popup::use_transient_escape(super::OVERLAY_MAX_LEVEL, requested_open);
 
         use_overlay_claim_when(is_open);
+        if requested_open && !is_open {
+            open.set(false);
+        }
 
         if !is_open && list_area().is_some() {
             let _ = list_area.take();
@@ -152,8 +164,9 @@ impl Component for Dropdown {
         rect()
             .width(self.width.clone())
             .on_global_key_down(move |e: Event<KeyboardEventData>| {
-                if e.key == Key::Named(NamedKey::Escape) {
-                    open.set_if_modified(false);
+                if e.key == Key::Named(NamedKey::Escape) && *open.peek() && escape.is_topmost() {
+                    open.set(false);
+                    a11y_id.request_focus();
                 }
             })
             .child(
@@ -165,7 +178,7 @@ impl Component for Dropdown {
                     .center()
                     .spacing(4.)
                     .padding(Gaps::new_symmetric(0., if outlined { 12. } else { 8. }))
-                    .corner_radius(rounded(if outlined { 8. } else { 6. }))
+                    .corner_radius(glass::control_radius(if outlined { 8. } else { 6. }))
                     .background(trigger_bg)
                     .maybe(outlined, |el| {
                         el.main_align(Alignment::SpaceBetween)
@@ -213,12 +226,9 @@ impl Component for Dropdown {
                             list_area.set_if_modified(Some(e.area));
                         })
                         .child(
-                            rect()
+                            menu_surface(self.solid_menu)
                                 .width(Size::fill())
                                 .padding(4.)
-                                .corner_radius(rounded(8.))
-                                .border(border_all_color(1., colors::component_border()))
-                                .background(colors::page_elevated())
                                 .overflow(Overflow::Clip)
                                 .child(
                                     ScrollArea::new()
@@ -249,6 +259,21 @@ impl Component for Dropdown {
 
     fn render_key(&self) -> DiffKey {
         self.key.clone().or(self.default_key())
+    }
+}
+
+/// The open list. PolyGlass floats it as real glass over the page, tinted densely enough
+/// that 12px option text stays readable on any backdrop; other themes keep the solid card.
+fn menu_surface(solid: bool) -> Rect {
+    let theme = colors::active_theme();
+    if theme.liquid_glass && !solid {
+        let tint = colors::page_elevated().with_a(if theme.colors.light { 222 } else { 208 });
+        glass::panel(rect(), &theme, rounded_px(10.), tint)
+    } else {
+        rect()
+            .corner_radius(rounded(8.))
+            .border(border_all_color(1., colors::component_border()))
+            .background(colors::page_elevated().with_a(255))
     }
 }
 

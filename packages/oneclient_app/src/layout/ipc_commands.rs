@@ -7,6 +7,7 @@ use crate::hooks::use_dispatch;
 use crate::ipc::{self, IpcCommand};
 use crate::platform;
 use crate::routes::Route;
+use crate::theme;
 
 thread_local! {
     /// The open main window's router, `None` while it's closed to the background
@@ -42,6 +43,11 @@ pub fn use_ipc_commands() {
                     IpcCommand::ImportShare(code) => {
                         platform::focus_window();
                         dispatch.request_share_import(code);
+                    }
+                    IpcCommand::Theme(id) => {
+                        if theme::is_known(&id) {
+                            dispatch.edit_settings(|settings| settings.theme = id);
+                        }
                     }
                     IpcCommand::Logs => {
                         platform::focus_window();

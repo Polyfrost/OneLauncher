@@ -1,4 +1,6 @@
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, PoisonError, Weak};
 
 use oneclient_core::LauncherState;
 
@@ -19,7 +21,18 @@ pub async fn cluster_display_name(
 ) -> String {
     PackageStore::get_cluster(cluster_id, &services.content())
         .await
-        .map(|cluster| cluster.name)
+        .map(|cluster| {
+            crate::utils::builtin_version_title(
+                &cluster.mc_version,
+                cluster.kind(),
+                cluster.user_created != 0,
+            )
+            .and_then(|title| {
+                oneclient_common::domain::GameLoader::from_repr(cluster.mc_loader as u8)
+                    .map(|loader| format!("{title} {loader}"))
+            })
+            .unwrap_or(cluster.name)
+        })
         .unwrap_or_else(|_| t("oneclient.install.cluster_fallback").to_string())
 }
 
@@ -218,6 +231,271 @@ pub struct PackageInstall {
     /// The game is open but could not take the package, so the toast must not
     /// claim it is there now
     pub live_deferred: bool,
+    /// Present only for a brand new package the caller asked to be able to take back
+    pub undo: Option<InstallUndo>,
+}
+
+static INSTANCE_INSTALLS: std::sync::LazyLock<Mutex<HashMap<i64, Weak<tokio::sync::Mutex<()>>>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+async fn instance_install_guard(cluster_id: i64) -> tokio::sync::OwnedMutexGuard<()> {
+    let instance = {
+        let mut locks = INSTANCE_INSTALLS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        locks.retain(|_, lock| lock.strong_count() > 0);
+        if let Some(lock) = locks.get(&cluster_id).and_then(Weak::upgrade) {
+            lock
+        } else {
+            let lock = Arc::new(tokio::sync::Mutex::new(()));
+            locks.insert(cluster_id, Arc::downgrade(&lock));
+            lock
+        }
+    };
+    instance.lock_owned().await
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UndoPackage {
+    pub provider: oneclient_content::packages::ProviderId,
+    pub project_id: String,
+    pub hash: String,
+    pub name: String,
+    content_type: oneclient_content::packages::ContentType,
+    added_at: String,
+}
+
+/// The exact links one install added.
+#[derive(Clone, Debug)]
+pub struct InstallUndo {
+    token: uuid::Uuid,
+    pub cluster_id: i64,
+    pub packages: Vec<UndoPackage>,
+    claimed: Arc<AtomicBool>,
+}
+
+impl PartialEq for InstallUndo {
+    fn eq(&self, other: &Self) -> bool {
+        self.token == other.token
+    }
+}
+
+impl Eq for InstallUndo {}
+
+impl InstallUndo {
+    pub fn claim(&self) -> bool {
+        !self.claimed.swap(true, Ordering::AcqRel)
+    }
+
+    pub fn release(&self) {
+        self.claimed.store(false, Ordering::Release);
+    }
+
+    pub fn target_name(&self) -> &str {
+        self.packages
+            .first()
+            .map_or("", |package| package.name.as_str())
+    }
+}
+
+/// What a cluster held before an install ran
+struct ClusterSnapshot {
+    hashes: HashSet<String>,
+    /// A project already present means the install replaced a version, which
+    /// Undo could not put back
+    projects: HashSet<(i64, String)>,
+}
+
+impl ClusterSnapshot {
+    async fn take(cluster_id: i64, state: &LauncherState) -> Option<Self> {
+        let rows = oneclient_db::dao::artifact::list_cluster_artifacts_detailed(
+            &state.services.db,
+            cluster_id,
+        )
+        .await
+        .inspect_err(|err| tracing::warn!(cluster_id, %err, "cannot offer Undo without a baseline"))
+        .ok()?;
+
+        let identities = oneclient_db::dao::artifact::list_cluster_release_identities(
+            &state.services.db, cluster_id,
+        )
+        .await
+        .inspect_err(|err| tracing::warn!(cluster_id, %err, "cannot offer Undo without all existing release identities"))
+        .ok()?;
+
+        Some(Self::from_links(
+            rows.into_iter().map(|row| row.hash),
+            identities,
+        ))
+    }
+
+    fn from_links(
+        hashes: impl IntoIterator<Item = String>,
+        identities: Vec<oneclient_db::models::ClusterReleaseIdentityRow>,
+    ) -> Self {
+        Self {
+            hashes: hashes.into_iter().collect(),
+            projects: identities
+                .into_iter()
+                .map(|row| (row.provider, row.project_id))
+                .collect(),
+        }
+    }
+
+    fn is_new(&self, package: &UndoPackage) -> bool {
+        !self.hashes.contains(&package.hash)
+            && !self
+                .projects
+                .contains(&(package.provider as i64, package.project_id.clone()))
+    }
+}
+
+/// Undo is offered only when the install added something that was not in the
+/// instance before
+///
+/// A reinstall, or a new version that superseded an older one, changes content
+/// the user already had, so it gets no Undo rather than one that cannot restore it
+fn plan_undo(
+    snapshot: Option<&ClusterSnapshot>,
+    cluster_id: i64,
+    target: UndoPackage,
+    dependencies: Vec<UndoPackage>,
+) -> Option<InstallUndo> {
+    let snapshot = snapshot?;
+    if !snapshot.is_new(&target) {
+        return None;
+    }
+
+    let mut packages = vec![target];
+    packages.extend(
+        dependencies
+            .into_iter()
+            .filter(|package| snapshot.is_new(package)),
+    );
+
+    Some(InstallUndo {
+        token: uuid::Uuid::new_v4(),
+        cluster_id,
+        packages,
+        claimed: Arc::new(AtomicBool::new(false)),
+    })
+}
+
+#[derive(Debug, Default)]
+pub struct UndoReport {
+    pub target: String,
+    pub target_removed: bool,
+    /// Names, in the order they were taken out
+    pub removed: Vec<String>,
+    /// Dependencies something else now needs or that changed since the install
+    pub kept: Vec<String>,
+    pub error: Option<String>,
+}
+
+/// Keep a target and its dependencies together if the target is no longer safe to remove.
+pub async fn undo_install(state: &LauncherState, undo: &InstallUndo) -> UndoReport {
+    let content = state.services.content();
+    let mut report = UndoReport {
+        target: undo.target_name().to_string(),
+        ..UndoReport::default()
+    };
+    if let Err(err) = remove_install_group(undo, &content, &mut report).await {
+        tracing::warn!(cluster_id = undo.cluster_id, %err, "failed to undo a package install");
+        report.error = Some(err.to_string());
+    }
+    report
+}
+
+async fn remove_install_group(
+    undo: &InstallUndo,
+    content: &oneclient_content::ContentCtx,
+    report: &mut UndoReport,
+) -> anyhow::Result<()> {
+    use oneclient_content::{bundles, packages};
+    use oneclient_db::dao::artifact as artifacts;
+
+    let Some(target) = undo.packages.first() else {
+        return Ok(());
+    };
+    let cluster_id = undo.cluster_id;
+    if !bundles::can_undo_artifact(cluster_id, &target.hash, &target.added_at, content).await? {
+        return Ok(());
+    }
+
+    // Provider requests can be slow. Backfill before taking the guard, then
+    // verify that every currently linked remote package can be checked.
+    packages::ensure_cluster_dependencies(cluster_id, content).await?;
+    let _exclusive = packages::exclusive_package_mutation_guard().await;
+
+    let mut candidates = HashSet::new();
+    for package in &undo.packages {
+        if bundles::can_undo_artifact(cluster_id, &package.hash, &package.added_at, content).await?
+        {
+            candidates.insert(package.hash.as_str());
+        }
+    }
+    if !candidates.contains(target.hash.as_str()) {
+        return Ok(());
+    }
+
+    let missing = artifacts::list_releases_missing_dependencies(&content.db, cluster_id).await?;
+    if missing
+        .iter()
+        .any(|release| release.provider != packages::ProviderId::Local as i64)
+    {
+        anyhow::bail!(t("oneclient.actions.undo.dependencies_unverified"));
+    }
+
+    let candidate_mods: HashSet<_> = undo
+        .packages
+        .iter()
+        .filter(|package| {
+            package.content_type == packages::ContentType::Mod
+                && candidates.contains(package.hash.as_str())
+        })
+        .map(|package| package.hash.as_str())
+        .collect();
+    if !candidate_mods.is_empty()
+        && packages::store::undo::local_mods_may_need(cluster_id, &candidate_mods, content).await?
+    {
+        if candidate_mods.contains(target.hash.as_str()) {
+            anyhow::bail!(t("oneclient.actions.undo.local_dependencies_unverified"));
+        }
+        candidates.retain(|hash| !candidate_mods.contains(hash));
+    }
+
+    let blocked = packages::dependents::removal_blockers(cluster_id, &candidates, content).await?;
+    if let Some(dependents) = blocked.get(&target.hash) {
+        let names = dependents
+            .iter()
+            .map(|entry| entry.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        anyhow::bail!(tf(
+            "oneclient.actions.undo.required",
+            &[&target.name, &names]
+        ));
+    }
+
+    let (remove, keep): (Vec<_>, Vec<_>) = undo.packages.iter().partition(|package| {
+        candidates.contains(package.hash.as_str()) && !blocked.contains_key(&package.hash)
+    });
+    let links: Vec<_> = remove
+        .iter()
+        .map(|p| (p.hash.as_str(), p.added_at.as_str()))
+        .collect();
+    if bundles::detach_undo_artifacts(cluster_id, &links, content).await? {
+        report.target_removed = true;
+        report.removed = remove
+            .into_iter()
+            .map(|package| package.name.clone())
+            .collect();
+        report.kept = keep
+            .into_iter()
+            .map(|package| package.name.clone())
+            .collect();
+    }
+    Ok(())
 }
 
 pub struct FlaggedInstall {
@@ -269,6 +547,7 @@ impl PackageInstall {
             dependencies: Vec::new(),
             missing_dependencies: Vec::new(),
             live_deferred: false,
+            undo: None,
         }
     }
 }
@@ -328,6 +607,37 @@ pub async fn install_package(
     allow_flagged: bool,
     incompatible: IncompatibleMode,
 ) -> Result<PackageInstall, InstallBlocked> {
+    install_package_with(
+        state,
+        provider,
+        project_id,
+        version_id,
+        cluster_id,
+        world,
+        allow_flagged,
+        incompatible,
+        false,
+    )
+    .await
+}
+
+/// `offer_undo` is for installs the user chose by hand in the browser. Worlds
+/// are never undoable because a data pack is copied into the world's own
+/// folder, which has no record to take back
+#[allow(clippy::too_many_arguments)]
+pub async fn install_package_with(
+    state: &Arc<LauncherState>,
+    provider: oneclient_content::packages::ProviderId,
+    project_id: &str,
+    version_id: &str,
+    cluster_id: i64,
+    world: Option<String>,
+    allow_flagged: bool,
+    incompatible: IncompatibleMode,
+    offer_undo: bool,
+) -> Result<PackageInstall, InstallBlocked> {
+    let _instance = instance_install_guard(cluster_id).await;
+    let _mutation = oneclient_content::packages::package_mutation_guard().await;
     let lookup = async {
         let provider_impl = state.services.packages.get(provider)?;
         let project = provider_impl
@@ -350,6 +660,28 @@ pub async fn install_package(
             content_type: oneclient_content::packages::ContentType::DataPack,
             ..project
         };
+        if incompatible != IncompatibleMode::Allow {
+            match PackageStore::check_compatible(
+                &project,
+                &version,
+                cluster_id,
+                &state.services.content(),
+            )
+            .await
+            {
+                Ok(true) => {}
+                Ok(false) if incompatible == IncompatibleMode::Ask => {
+                    return Err(InstallBlocked::Incompatible { name: project.name });
+                }
+                Ok(false) => {
+                    return Ok(PackageInstall::failed(anyhow::anyhow!(tf(
+                        "oneclient.components.incompatible_install.body",
+                        &[&project.name]
+                    ))));
+                }
+                Err(err) => return Ok(PackageInstall::failed(err.into())),
+            }
+        }
         return Ok(install_datapack(state, provider, &project, &version, cluster_id, world).await);
     }
 
@@ -412,6 +744,14 @@ pub async fn install_package(
         ));
     }
 
+    let baseline = if offer_undo
+        && project.content_type != oneclient_content::packages::ContentType::Modpack
+    {
+        ClusterSnapshot::take(cluster_id, state).await
+    } else {
+        None
+    };
+
     let session = oneclient_events::GroupedProgressSession::start(
         &state.services.events,
         tf("oneclient.install.installing", &[&project.name]),
@@ -430,6 +770,7 @@ pub async fn install_package(
     );
 
     let mut installed_dependencies = Vec::new();
+    let mut undo_dependencies = Vec::new();
     let mut missing_dependencies = resolution.unresolved;
 
     // Dependencies first so the package is never in a cluster without them however the run ends
@@ -444,7 +785,7 @@ pub async fn install_package(
             oneclient_events::TaskCategory::Packages,
         );
 
-        let result = PackageStore::install_to_cluster(
+        let result = PackageStore::install_to_cluster_recording_link(
             provider,
             &dependency.project,
             &dependency.version,
@@ -459,9 +800,21 @@ pub async fn install_package(
         child.finish();
 
         match result {
-            Ok((artifact, _)) => {
+            Ok((artifact, _, added_at)) => {
                 mark_new(cluster_id, &artifact.hash, state).await;
                 installed_dependencies.push(dependency.project.name.clone());
+                if baseline.is_some()
+                    && let Some(added_at) = added_at
+                {
+                    undo_dependencies.push(UndoPackage {
+                        provider,
+                        project_id: dependency.project.id.clone(),
+                        hash: artifact.hash,
+                        name: dependency.project.name.clone(),
+                        content_type: dependency.project.content_type,
+                        added_at,
+                    });
+                }
             }
             Err(err) => {
                 tracing::warn!(
@@ -480,7 +833,7 @@ pub async fn install_package(
         oneclient_events::TaskCategory::Packages,
     );
 
-    let result = PackageStore::install_to_cluster(
+    let result = PackageStore::install_to_cluster_recording_link(
         provider,
         &project,
         &version,
@@ -496,11 +849,23 @@ pub async fn install_package(
 
     let live_deferred = matches!(
         result,
-        Ok((_, oneclient_content::packages::LiveSync::Deferred))
+        Ok((_, oneclient_content::packages::LiveSync::Deferred, _))
     ) && state.games.is_active(cluster_id);
 
-    if let Ok((artifact, _)) = &result {
+    let mut undo = None;
+    if let Ok((artifact, _, added_at)) = &result {
         mark_new(cluster_id, &artifact.hash, state).await;
+        if let Some(added_at) = added_at {
+            let target = UndoPackage {
+                provider,
+                project_id: project.id.clone(),
+                hash: artifact.hash.clone(),
+                name: project.name.clone(),
+                content_type: project.content_type,
+                added_at: added_at.clone(),
+            };
+            undo = plan_undo(baseline.as_ref(), cluster_id, target, undo_dependencies);
+        }
     }
 
     Ok(PackageInstall {
@@ -509,6 +874,7 @@ pub async fn install_package(
         dependencies: installed_dependencies,
         missing_dependencies,
         live_deferred,
+        undo,
     })
 }
 
@@ -568,6 +934,7 @@ async fn install_datapack(
         dependencies: Vec::new(),
         missing_dependencies: Vec::new(),
         live_deferred: false,
+        undo: None,
     }
 }
 
@@ -576,5 +943,134 @@ async fn mark_new(cluster_id: i64, hash: &str, state: &LauncherState) {
         PackageStore::mark_artifact_new(cluster_id, hash, &state.services.content()).await
     {
         tracing::warn!(cluster_id, hash, %err, "failed to badge package as new");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use oneclient_content::packages::ProviderId;
+
+    fn package(project: &str, hash: &str) -> UndoPackage {
+        UndoPackage {
+            provider: ProviderId::Modrinth,
+            project_id: project.into(),
+            hash: hash.into(),
+            name: project.into(),
+            content_type: oneclient_content::packages::ContentType::Mod,
+            added_at: "original-link".to_string(),
+        }
+    }
+
+    fn snapshot(installed: &[(&str, &str)]) -> ClusterSnapshot {
+        ClusterSnapshot {
+            hashes: installed.iter().map(|(_, hash)| hash.to_string()).collect(),
+            projects: installed
+                .iter()
+                .map(|(project, _)| (ProviderId::Modrinth as i64, project.to_string()))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn a_new_package_and_its_new_dependencies_can_be_undone() {
+        let before = snapshot(&[("fabric-api", "f1")]);
+
+        let undo = plan_undo(
+            Some(&before),
+            7,
+            package("sodium", "s1"),
+            vec![package("indium", "i1")],
+        )
+        .expect("a package the instance never had is undoable");
+
+        assert_eq!(undo.cluster_id, 7);
+        let hashes: Vec<_> = undo.packages.iter().map(|p| p.hash.as_str()).collect();
+        assert_eq!(hashes, ["s1", "i1"]);
+    }
+
+    #[test]
+    fn a_dependency_the_instance_already_had_is_never_undone() {
+        let before = snapshot(&[("fabric-api", "f1")]);
+
+        let undo = plan_undo(
+            Some(&before),
+            1,
+            package("sodium", "s1"),
+            vec![package("fabric-api", "f1"), package("indium", "i1")],
+        )
+        .unwrap();
+
+        let hashes: Vec<_> = undo.packages.iter().map(|p| p.hash.as_str()).collect();
+        assert_eq!(hashes, ["s1", "i1"]);
+    }
+
+    #[test]
+    fn an_update_or_reinstall_gets_no_undo() {
+        let before = snapshot(&[("sodium", "s1")]);
+
+        // Same file again
+        assert!(plan_undo(Some(&before), 1, package("sodium", "s1"), vec![]).is_none());
+        // A newer version replaced the old one, which Undo could not restore
+        assert!(plan_undo(Some(&before), 1, package("sodium", "s2"), vec![]).is_none());
+    }
+
+    #[test]
+    fn replacing_a_release_through_another_provider_alias_gets_no_undo() {
+        use oneclient_db::models::ClusterReleaseIdentityRow;
+
+        let identities = [
+            (ProviderId::Modrinth, "modrinth-project"),
+            (ProviderId::CurseForge, "curseforge-project"),
+        ]
+        .map(|(provider, project_id)| ClusterReleaseIdentityRow {
+            hash: "original-file".into(),
+            provider: provider as i64,
+            project_id: project_id.into(),
+            version_id: "original-release".into(),
+        });
+        let before = ClusterSnapshot::from_links(["original-file".into()], identities.into());
+        let update = UndoPackage {
+            provider: ProviderId::CurseForge,
+            ..package("curseforge-project", "new-file")
+        };
+
+        assert!(plan_undo(Some(&before), 1, update, vec![]).is_none());
+    }
+
+    #[test]
+    fn no_baseline_means_no_undo() {
+        assert!(plan_undo(None, 1, package("sodium", "s1"), vec![]).is_none());
+    }
+
+    #[tokio::test]
+    async fn undo_waits_for_in_flight_package_mutations() {
+        let install = oneclient_content::packages::package_mutation_guard().await;
+        let mut undo =
+            std::pin::pin!(oneclient_content::packages::exclusive_package_mutation_guard());
+        assert!(futures_util::poll!(&mut undo).is_pending());
+
+        drop(install);
+        let _undo = undo.await;
+    }
+
+    #[test]
+    fn an_undo_failure_releases_the_action_for_retry() {
+        let undo = plan_undo(Some(&snapshot(&[])), 1, package("sodium", "s1"), vec![]).unwrap();
+        assert!(undo.claim());
+        undo.release();
+
+        let retry = undo.clone();
+        assert!(retry.claim());
+        assert!(!undo.claim());
+    }
+
+    #[test]
+    fn an_undo_can_only_be_claimed_once() {
+        let undo = plan_undo(Some(&snapshot(&[])), 1, package("sodium", "s1"), vec![]).unwrap();
+
+        assert!(undo.claim());
+        assert!(!undo.claim());
+        assert!(!undo.clone().claim());
     }
 }

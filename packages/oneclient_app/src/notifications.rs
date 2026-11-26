@@ -33,6 +33,8 @@ pub enum NotificationActionKind {
     /// Routed through the link confirm popup rather than opened straight away
     OpenUrl(String),
     OpenChat(Option<i32>),
+    /// Takes back exactly what one install added, once
+    UndoInstall(crate::install::InstallUndo),
 }
 
 /// Carries core updates whole not a display projection the modal's Update button
@@ -357,12 +359,19 @@ pub struct ToastDismissTimer {
     pub after: Duration,
 }
 
+#[derive(Clone, Debug)]
+pub struct ClusterUpdateReview {
+    pub(crate) summaries: Vec<ClusterUpdateSummary>,
+    pub(crate) from_toast: bool,
+    pub(crate) generation: u64,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct NotificationSnapshot {
     pub inbox: Vec<InboxEntry>,
     pub center_open: bool,
     pub pending_prompt: Option<PendingPromptView>,
-    pub cluster_update: Option<Vec<ClusterUpdateSummary>>,
+    pub cluster_update: Option<ClusterUpdateReview>,
     pub optional_mods: Option<Vec<OptionalModsGroup>>,
     pub bundle_choices: Option<BundleChoices>,
     pub package_updates: Option<Vec<PackageUpdateGroup>>,
@@ -387,7 +396,7 @@ pub struct NotificationState {
     grouped_entries: HashMap<Uuid, u64>,
     grouped_tasks: HashMap<Uuid, GroupedTasks>,
     pending_timers: Vec<ToastDismissTimer>,
-    cluster_update: Option<Vec<ClusterUpdateSummary>>,
+    cluster_update: Option<ClusterUpdateReview>,
     optional_mods: Option<Vec<OptionalModsGroup>>,
     bundle_choices: Option<BundleChoices>,
     package_updates: Option<Vec<PackageUpdateGroup>>,
@@ -538,11 +547,19 @@ impl NotificationState {
         self.active_toasts.iter().map(|t| t.entry_id).collect()
     }
 
-    pub fn open_cluster_update(&mut self, summaries: Vec<ClusterUpdateSummary>) {
+    pub fn open_cluster_update(&mut self, summaries: Vec<ClusterUpdateSummary>, from_toast: bool) {
         if summaries.is_empty() {
             return;
         }
-        self.cluster_update = Some(summaries);
+        let generation = self
+            .cluster_update
+            .as_ref()
+            .map_or(0, |review| review.generation.wrapping_add(1));
+        self.cluster_update = Some(ClusterUpdateReview {
+            summaries,
+            from_toast,
+            generation,
+        });
     }
 
     pub fn close_cluster_update(&mut self) {

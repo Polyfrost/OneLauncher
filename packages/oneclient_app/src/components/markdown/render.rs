@@ -232,7 +232,7 @@ impl MarkdownLink {
 
 impl Component for MarkdownLink {
     fn render(&self) -> impl IntoElement {
-        let pending = try_consume_root_context::<LinkConfirmState>().map(|state| state.0);
+        let pending = try_consume_root_context::<LinkConfirmState>();
         let mut hovering = use_state(|| false);
 
         let url = self.url.clone();

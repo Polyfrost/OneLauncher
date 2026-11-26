@@ -45,16 +45,16 @@ use tokio::sync::mpsc;
 use crate::components::IconType;
 use crate::hooks::{GraphicsBackendQuery, PackageUpdatesQuery};
 use crate::i18n::{t, tf};
+use crate::install::IncompatibleMode;
 use crate::launcher::off_ui;
 use crate::notifications::{
     BundleChoices, ClusterUpdateSummary, NotificationAction, NotificationSpec, OptionalModRef,
     OptionalModsGroup, OptionalModsOutcome, PackageUpdateGroup, PendingPrompt,
 };
 use crate::state::{
-    AppChannel, AppState, AsyncStatus, FlaggedInstallPrompt, IncompatibleInstallPrompt, MissingModInstall,
-    RelocationState,
+    AppChannel, AppState, AsyncStatus, FlaggedInstallPrompt, IncompatibleInstallPrompt,
+    MissingModInstall, RelocationState,
 };
-use crate::install::IncompatibleMode;
 use crate::{invalidate_java_queries, launcher};
 
 pub static COPIES_REQUEST: Mutex<Option<(i64, Vec<String>)>> = Mutex::new(None);
@@ -128,7 +128,7 @@ fn clusters_pinned_to_java(
                 .find(|cluster| {
                     cluster.setting_profile_name.as_deref() == Some(profile.name.as_str())
                 })
-                .map_or_else(|| profile.name.clone(), |cluster| cluster.name.clone())
+                .map_or_else(|| profile.name.clone(), crate::utils::instance_display_name)
         })
         .collect()
 }
@@ -909,9 +909,9 @@ impl Actions {
         });
     }
 
-    pub fn open_cluster_update(&self, summaries: Vec<ClusterUpdateSummary>) {
+    pub fn open_cluster_update(&self, summaries: Vec<ClusterUpdateSummary>, from_toast: bool) {
         self.with_engine(|state| {
-            state.notifications.open_cluster_update(summaries);
+            state.notifications.open_cluster_update(summaries, from_toast);
             state.center_open = false;
         });
     }
@@ -1030,6 +1030,7 @@ impl Actions {
                 let mut installed = 0usize;
                 let mut applied: Vec<ClusterId> = Vec::new();
                 for cluster_id in &clusters {
+                    let _mutation = oneclient_content::packages::package_mutation_guard().await;
                     match oneclient_core::apply_bundle_updates_with(
                         *cluster_id,
                         state.bundles.as_ref(),
@@ -1499,12 +1500,13 @@ impl Actions {
                 .map(|target| target.project_id.clone());
 
             match found {
-                Ok(Some(target)) => actions.install_package(
+                Ok(Some(target)) => actions.start_install(
                     cluster_id,
                     ProviderId::Modrinth,
                     target.project_id,
                     target.version_id,
                     None,
+                    false,
                     IncompatibleMode::Refuse,
                 ),
                 Ok(None) => state
@@ -1559,6 +1561,7 @@ impl Actions {
             let imported = off_ui({
                 let state = state.clone();
                 async move {
+                    let _mutation = oneclient_content::packages::package_mutation_guard().await;
                     let report = oneclient_content::packages::PackageStore::import_local_files(
                         &files,
                         cluster_id,
@@ -1633,7 +1636,8 @@ impl Actions {
         world: Option<String>,
         incompatible: IncompatibleMode,
     ) {
-        self.start_install(
+        // The browser's own install: the toast offers Undo for a new package
+        self.start_install_with(
             cluster_id,
             provider,
             project_id.into(),
@@ -1641,12 +1645,13 @@ impl Actions {
             world,
             false,
             incompatible,
+            true,
         );
     }
 
     pub fn install_flagged_anyway(&self, prompt: FlaggedInstallPrompt) {
         self.dismiss_flagged_install();
-        self.start_install(
+        self.start_install_with(
             prompt.cluster_id,
             prompt.provider,
             prompt.project_id,
@@ -1654,19 +1659,21 @@ impl Actions {
             None,
             true,
             prompt.incompatible,
+            true,
         );
     }
 
     pub fn install_incompatible_anyway(&self, prompt: IncompatibleInstallPrompt) {
         self.dismiss_incompatible_install();
-        self.start_install(
+        self.start_install_with(
             prompt.cluster_id,
             prompt.provider,
             prompt.project_id,
             prompt.version_id,
-            None,
+            prompt.world,
             prompt.allow_flagged,
             IncompatibleMode::Allow,
+            true,
         );
     }
 
@@ -1686,6 +1693,7 @@ impl Actions {
             .flagged = None;
     }
 
+    /// Installs started by the launcher itself, never offered an Undo
     #[allow(clippy::too_many_arguments)]
     fn start_install(
         &self,
@@ -1696,6 +1704,30 @@ impl Actions {
         world: Option<String>,
         allow_flagged: bool,
         incompatible: IncompatibleMode,
+    ) {
+        self.start_install_with(
+            cluster_id,
+            provider,
+            project_id,
+            version_id,
+            world,
+            allow_flagged,
+            incompatible,
+            false,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn start_install_with(
+        &self,
+        cluster_id: ClusterId,
+        provider: ProviderId,
+        project_id: String,
+        version_id: String,
+        world: Option<String>,
+        allow_flagged: bool,
+        incompatible: IncompatibleMode,
+        offer_undo: bool,
     ) {
         if self.refuse_during_update_check(cluster_id) {
             return;
@@ -1729,7 +1761,7 @@ impl Actions {
                 let version_id = version_id.clone();
                 let world = world.clone();
                 async move {
-                    crate::install::install_package(
+                    crate::install::install_package_with(
                         &state,
                         provider,
                         &project_id,
@@ -1738,6 +1770,7 @@ impl Actions {
                         world,
                         allow_flagged,
                         incompatible,
+                        offer_undo,
                     )
                     .await
                 }
@@ -1755,6 +1788,7 @@ impl Actions {
                         version_id: version_id.clone(),
                         name,
                         allow_flagged,
+                        world: world.clone(),
                     });
                     app.installs.finish(cluster_id, provider, &project_id);
                     return;
@@ -1807,7 +1841,16 @@ impl Actions {
                 level: Level::Info,
                 icon: Some(IconType::Download01),
                 progress: None,
-                actions: Vec::new(),
+                actions: install
+                    .undo
+                    .iter()
+                    .map(|undo| NotificationAction {
+                        label: t("oneclient.actions.undo.label").to_string(),
+                        kind: crate::notifications::NotificationActionKind::UndoInstall(
+                            undo.clone(),
+                        ),
+                    })
+                    .collect(),
                 toast_only: true,
             },
             Err(err) => NotificationSpec {
@@ -1851,6 +1894,114 @@ impl Actions {
         }
     }
 
+    /// Takes back the links a Browse install added, with a retry when removal fails.
+    pub fn undo_install(&self, undo: crate::install::InstallUndo, toast_id: Option<u64>) {
+        let cluster_id = undo.cluster_id;
+        if self.refuse_during_update_check(cluster_id) {
+            return;
+        }
+        let Ok(state) = launcher::state() else { return };
+        // Before anything is marked busy so a repeat press has no effect at all
+        if !undo.claim() {
+            return;
+        }
+        let actions = self.clone();
+        if let Some(id) = toast_id {
+            self.dismiss_toast(id);
+        }
+
+        {
+            let mut channel = self.station.clone().write_channel(AppChannel::Installs);
+            for package in &undo.packages {
+                channel
+                    .installs
+                    .begin(cluster_id, package.provider, package.project_id.clone());
+            }
+        }
+
+        spawn_global(async move {
+            let finish = |actions: &Actions| {
+                let mut channel = actions
+                    .station
+                    .clone()
+                    .write_channel(AppChannel::Installs);
+                for package in &undo.packages {
+                    channel
+                        .installs
+                        .finish(cluster_id, package.provider, &package.project_id);
+                }
+            };
+
+            let report = off_ui({
+                let state = state.clone();
+                let undo = undo.clone();
+                async move { crate::install::undo_install(&state, &undo).await }
+            })
+            .await;
+
+            if !report.removed.is_empty() {
+                super::invalidate_cluster_content_queries().await;
+                state
+                    .services
+                    .events
+                    .signal(oneclient_events::Signal::ClustersChanged);
+            }
+
+            finish(&actions);
+            actions.notify_undo(&report, undo);
+        });
+    }
+
+    fn notify_undo(&self, report: &crate::install::UndoReport, undo: crate::install::InstallUndo) {
+        if let Some(err) = &report.error {
+            undo.release();
+            self.notify(t("oneclient.actions.undo.failed"))
+                .body(err.clone())
+                .error()
+                .toast_only()
+                .action(NotificationAction {
+                    label: t("oneclient.actions.undo.label").to_string(),
+                    kind: crate::notifications::NotificationActionKind::UndoInstall(undo),
+                })
+                .send();
+            return;
+        }
+
+        if !report.target_removed {
+            self.notify(t("oneclient.actions.undo.nothing.title"))
+                .body(tf("oneclient.actions.undo.nothing.body", &[&report.target]))
+                .toast_only()
+                .send();
+            return;
+        }
+
+        let dependencies = report.removed.len() - 1;
+        let mut body = match dependencies {
+            0 => tf("oneclient.actions.undo.done.body", &[&report.target]),
+            1 => tf(
+                "oneclient.actions.undo.done.with_dependencies.one",
+                &[&report.target, &1],
+            ),
+            count => tf(
+                "oneclient.actions.undo.done.with_dependencies.other",
+                &[&report.target, &count],
+            ),
+        };
+        if !report.kept.is_empty() {
+            body.push(' ');
+            body.push_str(&tf(
+                "oneclient.actions.undo.done.kept",
+                &[&report.kept.join(", ")],
+            ));
+        }
+
+        self.notify(t("oneclient.actions.undo.done.title"))
+            .body(body)
+            .icon(IconType::Trash01)
+            .toast_only()
+            .send();
+    }
+
     /// Shares the installs channel with [`Self::install_package`] so every row's
     /// button reads as busy while one is being acted on
     ///
@@ -1892,6 +2043,7 @@ impl Actions {
                 return;
             };
 
+            let _mutation = oneclient_content::packages::package_mutation_guard().await;
             let events = state.services.events.clone();
             match oneclient_core::delete_artifact(cluster_id, &hash, &state.services.content())
                 .await
@@ -1937,6 +2089,7 @@ impl Actions {
                 let state = state.clone();
                 let bundle_name = bundle_name.clone();
                 async move {
+                    let _mutation = oneclient_content::packages::package_mutation_guard().await;
                     oneclient_core::install_bundle(
                         cluster_id,
                         &bundle_name,
@@ -1977,6 +2130,7 @@ impl Actions {
             let result = match off_ui({
                 let state = state.clone();
                 async move {
+                    let _mutation = oneclient_content::packages::package_mutation_guard().await;
                     oneclient_core::apply_bundle_updates(
                         cluster_id,
                         state.bundles.as_ref(),
@@ -2233,6 +2387,7 @@ impl Actions {
             failures = match off_ui({
                 let state = state.clone();
                 async move {
+                    let _mutation = oneclient_content::packages::package_mutation_guard().await;
                     oneclient_core::apply_bundle_updates(
                         cluster_id,
                         state.bundles.as_ref(),
@@ -3244,14 +3399,14 @@ mod tests {
         }
     }
 
-    fn cluster(id: i64, name: &str, profile_name: Option<&str>) -> Cluster {
+    fn cluster(id: i64, name: &str, profile_name: Option<&str>, user_created: bool) -> Cluster {
         Cluster {
             id,
             name: name.into(),
             folder_name: name.into(),
             setting_profile_name: profile_name.map(Into::into),
             mc_version: "26.2".into(),
-            mc_loader: oneclient_common::domain::GameLoader::default(),
+            mc_loader: oneclient_common::domain::GameLoader::Fabric,
             mc_loader_version: None,
             stage: ClusterStage::default(),
             created_at: None,
@@ -3259,7 +3414,7 @@ mod tests {
             overall_played: Duration::ZERO,
             linked_modpack_hash: None,
             kind: oneclient_db::models::ClusterKind::OneClient,
-            user_created: false,
+            user_created,
             description: None,
             tags: Vec::new(),
             cover_path: None,
@@ -3271,7 +3426,7 @@ mod tests {
     #[test]
     fn a_runtime_nobody_pinned_is_free_to_go() {
         let profiles = vec![profile("26.2 Fabric", None)];
-        let clusters = vec![cluster(1, "26.2 Fabric", Some("26.2 Fabric"))];
+        let clusters = vec![cluster(1, "26.2 Fabric", Some("26.2 Fabric"), false)];
 
         assert!(clusters_pinned_to_java(&profiles, &clusters, JDK_25).is_empty());
     }
@@ -3279,11 +3434,11 @@ mod tests {
     #[test]
     fn a_pinned_runtime_is_reported_under_its_cluster_name() {
         let profiles = vec![profile("26.2 Fabric", Some(JDK_25))];
-        let clusters = vec![cluster(1, "26.2 Fabric", Some("26.2 Fabric"))];
+        let clusters = vec![cluster(1, "26.2 Fabric", Some("26.2 Fabric"), false)];
 
         assert_eq!(
             clusters_pinned_to_java(&profiles, &clusters, JDK_25),
-            vec!["26.2 Fabric".to_string()],
+            vec!["26.2 OneClient Fabric".to_string()],
         );
     }
 
@@ -3294,8 +3449,8 @@ mod tests {
             profile("25 pinned", Some(JDK_25)),
         ];
         let clusters = vec![
-            cluster(1, "Old pack", Some("21 pinned")),
-            cluster(2, "New pack", Some("25 pinned")),
+            cluster(1, "Old pack", Some("21 pinned"), true),
+            cluster(2, "New pack", Some("25 pinned"), true),
         ];
 
         assert_eq!(
@@ -3308,8 +3463,8 @@ mod tests {
     fn every_cluster_holding_the_runtime_is_named() {
         let profiles = vec![profile("a", Some(JDK_25)), profile("b", Some(JDK_25))];
         let clusters = vec![
-            cluster(1, "Alpha", Some("a")),
-            cluster(2, "Beta", Some("b")),
+            cluster(1, "Alpha", Some("a"), true),
+            cluster(2, "Beta", Some("b"), true),
         ];
 
         assert_eq!(

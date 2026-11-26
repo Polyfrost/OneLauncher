@@ -252,6 +252,16 @@ fn alternative_row(
                         package_type: "mod".to_string(),
                         package_id: encode_package_id(provider, &project_id),
                         add_to_cluster: false,
+                        in_instance: matches!(
+                            RouterContext::get().current::<Route>(),
+                            Route::Browser {
+                                in_instance: true,
+                                ..
+                            } | Route::BrowserPackage {
+                                in_instance: true,
+                                ..
+                            }
+                        ),
                     });
                 })
                 .child(Icon::new(IconType::ArrowRight).size(14.))

@@ -250,7 +250,7 @@ pub(crate) fn instance_choices(
             };
             Some(InstanceChoice {
                 cluster_id: cluster.id,
-                name: cluster.name.clone(),
+                name: crate::utils::instance_display_name(cluster),
                 detail: tf(
                     "oneclient.browser.modpack_prompt.instance.detail",
                     &[&cluster.mc_version, &loader, &pick.version_number],

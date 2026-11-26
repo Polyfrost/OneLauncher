@@ -9,6 +9,9 @@ pub mod browser;
 pub mod cluster;
 pub mod settings;
 
+use freya::prelude::ChildrenExt;
+
+use crate::components::{Button, Icon, IconType};
 use crate::hooks::{settled_or_loading, use_clusters, use_game_snapshot};
 use crate::i18n::t;
 use crate::state::{GameState as GameSnapshot, LauncherInit};
@@ -40,6 +43,15 @@ pub fn launch_button_state(
         return (state.0, false);
     }
     state
+}
+
+pub(crate) fn launch_button_label(button: Button, label: &'static str) -> Button {
+    let button = if label == t("oneclient.app.launch.launch") {
+        button.child(Icon::new(IconType::Play).size(16.))
+    } else {
+        button
+    };
+    button.text(label)
 }
 
 /// Whether another shared cluster is starting or running in the shared game dir

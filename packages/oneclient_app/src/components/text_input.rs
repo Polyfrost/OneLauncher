@@ -2,7 +2,7 @@ use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
 use crate::i18n::t;
-use crate::theme::{colors, rounded, text_size};
+use crate::theme::{colors, glass, rounded, text_size};
 use crate::ui::clamp_to_window;
 
 const GAP_VERT: f32 = 8.0;
@@ -231,6 +231,10 @@ impl Component for TextInput {
         card.style_mut().clone_from(&self.style);
 
         let mut input = self.input.clone();
+        // Single-line fields join the PolyGlass capsule; a text area keeps its soft rectangle
+        if !self.multiline {
+            input = input.corner_radius(glass::control_radius(8.));
+        }
         if self.multiline
             && let Some(on_submit) = self.on_submit.clone()
         {

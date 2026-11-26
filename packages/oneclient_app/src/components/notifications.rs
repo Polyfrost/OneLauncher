@@ -9,7 +9,7 @@ use crate::{
         Button, ButtonVariant, Icon, IconType, OverlayPopup, ScrollArea, popup_surface,
         progress_track, use_popup_intro,
     },
-    hooks::{use_dispatch, use_link_confirm, use_notifications_snapshot},
+    hooks::{LinkConfirmState, use_dispatch, use_link_confirm, use_notifications_snapshot},
     i18n::{t, tf},
     notifications::{InboxEntry, NotificationActionKind},
     theme::{colors, rounded, text_size},
@@ -322,7 +322,7 @@ fn phase_badge(phase: &str) -> impl IntoElement {
 fn row_body(
     entry: &InboxEntry,
     dispatch: crate::Actions,
-    confirm_link: State<Option<String>>,
+    confirm_link: LinkConfirmState,
 ) -> impl IntoElement {
     rect()
         .vertical()
@@ -376,7 +376,7 @@ fn row_body(
 fn row_extra(
     entry: &InboxEntry,
     dispatch: crate::Actions,
-    confirm_link: State<Option<String>>,
+    confirm_link: LinkConfirmState,
 ) -> impl IntoElement {
     if let Some((current, total)) = entry.progress.filter(|_| entry.is_loading) {
         let frac = (current as f32 / total.max(1) as f32).clamp(0.0, 1.0);
@@ -430,7 +430,7 @@ fn row_extra(
                     } else {
                         ButtonVariant::Secondary
                     })
-                    .on_press(move |_| run_action(&action_dispatch, confirm_link, &kind)),
+                    .on_press(move |_| run_action(&action_dispatch, confirm_link, &kind, false)),
             );
         }
 
@@ -473,21 +473,23 @@ fn transfer_footer(stats: TransferStats) -> Element {
 
 pub(crate) fn run_action(
     dispatch: &crate::Actions,
-    mut confirm_link: State<Option<String>>,
+    mut confirm_link: LinkConfirmState,
     kind: &NotificationActionKind,
+    from_toast: bool,
 ) {
     match kind {
         NotificationActionKind::OpenClusterUpdate(summaries) => {
-            dispatch.open_cluster_update(summaries.clone());
+            dispatch.open_cluster_update(summaries.clone(), from_toast);
         }
         NotificationActionKind::OpenUrl(url) if url == crate::constants::RELEASES_URL => {
             crate::platform::open_url(url);
         }
-        NotificationActionKind::OpenUrl(url) => confirm_link.set(Some(url.clone())),
+        NotificationActionKind::OpenUrl(url) => confirm_link.open(url.clone(), from_toast),
         NotificationActionKind::OpenChat(group_id) => {
             dispatch.close_notification_center();
             dispatch.show_chat(*group_id);
         }
+        NotificationActionKind::UndoInstall(undo) => dispatch.undo_install(undo.clone(), None),
     }
 }
 

@@ -240,8 +240,25 @@ jobs:
             echo "Sentry credentials not configured (need SENTRY_AUTH_TOKEN secret + SENTRY_ORG/SENTRY_PROJECT vars); skipping debug-symbol upload."
             exit 0
           fi
-          curl -sL https://sentry.io/get-cli/ | bash
-          export PATH="/usr/local/bin:$PATH"
+          # Pinned build with a checked digest rather than piping the install
+          # script from the network to bash while SENTRY_AUTH_TOKEN is in scope
+          case "${RUNNER_OS}" in
+            Linux)   asset='sentry-cli-Linux-x86_64'; sum='c958865f9d4000183509ea21b1f04925d5390de6d8d87386b9e69f2b305070c3' ;;
+            macOS)   asset='sentry-cli-Darwin-universal'; sum='2d1b118fa46960ba5e8e0cca9a6e197366905776a0ddc5a89c7d05a3908b77db' ;;
+            Windows) asset='sentry-cli-Windows-x86_64.exe'; sum='50009f23c49d6e9ff7624204c7035855303b49c5e326708ee783c1fdf783ac83'; exe='.exe' ;;
+            *) echo "no pinned sentry-cli build for ${RUNNER_OS}"; exit 0 ;;
+          esac
+          tool_dir="$(mktemp -d)"
+          tool_name="sentry-cli${exe:-}"
+          curl -fsSL -o "$tool_dir/$tool_name" \
+            "https://github.com/getsentry/sentry-cli/releases/download/3.8.2/${asset}"
+          if command -v sha256sum > /dev/null 2>&1; then
+            ( cd "$tool_dir" && printf '%s  %s\n' "$sum" "$tool_name" | sha256sum -c - )
+          else
+            ( cd "$tool_dir" && printf '%s  %s\n' "$sum" "$tool_name" | shasum -a 256 -c - )
+          fi
+          chmod +x "$tool_dir/$tool_name"
+          export PATH="$tool_dir:$PATH"
           SYMS="$(mktemp -d)"
           shopt -s nullglob
           for f in "$OUT_DIR"/oneclient_app "$OUT_DIR"/oneclient_app.exe \

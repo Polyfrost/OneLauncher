@@ -429,16 +429,17 @@ fn scroll_body(args: BodyArgs) -> Element {
         jump_to.set_if_modified(None);
     }
     let pending = *jump_to.peek();
+    // Filtered rows keep their original numbers, so the last one exceeds the row count.
+    // Waiting for unfiltered rows stops a stale filtered list from consuming the jump.
+    let unfiltered = numbers.as_ref().is_none_or(|n| n.last() == Some(&count));
     if on_jump.is_none()
         && count > 0
+        && unfiltered
         && let Some(target) = pending
     {
         jump_to.set(None);
-        let index = match &numbers {
-            Some(numbers) => numbers.binary_search(&target).ok(),
-            None => (target > 0 && target <= count).then(|| target - 1),
-        };
-        if let Some(index) = index {
+        if (1..=count).contains(&target) {
+            let index = target - 1;
             let y = BODY_PAD_TOP + index as f32 * LINE_H - (viewport_h - LINE_H) / 2.;
             scroll.scroll_to_y(corrected_scroll(content_h, viewport_h, -y) as i32);
             flash_line.set(Some(index));
@@ -577,29 +578,39 @@ fn scroll_body(args: BodyArgs) -> Element {
         .on_capture_global_pointer_up(on_global_release)
         .on_global_key_down(on_key_down)
         .child(log_body(
-            &lines[..],
-            numbers.as_deref().map(|n| &n[..]),
+            Rows {
+                lines: &lines[..],
+                numbers: numbers.as_deref().map(|n| &n[..]),
+                flash,
+            },
             content_h,
             corrected_y,
             viewport_h,
             body_w,
             num_col_w,
             selection,
-            flash,
         ))
         .into_element()
 }
 
+struct Rows<'a> {
+    lines: &'a [Arc<str>],
+    numbers: Option<&'a [usize]>,
+    flash: Option<(usize, f32)>,
+}
+
 fn log_body(
-    lines: &[Arc<str>],
-    numbers: Option<&[usize]>,
+    Rows {
+        lines,
+        numbers,
+        flash,
+    }: Rows,
     content_h: f32,
     corrected_y: f32,
     viewport_h: f32,
     body_w: f32,
     num_col_w: f32,
     selection: Option<((usize, usize), (usize, usize))>,
-    flash: Option<(usize, f32)>,
 ) -> impl IntoElement {
     let count = lines.len();
     let scrolled = -corrected_y;

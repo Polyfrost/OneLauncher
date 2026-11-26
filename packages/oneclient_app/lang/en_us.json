@@ -2507,6 +2507,7 @@
   "oneclient.wardrobe.badge.off": "%s%% OFF",
   "oneclient.wardrobe.badge.owned": "OWNED",
   "oneclient.wardrobe.badge.save": "SAVE %s%%",
+  "oneclient.wardrobe.bundled": "%s bundled",
   "oneclient.wardrobe.cape.equipped": "Equipped %s",
   "oneclient.wardrobe.cape.removed": "Removed %s",
   "oneclient.wardrobe.capes.minecraft.description": "Everyone sees this cape, including players without Poly+.",
@@ -2695,7 +2696,6 @@
   "oneclient.wardrobe.transactions_failed": "Couldn't load transactions: %s",
   "oneclient.wardrobe.type.cosmetic": "Cosmetic",
   "oneclient.wardrobe.type.emote": "Emote",
-  "oneclient.wardrobe.variants": "%s variants",
   "oneclient.wardrobe.wear.not_saved": "Wearing %s, but it couldn't be saved to your library. %s",
   "oneclient.wardrobe.wear.wearing": "Wearing %s",
   "oneclient.wardrobe.wear.wearing_done": "Wearing %s."

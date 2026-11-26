@@ -334,16 +334,10 @@ pub async fn set_gpu_preference(_java_path: &std::path::Path, _preference: u8) {
 #[cfg(not(windows))]
 pub async fn forget_dedicated_gpu(_java_path: &std::path::Path) {}
 
+// Registry class of display adapters, one numbered subkey per adapter
 #[cfg(windows)]
 const DISPLAY_CLASS_KEY: &str =
     r"HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}";
-
-#[cfg(windows)]
-const LEGACY_INTEL_NAMES: [&str; 3] = [
-    "Intel(R) HD Graphics",
-    "Intel(R) HD Graphics 2000",
-    "Intel(R) HD Graphics 3000",
-];
 
 #[cfg(windows)]
 const LEGACY_INTEL_DEVICES: [&str; 9] = [
@@ -352,6 +346,12 @@ const LEGACY_INTEL_DEVICES: [&str; 9] = [
 
 #[cfg(windows)]
 async fn has_legacy_intel_gpu() -> bool {
+    static FOUND: tokio::sync::OnceCell<bool> = tokio::sync::OnceCell::const_new();
+    *FOUND.get_or_init(find_legacy_intel_gpu).await
+}
+
+#[cfg(windows)]
+async fn find_legacy_intel_gpu() -> bool {
     let Ok(list) = reg_command()
         .args(["query", DISPLAY_CLASS_KEY])
         .output()
@@ -373,16 +373,14 @@ async fn has_legacy_intel_gpu() -> bool {
             continue;
         };
         let query = String::from_utf8_lossy(&out.stdout);
-        let name = registered_value(&query, "DriverDesc").unwrap_or_default();
         let device = registered_value(&query, "MatchingDeviceId")
             .unwrap_or_default()
             .to_ascii_lowercase();
-        if LEGACY_INTEL_NAMES.contains(&name)
-            || LEGACY_INTEL_DEVICES
-                .iter()
-                .any(|id| device.starts_with(&format!(r"pci\ven_8086&dev_{id}")))
+        if LEGACY_INTEL_DEVICES
+            .iter()
+            .any(|id| device.starts_with(&format!(r"pci\ven_8086&dev_{id}")))
         {
-            tracing::info!(name, device, "found a legacy Intel GPU");
+            tracing::info!(device, "found a legacy Intel GPU");
             return true;
         }
     }
@@ -402,7 +400,10 @@ pub async fn legacy_gl_executable(java_path: &std::path::Path) -> std::path::Pat
     };
     let patched = java_path.with_file_name(format!("{}-legacygl.exe", stem.to_string_lossy()));
 
-    if let (Ok(src), Ok(copy)) = (std::fs::metadata(java_path), std::fs::metadata(&patched))
+    if let (Ok(src), Ok(copy)) = (
+        tokio::fs::metadata(java_path).await,
+        tokio::fs::metadata(&patched).await,
+    )
         && src.len() == copy.len()
         && src.modified().ok() <= copy.modified().ok()
     {
@@ -444,6 +445,7 @@ pub async fn legacy_gl_executable(java_path: &std::path::Path) -> std::path::Pat
 
 #[cfg(any(windows, test))]
 fn strip_win10_manifest(mut exe: Vec<u8>) -> Option<Vec<u8>> {
+    // Windows 10 supportedOS GUID in the application manifest
     const WIN10: &[u8] = b"8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a";
 
     let mut found = false;

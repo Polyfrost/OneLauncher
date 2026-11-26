@@ -7,7 +7,6 @@ use oneclient_common::{ParsedMcVersion, VersionKey, format_mc_version, parse_mc_
 use oneclient_core::BundleArchive;
 use oneclient_core::clusters::Cluster;
 
-use oneclient_common::MEMORY_HEADROOM_GB;
 pub use oneclient_common::total_ram_mb;
 
 use crate::i18n::{format_placeholders, t, tf};
@@ -217,16 +216,15 @@ pub fn format_res((w, h): (u32, u32)) -> String {
     format!("{w}×{h}")
 }
 
-/// Prevents user from choosing his max amount of ram preset (e.g Someone has 16GB of RAM,
-/// so the max preset is 16GB - 2GB = 14GB)
 const MEMORY_PRESETS_GB: [u32; 11] = [2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64];
 
 pub fn memory_presets_mb() -> Vec<u32> {
     presets_for_total_gb((total_ram_mb() as f32 / 1024.).round() as u32)
 }
 
+/// Presets stop at half the machine's RAM
 fn presets_for_total_gb(total_gb: u32) -> Vec<u32> {
-    let usable_gb = total_gb.saturating_sub(MEMORY_HEADROOM_GB).min(total_gb / 2);
+    let usable_gb = total_gb / 2;
     if usable_gb == 0 {
         return vec![1024];
     }

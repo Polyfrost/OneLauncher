@@ -1047,8 +1047,11 @@ fn package_info(
             &[&item.author],
         )
     });
+    // Copies of one mod often differ only by version, which is why one got skipped
+    let version = item.copy_status.is_some().then(|| item.version.clone()).flatten();
     let byline = author
         .into_iter()
+        .chain(version)
         .chain(item.added_label())
         .collect::<Vec<_>>()
         .join(" \u{b7} ");

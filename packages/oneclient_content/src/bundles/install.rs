@@ -13,7 +13,7 @@ use crate::bundles::error::BundleError;
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
 use crate::bundles::types::{BundleArchive, BundleFile, BundleFileKind, BundleManifest};
-use crate::bundles::updates::prefetch_until;
+use crate::bundles::updates::{FIRST_BUNDLE_INSTALL_BUDGET, prefetch_until};
 use crate::ctx::ContentCtx;
 use crate::error::ContentError;
 use crate::error::ContentResult;
@@ -1456,16 +1456,12 @@ pub async fn install_cluster_bundles(
         "installing enabled bundle content"
     );
     let deadline = match deadline {
-        Some(_)
-            if bundle_dao::list_bundle_tracked(&ctx.db, cluster_id)
-                .await?
-                .is_empty() =>
-        {
+        Some(given) if !bundle_dao::has_bundle_tracked(&ctx.db, cluster_id).await? => {
             tracing::info!(
                 cluster_id,
-                "first bundle install, waiting for every file before launch"
+                "first bundle install, allowing extra time before launch"
             );
-            None
+            Some(given.max(Instant::now() + FIRST_BUNDLE_INSTALL_BUDGET))
         }
         deadline => deadline,
     };

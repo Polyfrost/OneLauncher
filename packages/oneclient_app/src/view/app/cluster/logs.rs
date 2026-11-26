@@ -78,7 +78,7 @@ pub enum Category {
 }
 
 impl Category {
-    fn accepts(self, kind: LogKind) -> bool {
+    pub fn accepts(self, kind: LogKind) -> bool {
         kind.is_crash_report() == matches!(self, Self::CrashReports)
     }
 
@@ -123,14 +123,9 @@ impl Component for ClusterLogs {
         let cluster_id = self.cluster_id;
 
         let logs_query = use_cluster_logs(cluster_id);
-        let upload = use_upload_log();
-        let action = use_log_action();
-        let search = use_state(String::new);
-        let level = use_state(|| LevelFilter::All);
         let mut confirm = use_state(|| None::<Confirm>);
         let mut category = use_state(|| Category::Logs);
         let mut selected = use_state(PathBuf::new);
-        let search_id = use_a11y();
         let open_game_output = use_hook(try_consume_root_context::<OpenGameOutput>);
         let dispatch = use_dispatch();
         let mut dumping = use_state(|| false);
@@ -183,28 +178,10 @@ impl Component for ClusterLogs {
             }
         });
 
-        let selected_path = selected.read().clone();
-        let search_query = {
-            let value = search.read().clone();
-            (!value.trim().is_empty()).then_some(value)
-        };
-
-        let content_query = use_log_content(
-            selected_path.clone(),
-            level.read().to_level(),
-            search_query,
-            None,
-        );
-
         let Some(cluster) = use_cluster(cluster_id) else {
             return cluster_not_found();
         };
         let folder = cluster.dir().ok().map(|d| d.join("logs"));
-
-        let files = visible_files(&logs_query, *category.read());
-        let has_log = !files.is_empty();
-        let selected_info = files.iter().find(|f| f.path == selected_path).cloned();
-        let upload_path = selected_info.as_ref().map(|info| info.path.clone());
 
         let dump_button = running.then(|| {
             Button::new()
@@ -251,30 +228,81 @@ impl Component for ClusterLogs {
                 .into_element()
         });
 
-        let lines = try_log_content(&content_query).unwrap_or_default();
-        let viewer_lines: Arc<Vec<Arc<str>>> = Arc::new(
-            lines
+        cluster_content()
+            .child(LogBrowser {
+                files: visible_files(&logs_query, *category.read()),
+                folder,
+                selected,
+                category,
+                confirm,
+                extra: dump_button,
+            })
+            .into_element()
+    }
+}
+
+#[derive(PartialEq)]
+pub struct LogBrowser {
+    pub files: Vec<LogFileInfo>,
+    pub folder: Option<PathBuf>,
+    pub selected: State<PathBuf>,
+    pub category: State<Category>,
+    pub confirm: State<Option<Confirm>>,
+    pub extra: Option<Element>,
+}
+
+impl Component for LogBrowser {
+    fn render(&self) -> impl IntoElement {
+        let upload = use_upload_log();
+        let action = use_log_action();
+        let search = use_state(String::new);
+        let level = use_state(|| LevelFilter::All);
+        let search_id = use_a11y();
+        let confirm = self.confirm;
+
+        let selected_path = self.selected.read().clone();
+        let search_query = {
+            let value = search.read().clone();
+            (!value.trim().is_empty()).then_some(value)
+        };
+        let content_query = use_log_content(
+            selected_path.clone(),
+            level.read().to_level(),
+            search_query,
+            None,
+        );
+
+        let has_log = !self.files.is_empty();
+        let selected_info = self
+            .files
+            .iter()
+            .find(|f| f.path == selected_path)
+            .cloned();
+        let upload_path = selected_info.as_ref().map(|info| info.path.clone());
+        let lines: Arc<Vec<Arc<str>>> = Arc::new(
+            try_log_content(&content_query)
+                .unwrap_or_default()
                 .iter()
                 .map(|line| Arc::<str>::from(line.text.as_str()))
                 .collect(),
         );
 
-        let body = rect()
+        rect()
             .vertical()
             .width(Size::fill())
             .height(Size::fill())
             .spacing(12.)
             .child(top_bar(
-                files.clone(),
-                selected_info.clone(),
-                folder,
-                selected,
+                self.files.clone(),
+                selected_info,
+                self.folder.clone(),
+                self.selected,
                 confirm,
-                category,
-                dump_button,
+                self.category,
+                self.extra.clone(),
             ))
             .child(rect().width(Size::fill()).height(Size::flex(1.0)).child(
-                LogViewer::new("", viewer_lines).header(viewer_header(
+                LogViewer::new("", lines).header(viewer_header(
                     search,
                     level,
                     confirm,
@@ -282,14 +310,10 @@ impl Component for ClusterLogs {
                     upload_path,
                     search_id,
                 )),
-            ));
-
-        cluster_content()
-            .child(body.into_element())
+            ))
             .maybe_child((*confirm.read()).map(move |kind| {
                 confirm_overlay(kind, confirm, action, upload, selected_path.clone())
             }))
-            .into_element()
     }
 }
 
@@ -394,13 +418,26 @@ pub fn viewer_header(
     upload_path: Option<PathBuf>,
     search_id: AccessibilityId,
 ) -> impl IntoElement {
+    viewer_header_inset(search, level, confirm, has_log, upload_path, search_id, 14.)
+}
+
+/// [`viewer_header`] with its own side padding, for a viewer already inset by its container
+pub fn viewer_header_inset(
+    search: State<String>,
+    level: State<LevelFilter>,
+    confirm: State<Option<Confirm>>,
+    has_log: bool,
+    upload_path: Option<PathBuf>,
+    search_id: AccessibilityId,
+    inset_x: f32,
+) -> impl IntoElement {
     rect()
         .vertical()
         .width(Size::fill())
         .child(
             rect()
                 .width(Size::fill())
-                .padding(Gaps::new_symmetric(10., 14.))
+                .padding(Gaps::new_symmetric(10., inset_x))
                 .child(viewer_controls(
                     search,
                     level,

@@ -29,7 +29,7 @@ impl App for OneClientApp {
     fn render(&self) -> impl IntoElement {
         let needs_location = self.needs_location;
 
-        // Radio state is `!Send` so every writer runs on the UI thread `spawn_in_window`
+        // Radio state is `!Send` so every writer runs on the UI thread `spawn_global`
         let station = use_provide_station(move || AppState {
             launcher: LauncherInit {
                 needs_location,
@@ -298,6 +298,7 @@ fn main() {
     }
 
     launch(launch_config);
+    oneclient_app::servers::stop_all_blocking();
 }
 
 fn main_window_config(app: OneClientApp, start_maximized: bool) -> WindowConfig {

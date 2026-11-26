@@ -27,7 +27,8 @@ pub use bad_mods::{
 };
 pub use dependencies::{
     DependencyResolution, ModInstallTarget, ResolvedDependency, artifact_mod_id,
-    find_mod_for_cluster, pick_version, resolve_required, resolves_dependencies,
+    find_mod_for_cluster, pick_version, resolve_required, resolve_required_for,
+    resolves_dependencies,
 };
 pub use error::{PackageError, PackageResult};
 pub use file_identity::{FileIdentity, curseforge_fingerprint};
@@ -43,7 +44,10 @@ pub use dependents::{
     DependentPackage, DisableImpact, DisableRoot, disable_impact, ensure_cluster_dependencies,
 };
 pub use oneclient_common::domain::{ContentType, GameLoader, HashAlgorithm, ProviderId};
-pub use provider::{PackageProvider, PackageProviderRegistry};
+pub use provider::{
+    PLUGIN_LOADERS, PackageProvider, PackageProviderRegistry, modrinth_client_only,
+    modrinth_plugin_versions,
+};
 pub use store::{LiveSync, LocalImportReport, PackageStore};
 pub use types::*;
 pub use updates::{

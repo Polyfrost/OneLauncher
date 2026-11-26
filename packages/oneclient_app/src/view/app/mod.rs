@@ -7,6 +7,7 @@ mod wardrobe;
 
 pub mod browser;
 pub mod cluster;
+pub mod servers;
 pub mod settings;
 
 use crate::hooks::{settled_or_loading, use_clusters, use_game_snapshot};
@@ -69,12 +70,12 @@ pub fn launch_syncing(launcher: &LauncherInit, uses_bundles: bool) -> bool {
 }
 
 pub(crate) use analytics::{analytics_body, analytics_placeholder};
-pub use clusters::{Clusters, ExportInstanceModal};
 pub(crate) use clusters::{
     BUNDLE_CARD_H, BUNDLE_COLUMNS, CellCard, ClusterPickerButton, ClusterPickerModal,
     CreateInstanceModal, DeleteInstanceModal, bundle_blurb, cell_card, file_keys,
     package_names,
 };
+pub use clusters::{Clusters, ExportInstanceModal};
 pub use debug::Debug;
 pub use home::Home;
 pub use stats::Stats;

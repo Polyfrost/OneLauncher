@@ -26,15 +26,24 @@ pub struct SearchFilters {
 pub enum SearchSide {
     Client,
     Server,
+    ServerCompatible,
+    BukkitPlugin,
 }
 
 impl SearchSide {
     pub fn modrinth_facets(self) -> Vec<String> {
-        let facet = match self {
-            Self::Client => "client_side:required",
-            Self::Server => "server_side:required",
+        let facets: &[&str] = match self {
+            Self::Client => &["client_side:required"],
+            Self::Server => &["server_side:required"],
+            Self::ServerCompatible => &["server_side:required", "server_side:optional"],
+            Self::BukkitPlugin => {
+                return super::provider::PLUGIN_LOADERS
+                    .iter()
+                    .map(|loader| format!("categories:{loader}"))
+                    .collect();
+            }
         };
-        vec![facet.to_string()]
+        facets.iter().map(|f| f.to_string()).collect()
     }
 }
 
@@ -175,6 +184,12 @@ impl ProjectDetail {
                 .iter()
                 .find(|(label, _)| label == "Website")
                 .map(|(_, url)| url.clone()),
+            ProviderId::Hangar => Some(format!(
+                "{}{}/{}",
+                ProviderId::Hangar.website(),
+                self.author,
+                self.slug
+            )),
             ProviderId::Local => None,
         }
     }
@@ -196,6 +211,9 @@ pub fn version_web_url(
         ProviderId::CurseForge => project_url
             .filter(|url| !url.is_empty())
             .map(|url| format!("{}/files/{version_id}", url.trim_end_matches('/'))),
+        ProviderId::Hangar => project_url
+            .filter(|url| !url.is_empty())
+            .map(|url| format!("{}/versions", url.trim_end_matches('/'))),
         ProviderId::Local => None,
     }
 }
@@ -285,6 +303,8 @@ pub struct VersionDependency {
     pub project_id: Option<String>,
     pub version_id: Option<String>,
     pub kind: DependencyKind,
+    #[serde(default)]
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -295,6 +315,8 @@ pub struct VersionFile {
     pub primary: bool,
     pub size: u64,
     pub fingerprint: Option<String>,
+    #[serde(default)]
+    pub sha256: Option<String>,
 }
 
 impl VersionDetail {
@@ -367,6 +389,14 @@ pub struct LinkedArtifactInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn server_compatible_side_accepts_required_or_optional() {
+        assert_eq!(
+            SearchSide::ServerCompatible.modrinth_facets(),
+            ["server_side:required", "server_side:optional"]
+        );
+    }
 
     #[test]
     fn modrinth_version_page_needs_only_ids() {

@@ -361,6 +361,7 @@ impl Component for ModpackInstancePrompt {
 
 #[derive(PartialEq)]
 pub(crate) struct ModpackVersionPrompt {
+    pub cluster_id: i64,
     pub provider: ProviderId,
     pub project_id: String,
     pub choices: Vec<MinecraftChoice>,
@@ -369,6 +370,7 @@ pub(crate) struct ModpackVersionPrompt {
 
 impl Component for ModpackVersionPrompt {
     fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
         let provider = self.provider;
         let project_id = self.project_id.clone();
         let mut open = self.open;
@@ -398,12 +400,16 @@ impl Component for ModpackVersionPrompt {
             let Some(version_id) = version_id.clone() else {
                 return;
             };
-            dispatch.install_modpack(ModpackSource::Provider {
-                provider,
-                project_id: project_id.clone(),
-                version_id,
-            });
             open.set(false);
+            super::install_modpack(
+                &dispatch,
+                cluster_id,
+                ModpackSource::Provider {
+                    provider,
+                    project_id: project_id.clone(),
+                    version_id,
+                },
+            );
         };
 
         dialog(

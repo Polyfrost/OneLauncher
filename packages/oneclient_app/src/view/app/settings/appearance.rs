@@ -133,7 +133,7 @@ fn create_theme(dispatch: &Actions) {
     let dispatch = dispatch.clone();
     // The window task below has no component context to find the router in
     let router = RouterContext::get();
-    spawn_in_window(async move {
+    spawn_global(async move {
         match copy_family("dark", t("oneclient.settings.appearance.theme.new_name")).await {
             Ok(id) => {
                 select_family(&dispatch, &id);
@@ -177,7 +177,7 @@ fn import_button(dispatch: &Actions) -> Element {
         .alt(text)
         .on_press(move |_| {
             let dispatch = dispatch.clone();
-            spawn_in_window(async move {
+            spawn_global(async move {
                 let Some(file) = rfd::AsyncFileDialog::new()
                     .set_title(t("oneclient.settings.appearance.theme.import_title"))
                     .add_filter("JSON", &["json"])
@@ -261,7 +261,7 @@ fn theme_delete_action(menu: ContextMenu, id: &str, dispatch: &Actions) -> Conte
         .danger_action(IconType::Trash01, t("oneclient.common.delete"), move |()| {
             let id = id.clone();
             let dispatch = dispatch.clone();
-            spawn_in_window(async move {
+            spawn_global(async move {
                 // Capture the ids that name this family before deletion, then repair only
                 // the current selection if it actually became invalid.
                 let affected = family_ids(&id);
@@ -306,7 +306,7 @@ fn theme_file_actions(menu: ContextMenu, id: &str, dispatch: &Actions) -> Contex
         move |()| {
             let id = id.clone();
             let dispatch = dispatch.clone();
-            spawn_in_window(async move {
+            spawn_global(async move {
                 if let Err(err) = duplicate_theme(&id).await {
                     notify_failure(
                         &dispatch,
@@ -323,7 +323,7 @@ fn theme_file_actions(menu: ContextMenu, id: &str, dispatch: &Actions) -> Contex
         move |()| {
             let id = id.clone();
             let dispatch = dispatch.clone();
-            spawn_in_window(async move {
+            spawn_global(async move {
                 let Some(file) = rfd::AsyncFileDialog::new()
                     .set_title(t("oneclient.settings.appearance.theme.export_title"))
                     .set_file_name(format!("{id}.json"))

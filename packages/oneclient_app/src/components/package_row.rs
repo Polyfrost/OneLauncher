@@ -659,7 +659,7 @@ pub(crate) fn on_secondary(
     }
 }
 
-fn list_card(
+pub(crate) fn list_card(
     item: &PackageEntry,
     package_type: &'static str,
     cluster_id: i64,

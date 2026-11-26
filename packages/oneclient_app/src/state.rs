@@ -36,6 +36,9 @@ pub enum AppChannel {
     ReleaseMigration,
     CloudSync,
     Share,
+    Servers,
+    ServerCount,
+    ServerConsole,
 }
 
 impl RadioChannel<AppState> for AppChannel {}
@@ -96,6 +99,7 @@ pub struct AppState {
     pub release_migration_checking: HashSet<i64>,
     pub cloud_sync: CloudSyncState,
     pub shares: HashMap<i64, ShareProgress>,
+    pub servers: crate::servers::ServerHub,
 }
 
 #[derive(Clone, Debug, PartialEq)]

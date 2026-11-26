@@ -74,7 +74,35 @@ pub async fn download_version_file(
         &file.file_name,
     )?;
 
-    let size = ensure_artifact_file(&hash, &file.url, &dest, child, ctx).await?;
+    let (hash, size) = if let Some(sha256) = file.sha256.as_deref().filter(|_| hash.is_empty()) {
+        let expected = polyio::Checksum::sha256(sha256);
+        let cached = !force
+            && dest.is_file()
+            && polyio::sha256_file(&dest)
+                .await
+                .is_ok_and(|disk| expected.matches(&disk));
+        if !cached {
+            oneclient_net::download_verified(
+                &ctx.net,
+                &ctx.events,
+                &file.url,
+                &dest,
+                Some(&expected),
+                0,
+                child
+                    .cloned()
+                    .map(oneclient_net::ResponseNotifyOptions::grouped),
+            )
+            .await?;
+        }
+        (
+            normalize_hash(&sha1_file(&dest).await?),
+            polyio::stat(&dest).await?.len(),
+        )
+    } else {
+        let size = ensure_artifact_file(&hash, &file.url, &dest, child, ctx).await?;
+        (hash, size)
+    };
     let stored_path = relative_cache_path(&dest)?;
 
     let row = artifact_dao::insert_artifact(
@@ -133,6 +161,7 @@ pub(crate) async fn store_release_dependencies(
     let dependencies: Vec<(String, String, String)> = version
         .dependencies
         .iter()
+        .filter(|dep| dep.project_id.is_some() || dep.version_id.is_some())
         .map(|dep| {
             (
                 dep.project_id.clone().unwrap_or_default(),

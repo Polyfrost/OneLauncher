@@ -81,6 +81,24 @@ pub fn use_log_content(
     ))
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ServerLogsQuery;
+
+impl QueryCapability for ServerLogsQuery {
+    type Ok = Vec<LogFileInfo>;
+    type Err = LauncherError;
+    type Keys = String;
+
+    async fn run(&self, id: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        let dir = oneclient_core::servers::server_dir(id)?;
+        Ok(off_ui_blocking(move || oneclient_core::list_dir_logs(&dir)).await)
+    }
+}
+
+pub fn use_server_logs(id: String) -> UseQuery<ServerLogsQuery> {
+    use_query(Query::new(id, ServerLogsQuery))
+}
+
 pub fn try_cluster_logs(query: &UseQuery<ClusterLogsQuery>) -> Option<Vec<LogFileInfo>> {
     super::state::settled_or_loading(query)
 }
@@ -91,6 +109,7 @@ pub fn try_log_content(query: &UseQuery<LogContentQuery>) -> Option<Vec<LogLine>
 
 pub async fn invalidate_logs_queries() {
     QueriesStorage::<ClusterLogsQuery>::invalidate_all().await;
+    QueriesStorage::<ServerLogsQuery>::invalidate_all().await;
     QueriesStorage::<LogContentQuery>::invalidate_all().await;
 }
 

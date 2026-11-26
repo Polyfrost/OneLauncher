@@ -86,8 +86,7 @@ pub use button::{
 };
 pub use charts::{BarChart, PieChart, ValueUnit, slice_color};
 pub use checkbox::checkbox_labeled;
-pub use cluster_menu::{ClusterContextMenu, ClusterMenuTarget};
-pub(crate) use cluster_menu::open_menu_at;
+pub use cluster_menu::{ClusterContextMenu, ClusterMenuTarget, open_menu_at};
 pub use cluster_update_popup::ClusterUpdatePopup;
 pub use code_block::CodeBlock;
 pub use color_picker::ColorPicker;
@@ -134,7 +133,7 @@ pub use overlay_popup::{
 pub use package_delete_dialog::use_shared_delete;
 pub(crate) use package_row::{
     CARD_GRID_H, CARD_H, GRID_GAP, GRID_MIN_W, badge, bundled_delete_action, disable_request,
-    grid_card, guard_disable, icon_box, kebab_button, meta_size, meta_text, on_secondary,
+    grid_card, guard_disable, icon_box, kebab_button, list_card, meta_size, meta_text, on_secondary,
     package_icon, pill, remote_icon, run_guarded, set_enabled_action, toggle_action,
 };
 pub use package_row::{
@@ -145,7 +144,7 @@ pub use package_update_popup::PackageUpdatePopup;
 pub use pagination::Pagination;
 pub use pill_switch::{SwitchSide, inset_border, pill_switch};
 pub use player_model::PlayerModel;
-pub use progress_track::progress_track;
+pub use progress_track::{meter, progress_track};
 pub use recents_row::RecentsRow;
 pub use release_migration_popup::ReleaseMigrationPopup;
 pub use screenshot_viewer::{ScreenshotViewer, screenshot_context_menu};

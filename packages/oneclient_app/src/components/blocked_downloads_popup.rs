@@ -99,6 +99,7 @@ impl Component for BlockedDownloadsDialog {
 
         use_folder_watch(downloads.clone(), false, touches_file, move || bump(tick));
 
+        let server_id = self.blocked.server_id.clone();
         let cluster_id = self.blocked.cluster_id;
         let chosen = extra
             .read()
@@ -125,6 +126,7 @@ impl Component for BlockedDownloadsDialog {
                 if !locations.is_empty() {
                     dispatch.scan_blocked_downloads(
                         *cluster_id,
+                        server_id.clone(),
                         bundle_name.clone(),
                         locations,
                         files.clone(),
@@ -400,7 +402,15 @@ fn dialog(
                         )
                         .into_element()
                 } else {
-                    footer(cluster_id, bundle_name, files, browse_start, browse, close)
+                    footer(
+                        cluster_id,
+                        blocked.server_id.clone(),
+                        bundle_name,
+                        files,
+                        browse_start,
+                        browse,
+                        close,
+                    )
                         .into_element()
                 }),
         )
@@ -408,6 +418,7 @@ fn dialog(
 
 fn footer(
     cluster_id: i64,
+    server_id: Option<String>,
     bundle_name: String,
     files: Vec<BlockedFile>,
     browse_start: Option<PathBuf>,
@@ -431,6 +442,7 @@ fn footer(
                 .primary()
                 .on_press(move |_| {
                     let dispatch = browse.clone();
+                    let server_id = server_id.clone();
                     let bundle_name = bundle_name.clone();
                     let files = files.clone();
                     let start = browse_start.clone();
@@ -446,7 +458,13 @@ fn footer(
                                 .iter()
                                 .map(|handle| handle.path().to_path_buf())
                                 .collect();
-                            dispatch.scan_blocked_downloads(cluster_id, bundle_name, picked, files);
+                            dispatch.scan_blocked_downloads(
+                                cluster_id,
+                                server_id,
+                                bundle_name,
+                                picked,
+                                files,
+                            );
                         }
                     });
                 })

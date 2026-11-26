@@ -15,7 +15,7 @@ pub use chat::{
     start_invite_join,
 };
 
-pub use debounce::use_debounced;
+pub use debounce::{SaveGuard, settle_saves, use_debounced, use_debounced_save};
 pub use overlay_claims::{
     OverlayClaims, use_overlay_claim, use_overlay_claim_when, use_overlay_claims,
     use_provide_overlay_claims,
@@ -104,6 +104,12 @@ pub use queries::{
 pub use queries::{GraphicsBackendQuery, use_graphics_backend, use_has_game_options};
 pub(crate) use queries::{
     UNCREATED_CLUSTER, bundle_plan, bundle_taken, pkg_key, shared_mod_keys, toggle_keys,
+};
+pub use queries::{
+    ServerFiles, ServerIcon, ServerRun, invalidate_server, invalidate_server_settings, use_server,
+    use_platform_available, use_plugin_versions, use_server_files, use_server_mod_updates,
+    use_server_logs, use_server_mods, use_server_run,
+    use_servers,
 };
 pub use queries::{
     add_world_datapacks, delete_world, delete_world_datapack, invalidate_world_contents,
@@ -229,6 +235,22 @@ pub fn use_social_tab() -> crate::state::SocialTab {
 
 pub fn use_social_popped_notice() -> bool {
     use_radio(AppChannel::Social).read().social_popped_notice
+}
+
+pub fn use_server_hub() -> crate::servers::ServerHub {
+    use_radio(AppChannel::Servers).read().servers.clone()
+}
+
+pub fn use_server_console(id: &str) -> std::sync::Arc<Vec<std::sync::Arc<str>>> {
+    use_radio(AppChannel::ServerConsole)
+        .read()
+        .servers
+        .get(id)
+        .lines
+}
+
+pub fn use_live_server_count() -> usize {
+    use_radio(AppChannel::ServerCount).read().servers.live_count()
 }
 
 pub fn use_game_snapshot() -> GameState {

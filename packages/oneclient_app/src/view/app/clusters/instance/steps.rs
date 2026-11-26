@@ -423,7 +423,7 @@ impl Component for FolderStep {
                         let group = group.clone();
                         let mut folder = folder;
                         let picked = selected == FolderChoice::Custom(group.clone());
-                        spawn_in_window(async move {
+                        spawn_global(async move {
                             let linked = match oneclient_common::paths::shared_group_dir(Some(&group)) {
                                 Ok(dir) => polyio::symlink_metadata(dir)
                                     .await

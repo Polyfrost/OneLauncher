@@ -210,6 +210,7 @@ fn extras_section(
                 ProviderId::Modrinth => mr_meta.get(&entry.metadata_id),
                 ProviderId::CurseForge => cf_meta.get(&entry.metadata_id),
                 ProviderId::Local => local_meta.get(&entry.metadata_id),
+                ProviderId::Hangar => None,
             };
             let name = meta
                 .map(|m| m.name.clone())
@@ -260,6 +261,7 @@ fn collect_ids(extras: &[OptionalMod]) -> (Vec<String>, Vec<String>, Vec<String>
             ProviderId::Modrinth => mr.push(entry.metadata_id.clone()),
             ProviderId::CurseForge => cf.push(entry.metadata_id.clone()),
             ProviderId::Local => local.push(entry.metadata_id.clone()),
+            ProviderId::Hangar => {}
         }
     }
     (mr, cf, local)

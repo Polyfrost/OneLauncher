@@ -345,3 +345,83 @@ async fn download_to_path_without_expected_hash_still_writes() {
 
     assert_eq!(sha1_file(&dest).await.unwrap(), ASSET_SHA1);
 }
+
+#[tokio::test]
+async fn sha256_only_file_is_verified_then_stored_under_its_sha1() {
+    use oneclient_common::domain::{ContentType, ProviderId};
+    use oneclient_content::packages::store::download_version_file;
+    use oneclient_content::packages::{VersionDetail, VersionFile};
+    use sha2::Digest;
+
+    let state = dev::ephemeral_state().await.unwrap();
+    let ctx = state.services.content();
+    let body = b"hangar plugin jar".to_vec();
+    let url = serve(body.clone(), body.len()).await;
+    let sha256: String = sha2::Sha256::digest(&body)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+
+    let version = |sha256: &str| VersionDetail {
+        version_id: "33541".into(),
+        project_id: "31".into(),
+        name: "1.0".into(),
+        version_number: "1.0".into(),
+        changelog: None,
+        game_versions: Vec::new(),
+        loaders: Vec::new(),
+        published: chrono::Utc::now(),
+        downloads: 0,
+        files: vec![VersionFile {
+            sha1: String::new(),
+            url: url.clone(),
+            file_name: "plugin.jar".into(),
+            primary: true,
+            size: body.len() as u64,
+            fingerprint: None,
+            sha256: Some(sha256.to_string()),
+        }],
+        dependencies: Vec::new(),
+    };
+    let download = |version: VersionDetail| {
+        let ctx = ctx.clone();
+        async move {
+            let file = version.files[0].clone();
+            download_version_file(
+                ProviderId::Hangar,
+                "31",
+                &version,
+                ContentType::Mod,
+                &file,
+                false,
+                None,
+                &ctx,
+            )
+            .await
+        }
+    };
+
+    let wrong = "0".repeat(64);
+    let err = download(version(&wrong)).await.unwrap_err();
+    assert!(
+        matches!(
+            err,
+            oneclient_content::ContentError::Request(
+                oneclient_net::RequestError::HashMismatch { .. }
+            )
+        ),
+        "{err}"
+    );
+    let dest = oneclient_content::packages::store::cache_file_path(
+        ContentType::Mod,
+        ProviderId::Hangar,
+        "31",
+        "33541",
+        "plugin.jar",
+    )
+    .unwrap();
+    assert!(!dest.exists(), "a file failing its hash must not stay in the store");
+
+    let row = download(version(&sha256)).await.unwrap();
+    assert_eq!(row.hash, sha1_bytes(&body));
+}

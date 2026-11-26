@@ -10,7 +10,7 @@ use freya::{
 use oneclient_events::Level;
 
 use crate::{
-    components::{Button, ButtonSize, Icon, IconType, TooltipPlacement, progress_track},
+    components::{Button, ButtonSize, Icon, IconType, TooltipPlacement, meter},
     hooks::{
         use_chat_allowed, use_dispatch, use_link_confirm, use_notifications_snapshot,
         use_social_open,
@@ -451,12 +451,6 @@ fn action_row(
 }
 
 fn progress_card(entry: &InboxEntry) -> Rect {
-    let frac = entry
-        .progress
-        .map(|(cur, total)| cur as f32 / total.max(1) as f32)
-        .unwrap_or(0.0)
-        .clamp(0.0, 1.0);
-
     toast_shell(entry).child(
         rect()
             .horizontal()
@@ -484,15 +478,12 @@ fn progress_card(entry: &InboxEntry) -> Rect {
                             .font_size(text_size(12.))
                             .color(colors::fg_secondary()),
                     )
-                    .child(
-                        progress_track(
-                            frac * 100.0,
-                            6.,
-                            colors::brand(),
-                            colors::brand().with_a(128),
-                        )
-                        .margin(Gaps::new(8., 0., 0., 0.)),
-                    ),
+                    .child(rect().margin(Gaps::new(8., 0., 0., 0.)).child(meter(
+                        entry.progress.unwrap_or((0, 1)),
+                        6.,
+                        colors::brand(),
+                        colors::brand().with_a(128),
+                    ))),
             ),
     )
 }

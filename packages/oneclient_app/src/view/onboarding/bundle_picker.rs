@@ -327,7 +327,7 @@ fn bundle_editor(
             let meta = match provider {
                 ProviderId::Modrinth => catalog.modrinth.get(&package_id),
                 ProviderId::CurseForge => catalog.curseforge.get(&package_id),
-                ProviderId::Local => None,
+                ProviderId::Local | ProviderId::Hangar => None,
             };
             let keys = mod_keys(catalog.clusters, &scope, selected_set, &package_id);
             let enabled = keys.iter().any(|k| selected_set.contains(k));
@@ -484,7 +484,7 @@ impl Component for OnboardingBundlePicker {
             match file.kind.metadata_provider() {
                 ProviderId::Modrinth => mr_ids.push(file.kind.package_id()),
                 ProviderId::CurseForge => cf_ids.push(file.kind.package_id()),
-                ProviderId::Local => {}
+                ProviderId::Local | ProviderId::Hangar => {}
             }
         }
         let mr_meta = package_meta_batch(&use_package_meta_batch(ProviderId::Modrinth, mr_ids));

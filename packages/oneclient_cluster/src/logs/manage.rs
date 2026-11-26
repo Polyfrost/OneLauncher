@@ -9,10 +9,10 @@ use oneclient_common::paths;
 use super::parse::parse_level;
 use super::{LogFileInfo, LogKind, LogLevel, LogLine, LogsError, ReadOptions};
 
-/// Restricted to cluster dirs the launcher's own logs belong to the live
+/// Restricted to cluster and server dirs the launcher's own logs belong to the live
 /// console and must not be readable deletable or uploadable from a cluster page
 pub(super) fn ensure_allowed(path: &Path) -> ClusterResult<PathBuf> {
-    polyio::ensure_under(path, [paths::clusters_dir()?])?
+    polyio::ensure_under(path, [paths::clusters_dir()?, paths::servers_dir()?])?
         .ok_or_else(|| LogsError::InvalidName(path.display().to_string()).into())
 }
 
@@ -60,9 +60,23 @@ fn collect_dir(
 
 #[tracing::instrument(level = "debug", skip(cluster), fields(cluster_id = cluster.id))]
 pub fn list_cluster_logs(cluster: &Cluster) -> ClusterResult<Vec<LogFileInfo>> {
-    let mut out = Vec::new();
+    let mut out = list_dir_logs(&cluster.dir()?);
 
-    let dir = cluster.dir()?;
+    push_file(
+        cluster_output_log(cluster)?,
+        "Game output".to_string(),
+        LogKind::Game {
+            cluster_id: cluster.id,
+        },
+        &mut out,
+    );
+
+    out.sort_by_key(|info| std::cmp::Reverse(info.modified));
+    Ok(out)
+}
+
+pub fn list_dir_logs(dir: &Path) -> Vec<LogFileInfo> {
+    let mut out = Vec::new();
 
     collect_dir(
         &dir.join("logs"),
@@ -78,17 +92,8 @@ pub fn list_cluster_logs(cluster: &Cluster) -> ClusterResult<Vec<LogFileInfo>> {
         &mut out,
     );
 
-    push_file(
-        cluster_output_log(cluster)?,
-        "Game output".to_string(),
-        LogKind::Game {
-            cluster_id: cluster.id,
-        },
-        &mut out,
-    );
-
     out.sort_by_key(|info| std::cmp::Reverse(info.modified));
-    Ok(out)
+    out
 }
 
 pub fn cluster_output_log(cluster: &Cluster) -> ClusterResult<PathBuf> {

@@ -21,7 +21,7 @@ use crate::ui::border_all_color;
 use crate::{Actions, utils};
 
 #[derive(Clone, Copy, PartialEq)]
-pub(super) enum SortMode {
+pub(crate) enum SortMode {
     NameAsc,
     NameDesc,
     SizeAsc,
@@ -31,7 +31,7 @@ pub(super) enum SortMode {
 }
 
 impl SortMode {
-    const ALL: [SortMode; 6] = [
+    pub(crate) const ALL: [SortMode; 6] = [
         SortMode::NameAsc,
         SortMode::NameDesc,
         SortMode::SizeAsc,
@@ -55,7 +55,7 @@ impl SortMode {
         SortMode::ALL.into_iter().find(|s| s.key() == key)
     }
 
-    fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             SortMode::NameAsc => t("oneclient.cluster.package_manager.sort.name_asc"),
             SortMode::NameDesc => t("oneclient.cluster.package_manager.sort.name_desc"),
@@ -66,7 +66,7 @@ impl SortMode {
         }
     }
 
-    pub(super) fn sort(self, rows: &mut [PackageEntry]) {
+    pub(crate) fn sort(self, rows: &mut [PackageEntry]) {
         let title = |p: &PackageEntry| p.name.to_lowercase();
 
         match self {
@@ -86,7 +86,7 @@ impl SortMode {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-pub(super) enum EnabledFilter {
+pub(crate) enum EnabledFilter {
     All,
     Enabled,
     Disabled,
@@ -95,7 +95,7 @@ pub(super) enum EnabledFilter {
 impl EnabledFilter {
     pub(super) const STORAGE_KEY: &'static str = "show";
 
-    const ALL: [EnabledFilter; 3] = [
+    pub(crate) const ALL: [EnabledFilter; 3] = [
         EnabledFilter::All,
         EnabledFilter::Enabled,
         EnabledFilter::Disabled,
@@ -113,7 +113,7 @@ impl EnabledFilter {
         EnabledFilter::ALL.into_iter().find(|f| f.key() == key)
     }
 
-    fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             EnabledFilter::All => t("oneclient.cluster.package_manager.filter.show.all"),
             EnabledFilter::Enabled => t("oneclient.cluster.package_manager.filter.show.enabled"),
@@ -121,7 +121,7 @@ impl EnabledFilter {
         }
     }
 
-    pub(super) fn keep(self, p: &PackageEntry) -> bool {
+    pub(crate) fn keep(self, p: &PackageEntry) -> bool {
         match self {
             EnabledFilter::All => true,
             EnabledFilter::Enabled => p.enabled,

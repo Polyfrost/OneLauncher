@@ -48,6 +48,13 @@ pub(crate) fn use_version_filter(
     if content_type == ContentType::Modpack {
         return (None, None, IncompatibleMode::Refuse);
     }
+    if let Some(server) = use_server_browse() {
+        return (
+            Some(server.mc_version),
+            server.loader.is_modded().then_some(server.loader),
+            IncompatibleMode::Refuse,
+        );
+    }
     if let Some(o) = search_override {
         return (
             o.version,
@@ -68,6 +75,7 @@ pub(crate) fn use_version_filter(
 use std::collections::HashMap;
 
 use freya::prelude::*;
+use oneclient_core::servers::ServerMod;
 use oneclient_common::domain::GameLoader;
 use oneclient_content::packages::{ContentType, ProviderId};
 use oneclient_core::{BundleFileKind, BundleWithUpdateStatus, LinkedArtifactInfo};
@@ -75,13 +83,132 @@ use oneclient_db::models::OverrideType;
 
 use crate::components::{Button, Icon, IconType, set_enabled_action};
 use crate::hooks::{
-    ClusterAction, SearchOverride, loaded_image, mutation_is_running, use_browser_compat,
-    use_browser_state_store, use_cached_image, use_cluster, use_cluster_mutation,
+    ClusterAction, SearchOverride, loaded_image, mutation_is_running, settled_or_loading,
+    use_browser_compat,
+    use_browser_state_store, use_cached_image, use_cluster, use_cluster_mutation, use_server,
+    use_server_mods,
 };
 use crate::i18n::t;
 use crate::install::IncompatibleMode;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::{ImageFallbackExt, border_all_color};
+
+pub(crate) const NO_CLUSTER: i64 = -1;
+/// Browsing modpacks to create a server from, picking one hands it back to the server creator
+pub(crate) const SERVER_PACKS: i64 = -2;
+
+pub(crate) fn install_modpack(
+    dispatch: &crate::Actions,
+    cluster_id: i64,
+    source: oneclient_core::clusters::ModpackSource,
+) {
+    if cluster_id == SERVER_PACKS {
+        crate::servers::pick_pack(source);
+    } else {
+        dispatch.install_modpack(source);
+    }
+}
+fn server_package_type(server_id: &str) -> String {
+    let plugins = use_server(server_id).is_some_and(|s| s.plugins());
+    if plugins { "plugin" } else { "mod" }.to_string()
+}
+
+#[derive(Clone, PartialEq)]
+pub(crate) struct ServerBrowse {
+    pub id: String,
+    pub name: String,
+    pub mc_version: String,
+    pub loader: GameLoader,
+    pub plugins: bool,
+    pub folder: &'static str,
+    pub installed: HashMap<(ProviderId, String), Installed>,
+}
+
+pub(crate) fn use_server_browse() -> Option<ServerBrowse> {
+    use_hook(try_consume_context::<State<Option<ServerBrowse>>>).and_then(|s| s.read().clone())
+}
+
+fn server_installed(mods: &[ServerMod]) -> HashMap<(ProviderId, String), Installed> {
+    let mut map: HashMap<(ProviderId, String), Installed> = HashMap::new();
+    for m in mods {
+        let Some(source) = &m.source else {
+            continue;
+        };
+        map.entry((source.provider, source.project_id.clone()))
+            .or_insert(Installed {
+                source: InstallSource::Manual,
+                bundled_version: None,
+                versions: Vec::new(),
+            })
+            .versions
+            .push(InstalledVersion {
+                version_id: source.version_id.clone(),
+                display_version: Some(source.version_number.clone()),
+                hash: Some(m.file_name.clone()),
+                enabled: m.enabled,
+                source: InstallSource::Manual,
+                bundle: None,
+            });
+    }
+    map
+}
+
+fn use_provide_server_browse(server_id: &str) {
+    use_hook({
+        let id = server_id.to_string();
+        move || crate::servers::identify_mods(id)
+    });
+    let server = use_server(server_id);
+    let mods = settled_or_loading(&use_server_mods(server_id.to_string()));
+    let next = server.map(|s| ServerBrowse {
+        plugins: s.plugins(),
+        folder: s.content_folder(),
+        id: s.id,
+        name: s.name,
+        mc_version: s.mc_version,
+        loader: s.loader,
+        installed: mods.map(|m| server_installed(&m)).unwrap_or_default(),
+    });
+    let mut target = use_state(|| next.clone());
+    if *target.peek() != next {
+        target.set(next);
+    }
+    use_provide_context(|| target);
+}
+
+#[derive(PartialEq)]
+pub struct ServerBrowser {
+    pub server_id: String,
+}
+
+impl Component for ServerBrowser {
+    fn render(&self) -> impl IntoElement {
+        use_provide_server_browse(&self.server_id);
+        Browser {
+            cluster_id: NO_CLUSTER,
+            package_type: server_package_type(&self.server_id),
+            pick_cluster: false,
+        }
+    }
+}
+
+#[derive(PartialEq)]
+pub struct ServerBrowserPackage {
+    pub server_id: String,
+    pub package_id: String,
+}
+
+impl Component for ServerBrowserPackage {
+    fn render(&self) -> impl IntoElement {
+        use_provide_server_browse(&self.server_id);
+        BrowserPackage {
+            cluster_id: NO_CLUSTER,
+            package_type: server_package_type(&self.server_id),
+            package_id: self.package_id.clone(),
+            add_to_cluster: false,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum InstallSource {

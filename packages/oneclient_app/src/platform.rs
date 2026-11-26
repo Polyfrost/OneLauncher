@@ -85,6 +85,8 @@ pub fn close() {
 pub fn quit() {
     let platform = Platform::get();
     spawn_global(async move {
+        crate::hooks::settle_saves(std::time::Duration::from_secs(3)).await;
+        crate::servers::stop_all().await;
         if let Ok(state) = crate::launcher::state() {
             oneclient_core::shutdown(&state).await;
         }

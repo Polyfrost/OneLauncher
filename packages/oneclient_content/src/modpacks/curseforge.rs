@@ -81,24 +81,9 @@ pub(super) fn header(bytes: &[u8]) -> ContentResult<(String, GameLoader)> {
     Ok((manifest.minecraft.version, loader))
 }
 
-pub(super) async fn resolve(bytes: &[u8], ctx: &ContentCtx) -> ContentResult<ModpackManifest> {
+pub(super) fn unresolved(bytes: &[u8]) -> ContentResult<ModpackManifest> {
     let manifest = parse_manifest(bytes)?;
-
     let (loader, loader_version) = parse_loader(&manifest.minecraft.mod_loaders)?;
-
-    let requests: Vec<FileRequest> = manifest
-        .files
-        .iter()
-        .map(|file| FileRequest {
-            file_id: file.file_id,
-            project_id: Some(file.project_id),
-            required: file.required,
-            label: None,
-            destination: None,
-        })
-        .collect();
-    let contents = resolve_requests(&requests, ctx).await?;
-
     let overrides = manifest
         .overrides
         .map(|folder| folder.trim_matches('/').to_string())
@@ -112,9 +97,28 @@ pub(super) async fn resolve(bytes: &[u8], ctx: &ContentCtx) -> ContentResult<Mod
         mc_version: manifest.minecraft.version,
         loader,
         loader_version,
-        contents,
+        contents: ModpackContents::default(),
         override_prefixes: vec![format!("{overrides}/")],
     })
+}
+
+pub(super) async fn resolve(bytes: &[u8], ctx: &ContentCtx) -> ContentResult<ModpackManifest> {
+    let mut pack = unresolved(bytes)?;
+    let manifest = parse_manifest(bytes)?;
+
+    let requests: Vec<FileRequest> = manifest
+        .files
+        .iter()
+        .map(|file| FileRequest {
+            file_id: file.file_id,
+            project_id: Some(file.project_id),
+            required: file.required,
+            label: None,
+            destination: None,
+        })
+        .collect();
+    pack.contents = resolve_requests(&requests, ctx).await?;
+    Ok(pack)
 }
 
 pub(super) struct FileRequest {
@@ -387,6 +391,7 @@ mod tests {
                 primary: true,
                 size: 5,
                 fingerprint: None,
+                sha256: None,
             }],
             dependencies: Vec::new(),
         }

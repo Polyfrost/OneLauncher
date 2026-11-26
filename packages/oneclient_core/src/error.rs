@@ -80,6 +80,8 @@ pub enum LauncherError {
     #[error("minecraft: {0}")]
     Minecraft(String),
 
+    #[error("server: {0}")]
+    Server(String),
     #[error("OneClient exports are not checked for improvements")]
     ShareNotScreened,
 }

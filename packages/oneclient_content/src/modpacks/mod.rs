@@ -42,6 +42,7 @@ pub use settings::{
 
 pub use install::{
     ModpackInstallReport, find_blocked_downloads, import_blocked_files, install_modpack,
+    store_blocked_files,
     store_modpack_archive,
 };
 pub use duplicates::recheck_duplicates;
@@ -278,6 +279,15 @@ pub async fn read_modpack_header(path: &Path) -> ContentResult<(String, GameLoad
         .await?
         .ok_or(PackageError::UnsupportedModpackFormat)?;
     curseforge::header(&bytes)
+}
+
+pub async fn read_curseforge_header(path: &Path) -> ContentResult<Option<ModpackManifest>> {
+    match zip_entry(path, curseforge::MANIFEST_ENTRY).await? {
+        Some(bytes) if curseforge::is_modpack_manifest(&bytes) => {
+            curseforge::unresolved(&bytes).map(Some)
+        }
+        _ => Ok(None),
+    }
 }
 
 async fn zip_entry(path: &Path, entry: &str) -> ContentResult<Option<Vec<u8>>> {

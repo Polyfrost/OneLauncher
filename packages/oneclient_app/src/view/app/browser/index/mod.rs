@@ -38,6 +38,7 @@ use crate::view::app::clusters::ClusterPickerButton;
 use super::{
     EnableButton, EnableVariant, InstallSource, Installed, ModpackVersionPrompt, PackageBanner,
     Thumbnail, WorldInstallPrompt, installed_map, minecraft_choices, preferred_version,
+    use_server_browse,
 };
 use crate::utils::abbreviate_number;
 
@@ -142,6 +143,9 @@ pub(crate) fn browsable_type(package_type: &str, cluster: &Cluster) -> String {
 }
 
 fn type_title(package_type: &str) -> &'static str {
+    if package_type == "plugin" {
+        return t("oneclient.browser.index.type.plugins");
+    }
     browse_types()
         .iter()
         .find(|(slug, _)| *slug == package_type)
@@ -223,7 +227,9 @@ impl Component for BrowserBody {
         let cluster_id = self.cluster_id;
         let package_type = self.package_type.clone();
         let content_type = content_type_for_slug(&package_type);
-        let cluster_modpacks = content_type == ContentType::Modpack && !self.pick_cluster;
+        let server_packs = cluster_id == super::SERVER_PACKS;
+        let cluster_modpacks =
+            content_type == ContentType::Modpack && !self.pick_cluster && !server_packs;
 
         let store = use_browser_state_store();
         let state_key = state_key(cluster_id, &package_type, self.pick_cluster);
@@ -265,44 +271,73 @@ impl Component for BrowserBody {
         );
 
         let cluster = use_cluster(cluster_id);
+        let server = use_server_browse();
         let compat = *compatible_only.read();
         let cats = selected_categories.read().clone();
 
         let targets_cluster = content_type != ContentType::Modpack;
-        let overridden = search_override.read().clone().filter(|_| targets_cluster);
+        let overridden = search_override
+            .read()
+            .clone()
+            .filter(|_| targets_cluster && server.is_none());
         let compat_cluster = cluster
             .as_ref()
             .filter(|_| compat && (targets_cluster || cluster_modpacks) && overridden.is_none());
-        let game_versions = match &overridden {
-            Some(o) => o.version.clone().into_iter().collect(),
-            None => compat_cluster
+        let game_versions = match (&overridden, &server) {
+            (_, Some(server)) => vec![server.mc_version.clone()],
+            (Some(o), None) => o.version.clone().into_iter().collect(),
+            (None, None) => compat_cluster
                 .map(|c| vec![c.mc_version.clone()])
                 .unwrap_or_default(),
         };
         let loader_fixed = overridden.is_some()
+            || server.is_some()
             || compat_cluster.is_some_and(|c| {
                 content_type == ContentType::Mod || (cluster_modpacks && c.mc_loader.is_modded())
             });
         let loader_filterable =
             matches!(content_type, ContentType::Mod | ContentType::Modpack) && !loader_fixed;
         let picked_loader = (*loader.read()).filter(|_| loader_filterable);
-        let loaders = match (&overridden, compat_cluster) {
-            (Some(o), _) => o
-                .loader
-                .filter(|_| content_type == ContentType::Mod)
-                .into_iter()
-                .collect(),
-            (None, Some(c)) if loader_fixed => vec![c.mc_loader],
-            _ => picked_loader.into_iter().collect(),
+        let loaders = if let Some(server) = &server {
+            if server.plugins {
+                Vec::new()
+            } else {
+                vec![server.loader]
+            }
+        } else {
+            match (&overridden, compat_cluster) {
+                (Some(o), _) => o
+                    .loader
+                    .filter(|_| content_type == ContentType::Mod)
+                    .into_iter()
+                    .collect(),
+                (None, Some(c)) if loader_fixed => vec![c.mc_loader],
+                _ => picked_loader.into_iter().collect(),
+            }
         };
-        let curseforge_blocked = loader_fixed && loaders.contains(&GameLoader::Ornithe);
-        if curseforge_blocked && *provider.peek() == ProviderId::CurseForge {
+        let plugin_server = server.as_ref().is_some_and(|s| s.plugins);
+        let curseforge_blocked =
+            !plugin_server && loader_fixed && loaders.contains(&GameLoader::Ornithe);
+        let providers = if plugin_server {
+            ProviderId::PLUGIN_PROVIDERS
+        } else {
+            ProviderId::REMOTE_PROVIDERS
+        };
+        if (curseforge_blocked && *provider.peek() == ProviderId::CurseForge)
+            || !providers.contains(&*provider.peek())
+        {
             provider.set(ProviderId::Modrinth);
         }
         let provider_id = *provider.read();
         let side_filterable =
             content_type == ContentType::Mod && provider_id == ProviderId::Modrinth;
-        let picked_side = (*side.read()).filter(|_| side_filterable);
+        let picked_side = if plugin_server {
+            Some(SearchSide::BukkitPlugin)
+        } else if server.is_some() {
+            Some(SearchSide::ServerCompatible).filter(|_| side_filterable)
+        } else {
+            (*side.read()).filter(|_| side_filterable)
+        };
 
         let mut page_state = page;
         // Normalised like the search key so a query differing only by a space does not reset the page
@@ -339,7 +374,9 @@ impl Component for BrowserBody {
             &bundles_with_status_items(&use_bundles_with_status(cluster_id)),
             &bundle_overrides_map(&use_bundle_overrides(cluster_id)),
         );
-        let installed = if matches!(content_type, ContentType::DataPack | ContentType::Modpack) {
+        let installed = if let Some(server) = &server {
+            server.installed.clone()
+        } else if matches!(content_type, ContentType::DataPack | ContentType::Modpack) {
             Default::default()
         } else {
             installed
@@ -456,13 +493,18 @@ impl Component for BrowserBody {
                             t("oneclient.browser.index.target.installing")
                         };
                         (verb, c.name.clone())
+                    })
+                    .or_else(|| {
+                        server.as_ref().map(|s| {
+                            (t("oneclient.browser.index.target.installing"), s.name.clone())
+                        })
                     }),
                 self.pick_cluster.then(|| ClusterPicker {
                     cluster_id,
                     package_type: package_type.clone(),
                     disabled: !targets_cluster,
                 }),
-                targets_cluster.then(|| OverrideButton {
+                (targets_cluster && server.is_none()).then(|| OverrideButton {
                     content_type,
                     search_override,
                     cluster: cluster
@@ -470,15 +512,16 @@ impl Component for BrowserBody {
                         .map(|c| (c.mc_loader, c.mc_version.clone())),
                 }),
                 provider,
+                providers,
                 curseforge_blocked,
                 query,
                 controls_width,
             ))
-            .child(TypePicker {
+            .maybe_child((server.is_none() && !server_packs).then(|| TypePicker {
                 cluster_id,
                 package_type: package_type.clone(),
                 pick_cluster: self.pick_cluster,
-            })
+            }))
             .child(
                 rect()
                     .horizontal()
@@ -511,7 +554,7 @@ impl Component for BrowserBody {
                                 pending,
                                 sort,
                                 loader_filterable.then_some(loader),
-                                side_filterable.then_some(side),
+                                (side_filterable && server.is_none()).then_some(side),
                                 view_mode,
                             ))
                             .child(
@@ -548,6 +591,7 @@ fn header(
     picker: Option<ClusterPicker>,
     override_button: Option<OverrideButton>,
     provider: State<ProviderId>,
+    providers: &'static [ProviderId],
     curseforge_blocked: bool,
     query: State<String>,
     mut header_width: State<f32>,
@@ -605,7 +649,7 @@ fn header(
         .child(
             SegmentedControl::new(provider)
                 .no_tint()
-                .segments(ProviderId::REMOTE_PROVIDERS.iter().map(move |provider| {
+                .segments(providers.iter().map(move |provider| {
                     let mut segment = Segment::new(*provider).icon(IconType::from(*provider));
                     if curseforge_blocked && *provider == ProviderId::CurseForge {
                         segment = segment

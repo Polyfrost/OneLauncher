@@ -1131,6 +1131,7 @@ fn provider_label(provider: ProviderId) -> &'static str {
     match provider {
         ProviderId::Modrinth => "Modrinth",
         ProviderId::CurseForge => "CurseForge",
+        ProviderId::Hangar => "Hangar",
         ProviderId::Local => t("oneclient.components.release_migration.provider.local"),
     }
 }

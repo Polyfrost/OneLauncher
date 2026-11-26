@@ -129,7 +129,7 @@ impl Component for DisableDependentsOverlay {
 /// Applied off the event handler: the write is a database round trip, and the
 /// modal has already closed on the user's answer.
 fn apply(pending: PendingDisable, alone: bool, dispatch: Actions) {
-    spawn_in_window(async move {
+    spawn_global(async move {
         let result = if alone {
             disable::apply_alone(&pending).await
         } else {

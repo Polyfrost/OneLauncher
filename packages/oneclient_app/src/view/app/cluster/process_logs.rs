@@ -82,7 +82,7 @@ impl Component for ProcessLogs {
     }
 }
 
-struct LiveLogFilter {
+pub(crate) struct LiveLogFilter {
     search: String,
     level: LevelFilter,
     processed: usize,
@@ -92,7 +92,7 @@ struct LiveLogFilter {
 }
 
 impl LiveLogFilter {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             search: String::new(),
             level: LevelFilter::All,
@@ -103,7 +103,7 @@ impl LiveLogFilter {
         }
     }
 
-    fn update(
+    pub(crate) fn update(
         &mut self,
         lines: &Arc<Vec<Arc<str>>>,
         search: &str,

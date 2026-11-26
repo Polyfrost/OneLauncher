@@ -13,29 +13,14 @@ use crate::packages::dependencies::base_game_version;
 use crate::packages::file_identity::FileIdentity;
 use crate::packages::types::{
     DependencyKind, GalleryImage, InstalledPackage, PackageBody, Page, ProjectDetail,
-    ProjectMember, ProjectSummary, ReleaseType, SearchFilters, VersionDependency, VersionDetail,
+    ProjectMember, ProjectSummary, ReleaseType, SearchFilters, VersionDependency,
+    VersionDetail,
     VersionFile, VersionLookup, VersionSummary,
 };
 use oneclient_common::constants::{CURSEFORGE_API_URL, CURSEFORGE_GAME_ID};
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 
 pub struct CurseForgeProvider;
-
-#[derive(Deserialize)]
-struct CfCategory {
-    id: u32,
-    name: String,
-}
-
-async fn fetch_categories(class_id: u32, ctx: &ContentCtx) -> ContentResult<Vec<CfCategory>> {
-    let mut url = Url::parse(&api_url("/categories"))?;
-    url.query_pairs_mut()
-        .append_pair("gameId", &CURSEFORGE_GAME_ID.to_string())
-        .append_pair("classId", &class_id.to_string());
-    let response: CfData<Vec<CfCategory>> =
-        fetch_json(&ctx.net, Method::GET, url.as_str(), None).await?;
-    Ok(response.data)
-}
 
 #[inline(always)]
 fn api_url(path: &str) -> String {
@@ -60,16 +45,18 @@ impl PackageProvider for CurseForgeProvider {
             .content_type
             .map(cf_class_id)
             .unwrap_or(CfClass::Mod as u32);
-
         let category_ids: Vec<u32> = match filters.categories.as_deref() {
-            Some(names) if !names.is_empty() && names.len() <= 10 => {
-                fetch_categories(class_id, ctx)
-                    .await?
-                    .into_iter()
-                    .filter(|c| names.contains(&c.name))
-                    .map(|c| c.id)
-                    .collect()
-            }
+            Some(names) if !names.is_empty() => match class_categories(class_id, ctx).await {
+                Ok(known) => names
+                    .iter()
+                    .filter_map(|name| known.iter().find(|(_, n)| n == name).map(|(id, _)| *id))
+                    .take(10)
+                    .collect(),
+                Err(err) => {
+                    tracing::warn!(%err, "could not load curseforge categories, searching without them");
+                    Vec::new()
+                }
+            },
             _ => Vec::new(),
         };
 
@@ -77,6 +64,12 @@ impl PackageProvider for CurseForgeProvider {
             let mut params = url.query_pairs_mut();
             params.append_pair("gameId", &CURSEFORGE_GAME_ID.to_string());
             params.append_pair("classId", &class_id.to_string());
+            if !category_ids.is_empty() {
+                params.append_pair(
+                    "categoryIds",
+                    &serde_json::to_string(&category_ids).unwrap_or_default(),
+                );
+            }
             params.append_pair(
                 "pageSize",
                 &filters
@@ -218,10 +211,10 @@ impl PackageProvider for CurseForgeProvider {
         content_type: ContentType,
         ctx: &ContentCtx,
     ) -> ContentResult<Vec<String>> {
-        Ok(fetch_categories(cf_class_id(content_type), ctx)
+        Ok(class_categories(cf_class_id(content_type), ctx)
             .await?
             .into_iter()
-            .map(|c| c.name)
+            .map(|(_, name)| name)
             .collect())
     }
 
@@ -612,6 +605,7 @@ impl From<CfDependency> for VersionDependency {
                 1 | 6 => DependencyKind::Embedded,
                 _ => DependencyKind::Optional,
             },
+            name: None,
         }
     }
 }
@@ -813,6 +807,7 @@ impl From<CfFile> for VersionDetail {
                 primary: true,
                 size: f.file_length,
                 fingerprint: Some(f.file_fingerprint.to_string()),
+                sha256: None,
             }],
             dependencies: f.dependencies.into_iter().map(Into::into).collect(),
         }
@@ -829,6 +824,29 @@ fn is_same_file(
         Some(file_sha1) => file_sha1 == sha1,
         None => file_fingerprint == fingerprint,
     }
+}
+
+static CATEGORIES: std::sync::LazyLock<std::sync::Mutex<HashMap<u32, Vec<(u32, String)>>>> =
+    std::sync::LazyLock::new(Default::default);
+
+async fn class_categories(class_id: u32, ctx: &ContentCtx) -> ContentResult<Vec<(u32, String)>> {
+    #[derive(Deserialize)]
+    struct CfCategory {
+        id: u32,
+        name: String,
+    }
+    if let Some(known) = CATEGORIES.lock().unwrap().get(&class_id) {
+        return Ok(known.clone());
+    }
+    let mut url = Url::parse(&api_url("/categories"))?;
+    url.query_pairs_mut()
+        .append_pair("gameId", &CURSEFORGE_GAME_ID.to_string())
+        .append_pair("classId", &class_id.to_string());
+    let response: CfData<Vec<CfCategory>> =
+        fetch_json(&ctx.net, Method::GET, url.as_str(), None).await?;
+    let known: Vec<(u32, String)> = response.data.into_iter().map(|c| (c.id, c.name)).collect();
+    CATEGORIES.lock().unwrap().insert(class_id, known.clone());
+    Ok(known)
 }
 
 fn cf_class_id(t: ContentType) -> u32 {
@@ -986,6 +1004,7 @@ mod tests {
                 project_id: Some("10".into()),
                 version_id: None,
                 kind: DependencyKind::Required,
+                name: None,
             }
         );
         assert_eq!(version.dependencies[1].kind, DependencyKind::Optional);

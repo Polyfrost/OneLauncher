@@ -33,6 +33,10 @@ pub enum NotificationActionKind {
     /// Routed through the link confirm popup rather than opened straight away
     OpenUrl(String),
     OpenChat(Option<i32>),
+    DisableServerMod {
+        server_id: String,
+        file_name: String,
+    },
 }
 
 /// Carries core updates whole not a display projection the modal's Update button
@@ -149,6 +153,7 @@ pub struct ExistingPackView {
 #[derive(Clone, Debug, PartialEq)]
 pub struct BlockedDownloads {
     pub cluster_id: ClusterId,
+    pub server_id: Option<String>,
     pub cluster_name: String,
     pub bundle_name: String,
     pub files: Vec<BlockedFile>,
@@ -576,7 +581,9 @@ impl NotificationState {
             return;
         }
         match &self.blocked_downloads {
-            Some(open) if open.cluster_id != blocked.cluster_id => {
+            Some(open)
+                if (open.cluster_id, &open.server_id) != (blocked.cluster_id, &blocked.server_id) =>
+            {
                 self.blocked_queue.push_back(blocked);
             }
             _ => self.blocked_downloads = Some(blocked),
@@ -623,11 +630,15 @@ impl NotificationState {
         closed
     }
 
-    pub fn resolve_blocked_downloads(&mut self, cluster_id: ClusterId, sha1s: &[String]) {
-        if let Some(blocked) = self
-            .blocked_downloads
-            .as_mut()
-            .filter(|blocked| blocked.cluster_id == cluster_id)
+    pub fn resolve_blocked_downloads(
+        &mut self,
+        cluster_id: ClusterId,
+        server_id: Option<&str>,
+        sha1s: &[String],
+    ) {
+        if let Some(blocked) = self.blocked_downloads.as_mut().filter(|blocked| {
+            blocked.cluster_id == cluster_id && blocked.server_id.as_deref() == server_id
+        })
         {
             blocked.added.extend(sha1s.iter().cloned());
         }
@@ -971,7 +982,7 @@ impl NotificationState {
                 body,
                 level,
                 icon,
-                progress: progress.map(|(current, total)| (current, total.max(1))),
+                progress,
                 is_loading,
                 read: false,
                 created_at: Instant::now(),
@@ -1043,7 +1054,7 @@ impl NotificationState {
     ) {
         let done = total > 0 && current >= total;
         let body = progress_body(&label, current, total);
-        let progress = Some((current, total.max(1)));
+        let progress = Some((current, total));
 
         let entry_id = if let Some(&entry_id) = self.progress_entries.get(&id) {
             entry_id
@@ -1494,6 +1505,7 @@ mod package_update_tests {
         for (cluster_id, sha1) in [(1, "aa"), (2, "bb")] {
             state.open_blocked_downloads(BlockedDownloads {
                 cluster_id,
+                server_id: None,
                 cluster_name: "Pack".into(),
                 bundle_name: oneclient_content::modpacks::MODPACK_BUNDLE_NAME.into(),
                 files: vec![blocked_file(sha1)],
@@ -1512,6 +1524,7 @@ mod package_update_tests {
         let mut state = NotificationState::default();
         state.open_blocked_downloads(BlockedDownloads {
             cluster_id: 7,
+            server_id: None,
             cluster_name: "Pack".into(),
             bundle_name: oneclient_content::modpacks::MODPACK_BUNDLE_NAME.into(),
             files: vec![blocked_file("aa"), blocked_file("bb")],
@@ -1519,8 +1532,9 @@ mod package_update_tests {
             open_when_done: true,
         });
 
-        state.resolve_blocked_downloads(8, &["aa".to_string()]);
-        state.resolve_blocked_downloads(7, &["aa".to_string()]);
+        state.resolve_blocked_downloads(8, None, &["aa".to_string()]);
+        state.resolve_blocked_downloads(7, Some("srv"), &["bb".to_string()]);
+        state.resolve_blocked_downloads(7, None, &["aa".to_string()]);
 
         let blocked = state.take_blocked_downloads().unwrap();
         assert_eq!(blocked.files.len(), 2);

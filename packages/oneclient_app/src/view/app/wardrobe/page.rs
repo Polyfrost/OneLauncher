@@ -803,7 +803,7 @@ pub(super) fn perform_then(
     if let Some(pending) = keys.pending() {
         status.set(Some(pending));
     }
-    spawn_in_window(async move {
+    spawn_global(async move {
         let reader = action.mutate_async(keys).await;
         let outcome = match &*reader.state() {
             MutationStateData::Settled { res, .. } => Some(res.clone()),
@@ -847,7 +847,7 @@ pub(super) fn add_to_cart(
     let discount_percent = item.discount_percent();
     let cover_asset_id = variant.cover_asset_id.or(item.cover_asset_id);
     let variant_id = variant.id;
-    spawn_in_window(async move {
+    spawn_global(async move {
         let message = match api::store_product_id(variant_id).await {
             Ok(Some(product_id)) => {
                 if cart

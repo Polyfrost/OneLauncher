@@ -185,7 +185,7 @@ async fn download_attempt(
             .is_some_and(|value| value.as_bytes().eq_ignore_ascii_case(b"bytes"))
     {
         return download_ranged(
-            client, events, url, dest, expected, length, response, notify,
+            client, events, dest, expected, length, response, notify,
         )
         .await;
     }
@@ -278,7 +278,6 @@ async fn download_attempt(
 async fn download_ranged(
     client: &RequestClient,
     events: &EventBus,
-    url: &str,
     dest: &Path,
     expected: &Checksum,
     length: u64,
@@ -286,6 +285,8 @@ async fn download_ranged(
     notify: Option<&ResponseNotifyOptions>,
 ) -> Result<(), RequestError> {
     let started = Instant::now();
+    let resolved = probe.url().to_string();
+    let url = resolved.as_str();
     let tmp = polyio::temp_sibling(dest);
     let mut scratch = Scratch {
         path: Some(&tmp),

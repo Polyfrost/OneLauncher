@@ -1,10 +1,14 @@
 mod curseforge;
+mod hangar;
 pub mod http;
 mod modrinth;
 mod registry;
 
 pub use curseforge::CurseForgeProvider;
-pub use modrinth::ModrinthProvider;
+pub use hangar::HangarProvider;
+pub use modrinth::{
+    ModrinthProvider, PLUGIN_LOADERS, modrinth_client_only, modrinth_plugin_versions,
+};
 pub use registry::PackageProviderRegistry;
 
 use super::types::{

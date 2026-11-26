@@ -15,11 +15,17 @@ mod rail;
 mod shell;
 mod steps;
 
-pub(crate) use cards::{BUNDLE_CARD_H, BUNDLE_COLUMNS, CellCard, cell_card};
-pub(super) use cards::{WideCard, wide_card};
+pub(crate) use cards::{
+    BUNDLE_CARD_H, BUNDLE_COLUMNS, CellCard, asset_mark, cell_card, loader_mark, version_row,
+};
+pub(crate) use cards::{WideCard, wide_card};
 pub(crate) use steps::{bundle_blurb, file_keys};
 pub use create::CreateInstanceModal;
+pub(crate) use details::field;
 pub use edit::{EditInstanceModal, InstanceFacts};
+pub(crate) use model::{LoaderChoice, ModpackOrigin, VersionRow};
+pub(crate) use rail::{Rail, facts_card, rail};
+pub(crate) use shell::{Shell, shell};
 
 pub fn tidy_file_name(raw: &str) -> String {
     let stem = raw
@@ -50,7 +56,7 @@ pub fn package_names(
         let meta = match file.kind.metadata_provider() {
             ProviderId::Modrinth => modrinth.get(&package_id),
             ProviderId::CurseForge => curseforge.get(&package_id),
-            ProviderId::Local => None,
+            ProviderId::Local | ProviderId::Hangar => None,
         };
 
         let name = meta

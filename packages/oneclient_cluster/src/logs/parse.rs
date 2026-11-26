@@ -7,7 +7,7 @@ use super::LogLevel;
 
 static SECRET: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r#"(--accessToken|--session(?:Id)?)([\s,=]+)[^\s,\[\]'"]+|(\(Session ID is )[^)\s]+|(token:)[^:\s]+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*"#,
+        r#"(--accessToken|--session(?:Id)?)['"]?([\s,=]+)['"]?[^\s,\[\]'"]+|(\(Session ID is )[^)\s]+|(token:)[^:\s]+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*"#,
     )
     .expect("secret pattern")
 });
@@ -94,5 +94,34 @@ mod tests {
             censor_names(redacted, &names),
             "--accessToken [censored] [censored] [censored]123 [censored]"
         );
+    }
+}
+
+#[cfg(test)]
+mod quoted_tests {
+    use super::SECRET;
+
+    fn redact(line: &str) -> String {
+        SECRET
+            .replace_all(line, "${1}${2}${3}${4}[censored]")
+            .into_owned()
+    }
+
+    #[test]
+    fn a_quoted_access_token_is_censored() {
+        // The launch header quotes every argument on Windows, and an access token
+        // is not always jwt shaped, so the quotes cannot be what hides it
+        for line in [
+            "'--accessToken' 'abc123OPAQUE' --uuid '1234'",
+            "\"--accessToken\" \"abc123OPAQUE\"",
+            "--accessToken abc123OPAQUE",
+        ] {
+            assert!(!redact(line).contains("abc123OPAQUE"), "{line}");
+        }
+    }
+
+    #[test]
+    fn a_quoted_session_token_is_censored() {
+        assert!(!redact("'--session' 'abc123OPAQUE'").contains("abc123OPAQUE"));
     }
 }

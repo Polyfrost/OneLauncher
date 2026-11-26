@@ -96,7 +96,7 @@ pub fn read_string(subkey: &str, name: Option<&str>) -> Option<String> {
         .as_chunks::<2>()
         .0
         .iter()
-        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+        .map(|pair| u16::from_le_bytes(*pair))
         .collect();
 
     Some(

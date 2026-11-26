@@ -568,8 +568,6 @@ pub async fn fetch_verified(
 
 #[cfg(test)]
 mod tests {
-    type RangeLabel = (&'static str, fn(usize, usize, usize) -> String);
-
     use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
 
@@ -579,6 +577,8 @@ mod tests {
     use tokio::io::{AsyncBufReadExt, BufReader};
 
     use super::*;
+
+    type RangeLabel = (&'static str, fn(usize, usize, usize) -> String);
 
     async fn serve(
         body: Arc<Vec<u8>>,

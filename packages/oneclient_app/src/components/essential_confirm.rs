@@ -13,7 +13,7 @@ use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const BODY_MAX_H: f32 = 400.;
-const HOLD_SECONDS: u8 = 10;
+const HOLD_SECONDS: u8 = 5;
 
 #[derive(PartialEq)]
 pub struct EssentialConfirmOverlay;

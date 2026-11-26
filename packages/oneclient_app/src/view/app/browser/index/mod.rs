@@ -38,6 +38,7 @@ use super::{
 use crate::utils::abbreviate_number;
 
 mod cards;
+mod instance;
 mod override_modal;
 mod sidebar;
 mod skeletons;
@@ -377,6 +378,55 @@ impl Component for BrowserBody {
             live_pages
         };
 
+        let target = cluster
+            .as_ref()
+            .filter(|_| targets_cluster || cluster_modpacks)
+            .map(|c| {
+                let verb = if cluster_modpacks {
+                    t("oneclient.browser.index.target.adding")
+                } else {
+                    t("oneclient.browser.index.target.installing")
+                };
+                (verb, c.name.clone())
+            });
+        let override_button = |height: f32| {
+            targets_cluster.then(|| OverrideButton {
+                height,
+                content_type,
+                search_override,
+                cluster: cluster
+                    .as_ref()
+                    .map(|c| (c.mc_loader, c.mc_version.clone())),
+            })
+        };
+
+        // Inside the instance pop-up: the pop-up's rail, toolbar and rows, always as a list
+        if self.in_instance {
+            return instance::InstanceBrowse {
+                cluster_id,
+                package_type,
+                target,
+                override_button: override_button(instance::CONTROL_H),
+                provider,
+                curseforge_blocked,
+                query,
+                categories: all_categories,
+                selected_categories,
+                sort,
+                loader: loader_filterable.then_some(loader),
+                side: side_filterable.then_some(side),
+                packages,
+                installed,
+                add_to_cluster: cluster_modpacks,
+                search_override: overridden,
+                pending,
+                total,
+                page,
+                pages,
+            }
+            .render();
+        }
+
         let mode = *view_mode.read();
 
         let mut grid_width = use_state(|| 0f32);
@@ -395,16 +445,10 @@ impl Component for BrowserBody {
             SCROLL_END_INSET
         };
 
-        let fade_surface = if self.in_instance {
-            colors::page_elevated()
-        } else {
-            colors::page()
-        };
+        let fade_surface = colors::page();
         let sa = ScrollArea::new()
             .bottom_fade(fade_surface)
-            .maybe(!self.in_instance, |el| {
-                el.primary_list(crate::components::PrimaryList::Browse)
-            })
+            .primary_list(crate::components::PrimaryList::Browse)
             .reset_key((current_page as u64) * 2 + u64::from(mode == ViewLayout::Grid))
             .padding(Gaps::new(0., SCROLLBAR_GUTTER, end_inset, 0.));
 
@@ -463,47 +507,27 @@ impl Component for BrowserBody {
             .width(Size::fill())
             .height(Size::fill())
             .overflow(Overflow::Clip)
-            .padding(if self.in_instance {
-                Gaps::new(16., 18., 14., 18.)
-            } else {
-                Gaps::new(0., 40., 0., 40.)
-            })
-            .spacing(if self.in_instance { 12. } else { 18. })
+            .padding(Gaps::new(0., 40., 0., 40.))
+            .spacing(18.)
             .child(header(
                 &package_type,
-                cluster
-                    .as_ref()
-                    .filter(|_| targets_cluster || cluster_modpacks)
-                    .map(|c| {
-                        let verb = if cluster_modpacks {
-                            t("oneclient.browser.index.target.adding")
-                        } else {
-                            t("oneclient.browser.index.target.installing")
-                        };
-                        (verb, c.name.clone())
-                    }),
+                target,
                 self.pick_cluster.then(|| ClusterPicker {
                     cluster_id,
                     package_type: package_type.clone(),
                     disabled: !targets_cluster,
                 }),
-                targets_cluster.then(|| OverrideButton {
-                    content_type,
-                    search_override,
-                    cluster: cluster
-                        .as_ref()
-                        .map(|c| (c.mc_loader, c.mc_version.clone())),
-                }),
+                override_button(28.),
                 provider,
                 curseforge_blocked,
                 query,
                 controls_width,
             ))
-            .maybe_child((!self.in_instance).then(|| TypePicker {
+            .child(TypePicker {
                 cluster_id,
                 package_type: package_type.clone(),
                 pick_cluster: self.pick_cluster,
-            }))
+            })
             .child(
                 rect()
                     .horizontal()
@@ -572,6 +596,7 @@ impl Component for BrowserBody {
                             })),
                     ),
             )
+            .into_element()
     }
 
     fn render_key(&self) -> DiffKey {
@@ -752,14 +777,17 @@ fn results_toolbar(
         .maybe_child(side.map(|side| SidePicker {
             side,
             width: filter_w,
+            height: PICKER_H,
         }))
         .maybe_child(loader.map(|loader| LoaderPicker {
             loader,
             width: filter_w,
+            height: PICKER_H,
         }))
         .child(SortPicker {
             sort,
             width: sort_w,
+            height: PICKER_H,
         })
         .child(
             SegmentedControl::new(view_mode)
@@ -784,6 +812,7 @@ fn results_toolbar(
 struct SortPicker {
     sort: State<SearchSort>,
     width: f32,
+    height: f32,
 }
 
 impl Component for SortPicker {
@@ -799,7 +828,7 @@ impl Component for SortPicker {
 
         Dropdown::new(selected, labels)
             .width(Size::px(self.width))
-            .height(Size::px(PICKER_H))
+            .height(Size::px(self.height))
             .leading(
                 Icon::new(IconType::Sliders04)
                     .size(13.)
@@ -817,6 +846,7 @@ impl Component for SortPicker {
 struct LoaderPicker {
     loader: State<Option<GameLoader>>,
     width: f32,
+    height: f32,
 }
 
 impl Component for LoaderPicker {
@@ -832,7 +862,7 @@ impl Component for LoaderPicker {
 
         Dropdown::new(selected, labels)
             .width(Size::px(self.width))
-            .height(Size::px(PICKER_H))
+            .height(Size::px(self.height))
             .on_select(move |idx: usize| {
                 if let Some((picked, _)) = loaders().get(idx) {
                     loader.set(*picked);
@@ -845,6 +875,7 @@ impl Component for LoaderPicker {
 struct SidePicker {
     side: State<Option<SearchSide>>,
     width: f32,
+    height: f32,
 }
 
 impl Component for SidePicker {
@@ -860,7 +891,7 @@ impl Component for SidePicker {
 
         Dropdown::new(selected, labels)
             .width(Size::px(self.width))
-            .height(Size::px(PICKER_H))
+            .height(Size::px(self.height))
             .tooltip(t("oneclient.browser.index.side.tooltip"))
             .on_select(move |idx: usize| {
                 if let Some((picked, _)) = sides().get(idx) {

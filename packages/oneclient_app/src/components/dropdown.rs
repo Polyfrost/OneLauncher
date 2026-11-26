@@ -8,6 +8,8 @@ use crate::ui::{border_all_color, window_logical_size};
 const OPTION_HEIGHT: f32 = 28.;
 const OPTION_SPACING: f32 = 2.;
 const MAX_VISIBLE_OPTIONS: usize = 8;
+/// Triggers shorter than this (inline pickers in dense rows) get a tighter inset and smaller text
+const COMPACT_BELOW: f32 = 30.;
 
 #[derive(Clone, PartialEq)]
 pub struct Dropdown {
@@ -17,7 +19,6 @@ pub struct Dropdown {
     leading: Option<Element>,
     width: Size,
     height: Size,
-    outlined: bool,
     solid_menu: bool,
     checked: Option<Vec<bool>>,
     tooltip: Option<Box<str>>,
@@ -33,7 +34,6 @@ impl Dropdown {
             leading: None,
             width: Size::px(72.),
             height: Size::px(24.),
-            outlined: false,
             solid_menu: false,
             checked: None,
             tooltip: None,
@@ -53,8 +53,8 @@ impl Dropdown {
         self
     }
 
-    pub fn outlined(mut self) -> Self {
-        self.outlined = true;
+    /// Every dropdown is outlined now; kept so existing call sites read the same
+    pub fn outlined(self) -> Self {
         self
     }
 
@@ -106,7 +106,7 @@ impl Component for Dropdown {
         let leading = self.leading.clone();
         let options = self.options.clone();
         let on_select = self.on_select.clone();
-        let outlined = self.outlined;
+        let compact = matches!(&self.height, Size::Pixels(height) if height.get() < COMPACT_BELOW);
         let checked = self.checked.clone();
         let multi = checked.is_some();
         let requested_open = open();
@@ -122,10 +122,18 @@ impl Component for Dropdown {
             let _ = list_area.take();
         }
 
+        // One style everywhere: an outlined control on the component fill, label on the left
         let trigger_bg = if hovering() {
-            colors::ghost_overlay_hover()
+            colors::component_bg_hover()
         } else {
-            colors::ghost_overlay()
+            colors::component_bg()
+        };
+        let trigger_border = if focus().is_focused() {
+            colors::brand()
+        } else if hovering() {
+            colors::component_border_hover()
+        } else {
+            colors::component_border()
         };
 
         let visible = options.len().min(MAX_VISIBLE_OPTIONS);
@@ -175,21 +183,16 @@ impl Component for Dropdown {
                     .width(Size::fill())
                     .height(self.height.clone())
                     .horizontal()
-                    .center()
-                    .spacing(4.)
-                    .padding(Gaps::new_symmetric(0., if outlined { 12. } else { 8. }))
-                    .corner_radius(glass::control_radius(if outlined { 8. } else { 6. }))
+                    .content(Content::Flex)
+                    .cross_align(Alignment::Center)
+                    .spacing(6.)
+                    .padding(Gaps::new_symmetric(0., if compact { 8. } else { 12. }))
+                    .corner_radius(glass::control_radius(if compact { 6. } else { 8. }))
                     .background(trigger_bg)
-                    .maybe(outlined, |el| {
-                        el.main_align(Alignment::SpaceBetween)
-                            .border(border_all_color(1., colors::component_border()))
-                    })
+                    .border(border_all_color(1., trigger_border).alignment(BorderAlignment::Inner))
                     .a11y_id(a11y_id)
                     .a11y_focusable(true)
                     .a11y_role(AccessibilityRole::Button)
-                    .maybe(focus().is_focused(), |el| {
-                        el.border(border_all_color(1., colors::brand()))
-                    })
                     .on_pointer_over(move |_| hovering.set(true))
                     .on_pointer_out(move |_| hovering.set(false))
                     .on_global_pointer_up(on_global_pointer_up)
@@ -205,7 +208,10 @@ impl Component for Dropdown {
                     .child(
                         label()
                             .text(selected)
-                            .font_size(text_size(if outlined { 13. } else { 12. }))
+                            .width(Size::flex(1.))
+                            .max_lines(1)
+                            .text_overflow(TextOverflow::Ellipsis)
+                            .font_size(text_size(if compact { 12. } else { 13. }))
                             .color(colors::fg_primary()),
                     )
                     .child(

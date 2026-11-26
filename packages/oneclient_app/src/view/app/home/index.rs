@@ -93,6 +93,7 @@ impl Component for Home {
         {
             let mover = mover.clone();
             use_side_effect_with_deps(&(*stack.navigation.read(), *animated.read()), move |_| {
+                line_gesture.set(LineGesture::default());
                 let vh = *viewport_h.peek();
                 target.set(if *open.peek() { vh } else { 0. });
                 mover.run();
@@ -111,13 +112,14 @@ impl Component for Home {
             let claims = wheel_claims.clone();
             move || {
                 let (mut target, mut open, mut line_gesture) = (target, open, line_gesture);
+                let amount = line_gesture.peek().amount;
                 stack.set_wheel_pending(false);
                 line_gesture.set(LineGesture::default());
                 let vh = *viewport_h.peek();
                 let versions = if claims.any() {
                     past_midpoint(*pos.peek(), vh)
                 } else {
-                    settle_page(*target.peek(), vh, *toward_versions.peek())
+                    settle_wheel(*target.peek(), vh, *toward_versions.peek(), amount)
                 };
                 target.set(if versions { vh } else { 0. });
                 open.set_if_modified(versions);
@@ -158,38 +160,21 @@ impl Component for Home {
             }
 
             let navigation = *stack.navigation.peek();
-            let line = e.source == WheelSource::Line;
-            if line {
-                let now = Instant::now();
-                let target_position = *target.peek();
-                let elected = *open.peek();
-                let can_page = line_page(delta, target_position, vh, elected).is_some();
-                if !can_page && line_gesture.peek().amount_at(now, navigation) == 0. {
-                    return;
-                }
-                let mut amount = line_gesture.write().add(delta, now, navigation);
-                if !can_page && amount.signum() == delta.signum() {
-                    line_gesture.set(LineGesture::default());
-                    amount = 0.;
-                }
-                if amount.abs() >= WHEEL_NOTCH
-                    && let Some(versions) = line_page(amount, target_position, vh, elected)
-                {
-                    e.stop_propagation();
-                    stack.set_open(versions);
-                    return;
-                }
-                stack.set_wheel_pending(amount < 0. || *target.peek() > 0.);
-            } else {
-                let next = (*target.peek() - delta * WHEEL_GAIN).clamp(0., vh);
-                if next == *target.peek() {
-                    return;
-                }
-                line_gesture.set(LineGesture::default());
-                stack.set_wheel_pending(next > 0.);
-                target.set(next);
-                wheel_mover.run();
+            let previous = *target.peek();
+            let next = wheel_target(previous, delta, vh);
+            if next == previous {
+                return;
             }
+            if e.source == WheelSource::Line {
+                line_gesture.write().add(delta, Instant::now(), navigation);
+            } else {
+                line_gesture.set(LineGesture::default());
+            }
+            // Follow the wheel first and let the same spring carry its velocity
+            // into the page settle once the gesture has gone quiet.
+            stack.set_wheel_pending(true);
+            target.set(next);
+            wheel_mover.run();
             e.stop_propagation();
 
             toward_versions.set_if_modified(delta < 0.);
@@ -415,10 +400,16 @@ impl LineGesture {
     }
 }
 
-fn line_page(delta: f32, target: f32, viewport: f32, elected: bool) -> Option<bool> {
-    let versions = delta < 0.;
-    let endpoint = if versions { viewport } else { 0. };
-    (versions != elected || target != endpoint).then_some(versions)
+fn wheel_target(position: f32, delta: f32, viewport: f32) -> f32 {
+    (position - delta * WHEEL_GAIN).clamp(0., viewport)
+}
+
+fn settle_wheel(target: f32, viewport: f32, heading_down: bool, line_amount: f32) -> bool {
+    if line_amount.abs() >= WHEEL_NOTCH {
+        line_amount < 0.
+    } else {
+        settle_page(target, viewport, heading_down)
+    }
 }
 
 fn settle_page(target: f32, viewport: f32, heading_down: bool) -> bool {
@@ -624,12 +615,15 @@ mod tests {
     }
 
     #[test]
-    fn a_single_wheel_notch_can_step_at_any_viewport_height() {
+    fn a_single_notch_moves_with_the_wheel_before_settling_at_any_height() {
         for viewport in [520., 800., 1200.] {
-            assert_eq!(line_page(-53., 0., viewport, false), Some(true));
-            assert_eq!(line_page(53., viewport, viewport, true), Some(false));
-            assert_eq!(line_page(53., 40., viewport, false), Some(false));
-            assert_eq!(line_page(53., 0., viewport, false), None);
+            let down = wheel_target(0., -WHEEL_NOTCH, viewport);
+            assert_eq!(down, 66.25);
+            assert!(settle_wheel(down, viewport, true, -WHEEL_NOTCH));
+            let up = wheel_target(viewport, WHEEL_NOTCH, viewport);
+            assert_eq!(up, viewport - 66.25);
+            assert!(!settle_wheel(up, viewport, false, WHEEL_NOTCH));
+            assert_eq!(wheel_target(0., WHEEL_NOTCH, viewport), 0.);
         }
     }
 

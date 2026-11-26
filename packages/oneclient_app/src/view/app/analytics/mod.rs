@@ -1,7 +1,6 @@
-use chrono::{Duration, Local};
 use freya::prelude::*;
 
-use oneclient_core::game::{Analytics, DayPlaytime, PlaytimeStats};
+use oneclient_core::game::Analytics;
 
 use crate::components::{Icon, IconType};
 use crate::theme::{colors, rounded, text_size};
@@ -46,73 +45,72 @@ fn analytics_body_inner(analytics: &Analytics, force_all: bool) -> Element {
     root.into_element()
 }
 
-pub fn analytics_placeholder(note: &str) -> Element {
+/// The empty-state card is sized to its content: with this padding the icon, two lines of copy
+/// and the action come to about 275 px, above the 260 px minimum the spec asks for. An explicit
+/// min-height would stretch the card in Freya, so the padding carries it.
+const EMPTY_PADDING: f32 = 40.;
+const EMPTY_MAX_WIDTH: f32 = 520.;
+/// The radius shared by rows, cards and panels across the workspace dialogs
+const SURFACE_RADIUS: f32 = 12.;
+
+/// What Statistics shows before any playtime is recorded: one readable message and the next step
+///
+/// It replaces a dimmed dashboard of zeros, which read as disabled rather than empty. The card
+/// sits in the middle of the pane rather than filling it.
+pub fn analytics_empty(title: &str, hint: &str, action: Element) -> Element {
     rect()
-        .vertical()
         .width(Size::fill())
-        .spacing(24.)
+        .height(Size::fill())
+        .center()
         .child(
             rect()
+                .vertical()
                 .width(Size::fill())
-                .padding(Gaps::new_symmetric(16., 24.))
-                .corner_radius(rounded(12.))
-                .background(colors::page_elevated())
-                .border(border_all_color(1., colors::component_border()))
-                .center()
+                .max_width(Size::px(EMPTY_MAX_WIDTH))
+                .padding(Gaps::new_all(EMPTY_PADDING))
+                .cross_align(Alignment::Center)
+                .spacing(8.)
+                .corner_radius(rounded(SURFACE_RADIUS))
+                .background(colors::card())
+                .border(
+                    border_all_color(1., colors::component_border())
+                        .alignment(BorderAlignment::Inner),
+                )
+                .child(
+                    rect()
+                        .width(Size::px(48.))
+                        .height(Size::px(48.))
+                        .center()
+                        .corner_radius(rounded(SURFACE_RADIUS))
+                        .background(colors::brand().with_a(30))
+                        .child(
+                            Icon::new(IconType::BarChartSquare02)
+                                .size(24.)
+                                .color(colors::brand()),
+                        ),
+                )
+                .child(rect().height(Size::px(4.)))
                 .child(
                     label()
-                        .text(note.to_string())
-                        .width(Size::fill())
-                        .font_size(text_size(14.))
+                        .text(title.to_string())
+                        .font_size(text_size(16.))
+                        .font_weight(FontWeight::SEMI_BOLD)
                         .text_align(TextAlign::Center)
-                        .color(colors::fg_secondary()),
-                ),
-        )
-        .child(
-            rect()
-                .width(Size::fill())
-                .opacity(0.4)
-                .interactive(false)
-                .child(analytics_body_inner(&empty_analytics(), true)),
+                        .width(Size::fill())
+                        .color(colors::fg_primary()),
+                )
+                .child(
+                    label()
+                        .text(hint.to_string())
+                        .font_size(text_size(13.))
+                        .text_align(TextAlign::Center)
+                        .width(Size::fill())
+                        .color(crate::view::app::settings::readable_secondary()),
+                )
+                .child(rect().height(Size::px(8.)))
+                .child(action),
         )
         .into_element()
-}
-
-/// A run of zero-second days ending today so the timeline still renders columns for each range
-fn empty_analytics() -> Analytics {
-    const EMPTY_DAYS: i64 = 90;
-
-    let today = Local::now().date_naive();
-    let daily: Vec<DayPlaytime> = (0..EMPTY_DAYS)
-        .rev()
-        .map(|i| DayPlaytime {
-            date: (today - Duration::days(i)).format("%Y-%m-%d").to_string(),
-            secs: 0,
-        })
-        .collect();
-
-    let playtime = PlaytimeStats {
-        total_secs: 0,
-        session_count: 0,
-        per_weekday: [0; 7],
-        per_hour: [0; 24],
-        daily,
-        session_secs: Vec::new(),
-        longest_session_secs: 0,
-        active_days: 0,
-        current_streak: 0,
-        longest_streak: 0,
-        avg_secs_per_active_day: 0.0,
-        peak_hour: None,
-        peak_weekday: None,
-        night_share: 0.0,
-    };
-
-    Analytics {
-        playtime,
-        servers: Vec::new(),
-        personas: Vec::new(),
-    }
 }
 
 const CHART_GAP: f32 = 16.;

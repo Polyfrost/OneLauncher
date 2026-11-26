@@ -464,6 +464,114 @@ impl Component for ListRow {
     }
 }
 
+pub(super) fn instance_row(
+    item: ProjectSummary,
+    cluster_id: i64,
+    package_type: &str,
+    installed: &InstalledMap,
+    add_to_cluster: bool,
+    search_override: Option<SearchOverride>,
+    compact: bool,
+) -> impl IntoElement {
+    InstanceRow {
+        installed: installed_for(installed, &item, cluster_id),
+        item,
+        cluster_id,
+        package_type: package_type.to_string(),
+        add_to_cluster,
+        search_override,
+        compact,
+    }
+}
+
+/// A result inside the instance pop-up, on the same row surface as the instance's content pages
+#[derive(PartialEq)]
+struct InstanceRow {
+    item: ProjectSummary,
+    cluster_id: i64,
+    package_type: String,
+    installed: Option<CardInstalled>,
+    add_to_cluster: bool,
+    search_override: Option<SearchOverride>,
+    /// Too narrow for the downloads count beside the install control
+    compact: bool,
+}
+
+impl Component for InstanceRow {
+    fn render(&self) -> impl IntoElement {
+        let item = &self.item;
+        let cluster_id = self.cluster_id;
+        let id = item.id.clone();
+        let provider = item.provider;
+        let package_type = self.package_type.clone();
+        let add_to_cluster = self.add_to_cluster;
+
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+        let hovered = use_state(|| false);
+        let author = (!item.author.is_empty())
+            .then(|| tf("oneclient.browser.index.card.author", &[&item.author]));
+        let line = crate::components::joined_line(
+            author
+                .iter()
+                .map(String::as_str)
+                .chain([item.summary.as_str()]),
+        );
+
+        crate::components::row_surface(hovered)
+            .maybe(focus() == Focus::Keyboard, |el| {
+                el.border(border_all_color(1., colors::brand()).alignment(BorderAlignment::Inner))
+            })
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::Button)
+            .a11y_alt(item.name.clone())
+            .cursor(CursorIcon::Pointer)
+            .on_press(move |_| {
+                open_package(cluster_id, &package_type, provider, &id, add_to_cluster)
+            })
+            .child(Thumbnail::new(item.icon_url.clone(), crate::components::ROW_ICON).radius(8.))
+            .child(
+                rect()
+                    .vertical()
+                    .width(Size::flex(1.0))
+                    .spacing(4.)
+                    .child(crate::components::row_title(
+                        item.name.clone(),
+                        colors::fg_primary(),
+                    ))
+                    .maybe(!line.is_empty(), |el| {
+                        el.child(crate::components::row_line(line, colors::fg_secondary()))
+                    }),
+            )
+            .maybe_child((!self.compact).then(|| {
+                rect()
+                    .horizontal()
+                    .cross_align(Alignment::Center)
+                    .spacing(4.)
+                    .child(
+                        Icon::new(IconType::Download01)
+                            .size(12.)
+                            .color(colors::fg_secondary()),
+                    )
+                    .child(
+                        label()
+                            .text(abbreviate_number(item.downloads))
+                            .font_size(text_size(12.))
+                            .color(colors::fg_secondary()),
+                    )
+            }))
+            .child(InstallButton::new(
+                &self.item,
+                self.cluster_id,
+                &self.package_type,
+                self.installed.clone(),
+                self.add_to_cluster,
+                self.search_override.clone(),
+            ))
+    }
+}
+
 #[derive(PartialEq)]
 struct InstallButton {
     provider: ProviderId,
@@ -613,7 +721,8 @@ impl Component for InstallButton {
                                     },
                                 );
                             } else if is_datapack {
-                                world_prompt.set(Some((version_id, crate::install::IncompatibleMode::Ask)));
+                                world_prompt
+                                    .set(Some((version_id, crate::install::IncompatibleMode::Ask)));
                             } else if is_modpack {
                                 let picks = minecraft_choices(&versions);
                                 if picks.len() > 1 {

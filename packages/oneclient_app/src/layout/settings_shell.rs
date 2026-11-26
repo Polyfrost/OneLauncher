@@ -11,22 +11,16 @@ use sysinfo::MemoryRefreshKind;
 use sysinfo::RefreshKind;
 use sysinfo::System;
 
-use crate::components::{
-    Button, Icon, IconType, ScrollArea, ScrollAreaCtx, TextInput, TooltipPlacement,
-    use_tooltip_anchor,
-};
+use crate::components::{Button, Icon, IconType, ScrollAreaCtx, TextInput, TooltipPlacement};
 use crate::hooks::{latest_changelog_version, use_changelog, use_settings_snapshot};
 use crate::i18n::{t, tf};
 use crate::routes::Route;
 use crate::theme::{colors, glass, rounded, text_size};
 
-use super::workspace_dialog::WorkspaceLayout;
+use super::workspace_dialog::{CONTENT_TOP, WorkspaceLayout, close_button, header_divider};
 use super::workspace_rail;
 use crate::use_dispatch;
 
-/// Matches the search field height so the content title lines up with it
-const TITLE_ROW_PX: f32 = 36.;
-const COMPACT_ROW_PX: f32 = 28.;
 const SEARCH_RESULTS_MAX: usize = 12;
 
 thread_local! {
@@ -185,16 +179,13 @@ impl Component for SettingsShell {
     fn render(&self) -> impl IntoElement {
         let route = use_route::<Route>();
         let active = route_tab(&route);
-        let window = *Platform::get().current_window().root_size.read();
-        let layout = WorkspaceLayout::for_size(window.width, window.height);
-        let compact = layout.compact;
-        // Regular-height tabs fit before there's room for all four diagnostics lines.
-        let compact_footer = window.height < 820.;
+        let layout = WorkspaceLayout::current();
 
         let changelog_unread = has_unread_changelog();
 
         let search = use_state(String::new);
         let query = SearchQuery::new(&search.read());
+        let searching = !query.is_empty();
         let scroll = use_scroll_controller(ScrollConfig::default);
         SETTINGS_SCROLL_CONTROLLER.with(|cell| *cell.borrow_mut() = Some(scroll));
 
@@ -219,14 +210,13 @@ impl Component for SettingsShell {
             1.
         };
 
-        let children: Vec<Element> = if query.is_empty() {
+        let children: Vec<Element> = if !searching {
             const SHIFT_PX: f32 = 16.;
             vec![
                 rect()
                     .width(Size::fill())
                     .offset_y((1.0 - p) * SHIFT_PX)
                     .opacity(p)
-                    .padding(Gaps::new(0., 0., 32., 0.))
                     .child(Outlet::<Route>::new())
                     .into_element(),
             ]
@@ -234,69 +224,78 @@ impl Component for SettingsShell {
             search_results(&query, search)
         };
 
+        let title = if searching {
+            t("oneclient.layout.settings.search.results")
+        } else {
+            active.label()
+        };
         rect()
-            .horizontal()
+            .vertical()
+            .content(Content::Flex)
             .width(Size::fill())
             .height(Size::fill())
             .overflow(Overflow::Clip)
-            .padding(Gaps::new_all(layout.inset))
-            .spacing(layout.inset)
-            .child(sidebar(
-                active,
-                changelog_unread,
-                search,
-                layout,
-                compact_footer,
-            ))
+            .child(
+                layout
+                    .header()
+                    .spacing(layout.padding)
+                    .child(
+                        rect()
+                            .width(Size::px(layout.rail_width))
+                            .child(search_box(search)),
+                    )
+                    .child(
+                        label()
+                            .text(title)
+                            .font_size(text_size(18.))
+                            .font_weight(FontWeight::SEMI_BOLD)
+                            .max_lines(1)
+                            .text_overflow(TextOverflow::Ellipsis)
+                            .width(Size::flex(1.))
+                            .color(colors::fg_primary()),
+                    )
+                    .child(close_button()),
+            )
+            .child(header_divider())
             .child(
                 rect()
-                    .vertical()
-                    .width(Size::flex(1.0))
-                    .height(Size::fill())
-                    .overflow(Overflow::Clip)
-                    .spacing(if compact { 6. } else { 12. })
-                    .child(content_header(active.label(), compact))
+                    .horizontal()
+                    .content(Content::Flex)
+                    .width(Size::fill())
+                    .height(Size::flex(1.))
+                    .padding(Gaps::new(0., 0., 0., layout.padding))
+                    .child(sidebar(active, changelog_unread, layout))
                     .child(
-                        ScrollArea::new()
-                            .width(Size::fill())
-                            .height(Size::flex(1.0))
-                            .scrollbar_gutter(true)
-                            .auto_hide_scrollbar()
-                            .bottom_fade(colors::page_elevated())
-                            .spacing(4.)
-                            .scroll_controller(scroll)
-                            .on_ctx(|ctx| {
-                                SETTINGS_SCROLL_CTX.with(|cell| *cell.borrow_mut() = Some(ctx));
-                            })
-                            .children(children),
+                        rect()
+                            .width(Size::flex(1.))
+                            .height(Size::fill())
+                            .padding(Gaps::new(0., 0., layout.padding, 0.))
+                            .child(
+                                crate::view::app::settings::settings_pane()
+                                    .padding(Gaps::new(CONTENT_TOP, layout.padding, 0., 0.))
+                                    .spacing(6.)
+                                    .reset_key(u64::from(searching))
+                                    .scroll_controller(scroll)
+                                    .on_ctx(|ctx| {
+                                        SETTINGS_SCROLL_CTX
+                                            .with(|cell| *cell.borrow_mut() = Some(ctx));
+                                    })
+                                    .children(children),
+                            ),
                     ),
             )
     }
 }
 
-fn content_header(title: &'static str, compact: bool) -> impl IntoElement {
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .height(Size::px(if compact { 30. } else { TITLE_ROW_PX }))
-        .cross_align(Alignment::Center)
-        .child(
-            label()
-                .text(title)
-                .font_size(text_size(22.))
-                .font_weight(FontWeight::SEMI_BOLD)
-                .max_lines(1)
-                .width(Size::fill())
-                .color(colors::fg_primary()),
-        )
-}
+/// The same height and text size as the inputs on the settings rows
+const SEARCH_HEIGHT: f32 = 34.;
 
 fn search_box(mut search: State<String>) -> impl IntoElement {
     let has_query = !search.read().trim().is_empty();
     let base = TextInput::new(search)
         .placeholder(t("oneclient.layout.settings.search.placeholder"))
-        .compact()
         .width(Size::fill())
+        .height(Size::px(SEARCH_HEIGHT))
         .leading(
             Icon::new(IconType::SearchMd)
                 .size(16.)
@@ -358,7 +357,7 @@ fn search_results(query: &SearchQuery, mut search: State<String>) -> Vec<Element
                 .width(Size::fill())
                 .padding(Gaps::new_symmetric(10., 14.))
                 .corner_radius(rounded(12.))
-                .background(colors::page_elevated())
+                .background(colors::card())
                 .child(
                     label()
                         .text(t("oneclient.layout.settings.search.empty"))
@@ -369,19 +368,7 @@ fn search_results(query: &SearchQuery, mut search: State<String>) -> Vec<Element
         ];
     }
 
-    let mut out: Vec<Element> = Vec::with_capacity(matches.len() + 1);
-    out.push(
-        rect()
-            .padding(Gaps::new(16., 0., 8., 2.))
-            .child(
-                label()
-                    .text(t("oneclient.layout.settings.search.results"))
-                    .font_size(text_size(11.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .color(colors::fg_secondary()),
-            )
-            .into_element(),
-    );
+    let mut out = Vec::with_capacity(matches.len());
 
     for item in matches {
         let route = item.route;
@@ -395,9 +382,10 @@ fn search_results(query: &SearchQuery, mut search: State<String>) -> Vec<Element
                 .content(Content::Flex)
                 .cross_align(Alignment::Center)
                 .spacing(12.)
-                .padding(Gaps::new_symmetric(12., 16.))
+                .min_height(Size::px(64.))
+                .padding(Gaps::new_symmetric(14., 16.))
                 .corner_radius(rounded(12.))
-                .background(colors::page_elevated())
+                .background(colors::card())
                 .cursor(CursorIcon::Pointer)
                 .on_press(move |_| {
                     set_pending_setting_focus(id);
@@ -450,9 +438,7 @@ fn has_unread_changelog() -> bool {
 fn sidebar(
     active: SettingsTab,
     changelog_unread: bool,
-    search: State<String>,
     layout: WorkspaceLayout,
-    compact_footer: bool,
 ) -> impl IntoElement {
     let groups = groups();
     let tabs: Vec<_> = groups
@@ -462,14 +448,58 @@ fn sidebar(
     let track = glass::use_vertical_pill_track(tabs.len());
     let lens = colors::active_theme().liquid_glass.then_some(track);
     let selected = tabs.iter().position(|tab| *tab == active);
-    let compact = layout.compact;
-    let group_heading_padding = if compact {
-        Gaps::new(0., 0., 0., 7.)
+    let mut available = use_state(|| 0f32);
+    let sections: Vec<_> = groups.iter().map(|group| group.tabs.len()).collect();
+    let measured = *available.read();
+    let viewport = if measured > 0. {
+        Size::px(workspace_rail::viewport_height(
+            measured,
+            &sections,
+            layout.row_height,
+            layout.row_gap,
+        ))
     } else {
-        Gaps::new(4., 0., 3., 10.)
+        Size::fill()
     };
 
-    workspace_rail::surface()
+    let nav = rect()
+        .vertical()
+        .width(Size::fill())
+        .maybe_child(lens.map(|track| track.indicator(selected)))
+        .children(groups.into_iter().scan(0, move |index, group| {
+            let rows = group.tabs.iter().filter_map(|tab| {
+                let route = tab.route()?;
+                let tab_row = workspace_rail::Tab {
+                    label: tab.label(),
+                    icon: tab.icon(),
+                    route,
+                    active: *tab == active,
+                    has_dot: *tab == SettingsTab::Changelog && changelog_unread,
+                    height: layout.row_height,
+                    lens: lens.map(|track| (track, *index)),
+                };
+                *index += 1;
+                Some(tab_row.into_element())
+            });
+            Some(
+                rect()
+                    .vertical()
+                    .width(Size::fill())
+                    .child(workspace_rail::heading(group.label))
+                    .child(
+                        rect()
+                            .vertical()
+                            .width(Size::fill())
+                            .spacing(layout.row_gap)
+                            .children(rows),
+                    )
+                    .into_element(),
+            )
+        }));
+
+    workspace_rail::column(layout)
+        // The footer's ghost button carries its own inset, so the rail ends half a gutter lower
+        .padding(Gaps::new(0., 0., layout.padding / 2., 0.))
         .map(lens, |el, track| {
             track.events(el, move |index| {
                 if Some(index) != selected
@@ -482,82 +512,36 @@ fn sidebar(
         .child(
             rect()
                 .width(Size::fill())
-                .padding(Gaps::new(0., 0., if compact { 5. } else { 8. }, 0.))
-                .child(search_box(search)),
-        )
-        .child(
-            rect()
-                .width(Size::fill())
-                .height(Size::flex(1.0))
-                .map(lens, |el, track| track.viewport(el))
+                .height(Size::flex(1.))
+                .on_sized(move |event: Event<SizedEventData>| {
+                    let height = event.area.height();
+                    if (*available.peek() - height).abs() > 0.5 {
+                        available.set(height);
+                    }
+                })
                 .child(
-                    ScrollArea::new()
-                        .width(Size::fill())
-                        .height(Size::fill())
-                        .scrollbar_gutter(true)
-                        .auto_hide_scrollbar()
-                        .bottom_fade(colors::page_elevated())
-                        .padding(Gaps::new(0., 0., 5., 0.))
-                        .child(
-                            rect()
-                                .vertical()
-                                .width(Size::fill())
-                                .spacing(if compact { 5. } else { 10. })
-                                .maybe_child(lens.map(|track| track.indicator(selected)))
-                                .children(groups.into_iter().scan(0, move |index, group| {
-                                    let rows = group.tabs.iter().filter_map(|tab| {
-                                        let route = tab.route()?;
-                                        let tab_row = workspace_rail::Tab {
-                                            label: tab.label(),
-                                            icon: tab.icon(),
-                                            route,
-                                            active: *tab == active,
-                                            has_dot: *tab == SettingsTab::Changelog
-                                                && changelog_unread,
-                                            height: layout.row_height,
-                                            lens: lens.map(|track| (track, *index)),
-                                        };
-                                        *index += 1;
-                                        Some(tab_row.into_element())
-                                    });
-                                    Some(
-                                        rect()
-                                            .vertical()
-                                            .width(Size::fill())
-                                            .spacing(layout.row_gap)
-                                            .child(
-                                                rect().padding(group_heading_padding).child(
-                                                    label()
-                                                        .text(group.label)
-                                                        .font_size(text_size(if compact {
-                                                            10.
-                                                        } else {
-                                                            11.
-                                                        }))
-                                                        .font_weight(FontWeight::MEDIUM)
-                                                        .color(colors::fg_secondary()),
-                                                ),
-                                            )
-                                            .children(rows)
-                                            .into_element(),
-                                    )
-                                })),
-                        ),
+                    workspace_rail::scroll(lens)
+                        .height(viewport)
+                        .child(workspace_rail::navigation(layout).child(nav)),
                 ),
         )
-        .child(SidebarInfo::new(compact_footer))
+        .child(
+            workspace_rail::footer(layout)
+                .child(workspace_rail::divider())
+                .child(SidebarInfo::new(layout.row_height)),
+        )
 }
 
 #[derive(PartialEq)]
 struct SidebarInfo {
-    compact: bool,
+    height: f32,
     kernel_version: String,
     ram_mb: u64,
     cpu_kind: String,
 }
 
 impl SidebarInfo {
-    fn new(compact: bool) -> Self {
+    fn new(height: f32) -> Self {
         let system = System::new_with_specifics(
             RefreshKind::nothing()
                 .with_memory(MemoryRefreshKind::nothing().with_ram())
@@ -573,7 +557,7 @@ impl SidebarInfo {
             .unwrap_or_default();
 
         Self {
-            compact,
+            height,
             kernel_version,
             ram_mb,
             cpu_kind: cpu_kind.to_string(),
@@ -585,11 +569,6 @@ impl Component for SidebarInfo {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
         let copy_label = t("oneclient.layout.settings.info.copy_tooltip");
-        let tooltip = use_tooltip_anchor(
-            (!self.compact).then(|| copy_label.into()),
-            TooltipPlacement::Top,
-        );
-
         let items: [Cow<'static, str>; 4] = [
             Cow::Borrowed(oneclient_common::constants::LAUNCHER_LABEL),
             Cow::Owned(self.kernel_version.clone()),
@@ -602,9 +581,6 @@ impl Component for SidebarInfo {
             .map(|s| s.as_ref())
             .collect::<Vec<_>>()
             .join("\n");
-
-        let mut display_items = items;
-        display_items[2] = Cow::Owned(self.cpu_kind.replace("(R)", "").replace("(TM)", ""));
 
         let copy_to_clipboard = move |_| {
             if let Err(err) = Clipboard::set(text.clone()) {
@@ -626,68 +602,25 @@ impl Component for SidebarInfo {
             }
         };
 
-        if self.compact {
-            return rect()
-                .vertical()
-                .width(Size::fill())
-                .child(
-                    rect()
-                        .width(Size::fill())
-                        .height(Size::px(1.))
-                        .background(colors::component_border()),
-                )
-                .child(
-                    Button::new()
-                        .small()
-                        .ghost()
-                        .height(Size::px(COMPACT_ROW_PX))
-                        .width(Size::fill())
-                        .foreground(colors::fg_secondary())
-                        .alt(copy_label)
-                        .tooltip(copy_label)
-                        .tooltip_placement(TooltipPlacement::Top)
-                        .child(
-                            label()
-                                .text(oneclient_common::constants::LAUNCHER_LABEL)
-                                .width(Size::flex(1.))
-                                .font_size(text_size(11.))
-                                .max_lines(1)
-                                .text_overflow(TextOverflow::Ellipsis),
-                        )
-                        .child(Icon::new(IconType::Copy01).size(13.))
-                        .on_press(copy_to_clipboard),
-                )
-                .into_element();
-        }
-
-        tooltip
-            .attach(
-                rect()
-                    .vertical()
-                    .width(Size::fill())
-                    .spacing(4.)
+        Button::new()
+            .small()
+            .ghost()
+            .height(Size::px(self.height))
+            .width(Size::fill())
+            .foreground(crate::view::app::settings::readable_secondary())
+            .alt(copy_label)
+            .tooltip(copy_label)
+            .tooltip_placement(TooltipPlacement::Top)
+            .child(
+                label()
+                    .text(oneclient_common::constants::LAUNCHER_LABEL)
+                    .width(Size::flex(1.))
                     .font_size(text_size(11.))
-                    .padding(Gaps::new(8., 10., 7., 10.))
-                    .color(colors::fg_secondary())
-                    .child(
-                        rect()
-                            .width(Size::fill())
-                            .height(Size::px(1.))
-                            .margin(Gaps::new(0., 0., 3., 0.))
-                            .background(colors::component_border()),
-                    )
-                    .children(display_items.into_iter().map(|item| {
-                        label()
-                            .text(item)
-                            .width(Size::fill())
-                            .max_lines(1)
-                            .text_overflow(TextOverflow::Ellipsis)
-                            .into_element()
-                    }))
-                    .cursor(CursorIcon::Pointer)
-                    .on_press(copy_to_clipboard),
+                    .max_lines(1)
+                    .text_overflow(TextOverflow::Ellipsis),
             )
-            .into_element()
+            .child(Icon::new(IconType::Copy01).size(13.))
+            .on_press(copy_to_clipboard)
     }
 }
 

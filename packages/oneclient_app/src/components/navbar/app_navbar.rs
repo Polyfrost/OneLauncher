@@ -49,7 +49,13 @@ impl Component for Navbar {
         let route = crate::layout::use_app_page();
         let stack = use_home_stack();
         let home_visible = home_page_in_view(&route, stack);
-        let over_art = !theme.liquid_glass && !theme.colors.light && home_visible;
+        // While a workspace dialog is open the page stays mounted under it, so the routed page
+        // and the app page differ. The light band would show through above the dialog then, so
+        // the bar drops it and draws its controls in the on-art ink over the dimmed page.
+        let dialog_open = use_route::<Route>() != route;
+        let light_band = theme.colors.light && !theme.liquid_glass;
+        let over_art = (!theme.liquid_glass && !theme.colors.light && home_visible)
+            || (light_band && dialog_open);
         let measured = *navbar_width.read();
         let show_logo = measured <= 0. || measured > LOGO_HIDE_NAVBAR_W;
 
@@ -58,7 +64,7 @@ impl Component for Navbar {
             .height(Size::px(theme::NAVBAR_HEIGHT_PX))
             .position(Position::new_absolute().top(0.).left(0.))
             .layer(Layer::OverlayLevel(2))
-            .maybe(theme.colors.light && !theme.liquid_glass, |bar| {
+            .maybe(light_band && !dialog_open, |bar| {
                 bar.background(theme::colors::component_bg())
             })
             .child(
@@ -512,7 +518,7 @@ impl Component for NavLink {
         };
 
         let glass = self.pill.is_some();
-        let background = if active && !glass && theme::colors::is_light() {
+        let background = if active && !glass && theme::colors::is_light() && !over_art {
             Color::WHITE
         } else if active && !glass {
             theme::colors::ghost_overlay()

@@ -135,9 +135,11 @@ pub use overlay_popup::{
 };
 pub use package_delete_dialog::use_shared_delete;
 pub(crate) use package_row::{
-    CARD_GRID_H, CARD_H, GRID_GAP, GRID_MIN_W, badge, bundled_delete_action, disable_request,
-    grid_card, guard_disable, icon_box, kebab_button, meta_size, meta_text, on_secondary,
-    package_icon, pill, remote_icon, run_guarded, set_enabled_action, toggle_action,
+    CARD_GRID_H, CARD_H, CONTENT_GRID_MIN_W, CardTone, GRID_GAP, GRID_MIN_W, ROW_GAP, ROW_ICON,
+    ROW_RADIUS, bundled_delete_action, card_description, card_surface, content_card_height,
+    disable_request, grid_card, guard_disable, icon_box, joined_line, kebab_button, meta_size,
+    meta_text, on_secondary, package_icon, pill, remote_icon, row_line, row_surface, row_title,
+    run_guarded, set_enabled_action, toggle_action,
 };
 pub use package_row::{
     CardLayout, CopyStatus, PackageEntry, PackageRow, github_badge, package_context_menu,

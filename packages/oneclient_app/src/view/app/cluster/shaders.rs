@@ -12,7 +12,7 @@ use super::cluster_not_found;
 use super::package_manager::{
     PackageManager, bundle_categories, bundle_packages, use_content_meta,
 };
-use crate::hooks::use_cluster;
+use crate::hooks::{query_is_loading, use_cluster};
 
 #[derive(PartialEq)]
 pub struct ClusterShaders {
@@ -27,6 +27,7 @@ impl Component for ClusterShaders {
         let updates = use_package_updates(self.cluster_id);
         let bundle_items = bundles_with_status_items(&bundles);
         let content_items = cluster_content_items(&content);
+        let loading = query_is_loading(&content);
         let meta = use_content_meta(&content_items, &bundle_items, ContentType::Shader);
 
         let Some(_cluster) = use_cluster(self.cluster_id) else {
@@ -54,6 +55,7 @@ impl Component for ClusterShaders {
                     items,
                     all_categories,
                 )
+                .loading(loading)
                 .into_element(),
             )
             .into_element()

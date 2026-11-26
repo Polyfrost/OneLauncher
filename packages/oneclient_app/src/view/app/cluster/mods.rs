@@ -18,7 +18,7 @@ use super::cluster_not_found;
 use super::package_manager::{
     PackageManager, bundle_categories, bundle_packages, use_content_meta,
 };
-use crate::hooks::use_cluster;
+use crate::hooks::{query_is_loading, use_cluster};
 
 #[derive(PartialEq)]
 pub struct ClusterMods {
@@ -36,6 +36,7 @@ impl Component for ClusterMods {
         let bisect = use_bisect(self.cluster_id);
         let bundle_items = bundles_with_status_items(&bundles);
         let content_items = cluster_content_items(&content);
+        let loading = query_is_loading(&content);
         let meta = use_content_meta(&content_items, &bundle_items, ContentType::Mod);
 
         let Some(cluster) = use_cluster(self.cluster_id) else {
@@ -92,7 +93,8 @@ impl Component for ClusterMods {
             }
         }
         let identity = |item: &PackageEntry| {
-            (!item.author.is_empty()).then(|| (item.name.to_lowercase(), item.author.to_lowercase()))
+            (!item.author.is_empty())
+                .then(|| (item.name.to_lowercase(), item.author.to_lowercase()))
         };
         let mut folded = HashSet::new();
         for i in 0..items.len() {
@@ -138,6 +140,7 @@ impl Component for ClusterMods {
                     all_categories,
                 )
                 .bisecting(bisect.is_some())
+                .loading(loading)
                 .into_element(),
             )
             .into_element()

@@ -115,3 +115,40 @@ pub(super) fn skeleton_grid_row(cols: usize) -> impl IntoElement {
         .children((0..cols).map(|_| SkeletonCard.into_element()))
         .into_element()
 }
+
+/// A placeholder result inside the instance pop-up, the size and surface of its rows
+#[derive(PartialEq)]
+pub(super) struct InstanceSkeletonRow;
+
+impl Component for InstanceSkeletonRow {
+    fn render(&self) -> impl IntoElement {
+        let pulse = use_skeleton_pulse();
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .height(Size::px(crate::components::CARD_H))
+            .cross_align(Alignment::Center)
+            .content(Content::Flex)
+            .spacing(12.)
+            .padding(Gaps::new_all(12.))
+            .corner_radius(rounded(crate::components::ROW_RADIUS))
+            .background(colors::card())
+            .border(
+                border_all_color(1., colors::component_border()).alignment(BorderAlignment::Inner),
+            )
+            .opacity(pulse)
+            .child(skeleton_block(
+                Size::px(crate::components::ROW_ICON),
+                crate::components::ROW_ICON,
+            ))
+            .child(
+                rect()
+                    .vertical()
+                    .width(Size::flex(1.0))
+                    .spacing(8.)
+                    .child(skeleton_block(Size::percent(30.), 12.))
+                    .child(skeleton_block(Size::percent(60.), 10.)),
+            )
+            .child(skeleton_block(Size::px(64.), 28.))
+    }
+}

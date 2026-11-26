@@ -27,37 +27,122 @@ pub use storage::SettingsStorage;
 pub use theme_editor::SettingsThemeEditor;
 
 use crate::{
-    components::{Button, Icon, IconType},
+    components::{Button, Icon, IconType, ScrollArea},
     i18n::t,
-    theme::{colors, rounded, text_size},
+    theme::{colors, rounded, rounded_px, text_size},
     ui::border_all_color,
 };
 
+pub(crate) const PAGE_GAP: f32 = 6.;
 const ROW_INSET: f32 = 16.;
 const ROW_GAP: f32 = 16.;
 const ROW_ICON: f32 = 24.;
 const MIN_COPY_WIDTH: f32 = 160.;
+/// Dropdowns and pickers on settings rows: 28% of the page, between these widths
+const CONTROL_MIN_WIDTH: f32 = 160.;
+const CONTROL_MAX_WIDTH: f32 = 220.;
+const CONTROL_SHARE: f32 = 0.28;
+/// WCAG AA for body text
+const READABLE_CONTRAST: f32 = 4.5;
+/// Disabled rows dim their title and control, never the copy that explains why
+const DISABLED_OPACITY: f32 = 0.45;
 
-/// Bottom inset so the last row scrolls clear of the shell's clip edge instead of ending on it
+fn control_width_for(pane_width: f32) -> f32 {
+    (CONTROL_SHARE * pane_width).clamp(CONTROL_MIN_WIDTH, CONTROL_MAX_WIDTH)
+}
+
+/// Width for a dropdown, picker or field on a settings row, in Launcher and Instance Settings
+pub(crate) fn settings_control_width() -> Size {
+    Size::px(control_width_for(
+        crate::layout::ClusterShell::workspace_pane_size().0,
+    ))
+}
+
+fn channel_luminance(channel: u8) -> f32 {
+    let c = f32::from(channel) / 255.;
+    if c <= 0.039_28 {
+        c / 12.92
+    } else {
+        ((c + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+fn luminance(color: Color) -> f32 {
+    0.2126 * channel_luminance(color.r())
+        + 0.7152 * channel_luminance(color.g())
+        + 0.0722 * channel_luminance(color.b())
+}
+
+fn contrast(a: Color, b: Color) -> f32 {
+    let (a, b) = (luminance(a), luminance(b));
+    (a.max(b) + 0.05) / (a.min(b) + 0.05)
+}
+
+fn mix(from: Color, to: Color, amount: f32) -> Color {
+    let channel =
+        |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * amount).round() as u8;
+    Color::from_rgb(
+        channel(from.r(), to.r()),
+        channel(from.g(), to.g()),
+        channel(from.b(), to.b()),
+    )
+}
+
+/// `secondary` moved toward `primary` just far enough to reach 4.5:1 on `surface`
+fn readable_on(secondary: Color, primary: Color, surface: Color) -> Color {
+    let mut amount = 0.;
+    let mut ink = secondary;
+    while contrast(ink, surface) < READABLE_CONTRAST && amount < 1. {
+        amount = (amount + 0.05_f32).min(1.);
+        ink = mix(secondary, primary, amount);
+    }
+    ink
+}
+
+/// Secondary text that stays readable on settings rows and the dialog surface (about #8B929F in
+/// Polyfrost Dark). Themes whose secondary ink already passes keep it.
+pub(crate) fn readable_secondary() -> Color {
+    let secondary = colors::fg_secondary();
+    let primary = colors::fg_primary();
+    let on_card = readable_on(secondary, primary, colors::card());
+    readable_on(on_card, primary, colors::page_elevated())
+}
+
+/// The fade over the cut-off row of a settings page or rail that scrolls
+pub(crate) const SCROLL_FADE_HEIGHT: f32 = 24.;
+
+/// A settings page's scroll area. It reaches the dialog's right edge so its thumb sits in the
+/// right inset, stays visible while the page overflows, and fades out the cut-off row.
+pub(crate) fn settings_pane() -> ScrollArea {
+    let pane = ScrollArea::new().width(Size::fill()).height(Size::fill());
+    if colors::active_theme().liquid_glass {
+        pane
+    } else {
+        pane.bottom_fade(colors::page_elevated())
+            .bottom_fade_height(SCROLL_FADE_HEIGHT)
+    }
+}
+
 pub fn settings_page() -> Rect {
-    rect()
-        .vertical()
-        .width(Size::fill())
-        .spacing(4.)
-        .padding(Gaps::new(0., 0., 24., 0.))
+    rect().vertical().width(Size::fill()).spacing(PAGE_GAP)
+}
+
+pub fn first_section_header(text: &'static str) -> impl IntoElement {
+    section_label(text, 0.)
 }
 
 pub fn section_header(text: &'static str) -> impl IntoElement {
-    rect()
-        .padding(Gaps::new(16., 0., 8., 2.))
-        .child(
-            label()
-                .text(text)
-                .font_size(text_size(13.))
-                .font_weight(FontWeight::MEDIUM)
-                .color(colors::fg_secondary()),
-        )
-        .into_element()
+    section_label(text, 24. - PAGE_GAP)
+}
+
+fn section_label(text: &'static str, top: f32) -> Rect {
+    rect().padding(Gaps::new(top, 0., 8. - PAGE_GAP, 0.)).child(
+        label()
+            .text(text.to_uppercase())
+            .font_size(text_size(11.))
+            .font_weight(FontWeight::SEMI_BOLD)
+            .color(readable_secondary()),
+    )
 }
 
 pub fn settings_row(
@@ -120,6 +205,31 @@ struct SettingsRow {
     tone: RowTone,
 }
 
+pub(crate) fn settings_row_surface(danger: bool) -> Rect {
+    let theme = colors::active_theme();
+    let tint = if danger {
+        colors::danger().with_a(26)
+    } else {
+        colors::card()
+    };
+    let surface = if theme.liquid_glass && !danger {
+        crate::theme::glass::content(rect(), colors::component_bg(), rounded_px(12.))
+    } else {
+        rect().corner_radius(rounded(12.)).background(tint)
+    };
+    surface
+        .horizontal()
+        .width(Size::fill())
+        .content(Content::Flex)
+        .cross_align(Alignment::Center)
+        .spacing(ROW_GAP)
+        .min_height(Size::px(64.))
+        .padding(Gaps::new_symmetric(14., ROW_INSET))
+        .maybe(danger, |el| {
+            el.border(border_all_color(1., colors::danger().with_a(128)))
+        })
+}
+
 impl Component for SettingsRow {
     fn render(&self) -> impl IntoElement {
         let mut width = use_state(|| None::<f32>);
@@ -130,37 +240,33 @@ impl Component for SettingsRow {
             width - 2. * ROW_INSET - ROW_ICON - 2. * ROW_GAP - control_width() < MIN_COPY_WIDTH
         });
         let danger = self.tone == RowTone::Danger;
-        let tint = if danger {
-            colors::danger().with_a(26)
+        let theme = colors::active_theme();
+        let description_ink = if theme.id == "dark" || theme.id == "minecraft-dark" {
+            colors::fg_primary().with_a(185)
         } else {
-            colors::page_elevated()
+            colors::fg_secondary()
         };
-        let row = if colors::active_theme().liquid_glass && !danger {
-            crate::theme::glass::content(rect(), tint, 16.)
+        let content_opacity = if self.tone == RowTone::Disabled {
+            DISABLED_OPACITY
         } else {
-            rect().corner_radius(rounded(12.)).background(tint)
+            1.
         };
-        row.maybe(self.tone == RowTone::Disabled, |el| el.opacity(0.4))
-            .horizontal()
-            .width(Size::fill())
-            .content(Content::Flex)
+
+        settings_row_surface(danger)
             .cross_align(if stacked {
                 Alignment::Start
             } else {
                 Alignment::Center
             })
-            .spacing(ROW_GAP)
-            .padding(Gaps::new_symmetric(12., ROW_INSET))
             .on_sized(move |event: Event<SizedEventData>| {
                 width.set_if_modified(Some(event.area.width()));
             })
-            .maybe(danger, |el| {
-                el.border(border_all_color(1., colors::danger().with_a(128)))
-            })
             .child(
-                Icon::new(self.icon)
-                    .size(ROW_ICON)
-                    .maybe(danger, |icon| icon.color(colors::danger())),
+                rect().opacity(content_opacity).child(
+                    Icon::new(self.icon)
+                        .size(ROW_ICON)
+                        .maybe(danger, |icon| icon.color(colors::danger())),
+                ),
             )
             .child(
                 rect()
@@ -185,6 +291,7 @@ impl Component for SettingsRow {
                                 rect()
                                     .horizontal()
                                     .width(Size::fill())
+                                    .opacity(content_opacity)
                                     .cross_align(Alignment::Center)
                                     .spacing(6.)
                                     .child(
@@ -205,12 +312,13 @@ impl Component for SettingsRow {
                                 label()
                                     .text(self.description.clone())
                                     .font_size(text_size(12.))
-                                    .color(colors::fg_secondary()),
+                                    .color(description_ink),
                             ),
                     )
                     .child(
                         rect()
                             .max_width(Size::fill())
+                            .opacity(content_opacity)
                             .on_sized(move |event: Event<SizedEventData>| {
                                 control_width.set_if_modified(event.area.width());
                             })
@@ -311,6 +419,28 @@ mod tests {
     use super::*;
     use freya_testing::TestingRunner;
     use std::time::Duration;
+
+    #[test]
+    fn settings_controls_take_28_percent_of_the_page_between_160_and_220() {
+        // 800x600, 1024x700 and 1280x800 dialogs
+        assert_eq!(control_width_for(524.), 160.);
+        assert!((control_width_for(727.04) - 203.57).abs() < 0.01);
+        assert_eq!(control_width_for(947.9), 220.);
+    }
+
+    #[test]
+    fn secondary_text_is_lifted_only_until_it_is_readable() {
+        let card = Color::from_rgb(0x1A, 0x22, 0x29);
+        let primary = Color::from_rgb(0xD5, 0xDB, 0xFF);
+        let dark = readable_on(Color::from_rgb(0x75, 0x78, 0x83), primary, card);
+        assert!(contrast(dark, card) >= READABLE_CONTRAST);
+        // close to #8B929F, not all the way to the primary ink
+        assert!(dark.r() < 0x95 && dark.r() > 0x80, "{dark:?}");
+
+        let light_card = Color::from_rgb(0xE3, 0xEA, 0xFB);
+        let light = Color::from_rgb(0x4E, 0x56, 0x61);
+        assert_eq!(readable_on(light, Color::BLACK, light_card), light);
+    }
 
     #[test]
     fn wide_settings_controls_move_below_the_description_when_space_runs_out() {

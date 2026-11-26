@@ -11,8 +11,8 @@ use oneclient_core::{
 use oneclient_db::models::OverrideType;
 
 use crate::components::{
-    CARD_GRID_H, CardLayout, GRID_GAP, GRID_MIN_W, PackageEntry, bundled_delete_action,
-    disable_request, guard_disable, run_guarded, toggle_action,
+    CARD_H, CardLayout, PackageEntry, bundled_delete_action, disable_request, guard_disable,
+    run_guarded, toggle_action,
 };
 use crate::hooks::{
     ClusterAction, EssentialGuardKind, disable_warnings, package_meta_batch, use_cluster_mutation,
@@ -21,17 +21,18 @@ use crate::hooks::{
 };
 use crate::i18n::{t, tf};
 
-use super::folder_list::confirm_dialog;
+use super::folder_list::{confirm_dialog, use_content_view};
 
 mod views;
 use views::{
-    AdvancedSection, Bulk, ContentBox, ContentKind, EnabledFilter, HiddenFilter, SortMode,
+    AdvancedSection, Bulk, ContentBox, ContentKind, EnabledFilter, HiddenFilter, Scope, SortMode,
     toolbar_bar,
 };
-pub(super) use views::{copy_list_button, empty_hint, empty_shell, empty_title, notice_bar};
+pub(super) use views::{
+    copy_list_button, empty_hint, empty_shell, empty_title, instance_only_notice, notice_bar,
+};
 
-const CARD_H: f32 = 84.;
-pub(super) const CARD_SPACING: f32 = 8.;
+const CARD_SPACING: f32 = 8.;
 pub(super) const GRID_MAX_COLS: usize = 5;
 
 pub type PackageMetaMap = HashMap<(ProviderId, String), CachedPackageMeta>;
@@ -658,6 +659,7 @@ pub struct PackageManager {
     items: Vec<PackageEntry>,
     categories: Vec<String>,
     bisecting: bool,
+    loading: bool,
 }
 
 impl PackageManager {
@@ -679,12 +681,27 @@ impl PackageManager {
             items,
             categories,
             bisecting: false,
+            loading: false,
         }
     }
 
     pub fn bisecting(mut self, active: bool) -> Self {
         self.bisecting = active;
         self
+    }
+
+    /// The installed content is still being read, so an empty list shows the loading state
+    pub fn loading(mut self, loading: bool) -> Self {
+        self.loading = loading;
+        self
+    }
+}
+
+fn package_preferences_key(content_type: ContentType) -> &'static str {
+    match content_type {
+        ContentType::Shader => "cluster.shaders",
+        ContentType::ResourcePack => "cluster.textures",
+        _ => "cluster.packages",
     }
 }
 
@@ -730,7 +747,6 @@ impl Component for PackageManager {
 
         let search = use_state(String::new);
         let advanced_open = use_state(|| false);
-        let toolbar_width = use_state(|| 0f32);
         let selection = use_selection::<String>();
         let mutation = use_cluster_mutation();
         let dispatch = use_dispatch();
@@ -738,30 +754,12 @@ impl Component for PackageManager {
         let warnings_query = use_disable_warnings();
         let pending_disable = use_disable_confirm();
         let mut confirm_delete = use_state(|| false);
-        let view = use_view_state("cluster.packages");
+        let view = use_view_state(package_preferences_key(content_type));
         let sort = view.sort;
-        let layout = view.layout;
+        let filters = view.filters;
+        let layout = use_content_view().layout;
         let query = SearchQuery::new(&search.read());
 
-        let searching = !query.is_empty();
-        let filters = view.filters;
-        use_side_effect_with_deps(&searching, move |&searching| {
-            let mut filters = filters;
-            let next = if searching {
-                HiddenFilter::Show
-            } else {
-                HiddenFilter::Hide
-            };
-            let current = filters
-                .peek()
-                .get(HiddenFilter::STORAGE_KEY)
-                .and_then(|key| HiddenFilter::from_key(key));
-            if current != Some(next) {
-                filters
-                    .write()
-                    .insert(HiddenFilter::STORAGE_KEY.into(), next.key().into());
-            }
-        });
         let sort_mode = sort
             .read()
             .as_deref()
@@ -777,7 +775,13 @@ impl Component for PackageManager {
             .read()
             .get(HiddenFilter::STORAGE_KEY)
             .and_then(|key| HiddenFilter::from_key(key))
-            .unwrap_or(HiddenFilter::Hide);
+            .unwrap_or_else(|| {
+                if query.is_empty() {
+                    HiddenFilter::Hide
+                } else {
+                    HiddenFilter::Show
+                }
+            });
         let card_layout = CardLayout::from(*layout.read());
 
         let bisecting = self.bisecting;
@@ -815,16 +819,22 @@ impl Component for PackageManager {
             }
         };
 
-        let mut notices = Vec::new();
-        if content_type.is_global()
-            && let Some(shares_content) = shares_content
-        {
-            notices.push(if shares_content {
-                views::global_notice(noun_plural)
-            } else {
-                views::instance_only_notice(noun_plural)
+        // Shared or instance-only is a standing fact, so it is a chip in the toolbar rather than a banner
+        let scope = shares_content
+            .filter(|_| content_type.is_global())
+            .map(|shared| Scope {
+                shared,
+                tip: if shared {
+                    views::global_notice(noun_plural)
+                } else {
+                    views::instance_only_notice(noun_plural)
+                },
             });
-        }
+        let folder = cluster
+            .as_ref()
+            .and_then(|cluster| content_folder(cluster, content_type));
+
+        let mut notices = Vec::new();
         if session_live {
             notices.push(views::running_notice(noun_plural, content_type));
         }
@@ -1037,15 +1047,12 @@ impl Component for PackageManager {
                 package_type,
                 content_type,
                 dispatch,
-                toolbar_width,
                 &bulk,
                 noun_plural,
                 export_rows(&items, hidden),
                 cluster.as_ref().map(list_header),
-                cluster
-                    .as_ref()
-                    .and_then(|cluster| content_folder(cluster, content_type)),
-                shares_content == Some(true),
+                folder.clone(),
+                scope,
             ))
             .child(
                 ContentBox::new(
@@ -1060,7 +1067,9 @@ impl Component for PackageManager {
                     card_layout,
                     bulk,
                 )
-                .notices(notices),
+                .notices(notices)
+                .loading(self.loading && self.items.is_empty())
+                .folder(folder),
             )
             .maybe_child(delete_dialog)
     }
@@ -1069,6 +1078,23 @@ impl Component for PackageManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn package_preferences_keep_mods_storage_and_are_isolated_from_layout() {
+        assert_eq!(
+            package_preferences_key(ContentType::Mod),
+            "cluster.packages"
+        );
+        assert_eq!(
+            package_preferences_key(ContentType::Shader),
+            "cluster.shaders"
+        );
+        assert_eq!(
+            package_preferences_key(ContentType::ResourcePack),
+            "cluster.textures"
+        );
+    }
+
     use crate::view::onboarding::test_support::{archive, file};
     use oneclient_core::{BundleFile, FileUpdateStatus};
 
@@ -1226,7 +1252,10 @@ mod tests {
             ),
             ((name(&declined), "held".to_string()), "removed".to_string()),
             ((name(&taken), "masked".to_string()), "enabled".to_string()),
-            (("Old".to_string(), "masked".to_string()), "removed".to_string()),
+            (
+                ("Old".to_string(), "masked".to_string()),
+                "removed".to_string(),
+            ),
         ]);
         let rows = bundle_packages(
             vec![

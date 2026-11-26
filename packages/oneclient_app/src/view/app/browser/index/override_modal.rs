@@ -31,6 +31,8 @@ pub(crate) fn summary(search_override: &SearchOverride, uses_loader: bool) -> St
 
 #[derive(PartialEq)]
 pub(super) struct OverrideButton {
+    /// 28 beside the full page's pills, the toolbar's 34 inside an instance
+    pub(super) height: f32,
     pub(super) content_type: ContentType,
     pub(super) search_override: State<Option<SearchOverride>>,
     pub(super) cluster: Option<(GameLoader, String)>,
@@ -44,7 +46,7 @@ impl Component for OverrideButton {
 
         let button = Button::new()
             .small()
-            .height(Size::px(28.))
+            .height(Size::px(self.height))
             .padding(Gaps::new_symmetric(0., 10.))
             .on_press(move |_| open.set(true))
             .child(

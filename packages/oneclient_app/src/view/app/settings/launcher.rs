@@ -6,7 +6,10 @@ use oneclient_core::relocate::RelocationPlan;
 use oneclient_core::settings::{LaunchBehaviour, LauncherSettings, data_dir};
 use oneclient_core::storage::format_bytes;
 
-use super::{resettable, section_header, settings_page, settings_row};
+use super::{
+    first_section_header, resettable, section_header, settings_control_width, settings_page,
+    settings_row,
+};
 use crate::Route;
 use crate::components::{
     Button, Dropdown, Icon, IconType, OverlayPopup, onedrive_warning, open_folder_button, toggle,
@@ -103,7 +106,7 @@ impl Component for SettingsLauncher {
             .text(t("oneclient.settings.launcher.terms.review"));
 
         settings_page()
-            .child(section_header(t(
+            .child(first_section_header(t(
                 "oneclient.settings.launcher.section.general",
             )))
             .child(settings_row(
@@ -196,7 +199,7 @@ fn launch_behaviour_field(mut selected: State<LaunchBehaviour>) -> impl IntoElem
         .collect();
 
     Dropdown::new(selected.read().label(), options)
-        .width(Size::px(220.))
+        .width(settings_control_width())
         .height(Size::px(34.))
         .on_select(move |idx: usize| {
             if let Some(behaviour) = LaunchBehaviour::ALL.get(idx).copied() {
@@ -209,10 +212,14 @@ fn launch_behaviour_field(mut selected: State<LaunchBehaviour>) -> impl IntoElem
 fn close_behaviour_field(mut background: State<bool>) -> impl IntoElement {
     let exit = t("oneclient.settings.launcher.close_behaviour.exit");
     let to_background = t("oneclient.settings.launcher.close_behaviour.background");
-    let current = if *background.read() { to_background } else { exit };
+    let current = if *background.read() {
+        to_background
+    } else {
+        exit
+    };
 
     Dropdown::new(current, vec![exit.to_string(), to_background.to_string()])
-        .width(Size::px(220.))
+        .width(settings_control_width())
         .height(Size::px(34.))
         .on_select(move |idx: usize| background.set(idx == 1))
 }

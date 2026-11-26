@@ -24,7 +24,7 @@ use crate::hooks::{
     use_shared_groups,
 };
 use crate::i18n::{t, tf};
-use crate::layout::cluster_content;
+use crate::layout::{ClusterShell, cluster_content};
 use crate::routes::Route;
 use crate::state::MigrationDirection;
 use crate::theme::{self, colors, rounded, text_size};
@@ -35,8 +35,8 @@ use crate::view::app::clusters::{
 };
 use crate::view::app::launch_syncing;
 use crate::view::app::settings::{
-    SettingsControl, section_header, settings_row, settings_row_danger, settings_row_disabled,
-    title_reset,
+    PAGE_GAP, SettingsControl, first_section_header, section_header, settings_control_width,
+    settings_pane, settings_row, settings_row_danger, settings_row_disabled, title_reset,
 };
 use oneclient_core::clusters::{DirTarget, rank_migration_sources, rank_migration_targets};
 
@@ -48,6 +48,10 @@ use crate::hooks::use_cluster;
 #[path = "settings_file_dialogs.rs"]
 mod file_dialogs;
 use file_dialogs::{GameOptionsRow, SyncFilesModal};
+
+/// The category tabs, and the space between them and the first section label
+const TAB_STRIP_HEIGHT: f32 = 34.;
+const TAB_STRIP_GAP: f32 = 16.;
 
 #[derive(PartialEq, Clone, Copy)]
 enum SettingsCategory {
@@ -226,17 +230,15 @@ impl Component for ClusterSettings {
         };
         let imported_section = ImportedModpacksSection { cluster_id }.into_element();
 
-        let page = ScrollArea::new()
-            .width(Size::fill())
-            .height(Size::fill())
-            .scrollbar_gutter(true)
+        let padding = ClusterShell::workspace_padding();
+        let page = settings_pane()
             .reset_key(active as u64)
-            .spacing(5.)
-            .padding(Gaps::new(0., 8., 12., 0.));
+            .spacing(PAGE_GAP)
+            .padding(Gaps::new(0., padding, 0., 0.));
 
         let page = match active {
             SettingsCategory::Instance => page
-                .child(section_header(t(
+                .child(first_section_header(t(
                     "oneclient.cluster.settings.section.instance",
                 )))
                 .append_children(cluster.user_created.then(|| instance_row.clone()))
@@ -293,7 +295,9 @@ impl Component for ClusterSettings {
                 )))
                 .child(ShortcutRow { cluster_id }.into_element()),
             SettingsCategory::Game => page
-                .child(section_header(t("oneclient.cluster.settings.section.game")))
+                .child(first_section_header(t(
+                    "oneclient.cluster.settings.section.game",
+                )))
                 .child(profile_row(
                     generation,
                     "ToggleRow",
@@ -353,7 +357,7 @@ impl Component for ClusterSettings {
                     text_row(cluster_id, TextField::GameArgs, &profile, &global),
                 )),
             SettingsCategory::Advanced => page
-                .child(section_header(t(
+                .child(first_section_header(t(
                     "oneclient.cluster.settings.section.process",
                 )))
                 .child(profile_row(
@@ -395,17 +399,23 @@ impl Component for ClusterSettings {
                 rect()
                     .horizontal()
                     .width(Size::fill())
-                    .height(Size::px(42.))
+                    .height(Size::px(TAB_STRIP_HEIGHT + TAB_STRIP_GAP))
+                    .padding(Gaps::new(0., padding, 0., 0.))
                     .cross_align(Alignment::Start)
                     .child(
-                        SegmentedControl::new(category).icon_size(16.).segments(
-                            [
-                                SettingsCategory::Instance,
-                                SettingsCategory::Game,
-                                SettingsCategory::Advanced,
-                            ]
-                            .map(|item| Segment::new(item).icon(item.icon()).label(item.label())),
-                        ),
+                        SegmentedControl::new(category)
+                            .height(TAB_STRIP_HEIGHT)
+                            .icon_size(16.)
+                            .segments(
+                                [
+                                    SettingsCategory::Instance,
+                                    SettingsCategory::Game,
+                                    SettingsCategory::Advanced,
+                                ]
+                                .map(|item| {
+                                    Segment::new(item).icon(item.icon()).label(item.label())
+                                }),
+                            ),
                     ),
             )
             .child(
@@ -932,7 +942,7 @@ impl Component for DirTargetRow {
                 t("oneclient.cluster.settings.dedicated_dir.title"),
                 t("oneclient.cluster.settings.dedicated_dir.locked"),
                 Dropdown::new(dedicated.clone(), vec![dedicated])
-                    .width(Size::px(220.))
+                    .width(settings_control_width())
                     .height(Size::px(34.)),
             )
             .into_element();
@@ -1015,7 +1025,7 @@ impl Component for DirTargetRow {
             options.push(t("oneclient.cluster.settings.dedicated_dir.option.new").to_string());
             let create = options.len() - 1;
             Dropdown::new(selected, options)
-                .width(Size::px(220.))
+                .width(settings_control_width())
                 .height(Size::px(34.))
                 .on_select(move |idx: usize| match idx {
                     0 => switch(DirTarget::Dedicated, false),
@@ -1329,7 +1339,7 @@ impl Component for TextRow {
         let control = TextInput::new(text)
             .placeholder(placeholder)
             .expandable(true)
-            .width(Size::px(220.));
+            .width(settings_control_width());
 
         settings_row(
             icon,
@@ -1378,7 +1388,7 @@ impl Component for JavaRow {
 
             let dispatch = dispatch.clone();
             Dropdown::new(selected, options)
-                .width(Size::px(260.))
+                .width(settings_control_width())
                 .height(Size::px(34.))
                 .on_select(move |idx: usize| {
                     if idx == 0 {
@@ -1456,7 +1466,7 @@ impl Component for BrowserUpdateModeRow {
         let control = {
             let dispatch = dispatch.clone();
             Dropdown::new(resolved.label(), options)
-                .width(Size::px(220.))
+                .width(settings_control_width())
                 .height(Size::px(34.))
                 .on_select(move |idx: usize| {
                     if let Some(mode) = PackageUpdateMode::ALL.get(idx).copied() {
@@ -1506,7 +1516,7 @@ impl Component for GraphicsBackendRow {
             current.unwrap_or(GraphicsBackend::Default).to_string(),
             options,
         )
-        .width(Size::px(220.))
+        .width(settings_control_width())
         .height(Size::px(34.))
         .on_select(move |idx: usize| {
             if let Some(backend) = GraphicsBackend::ALL.get(idx).copied() {
@@ -1675,7 +1685,7 @@ impl Component for LoaderRow {
         } else {
             let options = versions.to_vec();
             Dropdown::new(selected, options.clone())
-                .width(Size::px(220.))
+                .width(settings_control_width())
                 .height(Size::px(34.))
                 .on_select(move |idx: usize| {
                     if let Some(version) = options.get(idx) {

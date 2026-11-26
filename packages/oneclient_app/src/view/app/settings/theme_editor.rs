@@ -3,7 +3,7 @@ use std::time::Duration;
 use freya::prelude::*;
 use freya::router::RouterContext;
 
-use super::{section_header, settings_page, settings_row};
+use super::{first_section_header, section_header, settings_page, settings_row};
 use crate::components::{
     Button, ColorPicker, Dropdown, IconType, Segment, SegmentedControl, TextInput, toggle,
 };
@@ -125,7 +125,7 @@ impl Component for SettingsThemeEditor {
                         Segment::new(true).label(t("oneclient.settings.appearance.theme.light")),
                     ),
             ))
-            .child(section_header("Colors"))
+            .child(first_section_header("Colors"))
             .child(color_row(
                 draft,
                 IconType::LayoutTop,

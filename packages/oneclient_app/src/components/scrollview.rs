@@ -54,6 +54,7 @@ impl PageWheelInput {
 const LAZY_OVERSCAN: i64 = 3;
 const SCROLLBAR_GUTTER: f32 = 14.;
 const BOTTOM_SLOP: f32 = 2.;
+const DEFAULT_FADE_HEIGHT: f32 = 18.;
 
 const AUTOSCROLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(16);
 
@@ -221,6 +222,7 @@ pub struct ScrollArea {
     auto_hide_scrollbar: bool,
     scrollbar_gutter: bool,
     bottom_fade: Option<Color>,
+    bottom_fade_height: f32,
     horizontal: bool,
     content_width: f32,
     stick_bottom: bool,
@@ -254,6 +256,7 @@ impl ScrollArea {
             auto_hide_scrollbar: false,
             scrollbar_gutter: false,
             bottom_fade: None,
+            bottom_fade_height: DEFAULT_FADE_HEIGHT,
             horizontal: false,
             content_width: 0.,
             stick_bottom: false,
@@ -317,6 +320,11 @@ impl ScrollArea {
 
     pub fn bottom_fade(mut self, background: Color) -> Self {
         self.bottom_fade = Some(background);
+        self
+    }
+
+    pub fn bottom_fade_height(mut self, height: f32) -> Self {
+        self.bottom_fade_height = height;
         self
     }
 
@@ -1192,7 +1200,7 @@ impl ScrollArea {
                                             .left(0.)
                                             .right(if show_v { SCROLLBAR_GUTTER } else { 0. }),
                                     )
-                                    .height(Size::px(18.))
+                                    .height(Size::px(self.bottom_fade_height))
                                     .width(Size::fill())
                                     .layer(Layer::Relative(9))
                                     .background(
@@ -1245,6 +1253,7 @@ impl PartialEq for ScrollArea {
             && self.auto_hide_scrollbar == other.auto_hide_scrollbar
             && self.scrollbar_gutter == other.scrollbar_gutter
             && self.bottom_fade == other.bottom_fade
+            && self.bottom_fade_height == other.bottom_fade_height
             && self.horizontal == other.horizontal
             && self.content_width == other.content_width
             && self.stick_bottom == other.stick_bottom

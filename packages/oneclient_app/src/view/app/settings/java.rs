@@ -3,7 +3,7 @@ use std::path::Path;
 use freya::prelude::*;
 use oneclient_java::{JavaRuntime, JavaVendor, is_launcher_managed};
 
-use super::settings_page;
+use super::{first_section_header, settings_page};
 use crate::Route;
 use crate::components::{Button, Icon, IconType, JavaInstallManager, OverlayPopup, ScrollArea};
 use crate::hooks::{Actions, java_runtimes, use_dispatch, use_java_runtimes};
@@ -27,7 +27,7 @@ impl Component for SettingsJava {
         let pending_remove = use_state(|| None::<PendingRemove>);
 
         let mut shell = settings_page()
-            .child(section_header(t(
+            .child(first_section_header(t(
                 "oneclient.settings.java.section.add_runtime",
             )))
             .child(AddRow { show_manager }.into_element())
@@ -136,7 +136,7 @@ fn runtimes_table(
             .width(Size::fill())
             .padding(Gaps::new_symmetric(16., 16.))
             .corner_radius(rounded(12.))
-            .background(colors::page_elevated())
+            .background(colors::card())
             .child(
                 label()
                     .text(t("oneclient.settings.java.empty"))
@@ -150,7 +150,7 @@ fn runtimes_table(
         .vertical()
         .width(Size::fill())
         .corner_radius(rounded(12.))
-        .background(colors::page_elevated())
+        .background(colors::card())
         .border(border_all_color(1., colors::component_border()))
         .overflow(Overflow::Clip)
         .child(table_header());

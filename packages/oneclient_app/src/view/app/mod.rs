@@ -80,7 +80,7 @@ pub fn launch_syncing(launcher: &LauncherInit, uses_bundles: bool) -> bool {
     launcher.fetching || (uses_bundles && launcher.syncing_bundles)
 }
 
-pub(crate) use analytics::{analytics_body, analytics_placeholder};
+pub(crate) use analytics::{analytics_body, analytics_empty};
 pub use clusters::{Clusters, ExportInstanceModal};
 pub(crate) use clusters::{
     BUNDLE_CARD_H, BUNDLE_COLUMNS, CellCard, ClusterPickerButton, ClusterPickerModal,

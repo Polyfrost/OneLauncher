@@ -5,7 +5,7 @@ use freya::query::{MutationCapability, MutationStateData, UseMutation};
 use oneclient_auth::{AccountKind, MinecraftAccount};
 use uuid::Uuid;
 
-use super::{section_header, settings_page};
+use super::{PAGE_GAP, first_section_header, settings_page, settings_row_surface};
 use crate::Route;
 use crate::components::{
     Avatar, Button, Icon, IconType, MicrosoftLogin, OverlayPopup, PlayerModel, TextInput,
@@ -89,8 +89,8 @@ impl Component for SettingsAccounts {
                 rect()
                     .vertical()
                     .width(Size::fill())
-                    .spacing(10.)
-                    .child(section_header(t(
+                    .spacing(PAGE_GAP)
+                    .child(first_section_header(t(
                         "oneclient.settings.accounts.section.your_accounts",
                     )))
                     .children(accounts.iter().map(|account| {
@@ -108,17 +108,25 @@ impl Component for SettingsAccounts {
                         }
                         .into_element()
                     }))
-                    .maybe_child(accounts.is_empty().then(empty_state))
-                    .child(account_actions(
-                        has_microsoft,
-                        msa.pending,
-                        msa.error.clone(),
-                        move |_| show_offline.set(true),
-                        {
-                            let msa = msa.clone();
-                            move |_| msa.start()
-                        },
-                    )),
+                    // With no accounts the actions live inside the empty card, centered under its message
+                    .child({
+                        let actions = account_actions(
+                            has_microsoft,
+                            accounts.is_empty(),
+                            msa.pending,
+                            msa.error.clone(),
+                            move |_| show_offline.set(true),
+                            {
+                                let msa = msa.clone();
+                                move |_| msa.start()
+                            },
+                        );
+                        if accounts.is_empty() {
+                            empty_state(actions)
+                        } else {
+                            actions.into_element()
+                        }
+                    }),
             )
             .maybe_child(show_offline.read().then(|| {
                 offline_dialog(
@@ -149,7 +157,7 @@ fn hero(account: MinecraftAccount) -> Element {
         .spacing(16.)
         .padding(Gaps::new_all(16.))
         .corner_radius(rounded(12.))
-        .background(colors::page_elevated())
+        .background(colors::card())
         .child(model_frame(account.id))
         .child(
             rect()
@@ -183,6 +191,7 @@ fn hero(account: MinecraftAccount) -> Element {
 
 fn account_actions(
     has_microsoft: bool,
+    centered: bool,
     microsoft_pending: bool,
     error: Option<String>,
     on_open_offline: impl FnMut(Event<PressEventData>) + 'static,
@@ -192,10 +201,11 @@ fn account_actions(
         .vertical()
         .width(Size::fill())
         .spacing(8.)
+        .maybe(centered, |el| el.cross_align(Alignment::Center))
         .child(
             rect()
                 .horizontal()
-                .width(Size::fill())
+                .width(if centered { Size::auto() } else { Size::fill() })
                 .content(Content::wrap_spacing(8.))
                 .spacing(8.)
                 .child(
@@ -222,7 +232,7 @@ fn account_actions(
         .map(error, |el, msg| {
             el.child(hint_line(IconType::AlertTriangle, msg, colors::danger()))
         })
-        .maybe(!has_microsoft, |el| {
+        .maybe(!has_microsoft && !centered, |el| {
             el.child(hint_line(
                 IconType::InfoCircle,
                 t("oneclient.settings.accounts.microsoft_required").to_string(),
@@ -472,15 +482,7 @@ impl Component for AccountRow {
             colors::component_border()
         };
 
-        rect()
-            .horizontal()
-            .width(Size::fill())
-            .cross_align(Alignment::Center)
-            .content(Content::Flex)
-            .spacing(12.)
-            .padding(Gaps::new_all(12.))
-            .corner_radius(rounded(12.))
-            .background(colors::page_elevated())
+        settings_row_surface(false)
             .border(border_all_color(1., border_color))
             .opacity(if is_refreshing {
                 REFRESHING_OPACITY
@@ -675,26 +677,39 @@ fn badge(icon: impl IntoElement, text: String, border: Color, fg: Color) -> impl
         .into_element()
 }
 
-fn empty_state() -> Element {
+fn empty_state(actions: impl IntoElement) -> Element {
     rect()
         .vertical()
         .width(Size::fill())
-        .center()
+        .cross_align(Alignment::Center)
         .padding(Gaps::new_all(32.))
         .spacing(8.)
         .corner_radius(rounded(12.))
-        .background(colors::page_elevated())
+        .background(colors::card())
         .child(
             Icon::new(IconType::Users01)
-                .size(32.)
+                .size(28.)
                 .color(colors::fg_secondary()),
         )
         .child(
             label()
                 .text(t("oneclient.settings.accounts.empty"))
+                .width(Size::fill())
+                .text_align(TextAlign::Center)
                 .font_size(text_size(14.))
+                .font_weight(FontWeight::SEMI_BOLD)
+                .color(colors::fg_primary()),
+        )
+        .child(
+            label()
+                .text(t("oneclient.settings.accounts.empty_hint"))
+                .width(Size::fill())
+                .font_size(text_size(12.))
+                .text_align(TextAlign::Center)
                 .color(colors::fg_secondary()),
         )
+        .child(rect().height(Size::px(8.)))
+        .child(actions)
         .into_element()
 }
 

@@ -2,7 +2,7 @@ use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_core::settings::LauncherSettings;
 
-use super::settings_page;
+use super::{first_section_header, settings_page};
 use crate::Route;
 use crate::components::{IconType, link_button, toggle};
 use crate::hooks::{
@@ -55,7 +55,7 @@ impl Component for SettingsDeveloper {
         let browser_compat = use_browser_compat();
 
         settings_page()
-            .child(section_header(t(
+            .child(first_section_header(t(
                 "oneclient.settings.developer.section.browser",
             )))
             .child(settings_row(

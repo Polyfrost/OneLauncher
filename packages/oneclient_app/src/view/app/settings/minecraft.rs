@@ -4,7 +4,7 @@ use oneclient_core::settings::{
     GameSettingsProfile, PackageUpdateMode, ProfileUpdate, Resolution, SettingsOsExtra,
 };
 
-use super::settings_page;
+use super::{first_section_header, settings_control_width, settings_page};
 use crate::Route;
 use crate::components::{
     Dropdown, Icon, IconType, TextInput, memory_field, toggle, validate_number,
@@ -104,7 +104,7 @@ impl Component for SettingsMinecraft {
         });
 
         let page = settings_page()
-            .child(section_header(t(
+            .child(first_section_header(t(
                 "oneclient.settings.minecraft.section.game",
             )))
             .child(settings_row(
@@ -163,7 +163,7 @@ impl Component for SettingsMinecraft {
                     TextInput::new(jvm_args)
                         .placeholder("-XX:+UseG1GC")
                         .expandable(true)
-                        .width(Size::px(220.)),
+                        .width(settings_control_width()),
                     jvm_args,
                     defaults.launch_args.clone().unwrap_or_default(),
                 ),
@@ -176,7 +176,7 @@ impl Component for SettingsMinecraft {
                     TextInput::new(game_args)
                         .placeholder("--tracy --tracyNoImages")
                         .expandable(true)
-                        .width(Size::px(220.)),
+                        .width(settings_control_width()),
                     game_args,
                     defaults.game_args.clone().unwrap_or_default(),
                 ),
@@ -205,7 +205,7 @@ impl Component for SettingsMinecraft {
                     TextInput::new(pre_launch_command)
                         .placeholder("echo 'Game started'")
                         .expandable(true)
-                        .width(Size::px(220.)),
+                        .width(settings_control_width()),
                     pre_launch_command,
                     defaults.hook_pre.clone().unwrap_or_default(),
                 ),
@@ -218,7 +218,7 @@ impl Component for SettingsMinecraft {
                     TextInput::new(wrapper_command)
                         .placeholder("gamescope")
                         .expandable(true)
-                        .width(Size::px(220.)),
+                        .width(settings_control_width()),
                     wrapper_command,
                     defaults.hook_wrapper.clone().unwrap_or_default(),
                 ),
@@ -231,7 +231,7 @@ impl Component for SettingsMinecraft {
                     TextInput::new(post_exit_command)
                         .placeholder("echo 'Game exited'")
                         .expandable(true)
-                        .width(Size::px(220.)),
+                        .width(settings_control_width()),
                     post_exit_command,
                     defaults.hook_post.clone().unwrap_or_default(),
                 ),
@@ -287,7 +287,7 @@ fn gpu_field(
     let ids: Vec<String> = gpus.iter().map(|gpu| gpu.id.clone()).collect();
 
     Dropdown::new(current, options)
-        .width(Size::px(220.))
+        .width(settings_control_width())
         .height(Size::px(34.))
         .on_select(move |idx: usize| {
             selected.set(idx.checked_sub(offset).and_then(|i| ids.get(i).cloned()));
@@ -341,7 +341,7 @@ fn update_mode_field(mut selected: State<PackageUpdateMode>) -> impl IntoElement
         .collect();
 
     Dropdown::new(selected.read().label(), options)
-        .width(Size::px(220.))
+        .width(settings_control_width())
         .height(Size::px(34.))
         .on_select(move |idx: usize| {
             if let Some(mode) = PackageUpdateMode::ALL.get(idx).copied() {

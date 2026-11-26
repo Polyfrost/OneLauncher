@@ -1,7 +1,7 @@
 use freya::prelude::*;
 use oneclient_core::storage::{ReclaimableEntry, StorageEntry, StorageReport, format_bytes};
 
-use super::{section_header, settings_page};
+use super::{PAGE_GAP, first_section_header, section_header, settings_page, settings_row_surface};
 use crate::Route;
 use crate::components::{Button, Icon, IconType, open_folder_button};
 use crate::hooks::{
@@ -45,7 +45,7 @@ impl Component for SettingsStorage {
             page = page.child(scan_card(scan.as_ref()));
         }
 
-        page.child(section_header(t(
+        page.child(first_section_header(t(
             "oneclient.settings.storage.section.free_up_space",
         )))
         .child(
@@ -211,16 +211,7 @@ impl Component for ReclaimRow {
                 t("oneclient.settings.storage.clean_up")
             }));
 
-        rect()
-            .horizontal()
-            .width(Size::fill())
-            .content(Content::Flex)
-            .cross_align(Alignment::Center)
-            .spacing(16.)
-            .padding(Gaps::new_symmetric(12., 16.))
-            .corner_radius(rounded(12.))
-            .background(colors::page_elevated())
-            .maybe(self.empty, |el| el.opacity(colors::disabled_opacity()))
+        settings_row_surface(false)
             .child(Icon::new(self.icon))
             .child(
                 rect()
@@ -253,15 +244,7 @@ fn usage_row(entry: &StorageEntry, largest: u64, bar: Color) -> impl IntoElement
         (entry.bytes as f32 / largest as f32).max(MIN_BAR_FRACTION)
     };
 
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .content(Content::Flex)
-        .cross_align(Alignment::Center)
-        .spacing(16.)
-        .padding(Gaps::new_symmetric(12., 16.))
-        .corner_radius(rounded(12.))
-        .background(colors::page_elevated())
+    settings_row_surface(false)
         .child(
             rect()
                 .vertical()
@@ -308,7 +291,7 @@ fn usage_list(entries: &[StorageEntry], bar: Color, empty: &'static str) -> Elem
         return empty_note(empty).into_element();
     };
 
-    let mut list = rect().vertical().width(Size::fill()).spacing(4.);
+    let mut list = rect().vertical().width(Size::fill()).spacing(PAGE_GAP);
     for entry in entries.iter().filter(|entry| entry.bytes > 0) {
         list = list.child(usage_row(entry, largest, bar));
     }

@@ -1,14 +1,13 @@
 use freya::prelude::*;
 
-use super::settings_page;
+use super::{first_section_header, settings_page, settings_row_surface};
 use crate::Route;
 use crate::components::{Icon, IconType};
 use crate::hooks::{Actions, use_dispatch, use_settings_snapshot};
 use crate::i18n::{t, tf};
 use crate::layout::SearchItem;
-use crate::theme::{colors, rounded, text_size};
+use crate::theme::{colors, text_size};
 use crate::translations;
-use crate::view::app::settings::section_header;
 
 #[derive(PartialEq)]
 pub struct SettingsLanguage;
@@ -19,7 +18,7 @@ impl Component for SettingsLanguage {
         let dispatch = use_dispatch();
 
         settings_page()
-            .child(section_header(t(
+            .child(first_section_header(t(
                 "oneclient.settings.language.section.available",
             )))
             .children(translations::choices().into_iter().map(|code| {
@@ -34,15 +33,7 @@ fn language_row(code: Option<String>, is_selected: bool, dispatch: Actions) -> i
     let (native, english) = translations::names(code.as_deref());
     let coverage = translations::coverage(code.as_deref());
 
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .content(Content::Flex)
-        .cross_align(Alignment::Center)
-        .spacing(16.)
-        .padding(Gaps::new_symmetric(12., 16.))
-        .corner_radius(rounded(12.))
-        .background(colors::page_elevated())
+    settings_row_surface(false)
         .cursor(CursorIcon::Pointer)
         .on_press(move |_| {
             let code = code.clone();

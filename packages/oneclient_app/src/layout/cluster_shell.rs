@@ -3,15 +3,15 @@ use freya::prelude::*;
 use freya::router::*;
 
 use crate::components::{
-    ART_PREVIEW_EDGE, Button, DynamicArt, Icon, IconType, ScrollArea, TooltipPlacement,
-    use_tooltip_anchor,
+    ART_PREVIEW_EDGE, Button, DynamicArt, Icon, IconType, TooltipPlacement, use_tooltip_anchor,
 };
 use crate::hooks::{use_bisect, use_cluster, use_dispatch, use_game_snapshot, use_launcher};
 use crate::i18n::t;
 use crate::routes::Route;
 use crate::theme::{colors, glass, rounded, text_size};
 
-use super::{workspace_dialog::WorkspaceLayout, workspace_rail};
+use super::workspace_dialog::{CONTENT_TOP, WorkspaceLayout, close_button, header_divider};
+use super::workspace_rail;
 use crate::ui::entrance_motion_layer;
 use crate::view::app::ExportInstanceModal;
 use crate::view::app::{
@@ -19,7 +19,7 @@ use crate::view::app::{
 };
 
 /// Launch button height; the icon buttons beside it are squares of the same size
-const ACTION_HEIGHT: f32 = 40.;
+const ACTION_HEIGHT: f32 = 36.;
 const ACTION_ICON_SIZE: f32 = 20.;
 
 #[derive(PartialEq, Clone, Copy)]
@@ -106,29 +106,60 @@ fn route_cluster(route: &Route) -> Option<(i64, ClusterViewShellTab)> {
 #[derive(PartialEq)]
 pub struct ClusterShell;
 
+impl ClusterShell {
+    pub(crate) fn workspace_padding() -> f32 {
+        WorkspaceLayout::current().padding
+    }
+
+    /// The rail's width, for page columns that line up with it
+    pub(crate) fn workspace_rail_width() -> f32 {
+        WorkspaceLayout::current().rail_width
+    }
+
+    /// The rail's row height and gap, for page columns that read as part of the rail
+    pub(crate) fn workspace_rail_rows() -> (f32, f32) {
+        let layout = WorkspaceLayout::current();
+        (layout.row_height, layout.row_gap)
+    }
+
+    /// The ink of an unselected rail row and of a rail heading
+    pub(crate) fn workspace_rail_ink() -> Color {
+        workspace_rail::secondary_ink()
+    }
+
+    /// The page area's width and height before measuring it, for size rules that follow the pane
+    pub(crate) fn workspace_pane_size() -> (f32, f32) {
+        let layout = WorkspaceLayout::current();
+        (layout.pane_width(), layout.pane_height())
+    }
+}
+
 impl Component for ClusterShell {
     fn render(&self) -> impl IntoElement {
         let route = use_route::<Route>();
         let layout = WorkspaceLayout::current();
         let (cluster_id, active_tab) =
             route_cluster(&route).unwrap_or((0, ClusterViewShellTab::Overview));
+        // Settings and Overview put their scrollbar in this inset from inside their viewport.
+        let pane_right = if matches!(
+            active_tab,
+            ClusterViewShellTab::Settings | ClusterViewShellTab::Overview
+        ) {
+            0.
+        } else {
+            layout.padding
+        };
 
-        let dispatch = use_dispatch();
         let game = use_game_snapshot();
-        let launcher = use_launcher();
         let cluster = use_cluster(cluster_id);
-        let syncing = launch_syncing(&launcher, cluster.as_ref().is_none_or(|c| c.uses_bundles()));
-        let shared_dir_taken = use_shared_dir_taken(cluster_id);
 
         let show_game_log = game.is_active(cluster_id);
         let show_datapacks = cluster
             .as_ref()
             .is_none_or(|c| crate::view::app::cluster::supports_datapacks(&c.mc_version));
         let show_mod_tabs = cluster.as_ref().is_none_or(|c| !c.lacks_mod_loader());
-        let launch_state = launch_button_state(&game, cluster_id, syncing, shared_dir_taken);
         let bisecting = use_bisect(cluster_id).is_some();
         let mut question_hidden = use_state(|| false);
-        let mut sharing = use_state(|| false);
         let open_game_output = use_state(|| false);
         use_hook(move || {
             provide_root_context(crate::view::app::cluster::OpenGameOutput(open_game_output))
@@ -159,45 +190,30 @@ impl Component for ClusterShell {
             })
         });
 
-        let header = cluster.as_ref().map(|cluster| {
-            let branded = crate::utils::builtin_oneclient_title(cluster);
-            let subtitle = if branded.is_some() {
-                Some(cluster.mc_loader.to_string())
-            } else {
-                Some(format!(
-                    "{} \u{b7} {}",
-                    cluster.mc_version, cluster.mc_loader
-                ))
-            };
-            let title = branded.unwrap_or_else(|| crate::utils::instance_display_name(cluster));
-            cluster_header(
-                DynamicArt::for_cluster(cluster).max_edge(ART_PREVIEW_EDGE),
-                title,
-                subtitle,
-                cluster_id,
-                dispatch,
-                launch_state,
-                game.is_running(cluster_id),
-                sharing,
-                layout,
-            )
-            .into_element()
-        });
-
         rect()
             .vertical()
+            .content(Content::Flex)
             .width(Size::fill())
             .height(Size::fill())
             .overflow(Overflow::Clip)
-            .maybe_child(header)
+            .child(InstanceHeader {
+                cluster_id,
+                show_back: false,
+            })
+            .child(header_divider())
             .child(
                 rect()
                     .horizontal()
                     .content(Content::Flex)
                     .width(Size::fill())
                     .height(Size::flex(1.))
-                    .spacing(layout.inset)
-                    .padding(Gaps::new(0., layout.inset, layout.inset, layout.inset))
+                    // the rail column includes the gap to the page
+                    .padding(Gaps::new(
+                        CONTENT_TOP,
+                        pane_right,
+                        layout.padding,
+                        layout.padding,
+                    ))
                     .child(cluster_tabs(
                         active_tab,
                         cluster_id,
@@ -236,14 +252,6 @@ impl Component for ClusterShell {
                     cluster_id,
                     hidden: question_hidden,
                 }
-                .into_element()
-            }))
-            .maybe_child(cluster.as_ref().filter(|_| *sharing.read()).map(|cluster| {
-                ExportInstanceModal::new(
-                    cluster_id,
-                    crate::utils::instance_display_name(cluster),
-                    move |()| sharing.set(false),
-                )
                 .into_element()
             }))
     }
@@ -298,111 +306,146 @@ impl Component for ClusterContentOutlet {
     }
 }
 
-#[expect(clippy::too_many_arguments)]
-fn cluster_header(
-    artwork: DynamicArt,
-    title: String,
-    subtitle: Option<String>,
-    cluster_id: i64,
-    dispatch: crate::Actions,
-    launch_state: (&'static str, bool),
-    running: bool,
-    mut sharing: State<bool>,
-    layout: WorkspaceLayout,
-) -> impl IntoElement {
-    let (launch_label, launch_enabled) = launch_state;
-    let kill_dispatch = dispatch.clone();
-    let (action_height, artwork_width, artwork_height) = if layout.compact {
-        (34., 64., 40.)
-    } else {
-        (ACTION_HEIGHT, 74., 48.)
-    };
-    let launch_button = Button::new().primary();
-    let launch_button = if layout.compact {
-        launch_button.medium()
-    } else {
-        launch_button.large()
-    };
-    rect()
-        .horizontal()
-        .content(Content::Flex)
-        .width(Size::fill())
-        .padding(Gaps::new_symmetric(
-            if layout.compact { 8. } else { 12. },
-            layout.inset,
-        ))
-        .cross_align(Alignment::Center)
-        .spacing(12.)
-        .child(
-            rect()
-                .width(Size::px(artwork_width))
-                .height(Size::px(artwork_height))
-                .corner_radius(rounded(8.))
-                .overflow(Overflow::Clip)
-                .child(artwork),
-        )
-        .child(
-            rect()
-                .vertical()
-                .width(Size::flex(1.0))
-                .main_align(Alignment::Center)
-                .spacing(if layout.compact { 3. } else { 6. })
+#[derive(PartialEq)]
+pub(super) struct InstanceHeader {
+    pub cluster_id: i64,
+    pub show_back: bool,
+}
+
+impl Component for InstanceHeader {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let layout = WorkspaceLayout::current();
+        let dispatch = use_dispatch();
+        let game = use_game_snapshot();
+        let launcher = use_launcher();
+        let cluster = use_cluster(cluster_id);
+        let syncing = launch_syncing(&launcher, cluster.as_ref().is_none_or(|c| c.uses_bundles()));
+        let shared_dir_taken = use_shared_dir_taken(cluster_id);
+        let (launch_label, launch_enabled) =
+            launch_button_state(&game, cluster_id, syncing, shared_dir_taken);
+        let kill_dispatch = dispatch.clone();
+        let mut sharing = use_state(|| false);
+        let close = close_button();
+
+        let header = layout
+            .header()
+            .spacing(10.)
+            .maybe_child(self.show_back.then(|| {
+                Button::new()
+                    .ghost()
+                    .icon()
+                    .width(Size::px(32.))
+                    .height(Size::px(32.))
+                    .tooltip(t("oneclient.common.back"))
+                    .alt(t("oneclient.common.back"))
+                    .child(Icon::new(IconType::ArrowLeft).size(16.))
+                    .on_press(move |_| RouterContext::get().go_back())
+            }));
+
+        let Some(cluster) = cluster.as_ref() else {
+            return header
                 .child(
                     label()
-                        .text(title)
-                        .font_size(text_size(if layout.compact { 22. } else { 24. }))
-                        .max_lines(if layout.compact { 1 } else { 2 })
-                        .text_overflow(TextOverflow::Ellipsis)
+                        .text(t("oneclient.layout.workspace.instance"))
+                        .width(Size::flex(1.))
+                        .font_size(text_size(18.))
                         .font_weight(FontWeight::BOLD)
                         .color(colors::fg_primary()),
                 )
-                .maybe_child(subtitle.map(|subtitle| {
-                    label()
-                        .text(subtitle)
-                        .font_size(text_size(12.))
-                        .font_weight(FontWeight::MEDIUM)
-                        .color(colors::fg_secondary())
-                })),
-        )
-        .child(
-            rect()
-                .horizontal()
-                .cross_align(Alignment::Center)
-                .spacing(if layout.compact { 8. } else { 10. })
-                .child(
-                    Button::new()
-                        .secondary()
-                        .icon()
-                        .width(Size::px(action_height))
-                        .height(Size::px(action_height))
-                        .tooltip(t("oneclient.layout.cluster.share"))
-                        .on_press(move |_| sharing.set(true))
-                        .child(Icon::new(IconType::Share01).size(ACTION_ICON_SIZE)),
-                )
-                .maybe(running, |el| {
-                    el.child(
-                        Button::new()
-                            .danger()
-                            .icon()
-                            .width(Size::px(action_height))
-                            .height(Size::px(action_height))
-                            .tooltip(t("oneclient.layout.cluster.stop_game"))
-                            .on_press(move |_| kill_dispatch.kill_cluster(cluster_id))
-                            .child(Icon::new(IconType::Square).size(ACTION_ICON_SIZE)),
+                .child(close);
+        };
+        let branded = crate::utils::builtin_oneclient_title(cluster);
+        let subtitle = if branded.is_some() {
+            cluster.mc_loader.to_string()
+        } else {
+            format!("{} · {}", cluster.mc_version, cluster.mc_loader)
+        };
+        let title = branded.unwrap_or_else(|| crate::utils::instance_display_name(cluster));
+
+        header
+            .child(
+                rect()
+                    .width(Size::px(40.))
+                    .height(Size::px(40.))
+                    .corner_radius(rounded(8.))
+                    .overflow(Overflow::Clip)
+                    .child(DynamicArt::for_cluster(cluster).max_edge(ART_PREVIEW_EDGE)),
+            )
+            .child(
+                rect()
+                    .vertical()
+                    .width(Size::flex(1.))
+                    .spacing(2.)
+                    .child(
+                        label()
+                            .text(title)
+                            .font_size(text_size(18.))
+                            .max_lines(1)
+                            .text_overflow(TextOverflow::Ellipsis)
+                            .font_weight(FontWeight::BOLD)
+                            .color(colors::fg_primary()),
                     )
-                })
-                .child(launch_button_label(
-                    launch_button
-                        .height(Size::px(action_height))
-                        .enabled(launch_enabled)
-                        .on_press(move |_| {
-                            if launch_enabled {
-                                dispatch.launch_cluster(cluster_id);
-                            }
-                        }),
-                    launch_label,
-                )),
-        )
+                    .child(
+                        label()
+                            .text(subtitle)
+                            .font_size(text_size(12.))
+                            .max_lines(1)
+                            .text_overflow(TextOverflow::Ellipsis)
+                            .color(colors::fg_secondary()),
+                    ),
+            )
+            .child(
+                Button::new()
+                    .secondary()
+                    .icon()
+                    .width(Size::px(ACTION_HEIGHT))
+                    .height(Size::px(ACTION_HEIGHT))
+                    .tooltip(t("oneclient.layout.cluster.share"))
+                    .on_press(move |_| sharing.set(true))
+                    .child(Icon::new(IconType::Share01).size(ACTION_ICON_SIZE)),
+            )
+            .maybe(game.is_running(cluster_id), |el| {
+                el.child(
+                    Button::new()
+                        .danger()
+                        .icon()
+                        .width(Size::px(ACTION_HEIGHT))
+                        .height(Size::px(ACTION_HEIGHT))
+                        .tooltip(t("oneclient.layout.cluster.stop_game"))
+                        .on_press(move |_| kill_dispatch.kill_cluster(cluster_id))
+                        .child(Icon::new(IconType::Square).size(ACTION_ICON_SIZE)),
+                )
+            })
+            .child(launch_button_label(
+                Button::new()
+                    .primary()
+                    .medium()
+                    .height(Size::px(ACTION_HEIGHT))
+                    .enabled(launch_enabled)
+                    .on_press(move |_| {
+                        if launch_enabled {
+                            dispatch.launch_cluster(cluster_id);
+                        }
+                    }),
+                launch_label,
+            ))
+            .child(
+                rect()
+                    .width(Size::px(1.))
+                    .height(Size::px(20.))
+                    .background(colors::component_border()),
+            )
+            .child(close)
+            .maybe_child((*sharing.read()).then(|| {
+                ExportInstanceModal::new(
+                    cluster_id,
+                    crate::utils::instance_display_name(cluster),
+                    move |()| sharing.set(false),
+                )
+                .into_element()
+            }))
+    }
 }
 
 fn cluster_tabs(
@@ -455,16 +498,9 @@ fn cluster_tabs(
         .into_element()
     };
 
-    // Leave enough flexible space to place the two lower actions at the foot of
-    // the panel. On short windows they scroll with the rest of the sidebar.
-    let row_count = tabs.len() + usize::from(game_folder.is_some());
-    let divider_height = if layout.compact { 7. } else { 9. };
-    let navigation_height = row_count as f32 * layout.row_height
-        + 3. * divider_height
-        + (row_count + 3) as f32 * layout.row_gap;
     let settings_index = tabs.len() - 1;
 
-    workspace_rail::surface()
+    workspace_rail::column(layout)
         .map(lens, |el, track| {
             track.events(el, move |index| {
                 if Some(index) != selected {
@@ -473,48 +509,50 @@ fn cluster_tabs(
             })
         })
         .child(
-            rect()
-                .width(Size::fill())
-                .height(Size::flex(1.))
-                .map(lens, |el, track| track.viewport(el))
-                .child(
-                    ScrollArea::new()
+            workspace_rail::scroll(lens).child(workspace_rail::navigation(layout).content(
+                move |_| {
+                    let mut index = 0;
+                    let mut content = rect()
+                        .vertical()
                         .width(Size::fill())
-                        .height(Size::fill())
-                        .scrollbar_gutter(true)
-                        .auto_hide_scrollbar()
-                        .content(move |ctx| {
-                            let mut index = 0;
-                            let mut content = rect()
+                        .maybe_child(lens.map(|track| track.indicator(selected)));
+                    for group in groups
+                        .iter()
+                        .filter(|group| group.iter().any(Option::is_some))
+                    {
+                        if index != 0 {
+                            content = content.child(workspace_rail::divider());
+                        }
+                        let rows = group.iter().flatten().map(|tab| {
+                            let row = make_tab(*tab, index);
+                            index += 1;
+                            row
+                        });
+                        content = content.child(
+                            rect()
                                 .vertical()
                                 .width(Size::fill())
                                 .spacing(layout.row_gap)
-                                .maybe_child(lens.map(|track| track.indicator(selected)));
-                            for (group_index, group) in groups.iter().enumerate() {
-                                if group_index != 0 {
-                                    content = content.child(nav_divider(divider_height));
-                                }
-                                for tab in group.iter().flatten() {
-                                    content = content.child(make_tab(*tab, index));
-                                    index += 1;
-                                }
-                            }
+                                .children(rows),
+                        );
+                    }
 
-                            content
-                                .child(
-                                    rect().height(Size::px(
-                                        (ctx.viewport_h - navigation_height).max(0.),
-                                    )),
-                                )
-                                .child(nav_divider(divider_height))
+                    content
+                        .child(workspace_rail::divider())
+                        .child(
+                            rect()
+                                .vertical()
+                                .width(Size::fill())
+                                .spacing(layout.row_gap)
                                 .maybe_child(game_folder.clone().map(|folder| ClusterFolderRow {
                                     folder,
                                     height: layout.row_height,
                                 }))
-                                .child(make_tab(Settings, settings_index))
-                                .into_element()
-                        }),
-                ),
+                                .child(make_tab(Settings, settings_index)),
+                        )
+                        .into_element()
+                },
+            )),
         )
 }
 
@@ -552,19 +590,11 @@ impl Component for ClusterFolderRow {
         let ink = if hover() || keyboard {
             colors::fg_primary()
         } else {
-            colors::fg_secondary()
+            workspace_rail::secondary_ink()
         };
 
         tooltip
-            .attach(rect())
-            .horizontal()
-            .content(Content::Flex)
-            .width(Size::fill())
-            .height(Size::px(self.height))
-            .padding(Gaps::new_symmetric(0., 7.))
-            .spacing(7.)
-            .cross_align(Alignment::Center)
-            .corner_radius(rounded(7.))
+            .attach(workspace_rail::row(self.height))
             .background(if hover() {
                 colors::ghost_overlay_hover()
             } else {
@@ -578,13 +608,13 @@ impl Component for ClusterFolderRow {
             .a11y_focusable(true)
             .a11y_alt(name)
             .cursor(CursorIcon::Pointer)
-            .on_pointer_over(move |_| hover.set_if_modified(true))
-            .on_pointer_out(move |_| hover.set_if_modified(false))
+            .on_pointer_enter(move |_| hover.set_if_modified(true))
+            .on_pointer_leave(move |_| hover.set_if_modified(false))
             .on_press(move |_| {
                 std::fs::create_dir_all(&path).ok();
                 crate::platform::open_path(&path.to_string_lossy());
             })
-            .child(Icon::new(IconType::Folder).size(17.).color(ink))
+            .child(Icon::new(IconType::Folder).size(16.).color(ink))
             .child(
                 label()
                     .text(name)
@@ -603,22 +633,14 @@ impl Component for ClusterFolderRow {
     }
 }
 
-fn nav_divider(height: f32) -> Rect {
-    rect()
-        .width(Size::fill())
-        .height(Size::px(1.))
-        .margin(Gaps::new_symmetric((height - 1.) / 2., 7.))
-        .background(colors::component_border())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use freya_testing::TestingRunner;
+    use freya_testing::prelude::{PlatformEvent, TestingRunner, WheelEventName};
     use std::time::Duration;
 
-    #[test]
-    fn compact_instance_rail_keeps_settings_below_all_optional_tabs() {
+    #[tokio::test]
+    async fn short_instance_rail_scrolls_to_settings_below_all_optional_tabs() {
         let (mut runner, ()) = TestingRunner::new(
             || {
                 cluster_tabs(
@@ -640,7 +662,7 @@ mod tests {
         );
         runner.poll_n(Duration::ZERO, 5);
 
-        let bottom = |name| {
+        let bottom = |runner: &TestingRunner, name| {
             runner
                 .find(|node, element| {
                     let mut access = element.accessibility().builder.clone();
@@ -649,9 +671,21 @@ mod tests {
                 })
                 .unwrap()
         };
-        let settings = bottom(ClusterViewShellTab::Settings.label());
-        assert!(settings > bottom(ClusterViewShellTab::GameLog.label()));
-        assert!(settings > bottom(t("oneclient.layout.cluster.game_folder")));
+        let settings = bottom(&runner, ClusterViewShellTab::Settings.label());
+        assert!(settings > bottom(&runner, ClusterViewShellTab::GameLog.label()));
+        assert!(settings > bottom(&runner, t("oneclient.layout.cluster.game_folder")));
+        assert!(settings > 390.);
+
+        runner.send_event(PlatformEvent::Wheel {
+            name: WheelEventName::Wheel,
+            source: WheelSource::Pixel,
+            phase: TouchPhase::Moved,
+            scroll: (0., -150.).into(),
+            cursor: (60., 160.).into(),
+        });
+        runner.poll_n(Duration::ZERO, 5);
+
+        let settings = bottom(&runner, ClusterViewShellTab::Settings.label());
         assert!(
             settings <= 390.,
             "settings ended below the rail: {settings}"

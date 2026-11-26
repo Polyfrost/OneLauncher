@@ -10,8 +10,8 @@ use crate::hooks::{
 };
 use crate::i18n::{t, tf};
 use crate::routes::Route;
-use crate::theme::{colors, rounded, text_size};
-use crate::view::app::settings::{section_header, settings_row};
+use crate::theme::{colors, text_size};
+use crate::view::app::settings::{PAGE_GAP, section_header, settings_row, settings_row_surface};
 
 const MODPACK_EXTENSIONS: [&str; 2] = ["mrpack", "zip"];
 const MODPACK_BROWSE_TYPE: &str = "modpack";
@@ -137,7 +137,7 @@ impl Component for ImportedModpacksSection {
         rect()
             .vertical()
             .width(Size::fill())
-            .spacing(4.)
+            .spacing(PAGE_GAP)
             .child(section_header(t(
                 "oneclient.cluster.imported_modpacks.section",
             )))
@@ -183,15 +183,7 @@ impl Component for PackRow {
         let pack = self.pack.clone();
         let busy = self.busy;
 
-        rect()
-            .horizontal()
-            .width(Size::fill())
-            .content(Content::Flex)
-            .cross_align(Alignment::Center)
-            .spacing(16.)
-            .padding(Gaps::new_symmetric(12., 16.))
-            .corner_radius(rounded(12.))
-            .background(colors::page_elevated())
+        settings_row_surface(false)
             .child(icon)
             .child(
                 rect()

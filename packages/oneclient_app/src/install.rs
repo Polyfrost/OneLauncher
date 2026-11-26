@@ -480,13 +480,12 @@ pub async fn install_package(
         oneclient_events::TaskCategory::Packages,
     );
 
-    let result = PackageStore::install_to_cluster(
+    let result = oneclient_content::bundles::install_package_enabled(
         provider,
         &project,
         &version,
         cluster_id,
         incompatible == IncompatibleMode::Allow,
-        false,
         Some(&child),
         &state.services.content(),
     )

@@ -119,17 +119,26 @@ impl App for OneClientApp {
         #[cfg(target_os = "linux")]
         use_hook(move || {
             let mut preferred = platform.preferred_theme;
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+            // a plain thread so it never holds up runtime shutdown while waiting for signals
+            std::thread::spawn(move || {
+                let result = oneclient_app::platform::watch_portal_color_scheme(|dark| {
+                    let _ = tx.send(dark);
+                });
+                if let Err(err) = result {
+                    tracing::debug!(%err, "settings portal unavailable, not following the desktop color scheme");
+                }
+            });
             spawn(async move {
-                // ponytail: polls every few seconds, a SettingChanged signal subscription
-                // would react instantly if that ever matters
-                while let Ok(Some(dark)) =
-                    tokio::task::spawn_blocking(oneclient_app::platform::portal_prefers_dark).await
-                {
-                    let want = if dark { PreferredTheme::Dark } else { PreferredTheme::Light };
+                while let Some(dark) = rx.recv().await {
+                    let want = if dark {
+                        PreferredTheme::Dark
+                    } else {
+                        PreferredTheme::Light
+                    };
                     if *preferred.peek() != want {
                         preferred.set(want);
                     }
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                 }
             });
         });

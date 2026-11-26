@@ -23,7 +23,7 @@ pub struct JavaCheckInfo {
     /// Mod loaders and game tooling expect a JDK so the locator prefers one
     /// when both satisfy the requested major
     pub is_jdk: bool,
-    /// Where the probed runtime thinks its files live; used to check that a
+    /// Where the probed runtime thinks its files live, used to check that a
     /// JDK is complete rather than just launchable
     pub java_home: String,
 }

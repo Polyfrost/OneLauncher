@@ -47,7 +47,7 @@ pub enum JavaError {
     MissingAwtSupport { path: String },
 
     #[error(
-        "java installation at '{path}' is missing JDK parts (compiler, jmods or JNI headers); reinstall it"
+        "java installation at '{path}' is missing JDK parts (compiler, jmods or JNI headers), reinstall it"
     )]
     IncompleteJdk { path: String },
 

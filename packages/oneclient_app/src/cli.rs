@@ -88,11 +88,9 @@ mod tests {
     fn a_launch_folder_that_could_leave_the_clusters_folder_is_refused() {
         for bad in ["..", "../x", "a/b", "a\\b"] {
             assert_eq!(parse(&["--launch", bad]).launch, None, "{bad:?}");
-            assert_eq!(
-                parse(&[&format!("--launch={bad}")]).launch,
-                None,
-                "{bad:?}"
-            );
+
+            let joined = format!("--launch={bad}");
+            assert_eq!(parse(&[joined.as_str()]).launch, None, "{bad:?}");
         }
     }
 

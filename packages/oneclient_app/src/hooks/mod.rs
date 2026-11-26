@@ -51,7 +51,7 @@ pub use actions::{
 };
 pub use queries::ALL_VERSIONS;
 pub use queries::PackageUpdatesQuery;
-pub(crate) use queries::{take_bundles, take_offered_bundles};
+pub(crate) use queries::{take_bundles, turn_on_bundles};
 pub(crate) use queries::use_folder_watch;
 pub use queries::wardrobe;
 pub use queries::{

@@ -2040,7 +2040,6 @@
   "oneclient.mutations.resetting": "Resetting %s",
   "oneclient.mutations.setting_up": "Setting up %s",
   "oneclient.mutations.take_bundles_failed": "Couldn't add bundles to %s",
-  "oneclient.mutations.take_bundles_unsupported": "OneClient has no features for %s %s yet",
   "oneclient.mutations.shared_group_failed.body": "It uses the default shared folder for now: %s",
   "oneclient.mutations.shared_group_failed.title": "Couldn't put the instance in %s",
   "oneclient.mutations.verification_complete": "Verification complete",

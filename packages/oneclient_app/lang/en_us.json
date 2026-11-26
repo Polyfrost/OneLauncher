@@ -168,7 +168,7 @@
   "oneclient.actions.optional_mods.failed.body.other": "%s mods could not be installed",
   "oneclient.actions.optional_mods.failed.title": "Some mods were not added",
   "oneclient.actions.package_check.managed.body.bundle": "%s comes with a modpack or bundle in this instance, so it updates with it.",
-  "oneclient.actions.package_check.managed.body.one": "%s comes with %s, so it updates when the modpack does. Check for modpack updates in the instance settings.",
+  "oneclient.actions.package_check.managed.body.one": "%s comes with %s, so it updates when the modpack does.",
   "oneclient.actions.package_check.managed.body.other": "%s mods come with a modpack or bundle, so they update with it.",
   "oneclient.actions.package_check.managed.title": "Updates with its modpack",
   "oneclient.actions.package_check.none.one": "%s is up to date.",

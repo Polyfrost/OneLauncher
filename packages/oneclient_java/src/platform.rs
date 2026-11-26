@@ -208,7 +208,12 @@ const GPU_PREFERENCES_KEY: &str = r"HKCU\Software\Microsoft\DirectX\UserGpuPrefe
 
 /// A JVM is started through either stub so both are registered
 #[cfg(windows)]
-const GPU_PREFERENCE_EXECUTABLES: [&str; 2] = ["javaw.exe", "java.exe"];
+const GPU_PREFERENCE_EXECUTABLES: [&str; 4] = [
+    "javaw.exe",
+    "java.exe",
+    "javaw-legacygl.exe",
+    "java-legacygl.exe",
+];
 
 /// Absolute so a `reg.exe` earlier in the search order cannot run in its place
 #[cfg(windows)]
@@ -329,6 +334,136 @@ pub async fn set_gpu_preference(_java_path: &std::path::Path, _preference: u8) {
 #[cfg(not(windows))]
 pub async fn forget_dedicated_gpu(_java_path: &std::path::Path) {}
 
+#[cfg(windows)]
+const DISPLAY_CLASS_KEY: &str =
+    r"HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}";
+
+#[cfg(windows)]
+const LEGACY_INTEL_NAMES: [&str; 3] = [
+    "Intel(R) HD Graphics",
+    "Intel(R) HD Graphics 2000",
+    "Intel(R) HD Graphics 3000",
+];
+
+#[cfg(windows)]
+const LEGACY_INTEL_DEVICES: [&str; 9] = [
+    "0042", "0046", "0102", "0106", "010a", "0112", "0116", "0122", "0126",
+];
+
+#[cfg(windows)]
+async fn has_legacy_intel_gpu() -> bool {
+    let Ok(list) = reg_command()
+        .args(["query", DISPLAY_CLASS_KEY])
+        .output()
+        .await
+    else {
+        return false;
+    };
+
+    for key in String::from_utf8_lossy(&list.stdout).lines().map(str::trim) {
+        let adapter = key
+            .rsplit('\\')
+            .next()
+            .is_some_and(|name| name.len() == 4 && name.bytes().all(|b| b.is_ascii_digit()));
+        if !adapter {
+            continue;
+        }
+
+        let Ok(out) = reg_command().args(["query", key]).output().await else {
+            continue;
+        };
+        let query = String::from_utf8_lossy(&out.stdout);
+        let name = registered_value(&query, "DriverDesc").unwrap_or_default();
+        let device = registered_value(&query, "MatchingDeviceId")
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        if LEGACY_INTEL_NAMES.contains(&name)
+            || LEGACY_INTEL_DEVICES
+                .iter()
+                .any(|id| device.starts_with(&format!(r"pci\ven_8086&dev_{id}")))
+        {
+            tracing::info!(name, device, "found a legacy Intel GPU");
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(windows)]
+pub async fn legacy_gl_executable(java_path: &std::path::Path) -> std::path::PathBuf {
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    let original = java_path.to_path_buf();
+    if !has_legacy_intel_gpu().await {
+        return original;
+    }
+    let Some(stem) = java_path.file_stem() else {
+        return original;
+    };
+    let patched = java_path.with_file_name(format!("{}-legacygl.exe", stem.to_string_lossy()));
+
+    if let (Ok(src), Ok(copy)) = (std::fs::metadata(java_path), std::fs::metadata(&patched))
+        && src.len() == copy.len()
+        && src.modified().ok() <= copy.modified().ok()
+    {
+        return patched;
+    }
+
+    let Ok(bytes) = tokio::fs::read(java_path).await else {
+        return original;
+    };
+    let Some(bytes) = strip_win10_manifest(bytes) else {
+        tracing::warn!(path = %java_path.display(), "no Windows 10 manifest entry to strip");
+        return original;
+    };
+    static NEXT_TEMP: AtomicU32 = AtomicU32::new(0);
+    let temp = patched.with_extension(format!(
+        "{}-{}.tmp",
+        std::process::id(),
+        NEXT_TEMP.fetch_add(1, Ordering::Relaxed)
+    ));
+    if let Err(err) = polyio::write(&temp, bytes).await {
+        tracing::warn!(%err, "could not write the legacy OpenGL java executable");
+        return original;
+    }
+    if let Err(err) = polyio::rename(&temp, &patched).await {
+        let _ = polyio::remove_file(&temp).await;
+        if !polyio::try_exists(&patched).await.unwrap_or(false) {
+            tracing::warn!(%err, "could not write the legacy OpenGL java executable");
+            return original;
+        }
+    }
+    tracing::info!(path = %patched.display(), "launching through the legacy OpenGL java executable");
+    patched
+}
+
+#[cfg(not(windows))]
+pub async fn legacy_gl_executable(java_path: &std::path::Path) -> std::path::PathBuf {
+    java_path.to_path_buf()
+}
+
+#[cfg(any(windows, test))]
+fn strip_win10_manifest(mut exe: Vec<u8>) -> Option<Vec<u8>> {
+    const WIN10: &[u8] = b"8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a";
+
+    let mut found = false;
+    let mut from = 0;
+    while let Some(pos) = exe[from..]
+        .windows(WIN10.len())
+        .position(|window| window.eq_ignore_ascii_case(WIN10))
+    {
+        let start = from + pos;
+        for byte in &mut exe[start..start + WIN10.len()] {
+            if *byte != b'-' {
+                *byte = b'0';
+            }
+        }
+        found = true;
+        from = start + WIN10.len();
+    }
+    found.then_some(exe)
+}
+
 #[must_use]
 pub fn is_legacy_macos() -> bool {
     #[cfg(target_os = "macos")]
@@ -370,6 +505,18 @@ fn plist_is_legacy_macos(plist: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn strips_win10_manifest_guid() {
+        let exe = b"MZ<supportedOS Id=\"{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}\"/>PE".to_vec();
+        let patched = strip_win10_manifest(exe.clone()).unwrap();
+        assert_eq!(patched.len(), exe.len());
+        assert_eq!(
+            patched,
+            b"MZ<supportedOS Id=\"{00000000-0000-0000-0000-000000000000}\"/>PE"
+        );
+        assert!(strip_win10_manifest(b"MZ no manifest".to_vec()).is_none());
+    }
 
     fn plist(version: &str) -> String {
         format!(

@@ -530,7 +530,8 @@ async fn start(
     );
     tracing::debug!(cluster_id, ?jvm_args, main_class = %version_info.main_class, "jvm arguments");
 
-    let (mut command, wrapper) = base_command(&profile, &java.absolute_path);
+    let java_exe = oneclient_java::legacy_gl_executable(Path::new(&java.absolute_path)).await;
+    let (mut command, wrapper) = base_command(&profile, &java_exe.to_string_lossy());
 
     if let Some(gpu) = profile.gpu().or(crate::game::gpu::DEFAULT) {
         crate::game::gpu::select(&mut command, &java.absolute_path, gpu).await;

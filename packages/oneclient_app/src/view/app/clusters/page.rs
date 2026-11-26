@@ -653,6 +653,7 @@ fn layout_toggle(layout: State<ViewLayout>) -> Element {
 
 pub(crate) fn search_input(query: State<String>, width: Size) -> Element {
     TextInput::new(query)
+        .search()
         .width(width)
         .height(Size::px(34.))
         .placeholder(t("oneclient.clusters.page.search"))

@@ -439,18 +439,10 @@ pub fn viewer_controls(
     upload_path: Option<PathBuf>,
     search_id: AccessibilityId,
 ) -> impl IntoElement {
-    let on_key_down = move |e: Event<KeyboardEventData>| {
-        let find = matches!(&e.key, Key::Character(c) if c.as_str().eq_ignore_ascii_case("f"))
-            && e.modifiers.contains(Modifiers::ctrl_or_meta());
-        if find && has_log {
-            e.prevent_default();
-            search_id.request_focus();
-        }
-    };
-
     let search_input = {
         let base = TextInput::new(search)
             .a11y_id(search_id)
+            .search()
             .enabled(has_log)
             .leading(
                 Icon::new(IconType::SearchMd)
@@ -471,7 +463,6 @@ pub fn viewer_controls(
         .cross_align(Alignment::Center)
         .content(Content::Flex)
         .spacing(10.)
-        .on_global_key_down(on_key_down)
         .child(rect().width(Size::flex(1.0)).child(search_input))
         .child(
             SegmentedControl::new(level)
@@ -632,6 +623,7 @@ impl Component for LogPicker {
                             )
                             .child(
                                 TextInput::new(filter)
+                                    .search()
                                     .auto_focus(true)
                                     .placeholder(t("oneclient.cluster.logs.picker.search"))
                                     .leading(

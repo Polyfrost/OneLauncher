@@ -189,6 +189,7 @@ pub fn settings_file_picker(choice: FileChoice, fill: bool) -> Vec<Element> {
         Some(files) => files,
     };
     let search = TextInput::new(choice.query)
+        .search()
         .width(Size::fill())
         .placeholder(t("oneclient.components.settings_files.search"))
         .leading(

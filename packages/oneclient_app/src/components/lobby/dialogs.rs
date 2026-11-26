@@ -358,6 +358,7 @@ impl Component for InviteDialog {
                 ))
                 .child(
                     TextInput::new(query)
+                        .search()
                         .auto_focus(true)
                         .placeholder(t("oneclient.components.lobby.invite.search"))
                         .leading(

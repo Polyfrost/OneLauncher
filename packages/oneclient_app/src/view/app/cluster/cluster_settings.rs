@@ -1947,6 +1947,7 @@ impl Component for GameOptionsModal {
                 .color(colors::fg_secondary())
                 .into_element(),
             TextInput::new(search)
+                .search()
                 .placeholder(t("oneclient.cluster.settings.game_options.search"))
                 .width(Size::fill())
                 .into_element(),

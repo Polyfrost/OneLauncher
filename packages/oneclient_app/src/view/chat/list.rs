@@ -121,6 +121,7 @@ impl Component for ListPane {
                     .padding(Gaps::new(0., 16., 12., 16.))
                     .child(
                         TextInput::new(query)
+                            .search()
                             .width(Size::fill())
                             .height(Size::px(32.))
                             .font_size(text_size(12.))

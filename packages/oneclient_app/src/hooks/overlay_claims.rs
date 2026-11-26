@@ -12,6 +12,11 @@ impl OverlayClaims {
         self.0.get() > 0
     }
 
+    /// How many overlays are open right now.
+    pub fn depth(&self) -> usize {
+        self.0.get()
+    }
+
     fn acquire(&self) {
         self.0.set(self.0.get() + 1);
     }

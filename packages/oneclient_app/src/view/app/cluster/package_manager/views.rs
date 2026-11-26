@@ -433,6 +433,7 @@ pub(super) fn toolbar_bar(
 
     let mut controls: Vec<Element> = vec![
         TextInput::new(search)
+            .search()
             .placeholder(t("oneclient.cluster.package_manager.search"))
             .width(Size::px(180.))
             .leading(

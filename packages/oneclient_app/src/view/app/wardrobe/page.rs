@@ -1395,6 +1395,7 @@ impl Component for StoreSearch {
                     })
                     .child(
                         TextInput::new(query)
+                            .search()
                             .placeholder(t("oneclient.wardrobe.search"))
                             .compact()
                             .width(Size::fill())

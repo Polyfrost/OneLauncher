@@ -96,6 +96,7 @@ pub(super) fn toolbar_panel(leading: Option<Element>, controls: Vec<Element>) ->
 
 pub(super) fn search_input(search: State<String>) -> Element {
     TextInput::new(search)
+        .search()
         .placeholder(t("oneclient.cluster.package_manager.search"))
         .width(Size::px(SEARCH_W))
         .leading(

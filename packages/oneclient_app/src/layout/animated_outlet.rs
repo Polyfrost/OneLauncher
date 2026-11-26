@@ -4,7 +4,8 @@ use freya::router::*;
 
 use super::app_shell::{appshell_overlay, back_button, hides_overlay, navigate_back};
 use crate::Route;
-use crate::hooks::use_overlay_claims;
+use crate::hooks::{use_overlay_claims, use_search_targets};
+use crate::keyboard_shortcuts::{AppShortcut, app_shortcut};
 use crate::theme;
 use crate::ui::entrance_motion_layer;
 
@@ -85,6 +86,11 @@ fn is_text_entry(role: AccessibilityRole) -> bool {
     )
 }
 
+/// Where Ctrl/Cmd+, goes: nowhere while a popup is open or Settings is already showing.
+fn settings_shortcut(route: &Route, overlay_open: bool) -> Option<Route> {
+    (!overlay_open && !is_sidebar_route(route)).then_some(Route::SettingsLauncher {})
+}
+
 fn enter_kind(from: &Route, to: &Route) -> Enter {
     if (is_sidebar_route(from) && is_sidebar_route(to))
         || (is_cluster_route(from) && is_cluster_route(to))
@@ -109,6 +115,7 @@ impl Component for AnimatedAppOutlet {
         let route = use_route::<Route>();
         let at_home = matches!(&route, Route::Home {});
         let escape = escape_action(&route);
+        let search_targets = use_search_targets();
 
         let mut origin_route = use_state(|| route.clone());
         let mut last_route = use_state(|| route.clone());
@@ -138,6 +145,22 @@ impl Component for AnimatedAppOutlet {
                     crate::platform::open_path(&dir.to_string_lossy());
                 }
                 return;
+            }
+
+            match app_shortcut(&e.key, e.code, e.modifiers, Modifiers::ctrl_or_meta()) {
+                Some(AppShortcut::OpenSettings) => {
+                    if let Some(settings) = settings_shortcut(&route, key_claims.any()) {
+                        let _ = RouterContext::get().push(settings);
+                    }
+                    return;
+                }
+                Some(AppShortcut::FocusSearch) => {
+                    if search_targets.focus(&key_claims) {
+                        e.prevent_default();
+                    }
+                    return;
+                }
+                None => {}
             }
 
             if e.key != Key::Named(NamedKey::Escape) || key_claims.any() {
@@ -296,5 +319,40 @@ mod tests {
             EscapeAction::ExitSection
         );
         assert_eq!(escape_action(&Route::Clusters {}), EscapeAction::Back);
+    }
+
+    #[test]
+    fn settings_shortcut_opens_launcher_settings_from_anywhere_else() {
+        for route in [
+            Route::Home {},
+            Route::Clusters {},
+            Route::ClusterLogs { cluster_id: 1 },
+            Route::ClusterSettings { cluster_id: 1 },
+            Route::Wardrobe {},
+            Route::Stats {},
+        ] {
+            assert_eq!(
+                settings_shortcut(&route, false),
+                Some(Route::SettingsLauncher {}),
+                "{route:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn settings_shortcut_stays_put_inside_settings() {
+        for route in [
+            Route::SettingsLauncher {},
+            Route::SettingsAppearance {},
+            Route::SettingsJava {},
+            Route::SettingsChangelog {},
+        ] {
+            assert_eq!(settings_shortcut(&route, false), None, "{route:?}");
+        }
+    }
+
+    #[test]
+    fn settings_shortcut_waits_for_popups() {
+        assert_eq!(settings_shortcut(&Route::Home {}, true), None);
     }
 }

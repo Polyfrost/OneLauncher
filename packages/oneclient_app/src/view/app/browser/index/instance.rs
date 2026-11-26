@@ -29,6 +29,11 @@ const TARGET_CHIP_H: f32 = 28.;
 const PICKER_W: f32 = 132.;
 /// The provider switch with its names, before it has been measured
 const PROVIDER_LABELS_W: f32 = 240.;
+/// The provider switch as icons only, before it has been measured. Deliberately generous: a low
+/// guess would let the line overflow and the controls overlap
+const PROVIDER_ICONS_W: f32 = 124.;
+/// Breathing room kept on a single toolbar line, so measuring noise never makes it overlap
+const ONE_LINE_SLACK: f32 = 8.;
 /// A rail row's text inset
 const RAIL_INSET: f32 = 10.;
 /// Below this the rows drop their downloads count and the pager shows fewer pages
@@ -46,21 +51,29 @@ struct ToolbarFit {
     provider_labels: bool,
 }
 
-/// The content pages' rule: one line when every control fits at its natural width with the search
-/// at its minimum, otherwise the search and chips on one line and the pickers on the next.
-/// `controls_w` is the pickers' group with the provider names showing, which go last.
-fn toolbar_fit(available: f32, chips_w: f32, controls_w: f32) -> ToolbarFit {
+/// Keep everything on one line for as long as possible: first the search shrinks to its minimum,
+/// then the provider switch drops its names for icons, and only then do the pickers move to a
+/// second line. `controls_w` is the pickers' group with the provider names showing.
+fn toolbar_fit(available: f32, chips_w: f32, controls_w: f32, icon_controls_w: f32) -> ToolbarFit {
     let chips = if chips_w > 0. {
         chips_w + GROUP_GAP
     } else {
         0.
     };
-    let one_line = SEARCH_MIN_W + chips + GROUP_GAP + controls_w;
+    let one_line = SEARCH_MIN_W + chips + GROUP_GAP + controls_w + ONE_LINE_SLACK;
+    let one_line_icons = SEARCH_MIN_W + chips + GROUP_GAP + icon_controls_w + ONE_LINE_SLACK;
     if available >= one_line {
         ToolbarFit {
             stacked: false,
             search_w: (available - (one_line - SEARCH_MIN_W)).clamp(SEARCH_MIN_W, SEARCH_MAX_W),
             provider_labels: true,
+        }
+    } else if available >= one_line_icons {
+        ToolbarFit {
+            stacked: false,
+            search_w: (available - (one_line_icons - SEARCH_MIN_W))
+                .clamp(SEARCH_MIN_W, SEARCH_MAX_W),
+            provider_labels: false,
         }
     } else {
         ToolbarFit {
@@ -77,6 +90,15 @@ fn labelled_controls_w(measured: f32, pickers: usize) -> f32 {
         measured
     } else {
         PROVIDER_LABELS_W + pickers as f32 * (PICKER_W + CONTROL_GAP)
+    }
+}
+
+/// The pickers' group with the provider switch as icons: as last measured that way, or an estimate
+fn icon_controls_w(measured: f32, pickers: usize) -> f32 {
+    if measured > 0. {
+        measured
+    } else {
+        PROVIDER_ICONS_W + pickers as f32 * (PICKER_W + CONTROL_GAP)
     }
 }
 
@@ -130,6 +152,7 @@ impl InstanceBrowse {
         let toolbar_width = use_state(|| 0f32);
         let chips_width = use_state(|| 0f32);
         let controls_width = use_state(|| 0f32);
+        let icon_controls_width = use_state(|| 0f32);
 
         let width = *pane_width.read();
         let compact = width > 0. && width < COMPACT_W;
@@ -225,6 +248,7 @@ impl InstanceBrowse {
             toolbar_width,
             chips_width,
             controls_width,
+            icon_controls_width,
         );
 
         rect()
@@ -279,6 +303,7 @@ fn toolbar(
     width: State<f32>,
     chips_width: State<f32>,
     mut controls_width: State<f32>,
+    mut icon_controls_width: State<f32>,
 ) -> Element {
     let has_chips = parts.target.is_some() || parts.override_button.is_some();
     let pickers = usize::from(parts.loader.is_some()) + usize::from(parts.side.is_some());
@@ -286,6 +311,7 @@ fn toolbar(
         *width.read(),
         *chips_width.read(),
         labelled_controls_w(*controls_width.read(), pickers),
+        icon_controls_w(*icon_controls_width.read(), pickers),
     );
     // Until the chips report their natural width they get the search's line to themselves
     fit.stacked |= has_chips && *chips_width.read() == 0.;
@@ -350,8 +376,14 @@ fn toolbar(
         // Only a measurement with the names showing says how much room the names need
         .on_sized(move |event: Event<SizedEventData>| {
             let next = event.data().area.width();
-            if labels && (*controls_width.peek() - next).abs() > 0.5 {
-                controls_width.set(next);
+            // each form of the switch keeps its own measurement
+            let mut target = if labels {
+                controls_width
+            } else {
+                icon_controls_width
+            };
+            if (*target.peek() - next).abs() > 0.5 {
+                target.set(next);
             }
         })
         .child(providers)
@@ -652,26 +684,37 @@ mod tests {
     #[test]
     fn the_toolbar_keeps_one_line_while_every_control_fits() {
         // search 160, chips 260 and a 520 pickers group
-        let one_line = SEARCH_MIN_W + 260. + GROUP_GAP + GROUP_GAP + 520.;
-        let fit = toolbar_fit(one_line, 260., 520.);
+        let one_line = SEARCH_MIN_W + 260. + GROUP_GAP + GROUP_GAP + 520. + ONE_LINE_SLACK;
+        let fit = toolbar_fit(one_line, 260., 520., 400.);
         assert!(!fit.stacked && fit.provider_labels);
         assert_eq!(fit.search_w, SEARCH_MIN_W);
         // Extra room widens the search up to the content pages' maximum
-        assert_eq!(toolbar_fit(one_line + 60., 260., 520.).search_w, 220.);
+        assert_eq!(toolbar_fit(one_line + 60., 260., 520., 400.).search_w, 220.);
         assert_eq!(
-            toolbar_fit(one_line + 400., 260., 520.).search_w,
+            toolbar_fit(one_line + 400., 260., 520., 400.).search_w,
             SEARCH_MAX_W
         );
     }
 
     #[test]
+    fn the_provider_names_go_before_the_toolbar_wraps() {
+        // 972 is one line with names; with a 400 icon group 852 still fits on one line
+        let fit = toolbar_fit(900., 260., 520., 400.);
+        assert!(!fit.stacked && !fit.provider_labels);
+        assert_eq!(fit.search_w, SEARCH_MIN_W + 48.);
+        let fit = toolbar_fit(852., 260., 520., 400.);
+        assert!(!fit.stacked && !fit.provider_labels);
+        assert_eq!(fit.search_w, SEARCH_MIN_W);
+    }
+
+    #[test]
     fn a_narrow_toolbar_stacks_and_drops_the_provider_names_last() {
-        let fit = toolbar_fit(900., 260., 520.);
+        let fit = toolbar_fit(780., 260., 520., 400.);
         assert!(fit.stacked && fit.provider_labels);
         assert_eq!(fit.search_w, SEARCH_MAX_W);
         // A pane narrower than the 800x600 one: the search takes what the chips leave and the
         // switch shows icons
-        let fit = toolbar_fit(508., 260., 520.);
+        let fit = toolbar_fit(508., 260., 520., 400.);
         assert!(fit.stacked && !fit.provider_labels);
         assert_eq!(fit.search_w, 236.);
     }

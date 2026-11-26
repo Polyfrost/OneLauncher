@@ -1,4 +1,6 @@
 #![recursion_limit = "256"]
+mod common;
+
 use oneclient_common::domain::{ContentType, GameLoader};
 use oneclient_content::packages::PackageStore;
 use oneclient_core::clusters::{
@@ -161,58 +163,6 @@ async fn a_cached_modrinth_mod_is_exported_as_a_link() {
     assert!(report.embedded.is_empty(), "{:?}", report.embedded);
 }
 
-async fn link_modrinth_cached_jar(
-    state: &std::sync::Arc<oneclient_core::LauncherState>,
-    cluster_id: i64,
-    version_id: &str,
-    on_disk: &[u8],
-    hash: &str,
-) {
-    use oneclient_common::domain::ProviderId;
-    use oneclient_content::packages::store::{cache_file_path, relative_cache_path};
-    use oneclient_db::dao::artifact as artifact_dao;
-
-    let db = &state.services.db;
-    let file_name = "not-a-real-mod+1.0.jar";
-    let cached = cache_file_path(
-        ContentType::Mod,
-        ProviderId::Modrinth,
-        "NoSuchProj",
-        version_id,
-        file_name,
-    )
-    .unwrap();
-    std::fs::create_dir_all(cached.parent().unwrap()).unwrap();
-    std::fs::write(&cached, on_disk).unwrap();
-    artifact_dao::insert_artifact(
-        db,
-        hash,
-        ContentType::Mod as i64,
-        &relative_cache_path(&cached).unwrap(),
-        file_name,
-        Some(on_disk.len() as i64),
-    )
-    .await
-    .unwrap();
-    artifact_dao::upsert_provider_release(
-        db,
-        ProviderId::Modrinth as i64,
-        "NoSuchProj",
-        version_id,
-        hash,
-        "Not A Real Mod",
-        "1.0",
-        None,
-        "[]",
-        "[]",
-    )
-    .await
-    .unwrap();
-    artifact_dao::link_cluster_artifact(db, cluster_id, hash, file_name)
-        .await
-        .unwrap();
-}
-
 #[tokio::test]
 async fn a_jar_from_the_modrinth_cache_is_linked_without_asking_modrinth() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
@@ -224,7 +174,7 @@ async fn a_jar_from_the_modrinth_cache_is_linked_without_asking_modrinth() {
     let source = state.clusters.create(&global, options).await.unwrap();
 
     let bytes = jar("cached");
-    link_modrinth_cached_jar(
+    common::link_modrinth_cached_jar(
         &state,
         source.id,
         "NoSuchVer",
@@ -254,7 +204,7 @@ async fn a_cached_jar_that_changed_on_disk_stays_out_of_the_modrinth_index() {
     let source = state.clusters.create(&global, options).await.unwrap();
 
     let claimed = polyio::sha1_bytes(&jar("original"));
-    link_modrinth_cached_jar(&state, source.id, "ChangedVer", &jar("changed"), &claimed).await;
+    common::link_modrinth_cached_jar(&state, source.id, "ChangedVer", &jar("changed"), &claimed).await;
 
     let scratch = polyio::testing::ScratchDir::new("cluster-share-changed");
     let dest = scratch.path().join("Changed.mrpack");

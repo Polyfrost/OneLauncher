@@ -14,7 +14,7 @@ pub use install::{
     detach_undo_artifacts, effective_enabled, enabled_bundle_bytes,
     enabled_bundle_projects, extract_bundle_overrides_for_cluster, heal_bundle_activity,
     inherit_bundle_choices, install_bundle, install_cluster_bundles, install_enabled_bundle_files,
-    install_package_enabled, install_package_from_bundle, list_cluster_bundle_overrides, on_user_disable_artifact,
+    install_package_from_bundle, list_cluster_bundle_overrides, on_user_disable_artifact,
     on_user_enable_artifact, on_user_remove_artifact, pending_bundle_choices,
     remove_artifact_from_cluster, set_artifact_enabled_to, set_bundle_choices,
     set_bundle_package_enabled, set_bundle_package_opt_in, set_bundle_package_override,

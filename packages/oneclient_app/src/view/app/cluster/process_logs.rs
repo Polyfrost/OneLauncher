@@ -90,6 +90,9 @@ impl Component for ProcessLogs {
     }
 }
 
+/// Original line numbers of the visible lines, `None` when unfiltered
+type Numbers = Option<Arc<Vec<usize>>>;
+
 struct LiveLogFilter {
     search: String,
     level: LevelFilter,
@@ -118,7 +121,7 @@ impl LiveLogFilter {
         lines: &Arc<Vec<Arc<str>>>,
         search: &str,
         level: LevelFilter,
-    ) -> (Arc<Vec<Arc<str>>>, Option<Arc<Vec<usize>>>) {
+    ) -> (Arc<Vec<Arc<str>>>, Numbers) {
         let wanted = level.to_level();
         if search.trim().is_empty() && wanted.is_none() {
             if self.processed != 0 {

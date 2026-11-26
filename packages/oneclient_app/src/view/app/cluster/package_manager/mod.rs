@@ -14,9 +14,9 @@ use crate::components::{
     disable_request, guard_disable, run_guarded, toggle_action,
 };
 use crate::hooks::{
-    ClusterAction, EssentialGuardKind, disable_warnings, package_meta_batch, use_cluster_mutation,
-    use_disable_confirm, use_disable_warnings, use_dispatch, use_essential_guard,
-    use_game_snapshot, use_package_meta_batch, use_selection, use_view_state,
+    ClusterAction, EssentialGuardKind, PackageCheck, disable_warnings, package_meta_batch,
+    use_cluster_mutation, use_disable_confirm, use_disable_warnings, use_dispatch,
+    use_essential_guard, use_game_snapshot, use_package_meta_batch, use_selection, use_view_state,
 };
 use crate::i18n::{t, tf};
 
@@ -907,10 +907,16 @@ impl Component for PackageManager {
             .into()
         };
 
-        let checkable: Vec<(String, String)> = chosen
+        let checkable: Vec<PackageCheck> = chosen
             .iter()
             .filter(|p| p.update_checkable())
-            .filter_map(|p| Some((p.hash.clone()?, p.name.clone())))
+            .filter_map(|p| {
+                Some(PackageCheck {
+                    hash: p.hash.clone()?,
+                    name: p.name.clone(),
+                    modpack: p.modpack.clone(),
+                })
+            })
             .collect();
 
         let bulk = Bulk {

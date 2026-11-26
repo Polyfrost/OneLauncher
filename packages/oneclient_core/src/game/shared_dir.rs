@@ -2492,7 +2492,7 @@ async fn matches_disabled_link(
     match artifact_dao::get_cluster_artifact(&services.db, cluster.id, &hash).await {
         Ok(link) => link.is_some_and(|link| link.enabled == 0),
         Err(err) => {
-            tracing::warn!(file = %path.display(), error = %err, "failed to look up the dropped file; leaving it");
+            tracing::warn!(file = %path.display(), error = %err, "failed to look up the dropped file, leaving it");
             true
         }
     }

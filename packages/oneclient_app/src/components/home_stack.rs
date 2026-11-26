@@ -36,11 +36,18 @@ impl HomeStack {
 }
 
 pub fn use_provide_home_stack() {
-    let start_on_versions =
-        crate::use_settings_snapshot().settings.start_tab == StartTab::Versions;
+    let start_on_versions = use_hook(|| {
+        crate::hooks::use_dispatch()
+            .station()
+            .peek()
+            .settings
+            .settings
+            .start_tab
+            == StartTab::Versions
+    });
     let open = use_state(|| start_on_versions);
-    let progress = use_state(|| 0f32);
-    let on_versions = use_state(|| false);
+    let progress = use_state(|| if start_on_versions { 1f32 } else { 0f32 });
+    let on_versions = use_state(|| start_on_versions);
     use_hook(|| {
         provide_context(HomeStack {
             open,

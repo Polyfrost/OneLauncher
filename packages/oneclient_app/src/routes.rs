@@ -143,7 +143,8 @@ impl Route {
     pub fn start(tab: oneclient_core::settings::StartTab) -> Self {
         match tab {
             oneclient_core::settings::StartTab::Wardrobe => Route::Wardrobe {},
-            _ => Route::Home {},
+            oneclient_core::settings::StartTab::Home
+            | oneclient_core::settings::StartTab::Versions => Route::Home {},
         }
     }
 

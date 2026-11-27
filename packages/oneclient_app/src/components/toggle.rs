@@ -1,5 +1,8 @@
 use freya::{
-    animation::{AnimColor, AnimNum, Ease, Function, use_animation_transition},
+    animation::{
+        AnimColor, AnimNum, AnimatedValue, Ease, Function, OnChange, OnCreation, UseAnimation,
+        use_animation,
+    },
     prelude::*,
 };
 
@@ -12,6 +15,17 @@ use crate::{
 const WIDTH: f32 = 40.;
 const HANDLE_SIZE: f32 = 16.;
 const TIME: u64 = 180;
+
+fn use_switch_transition<A: AnimatedValue>(
+    value: State<bool>,
+    mut run: impl 'static + FnMut(bool) -> A,
+) -> UseAnimation<A> {
+    use_animation(move |conf| {
+        conf.on_change(OnChange::Rerun);
+        conf.on_creation(OnCreation::Finish);
+        run(*value.read())
+    })
+}
 
 pub fn toggle(value: State<bool>) -> impl IntoElement {
     let mut v = value;
@@ -90,7 +104,7 @@ impl Component for Switch {
             colors::control_border()
         };
 
-        let background = use_animation_transition(value, |_, on| {
+        let background = use_switch_transition(value, |on| {
             if on {
                 AnimColor::new(colors::control_off(), colors::brand())
             } else {
@@ -101,7 +115,7 @@ impl Component for Switch {
             .ease(Ease::Out)
         });
 
-        let right_offset = use_animation_transition(value, |_, on| {
+        let right_offset = use_switch_transition(value, |on| {
             if on {
                 AnimNum::new(WIDTH - HANDLE_SIZE - 6., 0.)
             } else {
@@ -165,5 +179,29 @@ impl Component for Switch {
                             .position(Position::new_absolute().right(right_offset.read().value())),
                     ),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use freya_testing::prelude::*;
+
+    use super::*;
+
+    fn app() -> impl IntoElement {
+        toggle_controlled(true, (|()| {}).into())
+    }
+
+    #[test]
+    fn a_switch_mounted_on_shows_on_without_animating() {
+        let mut test = launch_test(app);
+        test.sync_and_update();
+
+        let brand = Fill::Color(colors::brand());
+        let track = test.find(|_, element| {
+            Rect::try_downcast(element).filter(|rect| rect.style.background == brand)
+        });
+
+        assert!(track.is_some(), "the track should already be the on colour");
     }
 }

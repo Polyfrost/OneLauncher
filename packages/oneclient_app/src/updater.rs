@@ -151,7 +151,6 @@ fn check_for_update() -> anyhow::Result<Option<Update>> {
             installer_args: Some(vec!["/NS".into()]),
             ..Default::default()
         }),
-        ..Default::default()
     };
 
     Ok(check_update(current, config)?)

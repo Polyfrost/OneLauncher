@@ -3,6 +3,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use oneclient_content::ContentCtx;
@@ -2922,6 +2923,38 @@ async fn launch_install_stops_waiting_at_the_deadline() {
 
     assert_eq!(connections.load(std::sync::atomic::Ordering::SeqCst), 1);
     assert!(linked(&state, fresh, &sha1).await);
+}
+
+#[tokio::test]
+async fn first_launch_install_waits_past_the_deadline() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let body: Vec<u8> = (0..64 * 1024).map(|i| (i % 193) as u8).collect();
+    let sha1 = polyio::sha1_bytes(&body);
+    let size = body.len() as u64;
+    let (url, connections) = serve_jar(body, Some(std::time::Duration::from_millis(1000))).await;
+    seed_bundle_with_pack(&state, manifest(vec![github_mod_served(&url, &sha1, size)])).await;
+    let global = state.settings.read().global_game_settings.clone();
+    let untouched = state
+        .clusters
+        .create(
+            &global,
+            CreateClusterOptions::new("Untouched", MC_VERSION, GameLoader::Fabric),
+        )
+        .await
+        .unwrap()
+        .id;
+    let ctx = state.services.content();
+
+    let deadline = Some(std::time::Instant::now() + std::time::Duration::from_millis(300));
+    install_cluster_bundles(untouched, state.bundles.as_ref(), None, &ctx, deadline)
+        .await
+        .unwrap();
+
+    assert!(
+        linked(&state, untouched, &sha1).await,
+        "an instance with no bundle content yet must not launch without it"
+    );
+    assert_eq!(connections.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]

@@ -131,7 +131,7 @@ impl JavaRuntimeProvider for MojangRuntimeProvider {
             })
             .collect();
 
-        packages.sort_by_key(|p| std::cmp::Reverse(p.java_version.first().copied().unwrap_or(0)));
+        super::sort_packages_by_major_desc(&mut packages);
         tracing::debug!(count = packages.len(), "listed Mojang packages");
         Ok(packages)
     }

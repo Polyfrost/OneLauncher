@@ -93,8 +93,10 @@ pub fn read_string(subkey: &str, name: Option<&str>) -> Option<String> {
 
     buffer.truncate(size as usize);
     let wide: Vec<u16> = buffer
-        .chunks_exact(2)
-        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|pair| u16::from_le_bytes(*pair))
         .collect();
 
     Some(

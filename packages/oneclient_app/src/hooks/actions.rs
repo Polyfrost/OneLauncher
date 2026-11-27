@@ -144,6 +144,13 @@ pub enum PumpSignal {
     JoinInvite(i32),
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct PackageCheck {
+    pub hash: String,
+    pub name: String,
+    pub modpack: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct Actions {
     station: RadioStation<AppState, AppChannel>,
@@ -1303,7 +1310,7 @@ impl Actions {
         });
     }
 
-    pub fn check_package_updates(&self, cluster_id: ClusterId, packages: Vec<(String, String)>) {
+    pub fn check_package_updates(&self, cluster_id: ClusterId, packages: Vec<PackageCheck>) {
         if packages.is_empty() {
             return;
         }
@@ -1328,9 +1335,12 @@ impl Actions {
         });
     }
 
-    async fn run_package_check(&self, cluster_id: ClusterId, packages: Vec<(String, String)>) {
+    async fn run_package_check(&self, cluster_id: ClusterId, packages: Vec<PackageCheck>) {
         let Ok(state) = launcher::state() else { return };
-        let hashes: Vec<String> = packages.iter().map(|(hash, _)| hash.clone()).collect();
+        let hashes: Vec<String> = packages
+            .iter()
+            .map(|package| package.hash.clone())
+            .collect();
         let content = state.services.content();
         let check = off_ui(async move {
             oneclient_core::refresh_browser_package_updates_for(cluster_id, &hashes, &content).await
@@ -1350,14 +1360,45 @@ impl Actions {
             }
         };
 
+        let managed = check.managed.len();
+        if managed > 0 {
+            let managed_package = match check.managed.as_slice() {
+                [hash] => packages.iter().find(|package| &package.hash == hash),
+                _ => None,
+            };
+            let body = match managed_package {
+                Some(package) => match &package.modpack {
+                    Some(pack) => tf(
+                        "oneclient.actions.package_check.managed.body.one",
+                        &[&package.name, pack],
+                    ),
+                    None => tf(
+                        "oneclient.actions.package_check.managed.body.bundle",
+                        &[&package.name],
+                    ),
+                },
+                None => tf(
+                    "oneclient.actions.package_check.managed.body.other",
+                    &[&managed],
+                ),
+            };
+            self.notify(t("oneclient.actions.package_check.managed.title"))
+                .body(body)
+                .send();
+        }
+
         let unchecked = check.unchecked.len();
         if unchecked > 0 {
-            let body = match packages.as_slice() {
-                [(_, name)] => tf(
+            let unchecked_package = match check.unchecked.as_slice() {
+                [hash] => packages.iter().find(|package| &package.hash == hash),
+                _ => None,
+            };
+            let body = match unchecked_package {
+                Some(package) => tf(
                     "oneclient.actions.package_check.unchecked.body.one",
-                    &[name],
+                    &[&package.name],
                 ),
-                _ => tf(
+                None => tf(
                     "oneclient.actions.package_check.unchecked.body.other",
                     &[&unchecked],
                 ),
@@ -1366,18 +1407,16 @@ impl Actions {
                 .body(body)
                 .send();
         }
-        if unchecked == packages.len() {
+        let checked = packages.len().saturating_sub(unchecked + managed);
+        if checked == 0 {
             return;
         }
 
         let updates = check.updates;
         if updates.is_empty() {
             let body = match packages.as_slice() {
-                [(_, name)] => tf("oneclient.actions.package_check.none.one", &[name]),
-                _ => tf(
-                    "oneclient.actions.package_check.none.other",
-                    &[&(packages.len() - unchecked)],
-                ),
+                [package] => tf("oneclient.actions.package_check.none.one", &[&package.name]),
+                _ => tf("oneclient.actions.package_check.none.other", &[&checked]),
             };
             self.notify(t("oneclient.actions.update_check.none.title"))
                 .body(body)
@@ -1608,8 +1647,11 @@ impl Actions {
                     super::invalidate_cluster_queries().await;
                     if copied {
                         let mods = crate::routes::Route::ClusterMods { cluster_id };
+                        // `current()` reads a component context this global task doesn't
+                        // have, so parse the plain route string instead
                         if let Some(router) = &router
-                            && router.current::<crate::routes::Route>() != mods
+                            && router.full_route_string().parse::<crate::routes::Route>().ok()
+                                != Some(mods.clone())
                         {
                             let _ = router.push(mods);
                         }

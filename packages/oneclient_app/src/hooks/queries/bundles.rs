@@ -12,6 +12,9 @@ use oneclient_db::models::{ClusterId, OverrideType};
 
 use crate::launcher::off_ui;
 
+type BundleOverrides = Vec<(String, String, OverrideType)>;
+type BundleChoices = Vec<(String, bool)>;
+
 #[derive(Clone, Debug)]
 pub struct ClusterBundles {
     pub cluster: Cluster,
@@ -344,7 +347,7 @@ pub fn bundle_plan(
     cluster_id: i64,
     archives: &[BundleArchive],
     selected: &HashSet<String>,
-) -> (Vec<(String, String, OverrideType)>, Vec<(String, bool)>) {
+) -> (BundleOverrides, BundleChoices) {
     let kept = kept_package_ids(cluster_id, archives, selected);
     let in_taken: HashSet<String> = archives
         .iter()

@@ -136,6 +136,11 @@ pub(super) struct InstanceBrowse {
     pub add_to_cluster: bool,
     pub search_override: Option<SearchOverride>,
     pub pending: bool,
+    /// The search failed and nothing is on screen: Retry, not "No results"
+    pub failed: bool,
+    pub on_retry: EventHandler<()>,
+    /// Changes with every effective search, so any change scrolls back to the top
+    pub scroll_key: u64,
     pub total: usize,
     pub page: State<usize>,
     pub pages: Option<usize>,
@@ -168,7 +173,7 @@ impl InstanceBrowse {
             .width(Size::fill())
             .height(Size::fill())
             .auto_hide_scrollbar()
-            .reset_key(current_page as u64);
+            .reset_key(self.scroll_key);
         let results = if !packages.is_empty() {
             list.lazy(packages.len(), ROW_H, ROW_GAP, move |i| {
                 instance_row(
@@ -188,6 +193,12 @@ impl InstanceBrowse {
                 InstanceSkeletonRow.into_element()
             })
             .into_element()
+        } else if self.failed {
+            let on_retry = self.on_retry.clone();
+            result_surface(super::load_failed(
+                t("oneclient.browser.index.load_failed"),
+                move |()| on_retry.call(()),
+            ))
         } else {
             empty_panel()
         };
@@ -302,8 +313,8 @@ fn toolbar(
     parts: Toolbar,
     width: State<f32>,
     chips_width: State<f32>,
-    mut controls_width: State<f32>,
-    mut icon_controls_width: State<f32>,
+    controls_width: State<f32>,
+    icon_controls_width: State<f32>,
 ) -> Element {
     let has_chips = parts.target.is_some() || parts.override_button.is_some();
     let pickers = usize::from(parts.loader.is_some()) + usize::from(parts.side.is_some());
@@ -472,6 +483,31 @@ fn target_chip(verb: &'static str, name: &str) -> impl IntoElement {
 
 /// No results: the content pages' empty surface, its message about 30% down
 fn empty_panel() -> Element {
+    result_surface(
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .cross_align(Alignment::Center)
+            .spacing(8.)
+            .child(
+                Icon::new(IconType::SearchMd)
+                    .size(28.)
+                    .color(colors::fg_secondary()),
+            )
+            .child(
+                label()
+                    .text(t("oneclient.browser.index.no_results"))
+                    .text_align(TextAlign::Center)
+                    .font_size(text_size(14.))
+                    .font_weight(FontWeight::SEMI_BOLD)
+                    .color(colors::fg_primary()),
+            )
+            .into_element(),
+    )
+}
+
+/// The content pages' empty surface with `message` about 30% down
+fn result_surface(message: Element) -> Element {
     rect()
         .vertical()
         .content(Content::Flex)
@@ -482,26 +518,7 @@ fn empty_panel() -> Element {
         .background(colors::card())
         .border(border_all_color(1., colors::component_border()).alignment(BorderAlignment::Inner))
         .child(rect().width(Size::fill()).height(Size::flex(3.)))
-        .child(
-            rect()
-                .vertical()
-                .width(Size::fill())
-                .cross_align(Alignment::Center)
-                .spacing(8.)
-                .child(
-                    Icon::new(IconType::SearchMd)
-                        .size(28.)
-                        .color(colors::fg_secondary()),
-                )
-                .child(
-                    label()
-                        .text(t("oneclient.browser.index.no_results"))
-                        .text_align(TextAlign::Center)
-                        .font_size(text_size(14.))
-                        .font_weight(FontWeight::SEMI_BOLD)
-                        .color(colors::fg_primary()),
-                ),
-        )
+        .child(message)
         .child(rect().width(Size::fill()).height(Size::flex(7.)))
         .into_element()
 }

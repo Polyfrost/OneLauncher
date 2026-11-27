@@ -314,6 +314,11 @@ impl Component for ContextMenuRow {
         } else {
             colors::fg_primary()
         };
+        let highlight = if self.danger {
+            colors::danger()
+        } else {
+            colors::brand()
+        };
         let mut keyboard = self.keyboard;
         let highlighted = if keyboard.read().is_some() {
             is_key_target
@@ -333,9 +338,9 @@ impl Component for ContextMenuRow {
             .padding(Gaps::new_symmetric(4., 10.))
             .corner_radius(rounded(6.))
             .background(if pressed() {
-                colors::brand().with_a(if colors::is_light() { 85 } else { 110 })
+                highlight.with_a(if colors::is_light() { 85 } else { 110 })
             } else if highlighted {
-                colors::brand().with_a(if colors::is_light() { 46 } else { 66 })
+                highlight.with_a(if colors::is_light() { 46 } else { 66 })
             } else {
                 Color::TRANSPARENT
             })
@@ -345,7 +350,7 @@ impl Component for ContextMenuRow {
                     Border::new()
                         .width(1.)
                         .fill(if colors::is_light() {
-                            colors::brand().with_a(178)
+                            highlight.with_a(178)
                         } else {
                             colors::fg_primary().with_a(205)
                         })
@@ -367,7 +372,8 @@ impl Component for ContextMenuRow {
                 hovered.set(false);
                 pressed.set(false);
             })
-            .on_press(move |_| {
+            .on_press(move |event: Event<PressEventData>| {
+                event.stop_propagation();
                 on_select.call(());
                 on_close.call(());
             })

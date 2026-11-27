@@ -88,7 +88,7 @@ impl Component for SettingsApis {
                 t("oneclient.settings.apis.curseforge_key.description"),
                 resettable(
                     TextInput::new(curseforge_key)
-                        .placeholder(t("oneclient.common.default"))
+                        .placeholder(t("oneclient.common.optional"))
                         .width(settings_control_width()),
                     curseforge_key,
                     String::new(),

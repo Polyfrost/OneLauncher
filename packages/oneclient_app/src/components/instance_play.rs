@@ -60,6 +60,7 @@ pub(crate) fn instance_play_label(name: &str, state: &str, enabled: bool) -> Str
 #[derive(Clone, Copy, PartialEq)]
 enum Look {
     Glass,
+    GlassAccent,
     Pixel,
     Accent,
 }
@@ -104,7 +105,11 @@ impl Component for InstancePlay {
 
         let theme = colors::active_theme();
         let look = if theme.liquid_glass {
-            Look::Glass
+            if theme.colors.light && !self.list {
+                Look::GlassAccent
+            } else {
+                Look::Glass
+            }
         } else if theme.pixel_icons {
             Look::Pixel
         } else {
@@ -114,7 +119,7 @@ impl Component for InstancePlay {
         let pressed = enabled && *pressing.read();
 
         let radius = match look {
-            Look::Glass => CornerRadius::new_all(INSTANCE_PLAY_PX / 2.),
+            Look::Glass | Look::GlassAccent => CornerRadius::new_all(INSTANCE_PLAY_PX / 2.),
             Look::Pixel => CornerRadius::new_all(0.),
             Look::Accent => rounded(8.),
         };
@@ -149,11 +154,7 @@ impl Component for InstancePlay {
                 colors::page_elevated()
             }),
             Look::Glass => {
-                let tint = if theme.colors.light {
-                    Color::WHITE
-                } else {
-                    Color::from_rgb(14, 17, 22)
-                };
+                let tint = Color::from_rgb(14, 17, 22);
                 let alpha = match (pressed, hovered) {
                     (true, _) => 196,
                     (_, true) => 176,
@@ -161,7 +162,7 @@ impl Component for InstancePlay {
                 };
                 theme::glass::panel(face, &theme, INSTANCE_PLAY_PX / 2., tint.with_a(alpha))
             }
-            Look::Pixel => face.corner_radius(radius).background(accent_fill),
+            Look::Pixel | Look::GlassAccent => face.corner_radius(radius).background(accent_fill),
             Look::Accent => face.corner_radius(radius).background(accent_fill).shadow(
                 Shadow::new()
                     .blur(8.)
@@ -198,7 +199,7 @@ impl Component for InstancePlay {
                 },
             )),
             (Look::Pixel, false) => Some(border_all_color(2., OUTLINE)),
-            (Look::Accent, false) => None,
+            (Look::Accent | Look::GlassAccent, false) => None,
         };
 
         let icon_px = if look == Look::Pixel {

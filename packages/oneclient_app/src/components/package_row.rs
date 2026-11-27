@@ -176,15 +176,20 @@ pub(crate) fn row_line(text: String, color: Color) -> Element {
 
 /// The body text of a grid card; one line on short cards, two on tall ones
 pub(crate) fn card_description(text: String, color: Color) -> Element {
+    card_description_label(text, color, 2).into_element()
+}
+
+const DESCRIPTION_LINE_HEIGHT: f32 = 1.4;
+
+fn card_description_label(text: String, color: Color, lines: usize) -> Label {
     label()
         .text(text)
         .font_size(text_size(12.))
-        .line_height(1.4)
-        .max_lines(2)
+        .line_height(DESCRIPTION_LINE_HEIGHT)
+        .max_lines(lines)
         .text_overflow(TextOverflow::Ellipsis)
         .width(Size::fill())
         .color(color)
-        .into_element()
 }
 
 /// Joins the non-empty parts of a row's secondary line
@@ -460,12 +465,12 @@ impl Component for PackageRow {
                 hovered,
                 hidden_badges,
             ),
-            CardLayout::Grid => grid_card(
+            CardLayout::Grid => render_grid_card(
                 &item,
                 package_type,
                 cluster_id,
                 icon,
-                on_toggle,
+                GridToggle::Switch(on_toggle),
                 true,
                 on_context.clone(),
                 on_copies,
@@ -866,8 +871,48 @@ pub(crate) fn grid_card(
     on_copies: Option<EventHandler<()>>,
     hovered: State<bool>,
 ) -> Element {
+    render_grid_card(
+        item,
+        package_type,
+        cluster_id,
+        icon,
+        GridToggle::Body(on_toggle),
+        navigable,
+        on_context,
+        on_copies,
+        hovered,
+    )
+}
+
+enum GridToggle {
+    Body(EventHandler<()>),
+    Switch(EventHandler<()>),
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_grid_card(
+    item: &PackageEntry,
+    package_type: &'static str,
+    cluster_id: i64,
+    icon: impl IntoElement,
+    toggle: GridToggle,
+    navigable: bool,
+    on_context: Option<EventHandler<(f32, f32)>>,
+    on_copies: Option<EventHandler<()>>,
+    hovered: State<bool>,
+) -> Element {
     let enabled = item.enabled;
-    let title = item.name.clone();
+    let (body_press, switch) = match toggle {
+        GridToggle::Body(on_toggle) => (Some(on_toggle), None),
+        GridToggle::Switch(on_toggle) => (
+            None,
+            Some(PackageGridSwitch {
+                enabled,
+                locked: item.locked,
+                on_toggle,
+            }),
+        ),
+    };
 
     let alpha = if enabled && item.copy_status != Some(CopyStatus::Skipped) {
         255u8
@@ -878,6 +923,20 @@ pub(crate) fn grid_card(
         CardTone::Enabled
     } else {
         CardTone::Disabled
+    };
+    let title_lines = if switch.is_some() { 2 } else { 1 };
+    let meta = grid_meta(item, package_type, cluster_id, navigable, alpha);
+    let details = match switch {
+        Some(switch) => rect()
+            .horizontal()
+            .width(Size::fill())
+            .content(Content::Flex)
+            .cross_align(Alignment::Center)
+            .spacing(8.)
+            .child(rect().width(Size::flex(1.)).child(meta))
+            .child(switch)
+            .into_element(),
+        None => meta,
     };
 
     let header = rect()
@@ -892,24 +951,23 @@ pub(crate) fn grid_card(
                 .vertical()
                 .width(Size::flex(1.0))
                 .spacing(2.)
-                .child(row_title(
-                    title,
-                    if enabled {
+                .child(HoverTitle {
+                    title: item.name.clone(),
+                    color: if enabled {
                         colors::fg_strong()
                     } else {
                         colors::fg_primary().with_a(alpha)
                     },
-                ))
-                .child(grid_meta(item, package_type, cluster_id, navigable, alpha)),
+                    lines: title_lines,
+                })
+                .child(details),
         )
         .maybe_child(on_context.clone().map(kebab_button))
         .into_element();
 
-    let description = (!item.description.trim().is_empty()).then(|| {
-        card_description(
-            item.description.clone(),
-            colors::fg_primary().with_a(scale_a(alpha, 0.72)),
-        )
+    let description = (!item.description.trim().is_empty()).then(|| GridDescription {
+        text: item.description.clone(),
+        color: colors::fg_primary().with_a(scale_a(alpha, 0.72)),
     });
 
     let badged = item.is_outdated()
@@ -942,21 +1000,75 @@ pub(crate) fn grid_card(
     });
 
     card_surface(hovered, tone)
-        .cursor(CursorIcon::Pointer)
         .on_secondary_down(on_secondary(on_context))
-        .on_press(move |_| on_toggle.call(()))
+        .maybe(body_press.is_some(), move |surface| {
+            surface.cursor(CursorIcon::Pointer).on_press(move |_| {
+                if let Some(handler) = &body_press {
+                    handler.call(());
+                }
+            })
+        })
         .child(header)
-        .maybe_child(description.map(|description| {
-            rect()
-                .vertical()
-                .width(Size::fill())
-                .height(Size::flex(1.0))
-                .overflow(Overflow::Clip)
-                .child(description)
-                .into_element()
-        }))
+        .maybe_child(description)
         .maybe_child(floating)
         .into_element()
+}
+
+#[derive(PartialEq)]
+struct GridDescription {
+    text: String,
+    color: Color,
+}
+
+impl Component for GridDescription {
+    fn render(&self) -> impl IntoElement {
+        let mut lines = use_state(|| 2);
+        let two_lines_height = text_size(12.) * DESCRIPTION_LINE_HEIGHT * 2.;
+        rect()
+            .width(Size::fill())
+            .height(Size::flex(1.0))
+            .overflow(Overflow::Clip)
+            .on_sized(move |event: Event<SizedEventData>| {
+                let fits_two = event.data().area.height() >= two_lines_height;
+                lines.set_if_modified(if fits_two { 2 } else { 1 });
+            })
+            .child(card_description_label(
+                self.text.clone(),
+                self.color,
+                lines(),
+            ))
+    }
+}
+
+#[derive(PartialEq)]
+struct PackageGridSwitch {
+    enabled: bool,
+    locked: bool,
+    on_toggle: EventHandler<()>,
+}
+
+impl Component for PackageGridSwitch {
+    fn render(&self) -> impl IntoElement {
+        let tooltip = use_tooltip_anchor(
+            self.locked
+                .then(|| t("oneclient.components.package_row.locked").into()),
+            TooltipPlacement::Top,
+        );
+        tooltip.attach(
+            rect()
+                .horizontal()
+                .cross_align(Alignment::Center)
+                .spacing(4.)
+                .maybe_child(self.locked.then(|| {
+                    Icon::new(IconType::Lock01)
+                        .size(14.)
+                        .color(colors::fg_secondary())
+                }))
+                .child(
+                    toggle_controlled(self.enabled, self.on_toggle.clone()).disabled(self.locked),
+                ),
+        )
+    }
 }
 
 fn scale_a(alpha: u8, factor: f32) -> u8 {
@@ -1242,19 +1354,30 @@ fn title_badges(item: &PackageEntry) -> Vec<TitleBadge> {
 }
 
 pub(crate) fn row_title(title: String, color: Color) -> Element {
-    HoverTitle { title, color }.into_element()
+    HoverTitle {
+        title,
+        color,
+        lines: 1,
+    }
+    .into_element()
 }
 
 #[derive(PartialEq)]
 struct HoverTitle {
     title: String,
     color: Color,
+    lines: usize,
 }
 
 impl Component for HoverTitle {
     fn render(&self) -> impl IntoElement {
-        use_tooltip_anchor(Some(self.title.clone().into()), TooltipPlacement::Top)
-            .attach(rect().child(row_title_label(self.title.clone(), self.color)))
+        use_tooltip_anchor(Some(self.title.clone().into()), TooltipPlacement::Top).attach(
+            rect().width(Size::fill()).child(
+                row_title_label(self.title.clone(), self.color)
+                    .width(Size::fill())
+                    .max_lines(self.lines),
+            ),
+        )
     }
 }
 

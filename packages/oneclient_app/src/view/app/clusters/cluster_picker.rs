@@ -9,7 +9,7 @@ use crate::components::{
     Button, Icon, IconType, LazySection, OVERLAY_BASE_LEVEL, OverlayPopup, ScrollArea, TabItem,
     VersionCard, centered_spinner,
 };
-use crate::hooks::{settled_or_loading, use_clusters};
+use crate::hooks::{query_error, settled_or_loading, use_clusters};
 use crate::i18n::t;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
@@ -22,6 +22,44 @@ const MAX_COLUMNS: usize = 3;
 const CARD_MIN_W: f32 = 200.;
 const CARD_GAP: f32 = 16.;
 const HEADER_H: f32 = 30.;
+
+/// Why the picker shows no cards, each with its own message
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PickerState {
+    Loading,
+    Failed,
+    /// No instance at all, or none that can take this content
+    NoneEligible {
+        filtered: bool,
+    },
+    /// Instances exist but the search or filters hide them all
+    NoMatches,
+    Cards,
+}
+
+fn picker_state(
+    loaded: bool,
+    failed: bool,
+    eligible: usize,
+    filtered_by_target: bool,
+    shown: usize,
+) -> PickerState {
+    if !loaded {
+        if failed {
+            PickerState::Failed
+        } else {
+            PickerState::Loading
+        }
+    } else if eligible == 0 {
+        PickerState::NoneEligible {
+            filtered: filtered_by_target,
+        }
+    } else if shown == 0 {
+        PickerState::NoMatches
+    } else {
+        PickerState::Cards
+    }
+}
 
 #[derive(PartialEq)]
 pub struct ClusterPickerButton {
@@ -118,8 +156,10 @@ pub struct ClusterPickerModal {
 
 impl Component for ClusterPickerModal {
     fn render(&self) -> impl IntoElement {
-        let loaded = settled_or_loading(&use_clusters());
-        let loading = loaded.is_none();
+        let clusters_query = use_clusters();
+        let loaded = settled_or_loading(&clusters_query);
+        let load_failed = query_error(&clusters_query).is_some();
+        let is_loaded = loaded.is_some();
         let mut clusters = sort_clusters_for_home(loaded.unwrap_or_default());
         if let Some(only) = &self.only {
             clusters.retain(|c| only.contains(&c.id));
@@ -192,16 +232,59 @@ impl Component for ClusterPickerModal {
         let width = *content_w.read();
         let columns = crate::ui::columns_for(width, CARD_MIN_W, MAX_COLUMNS, CARD_GAP);
         let card_height = VersionCard::height_for_width(card_width_for(width, columns, CARD_GAP));
-        let body = if loading {
-            centered_spinner(t("oneclient.clusters.picker.loading"))
-        } else if sections.is_empty() {
-            label()
-                .text(t("oneclient.clusters.picker.empty"))
-                .font_size(text_size(13.))
-                .color(colors::fg_secondary())
+        let state = picker_state(
+            is_loaded,
+            load_failed,
+            clusters.len(),
+            self.only.is_some(),
+            sections.len(),
+        );
+        let notice = |text: &'static str| {
+            rect()
+                .width(Size::fill())
+                .height(Size::fill())
+                .center()
+                .child(
+                    label()
+                        .text(text)
+                        .text_align(TextAlign::Center)
+                        .font_size(text_size(13.))
+                        .color(colors::fg_secondary()),
+                )
                 .into_element()
-        } else {
-            ScrollArea::new()
+        };
+        let body = match state {
+            PickerState::Loading => centered_spinner(t("oneclient.clusters.picker.loading")),
+            PickerState::Failed => rect()
+                .vertical()
+                .width(Size::fill())
+                .height(Size::fill())
+                .center()
+                .spacing(10.)
+                .child(
+                    label()
+                        .text(t("oneclient.clusters.picker.load_failed"))
+                        .text_align(TextAlign::Center)
+                        .font_size(text_size(13.))
+                        .color(colors::fg_primary()),
+                )
+                .child(
+                    Button::new()
+                        .secondary()
+                        .small()
+                        .on_press(move |_| clusters_query.invalidate())
+                        .child(Icon::new(IconType::RefreshCw01).size(13.))
+                        .text(t("oneclient.common.retry")),
+                )
+                .into_element(),
+            PickerState::NoneEligible { filtered: true } => {
+                notice(t("oneclient.clusters.picker.none_eligible"))
+            }
+            PickerState::NoneEligible { filtered: false } => {
+                notice(t("oneclient.clusters.picker.no_instances"))
+            }
+            PickerState::NoMatches => notice(t("oneclient.clusters.picker.empty")),
+            PickerState::Cards => ScrollArea::new()
                 .width(Size::fill())
                 .height(Size::fill())
                 .lazy_sections(
@@ -234,7 +317,7 @@ impl Component for ClusterPickerModal {
                             .into_element()
                     },
                 )
-                .into_element()
+                .into_element(),
         };
 
         let close = self.on_close.clone();
@@ -311,5 +394,33 @@ impl Component for ClusterPickerModal {
                             ),
                     ),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_picker_tells_its_empty_cases_apart() {
+        assert_eq!(
+            picker_state(false, false, 0, false, 0),
+            PickerState::Loading
+        );
+        assert_eq!(picker_state(false, true, 0, false, 0), PickerState::Failed);
+        // A blank search with nothing eligible is not "no matches"
+        assert_eq!(
+            picker_state(true, false, 0, true, 0),
+            PickerState::NoneEligible { filtered: true }
+        );
+        assert_eq!(
+            picker_state(true, false, 0, false, 0),
+            PickerState::NoneEligible { filtered: false }
+        );
+        assert_eq!(
+            picker_state(true, false, 4, true, 0),
+            PickerState::NoMatches
+        );
+        assert_eq!(picker_state(true, true, 4, true, 2), PickerState::Cards);
     }
 }

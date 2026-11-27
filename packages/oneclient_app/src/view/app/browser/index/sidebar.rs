@@ -16,12 +16,25 @@ pub(super) struct CategorySidebar {
 impl Component for CategorySidebar {
     fn render(&self) -> impl IntoElement {
         let selected = self.selected;
+        // A one-press way back to every category, as in the instance's Add Content rail
+        let all = {
+            let mut selected = selected;
+            CategoryRow {
+                name: t("oneclient.clusters.page.filter.all").to_string(),
+                selected: selected.read().is_empty(),
+                on_toggle: (move |()| selected.set(Vec::new())).into(),
+                key: DiffKey::None,
+            }
+            .key("all")
+            .into_element()
+        };
         // Bottom inset lets the last category scroll clear of the window edge the list now runs to
         let list = rect()
             .vertical()
             .width(Size::fill())
             .spacing(1.)
             .padding(Gaps::new(0., 0., SCROLL_END_INSET, 0.))
+            .child(all)
             .children(self.categories.clone().into_iter().map(move |cat| {
                 let is_selected = selected.read().contains(&cat);
                 let mut selected = selected;

@@ -23,6 +23,16 @@ use crate::layout::SearchItem;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, note, path_block};
 
+thread_local! {
+    static TERMS_FROM_SETTINGS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Whether the Terms page now opening was asked for by Review here, so it can offer a way back
+/// to Settings and skip the "updated since you accepted" wording. Reading it clears it.
+pub(crate) fn take_terms_review_from_settings() -> bool {
+    TERMS_FROM_SETTINGS.replace(false)
+}
+
 #[derive(PartialEq)]
 pub struct SettingsLauncher;
 
@@ -101,6 +111,7 @@ impl Component for SettingsLauncher {
             .secondary()
             .small()
             .on_press(|_| {
+                TERMS_FROM_SETTINGS.set(true);
                 let _ = RouterContext::get().replace(Route::OnboardingTerms {});
             })
             .text(t("oneclient.settings.launcher.terms.review"));

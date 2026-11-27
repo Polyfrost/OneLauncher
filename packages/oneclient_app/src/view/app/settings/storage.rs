@@ -114,7 +114,7 @@ fn hero(report: &StorageReport, refresh: Element) -> impl IntoElement {
         .spacing(16.)
         .padding(Gaps::new_symmetric(20., 16.))
         .corner_radius(rounded(12.))
-        .background(colors::page_elevated())
+        .background(colors::card())
         .child(
             rect()
                 .vertical()
@@ -177,7 +177,7 @@ fn scan_card(scan: Option<&StorageScanProgress>) -> impl IntoElement {
         .spacing(10.)
         .padding(Gaps::new_symmetric(16., 16.))
         .corner_radius(rounded(12.))
-        .background(colors::page_elevated())
+        .background(colors::card())
         .child(header)
         .child(proportion_bar(fraction, colors::brand()))
         .into_element()
@@ -378,7 +378,7 @@ fn empty_note(text: &'static str) -> impl IntoElement {
         .width(Size::fill())
         .padding(Gaps::new_symmetric(14., 16.))
         .corner_radius(rounded(12.))
-        .background(colors::page_elevated())
+        .background(colors::card())
         .child(
             label()
                 .text(text)

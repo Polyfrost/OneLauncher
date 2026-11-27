@@ -95,6 +95,61 @@ pub(crate) fn control_radius(height: f32, fallback: f32) -> CornerRadius {
     }
 }
 
+/// How a provider list stands: kept apart so a failure or a fetch in flight never reads as "nothing here"
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ListStatus {
+    Loading,
+    Failed,
+    Ready,
+}
+
+impl ListStatus {
+    /// Whatever is already on screen wins: a failed refetch over shown results keeps the results
+    pub(crate) fn of(has_items: bool, loading: bool, failed: bool) -> Self {
+        if has_items {
+            Self::Ready
+        } else if failed {
+            Self::Failed
+        } else if loading {
+            Self::Loading
+        } else {
+            Self::Ready
+        }
+    }
+}
+
+/// A provider request that failed: says so and offers Retry, in place of the empty or loading copy
+pub(crate) fn load_failed(message: &'static str, on_retry: impl FnMut(()) + 'static) -> Element {
+    let mut on_retry = on_retry;
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .cross_align(Alignment::Center)
+        .padding(Gaps::new_all(32.))
+        .spacing(10.)
+        .child(
+            Icon::new(IconType::AlertCircle)
+                .size(24.)
+                .color(colors::fg_secondary()),
+        )
+        .child(
+            label()
+                .text(message)
+                .text_align(TextAlign::Center)
+                .font_size(text_size(13.))
+                .color(colors::fg_primary()),
+        )
+        .child(
+            Button::new()
+                .secondary()
+                .small()
+                .on_press(move |_| on_retry(()))
+                .child(Icon::new(IconType::RefreshCw01).size(13.))
+                .text(t("oneclient.common.retry")),
+        )
+        .into_element()
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum InstallSource {
     Manual,
@@ -987,5 +1042,15 @@ mod tests {
         );
 
         assert!(entry(&map, "sodium").disabled_bundled().is_none());
+    }
+
+    #[test]
+    fn a_failed_or_pending_list_never_reads_as_empty() {
+        assert_eq!(ListStatus::of(false, true, false), ListStatus::Loading);
+        assert_eq!(ListStatus::of(false, false, true), ListStatus::Failed);
+        // A settled empty answer is the only real "nothing here"
+        assert_eq!(ListStatus::of(false, false, false), ListStatus::Ready);
+        // Results already on screen stay through a failed refetch
+        assert_eq!(ListStatus::of(true, false, true), ListStatus::Ready);
     }
 }

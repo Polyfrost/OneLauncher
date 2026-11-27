@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::components::{InstanceOverviewButton, InstanceOverviewSurface};
+use crate::components::{ClusterContextMenu, InstanceOverviewButton, InstanceOverviewSurface};
 use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_common::domain::GameLoader;
@@ -34,7 +34,9 @@ use crate::view::app::{
     launch_button_label, launch_button_state, launch_syncing, use_shared_dir_taken,
 };
 
-const PAGE_PADDING: Gaps = Gaps::new(12., 28., 28., 28.);
+/// Same side gutter as Browse and Wardrobe, so the page lines up under the shared "Back to" button
+const PAGE_GUTTER_PX: f32 = 40.;
+const PAGE_PADDING: Gaps = Gaps::new(12., PAGE_GUTTER_PX, 28., PAGE_GUTTER_PX);
 const COLUMN_GAP_PX: f32 = 24.;
 const CARD_GAP_PX: f32 = 16.;
 const ROW_GAP_PX: f32 = 8.;
@@ -50,7 +52,10 @@ const INLINE_SEARCH_MIN_PX: f32 = 700.;
 const SEARCH_WIDTH_PX: f32 = 220.;
 const TOOLBAR_HEIGHT_PX: f32 = 44.;
 const ART_MAX_HEIGHT_PX: f32 = 200.;
-const ART_MIN_SIDEBAR_PX: f32 = 420.;
+const ART_MIN_SIDEBAR_PX: f32 = 480.;
+const SIDEBAR_PADDING_PX: f32 = 22.;
+const SIDEBAR_ACTION_GAP_PX: f32 = 18.;
+const SIDEBAR_ACTION_HEIGHT_PX: f32 = 36.;
 
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum Filter {
@@ -748,6 +753,7 @@ struct Sidebar {
     width: f32,
     cluster_id: i64,
     uses_bundles: bool,
+    menu: ClusterMenuTarget,
     art: DynamicArt,
     type_label: &'static str,
     title: String,
@@ -764,6 +770,7 @@ impl Sidebar {
             width,
             cluster_id: cluster.id,
             uses_bundles: cluster.uses_bundles(),
+            menu: ClusterMenuTarget::for_cluster(cluster, true),
             art: DynamicArt::for_cluster(cluster).max_edge(ART_PREVIEW_EDGE),
             type_label: "OneClient",
             title: crate::utils::instance_display_name(cluster),
@@ -832,6 +839,7 @@ impl Component for LineSidebar {
 impl Component for Sidebar {
     fn render(&self) -> impl IntoElement {
         let mut sidebar_height = use_state(|| 0f32);
+        let mut menu = use_state(|| None);
         let mut active_id = use_active_cluster_id();
         let dispatch = use_dispatch();
         let game = use_game_snapshot();
@@ -841,15 +849,24 @@ impl Component for Sidebar {
         let syncing = launch_syncing(&launcher, self.uses_bundles);
         let shared_dir_taken = use_shared_dir_taken(cluster_id);
         let art_height = art_height_for(*sidebar_height.read());
-        let top_padding = if art_height.is_some() { 16. } else { 22. };
+        let top_padding = if art_height.is_some() {
+            16.
+        } else {
+            SIDEBAR_PADDING_PX
+        };
+        let content_height =
+            sidebar_content_height(*sidebar_height.read(), art_height, top_padding);
 
+        let menu_button = |surface| InstanceOverviewButton {
+            position: menu,
+            surface,
+            name: self.title.clone(),
+        };
         let theme = colors::active_theme();
         let panel = rect()
             .width(Size::px(self.width))
             .min_width(Size::px(self.width))
-            .height(Size::fill())
             .vertical()
-            .content(Content::Flex)
             .corner_radius(rounded(20.));
         let panel = if theme.liquid_glass {
             crate::theme::glass::panel(
@@ -863,37 +880,47 @@ impl Component for Sidebar {
                 .background(colors::page_elevated())
                 .border(border_all_color(1., colors::component_border()))
         };
-        panel
+        let panel = panel
             .overflow(Overflow::Clip)
-            .on_sized(move |event: Event<SizedEventData>| {
-                let height = event.data().area.height();
-                if (*sidebar_height.peek() - height).abs() > 0.5 {
-                    *sidebar_height.write() = height;
+            .on_secondary_down(move |event: Event<PressEventData>| {
+                if let PressEventData::Mouse(mouse) = event.data() {
+                    menu.set(Some((
+                        mouse.global_location.x as f32,
+                        mouse.global_location.y as f32,
+                    )));
                 }
             })
-            .maybe_child(art_height.map(|height| {
-                sidebar_art(
-                    self.art.clone(),
-                    self.type_label,
-                    height,
-                    cluster_id,
-                    &self.title,
-                )
+            .maybe_child(
+                art_height.map(|height| sidebar_art(self.art.clone(), self.type_label, height)),
+            )
+            .maybe_child(art_height.is_some().then(|| {
+                rect()
+                    .position(Position::new_absolute().top(14.).right(14.))
+                    .layer(Layer::Relative(7))
+                    .child(menu_button(InstanceOverviewSurface::Artwork {
+                        reveal: true,
+                    }))
             }))
             .child(
                 rect()
                     .vertical()
                     .width(Size::fill())
-                    .height(Size::flex(1.0))
-                    .content(Content::Flex)
-                    .padding(Gaps::new(top_padding, 22., 22., 22.))
-                    .spacing(18.)
+                    .padding(Gaps::new(
+                        top_padding,
+                        SIDEBAR_PADDING_PX,
+                        SIDEBAR_PADDING_PX,
+                        SIDEBAR_PADDING_PX,
+                    ))
+                    .spacing(SIDEBAR_ACTION_GAP_PX)
                     .child(
                         ScrollArea::new()
                             .width(Size::fill())
-                            .height(Size::flex(1.0))
+                            .height(Size::auto())
+                            .max_height(Size::px(content_height))
                             .keyboard_paging()
                             .scrollbar_gutter(true)
+                            .bottom_fade(colors::page_elevated())
+                            .bottom_fade_height(18.)
                             .spacing(18.)
                             .child(
                                 rect()
@@ -929,6 +956,8 @@ impl Component for Sidebar {
                             .horizontal()
                             .width(Size::fill())
                             .content(Content::Flex)
+                            .height(Size::px(SIDEBAR_ACTION_HEIGHT_PX))
+                            .cross_align(Alignment::Center)
                             .spacing(8.)
                             .child(play_button(
                                 cluster_id,
@@ -947,19 +976,32 @@ impl Component for Sidebar {
                                     })
                                     .child(Icon::new(IconType::Settings01).size(16.)),
                             )
-                            .maybe_child(self.folder.clone().map(open_folder_button)),
+                            .maybe_child(self.folder.clone().map(open_folder_button))
+                            .maybe_child(
+                                art_height
+                                    .is_none()
+                                    .then(|| menu_button(InstanceOverviewSurface::List)),
+                            ),
                     ),
-            )
+            );
+
+        rect()
+            .width(Size::px(self.width))
+            .min_width(Size::px(self.width))
+            .height(Size::fill())
+            .on_sized(move |event: Event<SizedEventData>| {
+                sidebar_height.set_if_modified(event.area.height());
+            })
+            .child(panel)
+            .child(ClusterContextMenu {
+                target: self.menu.clone(),
+                position: menu,
+                upwards: false,
+            })
     }
 }
 
-fn sidebar_art(
-    art: DynamicArt,
-    type_label: &str,
-    height: f32,
-    cluster_id: i64,
-    title: &str,
-) -> Element {
+fn sidebar_art(art: DynamicArt, type_label: &str, height: f32) -> Element {
     rect()
         .width(Size::fill())
         .height(Size::px(height))
@@ -984,16 +1026,6 @@ fn sidebar_art(
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::on_media()),
                 ),
-        )
-        .child(
-            rect()
-                .position(Position::new_absolute().top(14.).right(14.))
-                .layer(Layer::Relative(7))
-                .child(InstanceOverviewButton {
-                    cluster_id,
-                    surface: InstanceOverviewSurface::Artwork { reveal: true },
-                    name: title.to_string(),
-                }),
         )
         .into_element()
 }
@@ -1024,6 +1056,16 @@ fn meta_list(meta: &[(&'static str, String)]) -> Element {
                 .into_element()
         }))
         .into_element()
+}
+
+fn sidebar_content_height(height: f32, art: Option<f32>, top: f32) -> f32 {
+    (height
+        - art.unwrap_or_default()
+        - top
+        - SIDEBAR_PADDING_PX
+        - SIDEBAR_ACTION_GAP_PX
+        - SIDEBAR_ACTION_HEIGHT_PX)
+        .max(0.)
 }
 
 fn art_height_for(sidebar_height: f32) -> Option<f32> {
@@ -1127,15 +1169,24 @@ mod tests {
 
     #[test]
     fn card_grid_fits_compact_and_wide_windows() {
-        // 800px window: 744px body, compact sidebar
-        let (columns, width) = card_metrics(744. - COMPACT_SIDEBAR_WIDTH_PX - COLUMN_GAP_PX);
+        let main_width = |window, sidebar| {
+            window - PAGE_PADDING.left() - PAGE_PADDING.right() - sidebar - COLUMN_GAP_PX
+        };
+        let (columns, width) = card_metrics(main_width(800., COMPACT_SIDEBAR_WIDTH_PX));
         assert_eq!(columns, 2);
-        assert!((190.0..=MAX_CARD_WIDTH_PX).contains(&width), "{width}");
+        assert!((175.0..=MAX_CARD_WIDTH_PX).contains(&width), "{width}");
 
-        // 2000px window: 1944px body, full sidebar
-        let (columns, width) = card_metrics(1944. - SIDEBAR_WIDTH_PX - COLUMN_GAP_PX);
+        let (columns, width) = card_metrics(main_width(2000., SIDEBAR_WIDTH_PX));
         assert_eq!(columns, 5);
         assert!((280.0..=MAX_CARD_WIDTH_PX).contains(&width), "{width}");
+    }
+
+    #[test]
+    fn sidebar_saves_room_for_content_and_actions_at_compact_height() {
+        let compact_height = 456.;
+        assert_eq!(art_height_for(compact_height), None);
+        assert_eq!(sidebar_content_height(compact_height, None, 22.), 358.);
+        assert_eq!(art_height_for(900.), Some(ART_MAX_HEIGHT_PX));
     }
 
     #[test]

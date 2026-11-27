@@ -145,6 +145,7 @@ impl Component for VersionCard {
     fn render(&self) -> impl IntoElement {
         let mut hovering = use_state(|| false);
         let menu_at = use_state(|| None);
+        let mut card_width = use_state(|| 0.);
 
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
@@ -152,6 +153,12 @@ impl Component for VersionCard {
         let selected = self.selected;
         let hovered = *hovering.read();
         let keyboard = focus() == Focus::Keyboard;
+        let compact_caption = *card_width.read() < 210.;
+        let caption = if compact_caption && self.caption == "OneClient" && self.show_play {
+            ""
+        } else {
+            &self.caption
+        };
 
         // Selection is a brand ring around the whole card. Keyboard focus is a neutral ring
         // outside it, so a focused selection shows both instead of one hiding the other.
@@ -190,6 +197,7 @@ impl Component for VersionCard {
                 ClusterContextMenu {
                     target,
                     position: menu_at,
+                    upwards: false,
                 }
                 .into_element()
             }))
@@ -209,13 +217,16 @@ impl Component for VersionCard {
                                 rect()
                                     .expanded()
                                     .corner_radius(rounded(COVER_RADIUS_PX - 3.))
+                                    .on_sized(move |e: Event<SizedEventData>| {
+                                        card_width.set_if_modified(e.area.width())
+                                    })
                                     .overflow(Overflow::Clip)
                                     .child(super::art_zoom::ArtZoom {
                                         highlighted: hovered || keyboard,
                                         art: self.art.clone().into_element(),
                                     })
-                                    .child(artwork_caption(&self.title, &self.caption, self.count))
-                                    .map(self.menu.as_ref(), |el, target| {
+                                    .child(artwork_caption(&self.title, caption, self.count))
+                                    .maybe(self.menu.is_some(), |el| {
                                         el.child(
                                             rect()
                                                 .position(
@@ -223,7 +234,7 @@ impl Component for VersionCard {
                                                 )
                                                 .layer(Layer::Relative(7))
                                                 .child(InstanceOverviewButton {
-                                                    cluster_id: target.cluster_id,
+                                                    position: menu_at,
                                                     surface: InstanceOverviewSurface::Artwork {
                                                         reveal: hovered || keyboard,
                                                     },

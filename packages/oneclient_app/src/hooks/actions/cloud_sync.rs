@@ -65,17 +65,9 @@ pub async fn forget_deleted_cluster(state: &LauncherState, cluster_id: ClusterId
     }
 }
 
-pub async fn load_sync_left_out(cluster_id: ClusterId) -> BTreeSet<String> {
-    let Ok(engine) = engine_or_err() else {
-        return BTreeSet::new();
-    };
-    match off_ui(async move { engine.left_out(cluster_id).await }).await {
-        Ok(left_out) => left_out,
-        Err(err) => {
-            tracing::warn!(cluster_id, error = %err, "could not read which settings files stay on this computer");
-            BTreeSet::new()
-        }
-    }
+pub async fn load_sync_left_out(cluster_id: ClusterId) -> LauncherResult<BTreeSet<String>> {
+    let engine = engine_or_err()?;
+    Ok(off_ui(async move { engine.left_out(cluster_id).await }).await?)
 }
 
 fn engine_or_err() -> LauncherResult<Arc<CloudSync>> {

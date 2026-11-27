@@ -163,7 +163,7 @@ impl PackageUpdateMode {
         match self {
             Self::Automatic => "Automatically update",
             Self::Skip => "Always skip auto updates",
-            Self::Prompt => "Show the modal",
+            Self::Prompt => "Ask each time",
         }
     }
 

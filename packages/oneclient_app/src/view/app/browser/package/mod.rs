@@ -15,7 +15,7 @@ use crate::hooks::{
     use_installs_snapshot, use_link_confirm, use_package_meta_batch, use_package_project,
     use_package_versions_when, version_list, versions_total,
 };
-use crate::hooks::{settled_or_loading, use_cluster, use_clusters};
+use crate::hooks::{query_error, query_is_loading, settled_or_loading, use_cluster, use_clusters};
 use crate::i18n::tf;
 use crate::install::IncompatibleMode;
 use crate::theme::{colors, rounded, text_size};
@@ -24,7 +24,7 @@ use crate::ui::border_all_color;
 use super::index::override_summary;
 use super::install_target::{BrowseInstallPicker, InstallRequest};
 use super::{
-    EnableButton, EnableVariant, Installed, InstalledVersion, ModpackInstancePrompt,
+    EnableButton, EnableVariant, Installed, InstalledVersion, ListStatus, ModpackInstancePrompt,
     ModpackLoaderPrompt, ModpackVersionPrompt, PackageBanner, Thumbnail, WorldInstallPrompt,
     activity_badge, cluster_version, cluster_versions, installed_badge, installed_map,
     instance_choices, loader_options, minecraft_choices, preferred_version, use_saved_override,
@@ -36,11 +36,14 @@ mod gallery;
 mod panels;
 mod sidebar;
 use gallery::gallery_panel;
-use panels::{about_panel, loading_body, tabs, versions_panel};
+use panels::{about_panel, failed_body, loading_body, tabs, versions_panel};
 use sidebar::sidebar;
 
 const SIDEBAR_W: f32 = 280.;
 const SCROLLBAR_GUTTER: f32 = 18.;
+/// The sidebar scrolls on its own, its thumb in the gap to the tabs
+const SIDEBAR_GUTTER: f32 = 12.;
+const COLUMN_GAP: f32 = 24.;
 
 #[derive(Clone)]
 struct Installer {
@@ -263,12 +266,23 @@ impl Component for BrowserPackage {
             !is_modpack,
             provider,
             project_id.clone(),
-            game_version,
+            game_version.clone(),
             loader,
             *versions_page.read(),
             VERSIONS_PAGE_SIZE,
         );
-        let all_versions = version_list(&use_package_versions_when(
+        // "Install latest" and its badge read the newest page whichever page of history is open; on
+        // the first page this is the same cached query
+        let newest_query = use_package_versions_when(
+            !is_modpack,
+            provider,
+            project_id.clone(),
+            game_version,
+            loader,
+            0,
+            VERSIONS_PAGE_SIZE,
+        );
+        let all_versions_query = use_package_versions_when(
             is_modpack,
             provider,
             project_id.clone(),
@@ -276,7 +290,8 @@ impl Component for BrowserPackage {
             None,
             0,
             ALL_VERSIONS,
-        ));
+        );
+        let all_versions = version_list(&all_versions_query);
         let all_versions = match (add_to_cluster, &cluster) {
             (true, Some(c)) => cluster_versions(&all_versions, c),
             _ => all_versions,
@@ -357,7 +372,8 @@ impl Component for BrowserPackage {
                 .into_iter()
                 .map(|(id, meta)| (id, meta.name))
                 .collect();
-        let latest_source = if is_modpack { &all_versions } else { &versions };
+        let newest = version_list(&newest_query);
+        let latest_source = latest_candidates(is_modpack, &all_versions, &newest);
         let latest_version = if add_to_cluster {
             cluster
                 .as_ref()
@@ -391,7 +407,24 @@ impl Component for BrowserPackage {
         let max_tab = if has_gallery { 2 } else { 1 };
         let current = (*active_tab.read()).min(max_tab);
 
+        let shown_versions_query = if is_modpack {
+            all_versions_query
+        } else {
+            versions_query
+        };
+        let versions_status = ListStatus::of(
+            !versions.is_empty(),
+            query_is_loading(&shown_versions_query),
+            query_error(&shown_versions_query).is_some(),
+        );
+        let project_failed = project.is_none() && query_error(&project_query).is_some();
+
         let body = match (&project, current) {
+            (None, _) if project_failed => {
+                failed_body("oneclient.browser.package.load_failed", move |()| {
+                    project_query.invalidate()
+                })
+            }
             (None, _) => loading_body().into_element(),
             (Some(project), 0) => about_panel(project).into_element(),
             (Some(project), 1) => versions_panel(
@@ -404,42 +437,78 @@ impl Component for BrowserPackage {
                 on_remove,
                 installed.clone(),
                 installing || waiting,
+                versions_status,
+                move |()| shown_versions_query.invalidate(),
             )
             .into_element(),
             (Some(_), _) => gallery_panel(gallery).into_element(),
         };
 
+        // Both columns end in the surface's fade rather than a hard cut; glass has no solid surface
+        let fade = if self.in_instance {
+            (!colors::active_theme().liquid_glass).then(colors::page_elevated)
+        } else {
+            Some(colors::page())
+        };
+        let faded = move |area: ScrollArea| match fade {
+            Some(surface) => area.bottom_fade(surface),
+            None => area,
+        };
+
+        // The sidebar (with Install) and the tabs stay put; only the tab's content scrolls under them
         let row = rect()
             .horizontal()
             .width(Size::fill())
-            .cross_align(Alignment::Start)
-            .spacing(24.)
+            .height(Size::fill())
+            .spacing(COLUMN_GAP - SIDEBAR_GUTTER)
             .content(Content::Flex)
-            .child(sidebar(
-                project,
-                latest_version,
-                installer,
-                confirm,
-                installed,
-                installing,
-                waiting,
-            ))
+            .child(
+                faded(ScrollArea::new())
+                    .width(Size::px(SIDEBAR_W + SIDEBAR_GUTTER))
+                    .height(Size::fill())
+                    .auto_hide_scrollbar()
+                    .padding(Gaps::new(0., SIDEBAR_GUTTER, 0., 0.))
+                    .children([sidebar(
+                        project,
+                        latest_version,
+                        installer,
+                        confirm,
+                        installed,
+                        installing,
+                        waiting,
+                    )
+                    .into_element()]),
+            )
             .child(
                 rect()
                     .vertical()
                     .width(Size::flex(1.0))
+                    .height(Size::fill())
                     .spacing(12.)
+                    .content(Content::Flex)
                     .child(tabs(active_tab, has_gallery))
                     .maybe_child(search_override.map(|o| {
                         label()
                             .text(tf(
-                                "oneclient.browser.package.override_active",
+                                // With no instance yet, Install latest resolves for the one picked then
+                                if cluster_id == 0 {
+                                    "oneclient.browser.package.override_active_global"
+                                } else {
+                                    "oneclient.browser.package.override_active"
+                                },
                                 &[&override_summary(&o, content_type == ContentType::Mod)],
                             ))
                             .font_size(text_size(12.))
                             .color(colors::fg_secondary())
                     }))
-                    .child(body),
+                    .child(
+                        faded(ScrollArea::new())
+                            .width(Size::fill())
+                            .height(Size::flex(1.))
+                            .reset_key(current as u64)
+                            .padding(Gaps::new(0., SCROLLBAR_GUTTER, 0., 0.))
+                            .children([body]),
+                    ),
             )
             .into_element();
 
@@ -452,14 +521,7 @@ impl Component for BrowserPackage {
             } else {
                 Gaps::new(0., 40., 40., 40.)
             })
-            .child(
-                ScrollArea::new()
-                    .width(Size::fill())
-                    .height(Size::fill())
-                    .reset_key(current as u64)
-                    .padding(Gaps::new(0., SCROLLBAR_GUTTER, 0., 0.))
-                    .children([row]),
-            )
+            .child(row)
             .maybe_child(remove_dialog)
             .maybe_child(
                 browse_request
@@ -501,5 +563,57 @@ impl Component for BrowserPackage {
                 open: import_prompt,
             }))
             .into_element()
+    }
+}
+
+/// "Install latest" never reads the page of history that happens to be open
+fn latest_candidates<'a>(
+    is_modpack: bool,
+    all_versions: &'a [oneclient_content::packages::types::VersionSummary],
+    newest_page: &'a [oneclient_content::packages::types::VersionSummary],
+) -> &'a [oneclient_content::packages::types::VersionSummary] {
+    if is_modpack {
+        all_versions
+    } else {
+        newest_page
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use oneclient_content::packages::types::VersionSummary;
+
+    fn version(id: &str) -> VersionSummary {
+        VersionSummary {
+            version_id: id.into(),
+            project_id: "p".into(),
+            name: id.into(),
+            version_number: id.into(),
+            published: chrono::Utc::now(),
+            release_type: Default::default(),
+            game_versions: Vec::new(),
+            loaders: Vec::new(),
+            downloads: 0,
+            file_size: 0,
+            dependencies: Vec::new(),
+            blocked: false,
+        }
+    }
+
+    #[test]
+    fn install_latest_ignores_the_open_page_of_history() {
+        let newest = [version("3.0"), version("2.9")];
+        let all = [version("pack-1")];
+        let latest = latest_candidates(false, &all, &newest);
+        assert_eq!(
+            preferred_version(latest, ContentType::Mod).map(|v| v.version_id.as_str()),
+            Some("3.0")
+        );
+        // Modpacks list every version at once and pick from all of them
+        assert_eq!(
+            latest_candidates(true, &all, &newest)[0].version_id,
+            "pack-1"
+        );
     }
 }

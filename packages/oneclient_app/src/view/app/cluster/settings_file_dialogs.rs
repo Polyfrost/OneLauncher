@@ -1,7 +1,10 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
+
+use oneclient_core::{LauncherResult, clusters::list_setting_files};
 
 use crate::components::{FileChoice, OverlayPopup};
-use crate::hooks::{load_setting_files, load_sync_left_out, use_has_game_options};
+use crate::hooks::{load_sync_left_out, use_has_game_options};
+use crate::launcher::{self, off_ui};
 
 use super::*;
 
@@ -307,25 +310,48 @@ pub(super) struct SyncFilesModal {
     pub(super) on_close: EventHandler<()>,
 }
 
+type SyncFilesLoad = Option<Result<BTreeSet<String>, ()>>;
+
+fn load_sync_files(cluster_id: i64, choice: FileChoice, mut load: State<SyncFilesLoad>) {
+    load.set_if_modified(None);
+    spawn(async move {
+        let listed = async {
+            let state = launcher::state()?;
+            let files = off_ui(async move { list_setting_files(&state, cluster_id).await }).await?;
+            LauncherResult::Ok(files)
+        };
+
+        match tokio::try_join!(listed, load_sync_left_out(cluster_id)) {
+            Ok((listed, left_out)) => {
+                let mut files = choice.files;
+                files.set(Some(listed));
+                choice.leave_out(&left_out);
+                load.set(Some(Ok(left_out)));
+            }
+            Err(error) => {
+                tracing::warn!(cluster_id, %error, "could not load the instance's settings to sync");
+                load.set(Some(Err(())));
+            }
+        }
+    });
+}
+
 impl Component for SyncFilesModal {
     fn render(&self) -> impl IntoElement {
         let cluster_id = self.cluster_id;
         let dispatch = use_dispatch();
         let choice = FileChoice::use_new();
-        use_hook(move || {
-            let mut files = choice.files;
-            spawn(async move {
-                let listed = load_setting_files(cluster_id).await;
-                let left_out = load_sync_left_out(cluster_id).await;
-                files.set(Some(listed));
-                choice.leave_out(&left_out);
-            });
-        });
+        let load = use_state(|| None::<Result<BTreeSet<String>, ()>>);
+        use_hook(move || load_sync_files(cluster_id, choice, load));
 
         let close = self.on_close.clone();
         let cancel = self.on_close.clone();
         let save = self.on_close.clone();
-        let loaded = choice.files.read().is_some();
+        let (loaded, failed) = match &*load.read() {
+            Some(Ok(_)) => (true, false),
+            Some(Err(())) => (false, true),
+            None => (false, false),
+        };
 
         let mut content = vec![
             label()
@@ -340,13 +366,29 @@ impl Component for SyncFilesModal {
                 .color(colors::fg_secondary())
                 .into_element(),
         ];
-        content.extend(settings_file_picker(choice, false));
+        if failed {
+            content.push(
+                label()
+                    .text(t("oneclient.cluster.settings.sync_files.load_failed"))
+                    .font_size(text_size(13.))
+                    .color(colors::fg_secondary())
+                    .into_element(),
+            );
+        } else {
+            content.extend(settings_file_picker(choice, false));
+        }
         content.push(
             rect()
                 .horizontal()
                 .width(Size::fill())
                 .main_align(Alignment::End)
                 .spacing(8.)
+                .maybe_child(failed.then(|| {
+                    Button::new()
+                        .secondary()
+                        .on_press(move |_| load_sync_files(cluster_id, choice, load))
+                        .text(t("oneclient.common.retry"))
+                }))
                 .child(
                     Button::new()
                         .ghost()
@@ -357,8 +399,13 @@ impl Component for SyncFilesModal {
                     Button::new()
                         .enabled(loaded)
                         .on_press(move |_| {
-                            dispatch.set_sync_left_out(cluster_id, choice.left_out());
-                            save.call(());
+                            if let Some(Ok(previous)) = &*load.peek() {
+                                dispatch.set_sync_left_out(
+                                    cluster_id,
+                                    choice.left_out_preserving(previous),
+                                );
+                                save.call(());
+                            }
                         })
                         .text(t("oneclient.common.save")),
                 )

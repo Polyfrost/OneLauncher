@@ -66,11 +66,7 @@ impl Component for ActiveClusterPanel {
         );
 
         let theme = colors::active_theme();
-        let subtitle_ink = if theme.colors.light || theme.liquid_glass {
-            Color::from_rgb(241, 242, 247)
-        } else {
-            colors::on_art_secondary()
-        };
+        let subtitle_ink = Color::WHITE.with_a(192);
         let Some(cluster) = active else {
             return rect()
                 .vertical()
@@ -199,12 +195,12 @@ fn cluster_settings_button(cluster_id: i64) -> impl IntoElement {
         .ghost()
         .icon()
         .foreground(colors::on_art())
-        .tooltip(t("oneclient.components.active_cluster_panel.settings"))
+        .tooltip(t("oneclient.clusters.page.instance_settings"))
         .on_press(move |_| {
-            let _ = RouterContext::get().push(Route::ClusterOverview { cluster_id });
+            let _ = RouterContext::get().push(Route::ClusterSettings { cluster_id });
         })
         .child(
-            Icon::new(IconType::Settings04)
+            Icon::new(IconType::Settings01)
                 .size(20.)
                 .color(colors::on_art()),
         )

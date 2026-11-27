@@ -3,12 +3,14 @@ use freya::router::RouterContext;
 use oneclient_core::clusters::Cluster;
 
 use crate::components::{ContextMenu, Icon, IconType};
-use crate::hooks::{modpack_job_running, use_game_snapshot};
+use crate::hooks::{modpack_job_running, use_dispatch, use_game_snapshot, use_launcher};
 use crate::i18n::t;
 use crate::routes::Route;
 use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
-use crate::view::app::DeleteInstanceModal;
+use crate::view::app::{
+    DeleteInstanceModal, launch_button_state, launch_syncing, use_shared_dir_taken,
+};
 
 #[derive(Clone, PartialEq)]
 pub struct ClusterMenuTarget {
@@ -16,6 +18,7 @@ pub struct ClusterMenuTarget {
     pub title: String,
     pub mod_tabs: bool,
     pub deletable: bool,
+    uses_bundles: bool,
 }
 
 impl ClusterMenuTarget {
@@ -25,6 +28,7 @@ impl ClusterMenuTarget {
             title: cluster_title(cluster),
             mod_tabs: !cluster.lacks_mod_loader(),
             deletable: deletable && cluster.user_created,
+            uses_bundles: cluster.uses_bundles(),
         }
     }
 }
@@ -85,7 +89,7 @@ pub(crate) fn shows_entry(route: &Route, mod_tabs: bool) -> bool {
         )
 }
 
-pub(crate) fn instance_actions(mut menu: ContextMenu, id: i64, mod_tabs: bool) -> ContextMenu {
+fn instance_actions(mut menu: ContextMenu, id: i64, mod_tabs: bool) -> ContextMenu {
     let mut content_group = false;
     for (icon, label, route) in cluster_menu_entries(id)
         .into_iter()
@@ -161,7 +165,7 @@ pub(crate) enum InstanceOverviewSurface {
 
 #[derive(PartialEq)]
 pub(crate) struct InstanceOverviewButton {
-    pub cluster_id: i64,
+    pub position: State<Option<(f32, f32)>>,
     pub surface: InstanceOverviewSurface,
     pub name: String,
 }
@@ -173,7 +177,8 @@ impl Component for InstanceOverviewButton {
         let keyboard = use_focus(id)() == Focus::Keyboard;
         let hot = hovered() || keyboard;
         let theme = colors::active_theme();
-        let cluster_id = self.cluster_id;
+        let mut position = self.position;
+        let mut anchor = use_state(|| (0., 0.));
 
         let base = rect()
             .width(Size::px(OVERVIEW_BUTTON_PX))
@@ -223,38 +228,51 @@ impl Component for InstanceOverviewButton {
         };
 
         let tooltip = crate::components::use_tooltip_anchor(
-            Some(t("oneclient.components.cluster_menu.overview").into()),
+            Some(t("oneclient.components.cluster_menu.more_actions").into()),
             crate::components::TooltipPlacement::Top,
         );
-        tooltip.attach(
-            button
-                .a11y_id(id)
-                .a11y_role(AccessibilityRole::Button)
-                .a11y_focusable(true)
-                .a11y_alt(crate::i18n::tf(
-                    "oneclient.components.cluster_menu.open_overview",
-                    &[&self.name],
-                ))
-                .cursor(CursorIcon::Pointer)
-                .maybe(keyboard, |button| {
-                    button.border(
-                        border_all_color(2., colors::brand()).alignment(BorderAlignment::Inner),
-                    )
-                })
-                .on_pointer_over(move |_| hovered.set_if_modified(true))
-                .on_pointer_move(move |_| hovered.set_if_modified(true))
-                // The tooltip owns pointer-leave on this rect; use pointer-out for the face.
-                .on_pointer_out(move |_| hovered.set_if_modified(false))
-                .on_press(move |e: Event<PressEventData>| {
-                    e.stop_propagation();
-                    let _ = RouterContext::get().push(Route::ClusterOverview { cluster_id });
-                })
-                .child(
-                    Icon::new(IconType::DotsVertical)
-                        .size(if theme.pixel_icons { 26. } else { 18. })
-                        .color(colors::fg_primary()),
+        rect()
+            .on_sized(move |e: Event<SizedEventData>| {
+                anchor.set_if_modified((e.area.min_x(), e.area.max_y() + 4.));
+            })
+            .child(
+                tooltip.attach(
+                    button
+                        .a11y_id(id)
+                        .a11y_role(AccessibilityRole::Button)
+                        .a11y_focusable(true)
+                        .a11y_alt(crate::i18n::tf(
+                            "oneclient.components.cluster_menu.open_actions",
+                            &[&self.name],
+                        ))
+                        .cursor(CursorIcon::Pointer)
+                        .maybe(keyboard, |button| {
+                            button.border(
+                                border_all_color(2., colors::brand())
+                                    .alignment(BorderAlignment::Inner),
+                            )
+                        })
+                        .on_pointer_over(move |_| hovered.set_if_modified(true))
+                        .on_pointer_move(move |_| hovered.set_if_modified(true))
+                        // The tooltip owns pointer-leave on this rect; use pointer-out for the face.
+                        .on_pointer_out(move |_| hovered.set_if_modified(false))
+                        .on_press(move |e: Event<PressEventData>| {
+                            e.stop_propagation();
+                            let point = match e.data() {
+                                PressEventData::Mouse(m) => {
+                                    (m.global_location.x as f32, m.global_location.y as f32)
+                                }
+                                _ => *anchor.peek(),
+                            };
+                            position.set(Some(point));
+                        })
+                        .child(
+                            Icon::new(IconType::DotsVertical)
+                                .size(if theme.pixel_icons { 26. } else { 18. })
+                                .color(colors::fg_primary()),
+                        ),
                 ),
-        )
+            )
     }
 }
 
@@ -262,34 +280,21 @@ impl Component for InstanceOverviewButton {
 pub struct ClusterContextMenu {
     pub target: ClusterMenuTarget,
     pub position: State<Option<(f32, f32)>>,
+    pub upwards: bool,
 }
 
 impl Component for ClusterContextMenu {
     fn render(&self) -> impl IntoElement {
-        let game = use_game_snapshot();
         let mut deleting = use_state(|| false);
-        let mut position = self.position;
         let target = self.target.clone();
         let cluster_id = target.cluster_id;
-        let can_delete =
-            target.deletable && !game.is_running(cluster_id) && !modpack_job_running(cluster_id);
-
-        let menu = (*position.read()).map(|(x, y)| {
-            let context = ContextMenu::new(x, y)
-                .title(target.title.clone())
-                .on_close(move |_| position.set(None));
-            let mut context = instance_actions(context, cluster_id, target.mod_tabs);
-            if can_delete {
-                context = context.separator().danger_action(
-                    IconType::Trash01,
-                    t("oneclient.common.delete"),
-                    move |()| {
-                        position.set(None);
-                        deleting.set(true);
-                    },
-                );
-            }
-            context.into_element()
+        let menu = (*self.position.read()).map(|(x, y)| OpenClusterMenu {
+            x,
+            y,
+            target: target.clone(),
+            position: self.position,
+            upwards: self.upwards,
+            deleting,
         });
 
         let modal = deleting.read().then(|| {
@@ -304,6 +309,63 @@ impl Component for ClusterContextMenu {
     }
 }
 
+#[derive(PartialEq)]
+struct OpenClusterMenu {
+    x: f32,
+    y: f32,
+    target: ClusterMenuTarget,
+    position: State<Option<(f32, f32)>>,
+    upwards: bool,
+    deleting: State<bool>,
+}
+
+impl Component for OpenClusterMenu {
+    fn render(&self) -> impl IntoElement {
+        let target = &self.target;
+        let cluster_id = target.cluster_id;
+        let mut position = self.position;
+        let mut deleting = self.deleting;
+        let dispatch = use_dispatch();
+        let game = use_game_snapshot();
+        let launcher = use_launcher();
+        let dir_taken = use_shared_dir_taken(cluster_id);
+        let syncing = launch_syncing(&launcher, target.uses_bundles);
+        let (_, can_launch) = launch_button_state(&game, cluster_id, syncing, dir_taken);
+        let can_delete =
+            target.deletable && !game.is_running(cluster_id) && !modpack_job_running(cluster_id);
+
+        let mut context = ContextMenu::new(self.x, self.y)
+            .title(target.title.clone())
+            .on_close(move |()| position.set(None));
+        if self.upwards {
+            context = context.open_upwards();
+        }
+        if can_launch {
+            context = context
+                .action(
+                    IconType::Play,
+                    t("oneclient.app.launch.launch"),
+                    move |()| {
+                        dispatch.launch_cluster(cluster_id);
+                    },
+                )
+                .separator();
+        }
+        context = instance_actions(context, cluster_id, target.mod_tabs);
+        if can_delete {
+            context = context.separator().danger_action(
+                IconType::Trash01,
+                t("oneclient.common.delete"),
+                move |()| {
+                    position.set(None);
+                    deleting.set(true);
+                },
+            );
+        }
+        context
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -311,15 +373,16 @@ mod tests {
     use std::{cell::Cell, rc::Rc, time::Duration};
 
     #[tokio::test]
-    async fn overview_shortcut_clears_hover_with_tooltips_enabled() {
+    async fn menu_button_clears_hover_with_tooltips_enabled() {
         let mut test = launch_test(|| {
             crate::components::use_provide_tooltips();
+            let position = use_state(|| None);
             rect()
                 .expanded()
                 .horizontal()
                 .background(Color::BLUE)
                 .children((1..=2).map(|cluster_id| InstanceOverviewButton {
-                    cluster_id,
+                    position,
                     surface: InstanceOverviewSurface::List,
                     name: cluster_id.to_string(),
                 }))
@@ -346,14 +409,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn overview_shortcut_reveals_when_the_pointer_reaches_it() {
+    async fn menu_button_reveals_when_the_pointer_reaches_it() {
         let mut test = launch_test(|| {
             crate::components::use_provide_tooltips();
+            let position = use_state(|| None);
             rect()
                 .expanded()
                 .background(Color::BLUE)
                 .child(InstanceOverviewButton {
-                    cluster_id: 1,
+                    position,
                     surface: InstanceOverviewSurface::Artwork { reveal: false },
                     name: "Version".into(),
                 })
@@ -372,6 +436,38 @@ mod tests {
         }
         test.move_cursor((70., 70.));
         assert_eq!(button_pixel(&mut test), skia_safe::Color::BLUE);
+    }
+
+    #[tokio::test]
+    async fn clicking_the_menu_button_opens_the_menu_without_activating_the_card() {
+        let menu_position = Rc::new(Cell::new(None));
+        let activations = Rc::new(Cell::new(0));
+        let position = menu_position.clone();
+        let pressed = activations.clone();
+        let (mut runner, ()) = TestingRunner::new(
+            move || {
+                crate::components::use_provide_tooltips();
+                let menu = use_state(|| None);
+                position.set(menu());
+                let pressed = pressed.clone();
+                use_instance_menu_trigger(menu, true, move |_| pressed.set(pressed.get() + 1))
+                    .width(Size::fill())
+                    .height(Size::fill())
+                    .child(InstanceOverviewButton {
+                        position: menu,
+                        surface: InstanceOverviewSurface::List,
+                        name: "Version".into(),
+                    })
+            },
+            (120., 80.).into(),
+            |_| (),
+            1.,
+        );
+        runner.poll_n(Duration::ZERO, 3);
+        runner.click_cursor((8., 14.));
+        runner.poll_n(Duration::ZERO, 3);
+        assert_eq!(menu_position.get(), Some((8., 14.)));
+        assert_eq!(activations.get(), 0);
     }
 
     #[test]

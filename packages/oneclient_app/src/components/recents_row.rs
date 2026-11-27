@@ -7,13 +7,17 @@ use oneclient_core::clusters::Cluster;
 
 use freya::elements::image::{AspectRatio, ImageCover, ImageHandle, image};
 
-use super::cluster_menu::{cluster_title, instance_actions, use_instance_menu_trigger};
+use super::cluster_menu::{
+    InstanceOverviewButton, InstanceOverviewSurface, cluster_title, use_instance_menu_trigger,
+};
 use super::dynamic_art::use_art_bytes;
 use super::local_image::decode;
 use crate::components::{
-    ART_PREVIEW_EDGE, ContextMenu, DynamicArt, Icon, IconType, LocalImage, use_home_stack,
+    ART_PREVIEW_EDGE, ClusterContextMenu, ClusterMenuTarget, DynamicArt, Icon, IconType,
+    LocalImage, TooltipPlacement, use_home_stack, use_tooltip_anchor,
 };
 use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters};
+use crate::i18n::t;
 use crate::motion::use_animations_enabled;
 use crate::routes::Route;
 use crate::theme;
@@ -34,7 +38,6 @@ const MODPACK_ICON_PX: f32 = 72.0;
 const MODPACK_ICON_EDGE: u32 = 192;
 const MODPACK_BLUR: f32 = 4.0;
 const MODPACK_TINT: Color = Color::from_argb(40, 21, 28, 34);
-const MODPACK_TITLE_INSET: f32 = 8.0;
 const MODPACK_TITLE_LEFT: f32 = 10.5;
 const MARQUEE_DELAY: Duration = Duration::from_millis(200);
 const MARQUEE_HOLD: Duration = Duration::from_millis(700);
@@ -148,7 +151,7 @@ impl Component for ClusterCard {
         let mut active_id = use_active_cluster_id();
         let active = *active_id.read() == Some(self.cluster.id);
         let mut hovering = use_state(|| false);
-        let mut menu = use_state(|| None);
+        let menu = use_state(|| None);
 
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
@@ -164,7 +167,8 @@ impl Component for ClusterCard {
         let title = branded_title.unwrap_or_else(|| cluster_title(&self.cluster));
 
         let cluster_id = self.cluster.id;
-        let mod_tabs = !self.cluster.lacks_mod_loader();
+        let mut target = ClusterMenuTarget::for_cluster(&self.cluster, true);
+        target.title.clone_from(&title);
         let modpack = self.cluster.linked_modpack_hash.is_some();
         let modpack_icon = self
             .cluster
@@ -173,14 +177,6 @@ impl Component for ClusterCard {
         let on_press = move |_| {
             *active_id.write() = Some(cluster_id);
         };
-
-        let menu_overlay = (*menu.read()).map(|(x, y)| {
-            let context = ContextMenu::new(x, y)
-                .open_upwards()
-                .title(title.clone())
-                .on_close(move |_| menu.set(None));
-            instance_actions(context, cluster_id, mod_tabs).into_element()
-        });
 
         rect()
             .key(self.cluster.id)
@@ -259,10 +255,42 @@ impl Component for ClusterCard {
                                     .child(modpack_badge(icon))
                                     .into_element()
                             }))
-                            .child(recent_card_title(title, modpack, *hovering.read(), branded)),
+                            .child(recent_card_title(
+                                title.clone(),
+                                modpack,
+                                *hovering.read(),
+                                branded,
+                            ))
+                            .child(
+                                rect()
+                                    .position(Position::new_absolute().right(8.).top(7.))
+                                    .layer(Layer::Relative(7))
+                                    .child(InstanceOverviewButton {
+                                        position: menu,
+                                        surface: InstanceOverviewSurface::Artwork {
+                                            reveal: *hovering.read() || focus() == Focus::Keyboard,
+                                        },
+                                        name: title.clone(),
+                                    }),
+                            )
+                            .child(
+                                rect()
+                                    .position(Position::new_absolute().right(8.).bottom(7.))
+                                    .layer(Layer::Relative(7))
+                                    .child(super::InstancePlay {
+                                        cluster_id,
+                                        uses_bundles: self.cluster.uses_bundles(),
+                                        name: title,
+                                        list: false,
+                                    }),
+                            ),
                     ),
             )
-            .maybe_child(menu_overlay)
+            .child(ClusterContextMenu {
+                target,
+                position: menu,
+                upwards: true,
+            })
     }
 
     fn render_key(&self) -> DiffKey {
@@ -276,9 +304,9 @@ fn recent_card_title(title: String, modpack: bool, hovered: bool, branded: bool)
         .height(Size::fill())
         .position(Position::new_absolute().left(0.).top(0.))
         .padding(if modpack {
-            Gaps::new(12., MODPACK_TITLE_INSET, 12., MODPACK_TITLE_LEFT)
+            Gaps::new(12., 48., 12., MODPACK_TITLE_LEFT)
         } else {
-            Gaps::new_symmetric(12., 24.)
+            Gaps::new(12., 48., 12., 24.)
         })
         .main_align(Alignment::End)
         .cross_align(Alignment::Start)
@@ -300,9 +328,10 @@ fn recent_card_title(title: String, modpack: bool, hovered: bool, branded: bool)
             .into_element()
         } else {
             title_label(title)
+                .width(Size::fill())
+                .text_overflow(TextOverflow::Ellipsis)
                 .maybe(branded, |label| {
                     label
-                        .width(Size::fill())
                         .font_size(text_size(if colors::active_theme().pixel_icons {
                             23.
                         } else {
@@ -504,76 +533,76 @@ impl Component for OtherVersionsTile {
         let rise = (1.0 - eased) * CARD_RISE_PX;
         let theme = colors::active_theme();
         let hovered = *hovering.read();
-        let tile = rect();
-        let tile = if theme.liquid_glass {
-            crate::theme::glass::navigation_panel(tile, &theme, crate::theme::rounded_px(12.))
-        } else if theme.colors.light {
-            tile.backdrop_blur(6.)
-                .background(colors::component_bg().with_a(if hovered { 208 } else { 166 }))
-        } else {
-            tile.background(if hovered {
-                colors::ghost_overlay_pressed()
-            } else {
-                colors::ghost_overlay_hover()
-            })
-            .backdrop_blur(32.)
-        };
+        let text = t("oneclient.components.recents_row.all_versions");
+        let tooltip = use_tooltip_anchor(Some(text.into()), TooltipPlacement::Top);
+        let tile = rect()
+            .background(Color::from_rgb(14, 17, 22).with_a(if hovered { 208 } else { 174 }))
+            .backdrop_blur(24.);
 
-        tile.width(Size::px(MORE_TILE_WIDTH_PX))
-            .height(Size::fill())
-            .offset_y(rise)
-            .opacity(eased)
-            .corner_radius(rounded(12.))
-            .border(
-                if focused {
-                    border_all_color(2., colors::brand())
-                } else if theme.liquid_glass && hovered {
-                    border_all_color(1., colors::fg_secondary())
-                } else {
-                    border_all(1.)
-                }
-                .alignment(BorderAlignment::Outer),
-            )
-            .a11y_id(a11y_id)
-            .a11y_focusable(true)
-            .a11y_role(AccessibilityRole::Button)
-            .a11y_alt(Route::Clusters {}.title())
-            .on_pointer_enter(move |_| {
-                *hovering.write() = true;
-            })
-            .on_pointer_leave(move |_| {
-                *hovering.write() = false;
-            })
-            .shadow(
-                Shadow::new()
-                    .blur(24.)
-                    .spread(12.)
-                    .x(0.)
-                    .y(0.)
-                    .color(Color::from_af32rgb(0.3, 0, 0, 0)),
-            )
-            .on_press(move |_| match stack {
-                // Stacked home: slide down to the versions page instead of routing away
-                Some(stack) => stack.set_open(true),
-                None => {
-                    let _ = RouterContext::get().push(Route::Clusters {});
-                }
-            })
-            .child(
-                rect()
-                    .width(Size::fill())
-                    .height(Size::fill())
-                    .center()
-                    .child(
-                        Icon::new(IconType::DotsGrid)
-                            .size(if theme.liquid_glass { 32. } else { 50. })
-                            .color(if theme.colors.light {
-                                colors::fg_primary()
-                            } else {
-                                colors::on_art()
-                            }),
-                    ),
-            )
+        tooltip.attach(
+            tile.width(Size::px(MORE_TILE_WIDTH_PX))
+                .height(Size::fill())
+                .offset_y(rise)
+                .opacity(eased)
+                .corner_radius(rounded(12.))
+                .border(
+                    if focused {
+                        border_all_color(2., colors::brand())
+                    } else {
+                        border_all_color(1., Color::WHITE.with_a(if hovered { 95 } else { 46 }))
+                    }
+                    .alignment(BorderAlignment::Outer),
+                )
+                .a11y_id(a11y_id)
+                .a11y_focusable(true)
+                .a11y_role(AccessibilityRole::Button)
+                .a11y_alt(text)
+                .cursor(CursorIcon::Pointer)
+                .on_pointer_over(move |_| {
+                    *hovering.write() = true;
+                })
+                .on_pointer_out(move |_| {
+                    *hovering.write() = false;
+                })
+                .shadow(
+                    Shadow::new()
+                        .blur(24.)
+                        .spread(12.)
+                        .x(0.)
+                        .y(0.)
+                        .color(Color::from_af32rgb(0.3, 0, 0, 0)),
+                )
+                .on_press(move |_| match stack {
+                    // Stacked home: slide down to the versions page instead of routing away
+                    Some(stack) => stack.set_open(true),
+                    None => {
+                        let _ = RouterContext::get().push(Route::Clusters {});
+                    }
+                })
+                .child(
+                    rect()
+                        .width(Size::fill())
+                        .height(Size::fill())
+                        .vertical()
+                        .center()
+                        .spacing(7.)
+                        .padding(Gaps::new_symmetric(0., 4.))
+                        .child(Icon::new(IconType::DotsGrid).size(32.).color(Color::WHITE))
+                        .child(
+                            label()
+                                .text(text)
+                                .width(Size::fill())
+                                .text_align(TextAlign::Center)
+                                .font_size(text_size(12.))
+                                .font_weight(if theme.pixel_icons {
+                                    FontWeight::NORMAL
+                                } else {
+                                    FontWeight::MEDIUM
+                                })
+                                .color(Color::WHITE),
+                        ),
+                ),
+        )
     }
 }
 

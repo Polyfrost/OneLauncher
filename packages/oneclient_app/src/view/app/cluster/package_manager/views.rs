@@ -24,7 +24,7 @@ use crate::{Actions, utils};
 use super::super::folder_list::{
     CONTROL_H, content_area, content_empty, content_grid, content_loading, content_scroll,
     content_toolbar, layout_toggle, open_folder_action, open_folder_button, scope_chip,
-    toolbar_action,
+    toolbar_action, toolbar_secondary,
 };
 
 #[derive(Clone, Copy, PartialEq)]
@@ -459,26 +459,32 @@ fn add_button(
     content_type: ContentType,
     dispatch: Actions,
 ) -> Element {
-    let (icon, text) = if local_tab {
-        (
-            IconType::FilePlus02,
-            t("oneclient.cluster.package_manager.add_from_file"),
-        )
+    if local_tab {
+        import_button(cluster_id, content_type, dispatch, true).into_element()
     } else {
-        (
+        toolbar_action(
             IconType::Plus,
             t("oneclient.cluster.package_manager.add_content"),
         )
-    };
-    toolbar_action(icon, text)
-        .on_press(move |_| {
-            if local_tab {
-                import_from_file(cluster_id, content_type, dispatch.clone());
-            } else {
-                open_browser(cluster_id, package_type);
-            }
-        })
+        .on_press(move |_| open_browser(cluster_id, package_type))
         .into_element()
+    }
+}
+
+fn import_button(
+    cluster_id: i64,
+    content_type: ContentType,
+    dispatch: Actions,
+    primary: bool,
+) -> Button {
+    let icon = IconType::FilePlus02;
+    let text = t("oneclient.cluster.package_manager.add_from_file");
+    let button = if primary {
+        toolbar_action(icon, text)
+    } else {
+        toolbar_secondary(icon, text)
+    };
+    button.on_press(move |_| import_from_file(cluster_id, content_type, dispatch.clone()))
 }
 
 pub(crate) fn copy_list_button(
@@ -676,7 +682,7 @@ fn open_browser(cluster_id: i64, package_type: &'static str) {
 fn browse_button(cluster_id: i64, package_type: &'static str) -> Element {
     toolbar_action(
         IconType::SearchMd,
-        t("oneclient.cluster.package_manager.browse_content"),
+        t("oneclient.cluster.package_manager.browse_ellipsis"),
     )
     .on_press(move |_| open_browser(cluster_id, package_type))
     .into_element()
@@ -687,6 +693,7 @@ pub(super) enum ContentKind {
     Browser,
     Local,
     Other,
+    Filtered(State<BTreeMap<String, String>>),
     /// `scope` names the tab that was searched when it is narrower than "All"
     NoMatches {
         scope: Option<String>,
@@ -1142,9 +1149,14 @@ impl Component for ContentBox {
                 noun_plural,
                 folder,
             ),
-            ContentKind::Other => {
-                empty_state(cluster_id, package_type, content_type, noun_plural, folder)
-            }
+            ContentKind::Other => empty_state(
+                cluster_id,
+                package_type,
+                content_type,
+                noun_plural,
+                dispatch.clone(),
+            ),
+            ContentKind::Filtered(filters) => filtered_empty(noun_plural, *filters),
             ContentKind::NoMatches { scope } => search_empty(noun_plural, scope.as_deref()),
         });
 
@@ -1210,7 +1222,7 @@ fn empty_state(
     package_type: &'static str,
     content_type: ContentType,
     noun_plural: &'static str,
-    folder: Option<PathBuf>,
+    dispatch: Actions,
 ) -> Element {
     content_empty(
         content_icon(content_type),
@@ -1220,13 +1232,32 @@ fn empty_state(
         ),
         Some(t("oneclient.cluster.package_manager.empty.hint").to_string()),
         vec![
-            toolbar_action(
-                IconType::Plus,
-                t("oneclient.cluster.package_manager.add_content"),
+            browse_button(cluster_id, package_type),
+            import_button(cluster_id, content_type, dispatch, false).into_element(),
+        ],
+    )
+}
+
+fn filtered_empty(
+    noun_plural: &'static str,
+    mut filters: State<BTreeMap<String, String>>,
+) -> Element {
+    content_empty(
+        IconType::SearchMd,
+        tf(
+            "oneclient.cluster.package_manager.filtered_empty.title",
+            &[&noun_plural],
+        ),
+        None,
+        vec![
+            toolbar_secondary(
+                IconType::XClose,
+                t("oneclient.cluster.package_manager.filtered_empty.clear"),
             )
-            .on_press(move |_| open_browser(cluster_id, package_type))
+            .on_press(move |_| {
+                filters.write().remove(EnabledFilter::STORAGE_KEY);
+            })
             .into_element(),
-            open_folder_button(folder),
         ],
     )
 }
@@ -1288,12 +1319,7 @@ fn local_empty(
         ),
         hint,
         vec![
-            toolbar_action(
-                IconType::FilePlus02,
-                t("oneclient.cluster.package_manager.add_from_file"),
-            )
-            .on_press(move |_| import_from_file(cluster_id, content_type, dispatch.clone()))
-            .into_element(),
+            import_button(cluster_id, content_type, dispatch, true).into_element(),
             open_folder_button(folder),
         ],
     )

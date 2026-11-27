@@ -83,6 +83,11 @@ impl FileChoice {
         }
     }
 
+    #[must_use]
+    pub fn left_out_preserving(&self, previous: &BTreeSet<String>) -> BTreeSet<String> {
+        merge_left_out(previous, &self.all(), self.left_out())
+    }
+
     pub fn leave_out(mut self, left_out: &BTreeSet<String>) {
         if left_out.is_empty() {
             self.chosen.set(None);
@@ -91,6 +96,15 @@ impl FileChoice {
         let chosen: BTreeSet<String> = self.all().difference(left_out).cloned().collect();
         self.chosen.set(Some(chosen));
     }
+}
+
+fn merge_left_out(
+    previous: &BTreeSet<String>,
+    listed: &BTreeSet<String>,
+    mut current: BTreeSet<String>,
+) -> BTreeSet<String> {
+    current.extend(previous.difference(listed).cloned());
+    current
 }
 
 fn next_choice(
@@ -450,7 +464,25 @@ fn file_row(file: &SettingFile, choice: FileChoice) -> Element {
 mod tests {
     use std::collections::BTreeSet;
 
-    use super::{group_name, next_choice};
+    use super::{group_name, merge_left_out, next_choice};
+
+    #[test]
+    fn saving_sync_choices_preserves_unlisted_exclusions() {
+        let set = |paths: &[&str]| -> BTreeSet<String> {
+            paths.iter().map(|path| path.to_string()).collect()
+        };
+        let previous = set(&["previously-excluded", "missing"]);
+        let listed = set(&["previously-excluded", "now-excluded"]);
+        assert_eq!(
+            merge_left_out(&previous, &listed, set(&["now-excluded"])),
+            set(&["missing", "now-excluded"])
+        );
+        assert_eq!(
+            merge_left_out(&previous, &listed, set(&[])),
+            set(&["missing"])
+        );
+        assert_eq!(merge_left_out(&previous, &set(&[]), set(&[])), previous);
+    }
 
     #[test]
     fn groups_settings_by_mod() {

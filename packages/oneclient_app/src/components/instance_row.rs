@@ -12,8 +12,8 @@ use crate::utils::{GridSelection, ReleaseLine, line_art_key, line_title};
 
 const ROW_HEIGHT_PX: f32 = 56.;
 const THUMB_PX: f32 = 40.;
-/// Fixed, right-aligned column for the last played label, wide enough for "Yesterday"
-const PLAYED_PX: f32 = 76.;
+/// Fixed, right-aligned column for the last played label.
+const PLAYED_PX: f32 = 92.;
 /// Gap between the menu button and Play
 const ACTION_GAP_PX: f32 = 6.;
 const ACTIONS_PX: f32 = OVERVIEW_BUTTON_PX + ACTION_GAP_PX + INSTANCE_PLAY_PX;
@@ -223,7 +223,7 @@ impl Component for InstanceRow {
                                 .color(colors::fg_secondary()),
                         )
                     })
-                    // Reserve the Overview slot so Play lines up even on rows without it.
+                    // Reserve the menu slot so Play lines up even on rows without it.
                     .child(
                         rect()
                             .horizontal()
@@ -233,9 +233,9 @@ impl Component for InstanceRow {
                             .spacing(ACTION_GAP_PX)
                             .cross_align(Alignment::Center)
                             .child(match &self.menu {
-                                Some(target) => InstanceOverviewButton {
+                                Some(_) => InstanceOverviewButton {
                                     surface: InstanceOverviewSurface::List,
-                                    cluster_id: target.cluster_id,
+                                    position: menu_at,
                                     name: self.title.clone(),
                                 }
                                 .into_element(),
@@ -257,6 +257,7 @@ impl Component for InstanceRow {
                 ClusterContextMenu {
                     target,
                     position: menu_at,
+                    upwards: false,
                 }
                 .into_element()
             }))

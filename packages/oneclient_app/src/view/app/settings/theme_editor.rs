@@ -3,14 +3,18 @@ use std::time::Duration;
 use freya::prelude::*;
 use freya::router::RouterContext;
 
-use super::{first_section_header, section_header, settings_page, settings_row};
+use super::{
+    confirm_dialog, first_section_header, readable_secondary, section_header, settings_page,
+    settings_row,
+};
 use crate::components::{
-    Button, ColorPicker, Dropdown, IconType, Segment, SegmentedControl, TextInput, toggle,
+    Button, ColorPicker, Dropdown, Icon, IconType, Segment, SegmentedControl, TextInput, toggle,
 };
 use crate::hooks::{use_debounced, use_dispatch};
-use crate::i18n::t;
+use crate::i18n::{t, tf};
 use crate::routes::Route;
 use crate::theme::colors::{self, Hex, Palette};
+use crate::theme::text_size;
 use crate::theme::{
     Theme, family_name, family_taken, family_variants, font_families, pixel_font_size_of,
     save_theme, variant_name,
@@ -19,11 +23,32 @@ use crate::view::app::settings::appearance_picker::{compose_theme, split_theme};
 
 const BORDER_OPACITIES: [u8; 7] = [5, 10, 15, 20, 30, 45, 60];
 const CORNERS: [(&str, f32); 4] = [
-    ("Square", 0.),
-    ("Subtle", 0.5),
-    ("Default", 1.),
-    ("Round", 1.5),
+    ("oneclient.settings.theme_editor.corners.square", 0.),
+    ("oneclient.settings.theme_editor.corners.subtle", 0.5),
+    ("oneclient.settings.theme_editor.corners.default", 1.),
+    ("oneclient.settings.theme_editor.corners.round", 1.5),
 ];
+
+/// Back to Appearance, where the editor is opened from, without stacking another copy of it
+fn leave_editor() {
+    let router = RouterContext::get();
+    if router.can_go_back() {
+        router.go_back();
+    } else {
+        let _ = router.replace(Route::SettingsAppearance {});
+    }
+}
+
+/// Why Save is unavailable for the typed family name, if it is
+fn name_problem(family: &str, taken: bool) -> Option<String> {
+    if family.is_empty() {
+        Some(t("oneclient.settings.theme_editor.name.empty").to_string())
+    } else if taken {
+        Some(tf("oneclient.settings.theme_editor.name.taken", &[&family]))
+    } else {
+        None
+    }
+}
 
 /// Edits both variants of the family `id` belongs to; name, corners, fonts and icons are
 /// shared, the colors are per variant
@@ -56,7 +81,15 @@ impl Component for SettingsThemeEditor {
         };
         let edited = finish(&draft.read());
         let both = [finish(&dark.read()), finish(&light.read())];
-        let valid = !family.is_empty() && !family_taken(&family, &[&ids[0], &ids[1]]);
+        let problem = name_problem(
+            &family,
+            !family.is_empty() && family_taken(&family, &[&ids[0], &ids[1]]),
+        );
+        let valid = problem.is_none();
+        // The family as it opened, to tell whether Discard would drop anything
+        let original = use_hook(|| both.clone());
+        let dirty = both != original;
+        let mut confirming_discard = use_state(|| false);
 
         let settled = use_debounced(edited.clone(), Duration::from_millis(120));
         use_side_effect_with_deps(&settled.read().clone(), |theme| {
@@ -87,13 +120,13 @@ impl Component for SettingsThemeEditor {
                                     settings.theme = id;
                                 }
                             });
-                            let _ = RouterContext::get().push(Route::SettingsAppearance {});
+                            leave_editor();
                         }
                         Err(err) => {
                             saving.set(false);
                             tracing::error!("Failed to save theme: {err:#}");
                             dispatch
-                                .notify("Couldn't save the theme")
+                                .notify(t("oneclient.settings.theme_editor.save_failed"))
                                 .body(format!("{err:#}"))
                                 .error()
                                 .toast_only()
@@ -107,11 +140,12 @@ impl Component for SettingsThemeEditor {
         settings_page()
             .child(settings_row(
                 IconType::Pencil01,
-                "Name",
-                "Saved as a JSON file in the launcher's themes folder.",
-                rect()
-                    .width(Size::px(220.))
-                    .child(TextInput::new(name).placeholder("My theme")),
+                t("oneclient.settings.theme_editor.name.title"),
+                t("oneclient.settings.theme_editor.name.description"),
+                rect().width(Size::px(220.)).child(
+                    TextInput::new(name)
+                        .placeholder(t("oneclient.settings.theme_editor.name.placeholder")),
+                ),
             ))
             .child(settings_row(
                 IconType::Moon01,
@@ -125,119 +159,178 @@ impl Component for SettingsThemeEditor {
                         Segment::new(true).label(t("oneclient.settings.appearance.theme.light")),
                     ),
             ))
-            .child(first_section_header("Colors"))
+            .child(first_section_header(t(
+                "oneclient.settings.theme_editor.section.colors",
+            )))
             .child(color_row(
                 draft,
                 IconType::LayoutTop,
-                "Background",
-                "Behind every page.",
+                t("oneclient.settings.theme_editor.background.title"),
+                t("oneclient.settings.theme_editor.background.description"),
                 |palette| &mut palette.page,
             ))
             .child(color_row(
                 draft,
                 IconType::Copy01,
-                "Surface",
-                "Settings rows, dialogs and menus.",
+                t("oneclient.settings.theme_editor.surface.title"),
+                t("oneclient.settings.theme_editor.surface.description"),
                 |palette| &mut palette.page_elevated,
             ))
             .child(color_row(
                 draft,
                 IconType::Square,
-                "Cards",
-                "Version, package and stat cards.",
+                t("oneclient.settings.theme_editor.cards.title"),
+                t("oneclient.settings.theme_editor.cards.description"),
                 |palette| &mut palette.card,
             ))
             .child(color_row(
                 draft,
                 IconType::Sliders04,
-                "Controls",
-                "Inputs, dropdowns and secondary buttons.",
+                t("oneclient.settings.theme_editor.controls.title"),
+                t("oneclient.settings.theme_editor.controls.description"),
                 |palette| &mut palette.component,
             ))
             .child(color_row(
                 draft,
                 IconType::ParagraphWrap,
-                "Text",
-                "Titles and body text.",
+                t("oneclient.settings.theme_editor.text.title"),
+                t("oneclient.settings.theme_editor.text.description"),
                 |palette| &mut palette.text,
             ))
             .child(color_row(
                 draft,
                 IconType::MessageTextSquare01,
-                "Secondary text",
-                "Descriptions, hints and muted labels.",
+                t("oneclient.settings.theme_editor.secondary_text.title"),
+                t("oneclient.settings.theme_editor.secondary_text.description"),
                 |palette| &mut palette.text_secondary,
             ))
             .child(color_row(
                 draft,
                 IconType::PaintPour,
-                "Accent",
-                "Primary buttons and highlights, unless you set an accent color.",
+                t("oneclient.settings.theme_editor.accent.title"),
+                t("oneclient.settings.theme_editor.accent.description"),
                 |palette| &mut palette.accent,
             ))
-            .child(section_header("Borders"))
+            .child(section_header(t(
+                "oneclient.settings.theme_editor.section.borders",
+            )))
             .child(border_color_row(draft))
             .child(border_opacity_row(draft))
             .child(settings_row(
                 IconType::Square,
-                "Corners",
-                "How rounded cards, buttons and dialogs are.",
+                t("oneclient.settings.theme_editor.corners.title"),
+                t("oneclient.settings.theme_editor.corners.description"),
                 SegmentedControl::new(radius).segments(
                     CORNERS
                         .iter()
-                        .map(|(label, scale)| Segment::new(*scale).label(*label)),
+                        .map(|(label, scale)| Segment::new(*scale).label(t(label))),
                 ),
             ))
-            .child(section_header("Fonts"))
+            .child(section_header(t(
+                "oneclient.settings.theme_editor.section.fonts",
+            )))
             .child(font_row(
                 [dark, light],
                 IconType::ParagraphWrap,
-                "Font",
-                "Used for all launcher text.",
+                t("oneclient.settings.theme_editor.font.title"),
+                t("oneclient.settings.theme_editor.font.description"),
                 edited.font.clone(),
                 |theme| &mut theme.font,
             ))
             .child(font_row(
                 [dark, light],
                 IconType::CodeSnippet02,
-                "Code font",
-                "Used for logs and code blocks.",
+                t("oneclient.settings.theme_editor.code_font.title"),
+                t("oneclient.settings.theme_editor.code_font.description"),
                 edited.mono_font.clone(),
                 |theme| &mut theme.mono_font,
             ))
             .child(settings_row(
                 IconType::DotsGrid,
-                "Pixel icons",
-                "Use blocky pixel-art icons, like the Minecraft themes.",
+                t("oneclient.settings.theme_editor.pixel_icons.title"),
+                t("oneclient.settings.theme_editor.pixel_icons.description"),
                 toggle(pixel_icons),
             ))
             .child(
                 rect()
                     .horizontal()
                     .width(Size::fill())
-                    .main_align(Alignment::End)
+                    .content(Content::Flex)
+                    .cross_align(Alignment::Center)
                     .spacing(8.)
                     .padding(Gaps::new(16., 0., 0., 0.))
+                    // Save is disabled for a missing or taken name; say which
+                    .child(
+                        rect()
+                            .horizontal()
+                            .width(Size::flex(1.))
+                            .cross_align(Alignment::Center)
+                            .spacing(6.)
+                            .maybe_child(problem.clone().map(|problem| {
+                                rect()
+                                    .horizontal()
+                                    .width(Size::fill())
+                                    .content(Content::Flex)
+                                    .cross_align(Alignment::Center)
+                                    .spacing(6.)
+                                    .child(
+                                        Icon::new(IconType::InfoCircle)
+                                            .size(14.)
+                                            .color(readable_secondary()),
+                                    )
+                                    .child(
+                                        label()
+                                            .text(problem)
+                                            .width(Size::flex(1.))
+                                            .font_size(text_size(12.))
+                                            .color(readable_secondary()),
+                                    )
+                                    .into_element()
+                            })),
+                    )
                     .child(
                         Button::new()
                             .ghost()
-                            .on_press(|_| {
-                                let _ = RouterContext::get().push(Route::SettingsAppearance {});
+                            .on_press(move |_| {
+                                if dirty {
+                                    confirming_discard.set(true);
+                                } else {
+                                    leave_editor();
+                                }
                             })
-                            .text("Discard"),
+                            .text(t("oneclient.settings.theme_editor.discard")),
                     )
                     .child(
                         Button::new()
                             .primary()
                             .enabled(valid && !*saving.read())
+                            .maybe(problem.is_some(), |button| {
+                                button.tooltip(problem.clone().unwrap_or_default())
+                            })
                             .on_press(save)
-                            .text("Save theme"),
+                            .text(t("oneclient.settings.theme_editor.save")),
                     ),
             )
+            .maybe_child((*confirming_discard.read()).then(|| {
+                confirm_dialog(
+                    t("oneclient.settings.theme_editor.discard_confirm.title"),
+                    t("oneclient.settings.theme_editor.discard_confirm.body"),
+                    t("oneclient.settings.theme_editor.discard"),
+                    true,
+                    (move |()| confirming_discard.set(false)).into(),
+                    (move |()| {
+                        confirming_discard.set(false);
+                        leave_editor();
+                    })
+                    .into(),
+                )
+            }))
             .into_element()
     }
 }
 
+/// The picker shows and picks the opaque color; a translucent field (the Cards fill of the
+/// glass themes, for one) keeps its alpha, as the border row does
 fn color_row(
     draft: State<Theme>,
     icon: IconType,
@@ -251,20 +344,26 @@ fn color_row(
         icon,
         title,
         description,
-        ColorPicker::new(value, move |picked: Color| {
+        ColorPicker::new(colors::with_alpha(value, 255), move |picked: Color| {
             let mut draft = draft;
-            *field(&mut draft.write().colors) = Hex(picked);
+            let mut palette = draft.peek().colors;
+            let alpha = field(&mut palette).0.a();
+            *field(&mut draft.write().colors) = Hex(keep_alpha(picked, alpha));
         })
         .into_element(),
     )
+}
+
+fn keep_alpha(picked: Color, alpha: u8) -> Color {
+    colors::with_alpha(picked, alpha)
 }
 
 fn border_color_row(draft: State<Theme>) -> impl IntoElement {
     let border = draft.read().colors.border.0;
     settings_row(
         IconType::Square,
-        "Border color",
-        "Outlines around cards, inputs and dialogs.",
+        t("oneclient.settings.theme_editor.border_color.title"),
+        t("oneclient.settings.theme_editor.border_color.description"),
         ColorPicker::new(colors::with_alpha(border, 255), move |picked: Color| {
             let mut draft = draft;
             let alpha = draft.peek().colors.border.0.a();
@@ -286,8 +385,8 @@ fn border_opacity_row(draft: State<Theme>) -> impl IntoElement {
 
     settings_row(
         IconType::Eye,
-        "Border opacity",
-        "Hovered and pressed borders get stronger from here.",
+        t("oneclient.settings.theme_editor.border_opacity.title"),
+        t("oneclient.settings.theme_editor.border_opacity.description"),
         Dropdown::new(format!("{selected}%"), options)
             .outlined()
             .on_select(move |index: usize| {
@@ -324,4 +423,28 @@ fn font_row(
                 }
             }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_picked_color_keeps_the_fields_alpha() {
+        let picked = Color::from_rgb(0x12, 0x34, 0x56);
+        let kept = keep_alpha(picked, 128);
+        assert_eq!(
+            (kept.r(), kept.g(), kept.b(), kept.a()),
+            (0x12, 0x34, 0x56, 128)
+        );
+        assert_eq!(keep_alpha(picked, 255).a(), 255);
+    }
+
+    #[test]
+    fn save_explains_a_missing_or_taken_name() {
+        assert!(name_problem("", false).is_some());
+        let taken = name_problem("Polyfrost", true).unwrap();
+        assert!(taken.contains("Polyfrost"), "{taken}");
+        assert_eq!(name_problem("Reef", false), None);
+    }
 }

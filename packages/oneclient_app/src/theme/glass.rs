@@ -116,9 +116,15 @@ pub fn frosted_panel(rect: Rect, theme: &Theme, radius: f32, tint: Color) -> Rec
     panel_with_blur(rect, theme, radius, tint, 3.)
 }
 
+/// Blur under the large workspace dialogs. Strong enough that the Home hero behind them (its
+/// title and the blue Launch button) can't be read as part of the dialog.
+const WORKSPACE_BLUR: f32 = 22.;
+/// Blur under small dialogs and menus
+const POPUP_BLUR: f32 = 8.;
+
 /// Diffuse the page behind large dialogs so background text cannot compete with their controls.
 pub fn workspace_panel(rect: Rect, theme: &Theme, radius: f32, tint: Color) -> Rect {
-    panel_with_blur(rect, theme, radius, tint, 8.)
+    panel_with_blur(rect, theme, radius, tint, WORKSPACE_BLUR)
 }
 
 /// Dense glass for small dialogs and menus where fine text sits over busy artwork.
@@ -127,7 +133,7 @@ pub fn popup_panel(rect: Rect, radius: f32, fallback: Color) -> Rect {
     if theme.liquid_glass {
         let tint =
             super::colors::page_elevated().with_a(if theme.colors.light { 226 } else { 212 });
-        workspace_panel(rect, &theme, super::rounded_px(radius), tint)
+        panel_with_blur(rect, &theme, super::rounded_px(radius), tint, POPUP_BLUR)
     } else {
         rect.corner_radius(super::rounded(radius))
             .background(fallback)

@@ -809,14 +809,15 @@ impl Component for PackageManager {
             rank_by_query(&mut filtered, &query);
         }
 
-        // Coming up empty during a search is about the query not the tab so it gets its own empty state
-        let content_kind = if filtered.is_empty() && !query.is_empty() {
+        let content_kind = if !query.is_empty() {
             ContentKind::NoMatches {
                 scope: match tab_filter {
                     Some(Tab::All) | None => None,
                     Some(tab) => Some(tab.label()),
                 },
             }
+        } else if show != EnabledFilter::All {
+            ContentKind::Filtered(filters)
         } else {
             match tab_filter {
                 Some(Tab::Browser) => ContentKind::Browser,

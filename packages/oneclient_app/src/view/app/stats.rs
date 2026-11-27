@@ -3,9 +3,11 @@ use freya::prelude::*;
 use freya::router::RouterContext;
 
 use crate::components::{Button, Icon, IconType, ScrollArea, centered_spinner};
-use crate::hooks::{try_global_analytics, use_global_analytics};
+use crate::hooks::{query_error, try_global_analytics, use_global_analytics};
 use crate::i18n::t;
 use crate::routes::Route;
+use crate::theme::colors;
+use crate::view::app::settings::retry_button;
 use crate::view::app::{analytics_body, analytics_empty};
 
 #[derive(PartialEq)]
@@ -15,9 +17,14 @@ impl Component for Stats {
     fn render(&self) -> impl IntoElement {
         let query = use_global_analytics();
         let analytics = try_global_analytics(&query);
+        // A failed query settles with no value; without this it would spin forever
+        let failed = analytics.is_none() && query_error(&query).is_some();
 
-        // Loading and the empty state fill the page; only a real dashboard scrolls
+        // Loading, failure and the empty state fill the page; only a real dashboard scrolls
         let analytics = match &analytics {
+            None if failed => {
+                return page(error_state((move |()| query.invalidate()).into()));
+            }
             None => return page(loading_state()),
             Some(a) if a.playtime.session_count == 0 => return page(empty_state()),
             Some(a) => a,
@@ -56,6 +63,16 @@ fn empty_state() -> Element {
             .child(Icon::new(IconType::Play).size(15.))
             .text(t("oneclient.stats.empty.action"))
             .into_element(),
+    )
+}
+
+fn error_state(retry: EventHandler<()>) -> Element {
+    super::analytics::analytics_message(
+        IconType::AlertTriangle,
+        colors::code_warn(),
+        t("oneclient.stats.error.title"),
+        t("oneclient.stats.error.hint"),
+        retry_button(retry),
     )
 }
 

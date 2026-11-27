@@ -34,6 +34,7 @@ const CONTROL_GAP: f32 = 8.;
 /// Between toolbar groups, and between the toolbar and the list below it
 const GROUP_GAP: f32 = 12.;
 const CONTENT_TOOLBAR_BREAKPOINT: f32 = SEARCH_MIN_W + GROUP_GAP + 298. + GROUP_GAP + 294.;
+const STACKED_TOOLBAR_H: f32 = CONTROL_H * 2. + CONTROL_GAP;
 const SCOPE_CHIP_H: f32 = 28.;
 const IMAGE_EDGE: u32 = 128;
 const FIRST_DATAPACK_MAJOR: u32 = 13;
@@ -105,16 +106,24 @@ fn toolbar_group_space(width: f32) -> f32 {
     if width > 0. { width + GROUP_GAP } else { 0. }
 }
 
-/// Use the common content-page breakpoint, allowing wider controls to need more room.
 fn toolbar_fit(available: f32, filters_w: f32, actions_w: f32) -> ToolbarFit {
     let intrinsic = toolbar_intrinsic_width(filters_w, actions_w);
-    let stacked = available < intrinsic.max(CONTENT_TOOLBAR_BREAKPOINT);
+    let stacked = available < intrinsic;
     let search_w = if stacked {
         (available - toolbar_group_space(filters_w)).clamp(0., SEARCH_MAX_W)
     } else {
         (available - (intrinsic - SEARCH_MIN_W)).clamp(SEARCH_MIN_W, SEARCH_MAX_W)
     };
     ToolbarFit { stacked, search_w }
+}
+
+fn toolbar_height(available: f32, two_lines: bool) -> f32 {
+    // Keep the list aligned with pages with a fuller toolbar at narrow widths.
+    if two_lines || available < CONTENT_TOOLBAR_BREAKPOINT {
+        STACKED_TOOLBAR_H
+    } else {
+        CONTROL_H
+    }
 }
 
 /// The one toolbar of every instance content page
@@ -177,7 +186,8 @@ impl Component for ContentToolbar {
         // Until each group has been measured at its natural width it lays out stacked
         let unmeasured = (!self.filters.is_empty() && *filters_w.read() == 0.)
             || (!self.actions.is_empty() && *actions_w.read() == 0.);
-        let mut fit = toolbar_fit(*width.read(), *filters_w.read(), *actions_w.read());
+        let available = *width.read();
+        let mut fit = toolbar_fit(available, *filters_w.read(), *actions_w.read());
         // Until the groups have reported their natural widths, give them their own lines.
         fit.stacked |= unmeasured;
 
@@ -255,6 +265,10 @@ impl Component for ContentToolbar {
         rect()
             .vertical()
             .width(Size::fill())
+            .height(Size::px(toolbar_height(
+                available,
+                fit.stacked && !self.actions.is_empty(),
+            )))
             .on_sized(track_width(width))
             .child(inner)
     }
@@ -906,11 +920,14 @@ mod tests {
     }
 
     #[test]
-    fn every_tab_reserves_two_lines_below_the_shared_breakpoint() {
-        for (filters, actions) in [(68., 34.), (298., 294.), (0., 34.)] {
-            assert!(toolbar_fit(775., filters, actions).stacked);
-            assert!(!toolbar_fit(776., filters, actions).stacked);
-        }
+    fn short_toolbars_stay_on_one_line_without_moving_the_list() {
+        let available = 700.;
+        assert!(!toolbar_fit(available, 68., 34.).stacked);
+        assert!(toolbar_fit(available, 298., 294.).stacked);
+        assert_eq!(toolbar_height(available, false), STACKED_TOOLBAR_H);
+        assert_eq!(toolbar_height(available, true), STACKED_TOOLBAR_H);
+        assert_eq!(toolbar_height(800., false), CONTROL_H);
+        assert_eq!(toolbar_height(800., true), STACKED_TOOLBAR_H);
     }
 
     #[test]

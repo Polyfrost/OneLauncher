@@ -65,11 +65,6 @@ impl WorkspaceLayout {
         (self.height - self.header_height - 1. - CONTENT_TOP - self.padding).max(0.)
     }
 
-    /// Left inset of the Statistics body, so its header title starts on the same edge
-    pub fn statistics_inset(self) -> f32 {
-        self.padding.max((self.width - STATISTICS_MAX_WIDTH) / 2.)
-    }
-
     pub(super) fn header(self) -> Rect {
         rect()
             .horizontal()
@@ -250,7 +245,9 @@ impl Component for WorkspacePopup {
         };
         let theme = colors::active_theme();
         let face = if theme.liquid_glass {
-            let tint = colors::page_elevated().with_a(if theme.colors.light { 198 } else { 188 });
+            // Dense enough that the Home hero's title and Launch button can't read through as
+            // part of the dialog
+            let tint = colors::page_elevated().with_a(if theme.colors.light { 230 } else { 225 });
             glass::workspace_panel(rect(), &theme, rounded_px(16.), tint)
         } else {
             rect()
@@ -302,7 +299,6 @@ fn statistics(layout: WorkspaceLayout, page: RoutedPage) -> Rect {
         .child(
             layout
                 .header()
-                .padding(Gaps::new(0., layout.padding, 0., layout.statistics_inset()))
                 .spacing(12.)
                 .child(
                     label()
@@ -399,17 +395,13 @@ mod tests {
     }
 
     #[test]
-    fn pane_and_statistics_insets_follow_the_frame() {
+    fn pane_follows_the_frame() {
         let small = WorkspaceLayout::for_size(800., 600.);
         // 768 wide: P 16 three times and a 196 rail; 464 tall: a 64 header, its divider,
         // 16 above the page and P below
         assert_eq!(small.pane_width(), 524.);
         assert_eq!(small.pane_height(), 367.);
-        // Statistics lines its title up with the centered body
-        assert_eq!(small.statistics_inset(), 16.);
-        assert!((WorkspaceLayout::for_size(1280., 800.).statistics_inset() - 84.4).abs() < 0.01);
         let full = WorkspaceLayout::for_size(2048., 1104.);
-        assert_eq!(full.statistics_inset(), 150.);
         assert_eq!(full.pane_width(), 1064.);
     }
 

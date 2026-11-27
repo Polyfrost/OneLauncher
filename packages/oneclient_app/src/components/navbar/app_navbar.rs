@@ -19,6 +19,7 @@ use crate::{
 const NAVBAR_INTRO_MS: u64 = 460;
 const LOGO_HIDE_NAVBAR_W: f32 = 1100.;
 const NAVBAR_SIDE_PADDING_PX: f32 = 40.;
+const GLASS_NAVBAR_SIDE_PADDING_PX: f32 = 16.;
 const NAV_LINK_SPACING_PX: f32 = 36.;
 const NAV_PILL_GAP: f32 = 4.;
 const NAV_LINK_HEIGHT: f32 = 36.;
@@ -26,8 +27,7 @@ const GLASS_GROUP_HEIGHT: f32 = 48.;
 const GLASS_GROUP_GAP: f32 = 12.;
 const COMPACT_LOGO_PX: f32 = 32.;
 const GLASS_COMPACT_LOGO_PX: f32 = 40.;
-/// Side padding, the compact logo and the right-hand buttons: what the links can't use
-const COMPACT_RESERVED_PX: f32 = 396.;
+const GLASS_NAV_INSET: f32 = 6.;
 
 #[derive(PartialEq)]
 pub struct Navbar;
@@ -35,6 +35,7 @@ pub struct Navbar;
 impl Component for Navbar {
     fn render(&self) -> impl IntoElement {
         let mut navbar_width = use_state(|| 0f32);
+        let mut compact_room = use_state(|| 0f32);
         let intro = use_animation(|conf| {
             conf.on_creation(OnCreation::Run);
             AnimNum::new(0., 1.)
@@ -74,9 +75,14 @@ impl Component for Navbar {
                     .horizontal()
                     .content(Content::Flex)
                     .cross_align(Alignment::Center)
-                    .padding(Gaps::new_symmetric(0.0, NAVBAR_SIDE_PADDING_PX))
+                    .padding(Gaps::new(
+                        0.,
+                        NAVBAR_SIDE_PADDING_PX,
+                        0.,
+                        theme::HOME_PADDING_PX,
+                    ))
                     .maybe(theme.liquid_glass, |row| {
-                        row.padding(Gaps::new_symmetric(0., 16.))
+                        row.padding(Gaps::new_symmetric(0., GLASS_NAVBAR_SIDE_PADDING_PX))
                             .spacing(GLASS_GROUP_GAP)
                     })
                     .offset_y(slide)
@@ -92,13 +98,26 @@ impl Component for Navbar {
                         over_art || (theme.liquid_glass && home_visible),
                         theme.liquid_glass,
                     ))
-                    .child(navbar_group(
-                        &theme,
-                        navbar_center(!show_logo, over_art, measured - COMPACT_RESERVED_PX),
-                        !show_logo,
-                        Alignment::Center,
-                        6.,
-                    ))
+                    .child(
+                        rect()
+                            .horizontal()
+                            .cross_align(Alignment::Center)
+                            .width(if show_logo {
+                                Size::auto()
+                            } else {
+                                Size::flex(1.)
+                            })
+                            .on_sized(move |event: Event<SizedEventData>| {
+                                compact_room.set_if_modified(event.area.width());
+                            })
+                            .child(navbar_group(
+                                &theme,
+                                navbar_center(!show_logo, over_art, *compact_room.read()),
+                                false,
+                                Alignment::Center,
+                                GLASS_NAV_INSET,
+                            )),
+                    )
                     .child(navbar_group(
                         &theme,
                         NavbarRight {
@@ -236,7 +255,14 @@ fn navbar_left(show_logo: bool, over_art: bool, glass: bool) -> impl IntoElement
             Size::auto()
         })
         .cross_align(Alignment::Center)
-        .maybe(glass, |el| el.padding(Gaps::new_symmetric(0., 8.)))
+        .maybe(glass, |el| {
+            el.padding(Gaps::new(
+                0.,
+                8.,
+                0.,
+                theme::HOME_PADDING_PX - GLASS_NAVBAR_SIDE_PADDING_PX,
+            ))
+        })
         .maybe(!glass && !show_logo, |el| {
             el.padding(Gaps::new(0., 12., 0., 0.))
         })
@@ -375,22 +401,21 @@ fn navbar_center(is_small: bool, over_art: bool, room: f32) -> impl IntoElement 
     let active = links.iter().position(|(active, _, _)| *active);
     let indicator = theme.liquid_glass.then(|| track.indicator(active));
     let routes = links.each_ref().map(|(_, route, _)| route.clone());
-    // Compact links keep their own width, so the lens stays label-sized. Only a window too
-    // narrow for that shares the room out evenly and lets the labels truncate.
-    let natural = links
-        .iter()
-        .map(|(_, _, label)| nav_link_width(label, is_small))
-        .sum::<f32>()
-        + NAV_PILL_GAP * (links.len() - 1) as f32;
-    let squeeze = is_small && natural > room;
+    let mut natural_width = use_state(|| 0f32);
+    let room = if theme.liquid_glass {
+        room - 2. * GLASS_NAV_INSET
+    } else {
+        room
+    };
+    let squeeze = is_small && room > 0. && *natural_width.read() > room;
 
     rect()
         .horizontal()
         .height(Size::px(NAV_LINK_HEIGHT))
-        .width(if theme.liquid_glass {
-            Size::px(if squeeze { room.max(0.) } else { natural })
+        .width(if squeeze {
+            Size::px(room)
         } else {
-            Size::flex(1.)
+            Size::auto()
         })
         .maybe(squeeze, |el| el.content(Content::Flex))
         .main_align(if is_small {
@@ -406,6 +431,24 @@ fn navbar_center(is_small: bool, over_art: bool, room: f32) -> impl IntoElement 
             })
         })
         .maybe_child(indicator)
+        .maybe_child(is_small.then(|| {
+            // The measurement stays at intrinsic width even when the real links share the slot.
+            rect()
+                .position(Position::new_absolute())
+                .horizontal()
+                .spacing(NAV_PILL_GAP)
+                .opacity(0.)
+                .interactive(false)
+                .a11y_builder(|node| node.set_hidden())
+                .on_sized(move |event: Event<SizedEventData>| {
+                    natural_width.set_if_modified(event.area.width());
+                })
+                .children(links.each_ref().map(|(_, _, text)| {
+                    rect()
+                        .padding(nav_link_padding(true))
+                        .child(nav_link_label(text, true))
+                }))
+        }))
         .children(
             links
                 .into_iter()
@@ -425,13 +468,15 @@ fn navbar_center(is_small: bool, over_art: bool, room: f32) -> impl IntoElement 
         )
 }
 
-fn nav_link_width(label: &str, compact: bool) -> f32 {
-    let letters = label.chars().count() as f32;
-    if compact {
-        letters * 9. + 30.
-    } else {
-        letters * 10. + 34.
-    }
+fn nav_link_padding(compact: bool) -> Gaps {
+    Gaps::new_symmetric(0., if compact { 14. } else { 17. })
+}
+
+fn nav_link_label(text: &str, compact: bool) -> Label {
+    label()
+        .text(text.to_owned())
+        .font_size(text_size(if compact { 14. } else { 16. }))
+        .font_weight(FontWeight::MEDIUM)
 }
 
 fn browse_target() -> Route {
@@ -536,7 +581,12 @@ impl Component for NavLink {
             .width(if self.squeeze {
                 Size::flex(1.)
             } else {
-                Size::px(nav_link_width(nav_label, self.compact))
+                Size::auto()
+            })
+            .padding(if self.squeeze {
+                Gaps::new_symmetric(0., 6.)
+            } else {
+                nav_link_padding(self.compact)
             })
             .corner_radius(if glass {
                 CornerRadius::new_all(NAV_LINK_HEIGHT / 2.)
@@ -582,19 +632,12 @@ impl Component for NavLink {
             .on_pointer_out(move |_| hovering.set(false))
             .cursor(CursorIcon::Pointer)
             .child(
-                label()
-                    .text(nav_label)
+                nav_link_label(nav_label, self.compact)
                     .maybe(self.squeeze, |el| {
                         el.width(Size::fill())
                             .text_align(TextAlign::Center)
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis)
-                    })
-                    .font_size(text_size(if self.compact { 14. } else { 16. }))
-                    .font_weight(if lit {
-                        FontWeight::MEDIUM
-                    } else {
-                        FontWeight::NORMAL
                     })
                     .color(color),
             )

@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::cell::RefCell;
 
 use freya::animation::*;
 use freya::prelude::*;
@@ -11,7 +10,7 @@ use sysinfo::MemoryRefreshKind;
 use sysinfo::RefreshKind;
 use sysinfo::System;
 
-use crate::components::{Button, Icon, IconType, ScrollAreaCtx, TextInput, TooltipPlacement};
+use crate::components::{Button, Icon, IconType, TextInput, TooltipPlacement};
 use crate::hooks::{latest_changelog_version, use_changelog, use_settings_snapshot};
 use crate::i18n::{t, tf};
 use crate::routes::Route;
@@ -22,25 +21,6 @@ use super::workspace_rail;
 use crate::use_dispatch;
 
 const SEARCH_RESULTS_MAX: usize = 12;
-
-thread_local! {
-    static SETTINGS_SCROLL_CTX: RefCell<Option<ScrollAreaCtx>> = const { RefCell::new(None) };
-    static SETTINGS_SCROLL_CONTROLLER: RefCell<Option<ScrollController>> = const { RefCell::new(None) };
-    static PENDING_SETTING_FOCUS: RefCell<Option<&'static str>> = const { RefCell::new(None) };
-}
-
-pub(crate) fn set_pending_setting_focus(id: &'static str) {
-    PENDING_SETTING_FOCUS.with(|cell| *cell.borrow_mut() = Some(id));
-
-    spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-        PENDING_SETTING_FOCUS.with(|cell| {
-            if *cell.borrow() == Some(id) {
-                *cell.borrow_mut() = None;
-            }
-        });
-    });
-}
 
 #[derive(Clone)]
 pub(crate) struct SearchItem {
@@ -107,7 +87,7 @@ impl SettingsTab {
             Self::Appearance => IconType::Brush01,
             Self::Apis => IconType::Key01,
             Self::Language => IconType::Globe01,
-            Self::DeveloperOptions => IconType::CodeSnippet02,
+            Self::DeveloperOptions => IconType::Terminal,
             Self::Changelog => IconType::RefreshCcw02,
         }
     }
@@ -183,11 +163,11 @@ impl Component for SettingsShell {
 
         let changelog_unread = has_unread_changelog();
 
-        let search = use_state(String::new);
+        let mut search = use_state(String::new);
         let query = SearchQuery::new(&search.read());
         let searching = !query.is_empty();
         let scroll = use_scroll_controller(ScrollConfig::default);
-        SETTINGS_SCROLL_CONTROLLER.with(|cell| *cell.borrow_mut() = Some(scroll));
+        crate::view::app::settings::provide_settings_scroll(scroll);
 
         let animate = crate::motion::use_animations_enabled();
         let anim = use_animation(|_| {
@@ -199,6 +179,10 @@ impl Component for SettingsShell {
         let mut last_route = use_state(|| route.clone());
         if *last_route.peek() != route {
             last_route.set(route.clone());
+            // A rail tab picked while searching should show its page, not the old results
+            if !search.peek().is_empty() {
+                search.set(String::new());
+            }
             if animate {
                 anim.run(AnimDirection::Forward);
             }
@@ -226,6 +210,8 @@ impl Component for SettingsShell {
 
         let title = if searching {
             t("oneclient.layout.settings.search.results")
+        } else if matches!(route, Route::SettingsThemeEditor { .. }) {
+            t("oneclient.routes.settings_theme_editor")
         } else {
             active.label()
         };
@@ -264,7 +250,7 @@ impl Component for SettingsShell {
                     .width(Size::fill())
                     .height(Size::flex(1.))
                     .padding(Gaps::new(0., 0., 0., layout.padding))
-                    .child(sidebar(active, changelog_unread, layout))
+                    .child(sidebar(&route, active, changelog_unread, layout, search))
                     .child(
                         rect()
                             .width(Size::flex(1.))
@@ -276,10 +262,7 @@ impl Component for SettingsShell {
                                     .spacing(6.)
                                     .reset_key(u64::from(searching))
                                     .scroll_controller(scroll)
-                                    .on_ctx(|ctx| {
-                                        SETTINGS_SCROLL_CTX
-                                            .with(|cell| *cell.borrow_mut() = Some(ctx));
-                                    })
+                                    .on_ctx(crate::view::app::settings::provide_settings_scroll_ctx)
                                     .children(children),
                             ),
                     ),
@@ -371,8 +354,8 @@ fn search_results(query: &SearchQuery, mut search: State<String>) -> Vec<Element
     let mut out = Vec::with_capacity(matches.len());
 
     for item in matches {
-        let route = item.route;
-        let id = item.id;
+        let route = item.route.clone();
+        let focus = item.clone();
         let title = item.title;
         let desc = item.description;
         out.push(
@@ -388,7 +371,11 @@ fn search_results(query: &SearchQuery, mut search: State<String>) -> Vec<Element
                 .background(colors::card())
                 .cursor(CursorIcon::Pointer)
                 .on_press(move |_| {
-                    set_pending_setting_focus(id);
+                    crate::view::app::settings::set_pending_setting_focus(
+                        focus.id,
+                        focus.title,
+                        focus.description,
+                    );
                     search.set(String::new());
                     let _ = RouterContext::get().replace(route.clone());
                 })
@@ -436,9 +423,11 @@ fn has_unread_changelog() -> bool {
 }
 
 fn sidebar(
+    route: &Route,
     active: SettingsTab,
     changelog_unread: bool,
     layout: WorkspaceLayout,
+    search: State<String>,
 ) -> impl IntoElement {
     let groups = groups();
     let tabs: Vec<_> = groups
@@ -451,16 +440,33 @@ fn sidebar(
     let mut available = use_state(|| 0f32);
     let sections: Vec<_> = groups.iter().map(|group| group.tabs.len()).collect();
     let measured = *available.read();
-    let viewport = if measured > 0. {
-        Size::px(workspace_rail::viewport_height(
-            measured,
+    let shown = (measured > 0.).then(|| {
+        workspace_rail::viewport_height(measured, &sections, layout.row_height, layout.row_gap)
+    });
+    let viewport = shown.map_or_else(Size::fill, Size::px);
+
+    // Scroll the rail to the active row, which can start under the fade or below it
+    let rail_scroll = use_scroll_controller(ScrollConfig::default);
+    let active_row = groups.iter().enumerate().find_map(|(group, entry)| {
+        let index = entry.tabs.iter().position(|tab| *tab == active)?;
+        let top = workspace_rail::headed_row_top(
             &sections,
+            group,
+            index,
             layout.row_height,
             layout.row_gap,
-        ))
-    } else {
-        Size::fill()
-    };
+        );
+        // The section starts at its heading, one heading above its first row
+        let first =
+            workspace_rail::headed_row_top(&sections, group, 0, layout.row_height, layout.row_gap);
+        Some((first - workspace_rail::heading_height(), top))
+    });
+    workspace_rail::use_reveal_active(
+        rail_scroll,
+        route,
+        active_row.map(|(section, top)| (section, top, layout.row_height)),
+        shown.unwrap_or(0.),
+    );
 
     let nav = rect()
         .vertical()
@@ -477,6 +483,7 @@ fn sidebar(
                     has_dot: *tab == SettingsTab::Changelog && changelog_unread,
                     height: layout.row_height,
                     lens: lens.map(|track| (track, *index)),
+                    search: Some(search),
                 };
                 *index += 1;
                 Some(tab_row.into_element())
@@ -502,6 +509,7 @@ fn sidebar(
         .padding(Gaps::new(0., 0., layout.padding / 2., 0.))
         .map(lens, |el, track| {
             track.events(el, move |index| {
+                workspace_rail::clear_search(search);
                 if Some(index) != selected
                     && let Some(route) = tabs[index].route()
                 {
@@ -522,7 +530,7 @@ fn sidebar(
                 .child(
                     workspace_rail::scroll(lens)
                         .height(viewport)
-                        .child(workspace_rail::navigation(layout).child(nav)),
+                        .child(workspace_rail::navigation(layout, rail_scroll).child(nav)),
                 ),
         )
         .child(

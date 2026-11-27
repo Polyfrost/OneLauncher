@@ -129,19 +129,7 @@ impl Component for ClusterDataPacks {
                     ],
                 )
             };
-            // Data packs live inside a world, so with none there is no folder to open yet
             return cluster_content()
-                .child(content_toolbar(
-                    None,
-                    vec![layout_toggle(layout)],
-                    vec![
-                        copy_datapack_list(dispatch, Vec::new()),
-                        open_folder_action(
-                            None,
-                            t("oneclient.cluster.folder.tip.datapacks.none").to_string(),
-                        ),
-                    ],
-                ))
                 .child(content_box(
                     0,
                     card_layout,

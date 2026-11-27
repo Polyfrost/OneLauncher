@@ -1851,7 +1851,9 @@ impl Actions {
                         ),
                     })
                     .collect(),
-                toast_only: true,
+                // An install that can be undone stays in Notifications with its Undo after the
+                // toast goes, until the undo is used
+                toast_only: install.undo.is_none(),
             },
             Err(err) => NotificationSpec {
                 title: t("oneclient.actions.install_failed").to_string(),
@@ -1895,7 +1897,7 @@ impl Actions {
     }
 
     /// Takes back the links a Browse install added, with a retry when removal fails.
-    pub fn undo_install(&self, undo: crate::install::InstallUndo, toast_id: Option<u64>) {
+    pub fn undo_install(&self, undo: crate::install::InstallUndo, _toast_id: Option<u64>) {
         let cluster_id = undo.cluster_id;
         if self.refuse_during_update_check(cluster_id) {
             return;
@@ -1906,9 +1908,8 @@ impl Actions {
             return;
         }
         let actions = self.clone();
-        if let Some(id) = toast_id {
-            self.dismiss_toast(id);
-        }
+        // Off screen while it runs; the center entry stays until the undo succeeds
+        self.with_engine(|app| app.notifications.hide_undo_toasts(&app.inbox, &undo));
 
         {
             let mut channel = self.station.clone().write_channel(AppChannel::Installs);
@@ -1966,6 +1967,9 @@ impl Actions {
                 .send();
             return;
         }
+
+        // Spent either way: done, or nothing left to take back
+        self.with_engine(|app| app.notifications.consume_undo(&mut app.inbox, &undo));
 
         if !report.target_removed {
             self.notify(t("oneclient.actions.undo.nothing.title"))

@@ -12,6 +12,8 @@ mod minecraft;
 mod storage;
 mod theme_editor;
 
+use std::cell::RefCell;
+
 use freya::prelude::*;
 
 pub use accounts::SettingsAccounts;
@@ -26,8 +28,10 @@ pub use minecraft::SettingsMinecraft;
 pub use storage::SettingsStorage;
 pub use theme_editor::SettingsThemeEditor;
 
+pub(crate) use launcher::take_terms_review_from_settings;
+
 use crate::{
-    components::{Button, Icon, IconType, ScrollArea},
+    components::{Button, Icon, IconType, OverlayPopup, ScrollArea, ScrollAreaCtx},
     i18n::t,
     theme::{colors, rounded, rounded_px, text_size},
     ui::border_all_color,
@@ -46,6 +50,108 @@ const CONTROL_SHARE: f32 = 0.28;
 const READABLE_CONTRAST: f32 = 4.5;
 /// Disabled rows dim their title and control, never the copy that explains why
 const DISABLED_OPACITY: f32 = 0.45;
+/// How long a row a search result opened stays outlined
+const FOCUS_FLASH: std::time::Duration = std::time::Duration::from_millis(1600);
+
+thread_local! {
+    static SETTINGS_SCROLL_CTX: RefCell<Option<ScrollAreaCtx>> = const { RefCell::new(None) };
+    static SETTINGS_SCROLL_CONTROLLER: RefCell<Option<ScrollController>> = const { RefCell::new(None) };
+    static PENDING_SETTING_FOCUS: RefCell<Option<PendingFocus>> = const { RefCell::new(None) };
+}
+
+/// The setting a search result opened, matched by its translated title or description since a
+/// search entry's title can be worded differently from its row
+#[derive(Clone, Copy, PartialEq)]
+struct PendingFocus {
+    id: &'static str,
+    title: &'static str,
+    description: &'static str,
+}
+
+impl PendingFocus {
+    fn matches(&self, title: &str, description: &str) -> bool {
+        self.title == title || (!description.is_empty() && self.description == description)
+    }
+}
+
+/// Called when a Settings search result is picked, before its page opens
+pub(crate) fn set_pending_setting_focus(
+    id: &'static str,
+    title: &'static str,
+    description: &'static str,
+) {
+    let pending = store_pending_focus(id, title, description);
+
+    spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        PENDING_SETTING_FOCUS.with(|cell| {
+            if cell
+                .borrow()
+                .is_some_and(|current| current.id == pending.id)
+            {
+                *cell.borrow_mut() = None;
+            }
+        });
+    });
+}
+
+fn store_pending_focus(
+    id: &'static str,
+    title: &'static str,
+    description: &'static str,
+) -> PendingFocus {
+    let pending = PendingFocus {
+        id,
+        title,
+        description,
+    };
+    PENDING_SETTING_FOCUS.with(|cell| *cell.borrow_mut() = Some(pending));
+    pending
+}
+
+/// Whether a search result just opened the settings row titled `title`. A match is consumed, so
+/// only the first row to ask scrolls and flashes.
+fn take_pending_setting_focus(title: &str, description: &str) -> bool {
+    PENDING_SETTING_FOCUS.with(|cell| {
+        let hit = cell
+            .borrow()
+            .is_some_and(|pending| pending.matches(title, description));
+        if hit {
+            *cell.borrow_mut() = None;
+        }
+        hit
+    })
+}
+
+/// Space kept above a row the settings page scrolls to
+const FOCUS_MARGIN: f32 = 12.;
+
+/// Scrolls the settings page so a row whose top edge sits at `row_top` (window coordinates) starts
+/// near the top of the page
+fn scroll_settings_to(row_top: f32) {
+    let Some(ctx) = SETTINGS_SCROLL_CTX.with(|cell| *cell.borrow()) else {
+        return;
+    };
+    let Some(mut controller) = SETTINGS_SCROLL_CONTROLLER.with(|cell| *cell.borrow()) else {
+        return;
+    };
+    let offset = settings_focus_offset(row_top, *ctx.viewport_top.peek(), ctx.corrected_y);
+    controller.scroll_to_y(offset);
+}
+
+/// The scroll offset that puts a row `FOCUS_MARGIN` below the top of the viewport
+fn settings_focus_offset(row_top: f32, viewport_top: f32, scrolled: f32) -> i32 {
+    let in_content = row_top - viewport_top - scrolled;
+    -((in_content - FOCUS_MARGIN).max(0.).round() as i32)
+}
+
+pub(crate) fn provide_settings_scroll(controller: ScrollController) {
+    SETTINGS_SCROLL_CONTROLLER.with(|cell| *cell.borrow_mut() = Some(controller));
+}
+
+pub(crate) fn provide_settings_scroll_ctx(ctx: ScrollAreaCtx) {
+    SETTINGS_SCROLL_CTX.with(|cell| *cell.borrow_mut() = Some(ctx));
+}
 
 fn control_width_for(pane_width: f32) -> f32 {
     (CONTROL_SHARE * pane_width).clamp(CONTROL_MIN_WIDTH, CONTROL_MAX_WIDTH)
@@ -78,7 +184,7 @@ fn contrast(a: Color, b: Color) -> f32 {
     (a.max(b) + 0.05) / (a.min(b) + 0.05)
 }
 
-fn mix(from: Color, to: Color, amount: f32) -> Color {
+pub(super) fn mix(from: Color, to: Color, amount: f32) -> Color {
     let channel =
         |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * amount).round() as u8;
     Color::from_rgb(
@@ -136,13 +242,169 @@ pub fn section_header(text: &'static str) -> impl IntoElement {
 }
 
 fn section_label(text: &'static str, top: f32) -> Rect {
-    rect().padding(Gaps::new(top, 0., 8. - PAGE_GAP, 0.)).child(
-        label()
-            .text(text.to_uppercase())
-            .font_size(text_size(11.))
-            .font_weight(FontWeight::SEMI_BOLD)
-            .color(readable_secondary()),
-    )
+    rect()
+        .padding(Gaps::new(top, 0., 8. - PAGE_GAP, 0.))
+        .child(section_text(text))
+}
+
+fn section_text(text: &str) -> Label {
+    label()
+        .text(text.to_uppercase())
+        .font_size(text_size(11.))
+        .font_weight(FontWeight::SEMI_BOLD)
+        .color(readable_secondary())
+}
+
+/// A `section_header` (or the first one on a page) whose line ends with `action`, such as the
+/// New theme and Import buttons beside Style
+pub fn section_header_with_action(text: &str, first: bool, action: Element) -> impl IntoElement {
+    let top = if first { 0. } else { 24. - PAGE_GAP };
+    rect()
+        .horizontal()
+        .width(Size::fill())
+        .content(Content::Flex)
+        .cross_align(Alignment::Center)
+        .padding(Gaps::new(top, 0., 8. - PAGE_GAP, 0.))
+        .child(section_text(text).width(Size::flex(1.)))
+        .child(action)
+}
+
+/// The status card's padding: the icon, two lines of copy and the action come to about 275 px
+/// tall. An explicit min-height would stretch the card in Freya, so the padding carries it.
+const STATUS_PADDING: f32 = 40.;
+const STATUS_MAX_WIDTH: f32 = 520.;
+
+/// The shared card for an empty page or a failed load: an icon, a title, one line of help and
+/// the next step (Retry for a failure)
+pub(crate) fn status_card(
+    icon: IconType,
+    tint: Color,
+    title: &str,
+    hint: &str,
+    action: Element,
+) -> Rect {
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .max_width(Size::px(STATUS_MAX_WIDTH))
+        .padding(Gaps::new_all(STATUS_PADDING))
+        .cross_align(Alignment::Center)
+        .spacing(8.)
+        .corner_radius(rounded(12.))
+        .background(colors::card())
+        .border(border_all_color(1., colors::component_border()).alignment(BorderAlignment::Inner))
+        .child(
+            rect()
+                .width(Size::px(48.))
+                .height(Size::px(48.))
+                .center()
+                .corner_radius(rounded(12.))
+                .background(tint.with_a(30))
+                .child(Icon::new(icon).size(24.).color(tint)),
+        )
+        .child(rect().height(Size::px(4.)))
+        .child(
+            label()
+                .text(title.to_string())
+                .font_size(text_size(16.))
+                .font_weight(FontWeight::SEMI_BOLD)
+                .text_align(TextAlign::Center)
+                .width(Size::fill())
+                .color(colors::fg_primary()),
+        )
+        .child(
+            label()
+                .text(hint.to_string())
+                .font_size(text_size(13.))
+                .text_align(TextAlign::Center)
+                .width(Size::fill())
+                .color(readable_secondary()),
+        )
+        .child(rect().height(Size::px(8.)))
+        .child(action)
+}
+
+/// A Retry button for a `status_card` reporting a failed load
+pub(crate) fn retry_button(on_retry: EventHandler<()>) -> Element {
+    Button::new()
+        .secondary()
+        .on_press(move |_| on_retry.call(()))
+        .child(Icon::new(IconType::RefreshCw01).size(15.))
+        .text(t("oneclient.common.retry"))
+        .into_element()
+}
+
+/// A small confirmation dialog for settings actions that can't be undone. Pressing outside it
+/// or Escape cancels.
+pub(crate) fn confirm_dialog(
+    title: impl Into<String>,
+    body: impl Into<String>,
+    confirm: &'static str,
+    danger: bool,
+    on_cancel: EventHandler<()>,
+    on_confirm: EventHandler<()>,
+) -> Element {
+    let confirm_button = if danger {
+        Button::new().danger()
+    } else {
+        Button::new().primary()
+    };
+    let (outside, cancel) = (on_cancel.clone(), on_cancel.clone());
+    OverlayPopup::new()
+        .on_close(move |()| on_cancel.call(()))
+        .child(
+            rect()
+                .width(Size::window_percent(100.))
+                .height(Size::window_percent(100.))
+                .center()
+                .on_press(move |_| outside.call(()))
+                .child(
+                    rect()
+                        .vertical()
+                        .width(Size::px(420.))
+                        .max_width(Size::window_percent(90.))
+                        .spacing(14.)
+                        .padding(Gaps::new_all(20.))
+                        .corner_radius(rounded(14.))
+                        .background(colors::page_elevated())
+                        .border(border_all_color(1., colors::component_border()))
+                        .on_all_press(|event: Event<PressEventData>| event.stop_propagation())
+                        .child(
+                            label()
+                                .text(title.into())
+                                .font_size(text_size(16.))
+                                .font_weight(FontWeight::SEMI_BOLD)
+                                .color(colors::fg_primary()),
+                        )
+                        .child(
+                            label()
+                                .text(body.into())
+                                .font_size(text_size(12.))
+                                .width(Size::fill())
+                                .max_lines(4)
+                                .color(readable_secondary()),
+                        )
+                        .child(
+                            rect()
+                                .horizontal()
+                                .width(Size::fill())
+                                .main_align(Alignment::End)
+                                .spacing(8.)
+                                .child(
+                                    Button::new()
+                                        .secondary()
+                                        .on_press(move |_| cancel.call(()))
+                                        .text(t("oneclient.common.cancel")),
+                                )
+                                .child(
+                                    confirm_button
+                                        .on_press(move |_| on_confirm.call(()))
+                                        .text(confirm),
+                                ),
+                        ),
+                ),
+        )
+        .into_element()
 }
 
 pub fn settings_row(
@@ -240,12 +502,11 @@ impl Component for SettingsRow {
             width - 2. * ROW_INSET - ROW_ICON - 2. * ROW_GAP - control_width() < MIN_COPY_WIDTH
         });
         let danger = self.tone == RowTone::Danger;
-        let theme = colors::active_theme();
-        let description_ink = if theme.id == "dark" || theme.id == "minecraft-dark" {
-            colors::fg_primary().with_a(185)
-        } else {
-            colors::fg_secondary()
-        };
+        let description_ink = readable_secondary();
+        // A search result that opened this row scrolls to it and outlines it for a moment
+        let mut flash = use_state(|| false);
+        let focus_title = self.title;
+        let focus_description = self.description.clone();
         let content_opacity = if self.tone == RowTone::Disabled {
             DISABLED_OPACITY
         } else {
@@ -260,6 +521,17 @@ impl Component for SettingsRow {
             })
             .on_sized(move |event: Event<SizedEventData>| {
                 width.set_if_modified(Some(event.area.width()));
+                if take_pending_setting_focus(focus_title, &focus_description) {
+                    scroll_settings_to(event.area.min_y());
+                    flash.set(true);
+                    spawn(async move {
+                        tokio::time::sleep(FOCUS_FLASH).await;
+                        flash.set(false);
+                    });
+                }
+            })
+            .maybe(*flash.read(), |el| {
+                el.border(border_all_color(2., colors::brand()).alignment(BorderAlignment::Inner))
             })
             .child(
                 rect().opacity(content_opacity).child(
@@ -426,6 +698,37 @@ mod tests {
         assert_eq!(control_width_for(524.), 160.);
         assert!((control_width_for(727.04) - 203.57).abs() < 0.01);
         assert_eq!(control_width_for(947.9), 220.);
+    }
+
+    #[test]
+    fn a_search_result_focuses_its_row_once() {
+        store_pending_focus("x.row", "Search title", "The row's description.");
+        // Another row on the page doesn't take it
+        assert!(!take_pending_setting_focus("Other", "Something else."));
+        // The row's own title can be worded differently; its description still matches
+        assert!(take_pending_setting_focus(
+            "Row title",
+            "The row's description."
+        ));
+        // Consumed, so the page doesn't jump again on the next layout
+        assert!(!take_pending_setting_focus(
+            "Row title",
+            "The row's description."
+        ));
+
+        store_pending_focus("y.row", "Discord RPC", "");
+        assert!(!take_pending_setting_focus("Other", ""));
+        assert!(take_pending_setting_focus("Discord RPC", "Enable it."));
+    }
+
+    #[test]
+    fn a_focused_row_lands_just_below_the_top_of_the_page() {
+        // A row 600 px down a page whose viewport starts at 150, not scrolled yet
+        assert_eq!(settings_focus_offset(750., 150., 0.), -588);
+        // Already scrolled 200 px: the row is at 550 on screen but 600 into the content
+        assert_eq!(settings_focus_offset(550., 150., -200.), -588);
+        // A row at the very top doesn't scroll past the start
+        assert_eq!(settings_focus_offset(155., 150., 0.), 0);
     }
 
     #[test]

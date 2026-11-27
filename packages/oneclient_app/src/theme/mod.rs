@@ -98,16 +98,43 @@ pub fn family_name(name: &str) -> String {
 }
 
 pub fn counterpart(id: &str) -> Option<String> {
-    THEMES.with_borrow(|themes| {
-        let theme = themes.iter().find(|theme| theme.id == id)?;
-        let family = family_name(&theme.name);
-        themes
-            .iter()
-            .find(|other| {
-                other.colors.light != theme.colors.light && family_name(&other.name) == family
-            })
-            .map(|other| other.id.clone())
-    })
+    THEMES.with_borrow(|themes| counterpart_in(themes.iter().map(|theme| &**theme), id))
+}
+
+/// The id a theme's other variant would have: `x-dark` pairs with `x-light`, and the built-in
+/// `dark` with `light`
+fn sibling_id(id: &str) -> Option<String> {
+    match id {
+        "dark" => Some("light".into()),
+        "light" => Some("dark".into()),
+        id => id
+            .strip_suffix("-dark")
+            .map(|stem| format!("{stem}-light"))
+            .or_else(|| id.strip_suffix("-light").map(|stem| format!("{stem}-dark"))),
+    }
+}
+
+/// Pairs by id stem first, so a custom family that happens to share a built-in's name (a theme
+/// called "Polyfrost") still pairs with its own variant. Falls back to the family name, keeping
+/// built-ins and custom files apart.
+fn counterpart_in<'a>(themes: impl Iterator<Item = &'a Theme> + Clone, id: &str) -> Option<String> {
+    let theme = themes.clone().find(|theme| theme.id == id)?;
+    let opposite = |other: &&Theme| other.colors.light != theme.colors.light;
+    if let Some(sibling) = sibling_id(id)
+        && let Some(other) = themes
+            .clone()
+            .filter(opposite)
+            .find(|other| other.id == sibling)
+    {
+        return Some(other.id.clone());
+    }
+    let family = family_name(&theme.name);
+    themes
+        .filter(opposite)
+        .find(|other| {
+            other.is_builtin() == theme.is_builtin() && family_name(&other.name) == family
+        })
+        .map(|other| other.id.clone())
 }
 
 pub fn light_variant(dark: &str) -> Option<String> {
@@ -422,7 +449,7 @@ fn fill_missing_variants(themes: &mut Vec<Theme>) {
     }
 }
 
-/// The first built-in palette for the light or dark side (PolyGlass)
+/// The first built-in palette for the light or dark side (Polyfrost)
 fn builtin_colors<'a>(mut themes: impl Iterator<Item = &'a Theme>, light: bool) -> Palette {
     themes
         .find(|theme| theme.is_builtin() && theme.colors.light == light)
@@ -657,6 +684,26 @@ mod tests {
         assert!(parse_theme_file(b"[]").is_err());
         assert!(parse_theme_file(&file(serde_json::json!([dark, dark]))).is_err());
     }
+    #[test]
+    fn a_custom_family_named_like_a_built_in_pairs_with_its_own_variant() {
+        let mut themes = vec![builtin("dark"), builtin("light")];
+        themes.push(custom("polyfrost-dark", "Polyfrost Dark", "dark"));
+        themes.push(custom("polyfrost-light", "Polyfrost Light", "light"));
+        let pair = |id| counterpart_in(themes.iter(), id);
+        assert_eq!(pair("polyfrost-dark").as_deref(), Some("polyfrost-light"));
+        assert_eq!(pair("polyfrost-light").as_deref(), Some("polyfrost-dark"));
+        assert_eq!(pair("dark").as_deref(), Some("light"));
+        assert_eq!(pair("light").as_deref(), Some("dark"));
+
+        // An id without the usual suffix still pairs by name, never across built-in and custom
+        let mut themes = vec![builtin("dark"), builtin("light")];
+        themes.push(custom("polyfrost", "Polyfrost Dark", "dark"));
+        themes.push(custom("polyfrost-2", "Polyfrost Light", "light"));
+        let pair = |id| counterpart_in(themes.iter(), id);
+        assert_eq!(pair("polyfrost").as_deref(), Some("polyfrost-2"));
+        assert_eq!(pair("dark").as_deref(), Some("light"));
+    }
+
     #[test]
     fn built_in_styles_keep_their_palette_and_system_pair() {
         for (dark, light, family, glass) in [

@@ -281,6 +281,17 @@ impl InstallUndo {
         self.claimed.store(false, Ordering::Release);
     }
 
+    /// A stand-alone undo for tests elsewhere in the crate
+    #[cfg(test)]
+    pub(crate) fn for_test(cluster_id: i64) -> Self {
+        Self {
+            token: uuid::Uuid::new_v4(),
+            cluster_id,
+            packages: Vec::new(),
+            claimed: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
     pub fn target_name(&self) -> &str {
         self.packages
             .first()
@@ -498,6 +509,18 @@ pub struct FlaggedInstall {
     pub mc_version: String,
     pub explanation: Option<String>,
     pub alternatives: Vec<oneclient_content::packages::ResolvedAlternative>,
+}
+
+/// "Sodium 0.6.0"; a version number that already spells the name out is used alone
+fn installed_label(name: &str, version_number: &str) -> String {
+    let version = version_number.trim();
+    if version.is_empty() {
+        name.to_string()
+    } else if version.to_lowercase().contains(&name.to_lowercase()) {
+        version.to_string()
+    } else {
+        format!("{name} {version}")
+    }
 }
 
 pub fn install_body(
@@ -864,7 +887,10 @@ pub async fn install_package_with(
 
     Ok(PackageInstall {
         session_id: Some(session.detach()),
-        result: result.map(|_| project.name).map_err(anyhow::Error::from),
+        // Names the version that was picked, so an install resolved for the chosen instance says which
+        result: result
+            .map(|_| installed_label(&project.name, &version.version_number))
+            .map_err(anyhow::Error::from),
         dependencies: installed_dependencies,
         missing_dependencies,
         live_deferred,
@@ -945,6 +971,13 @@ async fn mark_new(cluster_id: i64, hash: &str, state: &LauncherState) {
 mod tests {
     use super::*;
     use oneclient_content::packages::ProviderId;
+
+    #[test]
+    fn the_install_notice_names_the_resolved_version() {
+        assert_eq!(installed_label("Sodium", "0.6.0"), "Sodium 0.6.0");
+        assert_eq!(installed_label("Sodium", "sodium-0.6.0"), "sodium-0.6.0");
+        assert_eq!(installed_label("Sodium", " "), "Sodium");
+    }
 
     fn package(project: &str, hash: &str) -> UndoPackage {
         UndoPackage {

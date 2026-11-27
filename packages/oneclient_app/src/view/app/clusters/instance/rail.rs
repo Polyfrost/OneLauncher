@@ -115,7 +115,7 @@ pub fn rail(parts: Rail) -> Element {
     let backing = if colors::is_light() {
         colors::page_elevated()
     } else {
-        Color::from_rgb(11, 16, 19)
+        colors::page()
     };
 
     rect()

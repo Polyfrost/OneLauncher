@@ -274,6 +274,18 @@ impl InboxEntry {
     pub fn click_dismissable(&self) -> bool {
         self.dismissable() && self.actions.is_empty()
     }
+
+    fn offers_any_undo(&self) -> bool {
+        self.actions
+            .iter()
+            .any(|action| matches!(action.kind, NotificationActionKind::UndoInstall(_)))
+    }
+
+    fn offers_undo(&self, undo: &crate::install::InstallUndo) -> bool {
+        self.actions.iter().any(
+            |action| matches!(&action.kind, NotificationActionKind::UndoInstall(u) if u == undo),
+        )
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -880,9 +892,39 @@ impl NotificationState {
             return;
         }
         let has_progress = entry.is_some_and(|e| e.progress.is_some());
+        // Closing the toast leaves an install's Undo in the notification center
+        let keeps_undo = entry.is_some_and(|e| !e.toast_only && e.offers_any_undo());
         self.active_toasts.remove(pos);
-        if !has_progress || entry.is_some_and(|e| e.toast_only) {
+        if (!has_progress && !keeps_undo) || entry.is_some_and(|e| e.toast_only) {
             self.forget_entry(inbox, entry_id);
+        }
+    }
+
+    /// An undo underway takes its toasts off screen but keeps its entry, which still offers Undo
+    /// if this attempt fails
+    pub fn hide_undo_toasts(&mut self, inbox: &[InboxEntry], undo: &crate::install::InstallUndo) {
+        let ids: HashSet<u64> = inbox
+            .iter()
+            .filter(|entry| entry.offers_undo(undo))
+            .map(|entry| entry.id)
+            .collect();
+        self.active_toasts
+            .retain(|toast| !ids.contains(&toast.entry_id));
+    }
+
+    /// An undo that ran is spent: every entry offering it goes, toast and center alike
+    pub fn consume_undo(
+        &mut self,
+        inbox: &mut Vec<InboxEntry>,
+        undo: &crate::install::InstallUndo,
+    ) {
+        let ids: Vec<u64> = inbox
+            .iter()
+            .filter(|entry| entry.offers_undo(undo))
+            .map(|entry| entry.id)
+            .collect();
+        for id in ids {
+            self.forget_entry(inbox, id);
         }
     }
 
@@ -1641,6 +1683,56 @@ mod package_update_tests {
         assert!(
             inbox.iter().all(|e| e.id != id),
             "a toast-only notice must not linger in the inbox"
+        );
+    }
+
+    fn undo_spec(undo: &crate::install::InstallUndo) -> NotificationSpec {
+        NotificationSpec {
+            actions: vec![NotificationAction {
+                label: "Undo".into(),
+                kind: NotificationActionKind::UndoInstall(undo.clone()),
+            }],
+            ..spec("Installed")
+        }
+    }
+
+    #[test]
+    fn an_install_keeps_its_undo_in_the_center_after_the_toast_goes() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+        let undo = crate::install::InstallUndo::for_test(3);
+
+        let expired = state.push_custom(&mut inbox, undo_spec(&undo));
+        state.expire_toast(&mut inbox, expired);
+        let dismissed = state.push_custom(&mut inbox, undo_spec(&undo));
+        state.dismiss_toast(&mut inbox, dismissed);
+
+        assert!(inbox.iter().any(|e| e.id == expired));
+        assert!(inbox.iter().any(|e| e.id == dismissed));
+        assert!(state.active_toast_entry_ids().is_empty());
+    }
+
+    #[test]
+    fn a_running_undo_hides_its_toast_and_a_successful_one_is_consumed() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+        let undo = crate::install::InstallUndo::for_test(3);
+        let other = crate::install::InstallUndo::for_test(3);
+
+        let id = state.push_custom(&mut inbox, undo_spec(&undo));
+        let kept = state.push_custom(&mut inbox, undo_spec(&other));
+        state.hide_undo_toasts(&inbox, &undo);
+        assert_eq!(state.active_toast_entry_ids(), vec![kept]);
+        assert!(
+            inbox.iter().any(|e| e.id == id),
+            "a failed attempt can still be retried from the center"
+        );
+
+        state.consume_undo(&mut inbox, &undo);
+        assert!(inbox.iter().all(|e| e.id != id));
+        assert!(
+            inbox.iter().any(|e| e.id == kept),
+            "only that install's undo is spent"
         );
     }
 

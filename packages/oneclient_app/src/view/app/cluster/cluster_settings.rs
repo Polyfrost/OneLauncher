@@ -1366,24 +1366,48 @@ impl Component for JavaRow {
         let dispatch = use_dispatch();
         let runtimes = self.runtimes.clone();
 
-        let resolved = self.value.clone().or_else(|| self.global.clone());
+        let launcher_default = t("oneclient.cluster.settings.java.launcher_default");
+        let inherited = self
+            .global
+            .as_ref()
+            .and_then(|path| {
+                runtimes
+                    .iter()
+                    .find(|runtime| &runtime.absolute_path == path)
+            })
+            .map(runtime_label)
+            .unwrap_or_else(|| t("oneclient.cluster.settings.java.automatic").into());
+        let default_runtime = tf(
+            "oneclient.cluster.settings.java.default_runtime",
+            &[&inherited],
+        );
+        let description = format!(
+            "{} {}",
+            t("oneclient.cluster.settings.java.description"),
+            default_runtime,
+        );
 
-        let control: Element = if runtimes.is_empty() {
+        let control: Element = if runtimes.is_empty() && !overridden {
             label()
                 .text(t("oneclient.cluster.settings.java.none"))
                 .font_size(text_size(12.))
                 .color(colors::fg_secondary())
                 .into_element()
         } else {
-            let mut options: Vec<String> =
-                vec![t("oneclient.cluster.settings.java.automatic").into()];
+            let mut options: Vec<String> = vec![launcher_default.into()];
             options.extend(runtimes.iter().map(runtime_label));
 
-            let selected = resolved
+            let selected = self
+                .value
                 .as_ref()
-                .and_then(|path| runtimes.iter().find(|r| &r.absolute_path == path))
-                .map(runtime_label)
-                .unwrap_or_else(|| t("oneclient.cluster.settings.java.automatic").into());
+                .map(|path| {
+                    runtimes
+                        .iter()
+                        .find(|r| &r.absolute_path == path)
+                        .map(runtime_label)
+                        .unwrap_or_else(|| t("oneclient.cluster.settings.java.automatic").into())
+                })
+                .unwrap_or_else(|| launcher_default.into());
 
             let paths: Vec<String> = runtimes.iter().map(|r| r.absolute_path.clone()).collect();
 
@@ -1430,7 +1454,7 @@ impl Component for JavaRow {
         settings_row(
             IconType::CodeSnippet02,
             t("oneclient.cluster.settings.java.title"),
-            t("oneclient.cluster.settings.java.description"),
+            description,
             override_cell(
                 rect()
                     .horizontal()

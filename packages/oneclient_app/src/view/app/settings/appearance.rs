@@ -15,9 +15,12 @@ use crate::theme::{
     import_theme, is_known, system_theme_id, text_size,
 };
 use crate::view::app::settings::appearance_picker::{
-    compose_theme, section, section_with_action, split_theme, style_picker, theme_mode_picker,
+    compose_theme, split_theme, style_picker, theme_mode_picker,
 };
-use crate::view::app::settings::{resettable, settings_row};
+use crate::view::app::settings::{
+    confirm_dialog, first_section_header, readable_secondary, resettable, section_header,
+    section_header_with_action, settings_row,
+};
 
 #[derive(PartialEq)]
 pub struct SettingsAppearance;
@@ -70,46 +73,29 @@ impl Component for SettingsAppearance {
             persist_accent.edit_settings(|settings| settings.accent_color = value);
         });
 
+        // Same pickers as the onboarding Appearance step. The style cards add columns as the page
+        // widens, so they keep their proportions
         settings_page()
-            .child(
-                // Same pickers as the onboarding Appearance step. The style cards add columns
-                // as the page widens, so they keep their proportions
-                rect()
-                    .vertical()
-                    .width(Size::fill())
-                    .spacing(20.)
-                    .padding(Gaps::new(0., 0., 12., 0.))
-                    .child(section(
-                        t("oneclient.settings.appearance.mode"),
-                        theme_mode_picker(&settings.theme, &dispatch),
-                    ))
-                    .child(section_with_action(
-                        t("oneclient.settings.appearance.style"),
-                        Some(theme_actions(&dispatch)),
-                        style_picker(&settings.theme, dense, true),
-                    )),
-            )
-            .child(
-                rect()
-                    .vertical()
-                    .width(Size::fill())
-                    .spacing(4.)
-                    .padding(Gaps::new(8., 0., 0., 0.))
-                    .child(accent_color_row(accent, defaults.accent_color.clone()))
-                    .child(dynamic_background_row(
-                        dynamic_bg,
-                        defaults.dynamic_background_enabled,
-                    ))
-                    .child(animations_row(animations_on, defaults.animations_enabled)),
-            )
-            .child(
-                rect().padding(Gaps::new(8., 0., 0., 0.)).child(
-                    label()
-                        .text(t("oneclient.settings.appearance.language_hint"))
-                        .font_size(text_size(12.))
-                        .color(colors::fg_primary()),
-                ),
-            )
+            .child(first_section_header(t(
+                "oneclient.settings.appearance.mode",
+            )))
+            .child(theme_mode_picker(&settings.theme, &dispatch))
+            .child(section_header_with_action(
+                t("oneclient.settings.appearance.style"),
+                false,
+                theme_actions(&dispatch),
+            ))
+            .child(style_picker(&settings.theme, dense, true))
+            .child(section_header(t(
+                "oneclient.settings.appearance.section.effects",
+            )))
+            .child(accent_color_row(accent, defaults.accent_color.clone()))
+            .child(dynamic_background_row(
+                dynamic_bg,
+                defaults.dynamic_background_enabled,
+            ))
+            .child(animations_row(animations_on, defaults.animations_enabled))
+            .child(language_link())
             .into_element()
     }
 }
@@ -124,11 +110,51 @@ fn select_family(dispatch: &Actions, family: &str) {
     });
 }
 
+/// "Looking to change your language?" with a link to the Language page
+fn language_link() -> impl IntoElement {
+    let mut hovered = use_state(|| false);
+    let link = t("oneclient.settings.appearance.language_link");
+    rect()
+        .horizontal()
+        .cross_align(Alignment::Center)
+        .spacing(6.)
+        .padding(Gaps::new(12., 0., 0., 0.))
+        .child(
+            label()
+                .text(t("oneclient.settings.appearance.language_hint"))
+                .font_size(text_size(12.))
+                .color(readable_secondary()),
+        )
+        .child(
+            rect()
+                .a11y_role(AccessibilityRole::Link)
+                .a11y_focusable(true)
+                .a11y_alt(link)
+                .cursor(CursorIcon::Pointer)
+                .on_pointer_enter(move |_| hovered.set_if_modified(true))
+                .on_pointer_leave(move |_| hovered.set_if_modified(false))
+                .on_press(|_| {
+                    let _ = RouterContext::get().replace(Route::SettingsLanguage {});
+                })
+                .child(
+                    label()
+                        .text(link)
+                        .font_size(text_size(12.))
+                        .font_weight(FontWeight::MEDIUM)
+                        // The link color the Markdown pages use, readable on every surface
+                        .color(colors::code_info())
+                        .maybe(*hovered.read(), |el| {
+                            el.text_decoration(TextDecoration::Underline)
+                        }),
+                ),
+        )
+}
+
 fn open_editor(id: String) {
     let _ = RouterContext::get().push(Route::SettingsThemeEditor { id });
 }
 
-/// New custom themes start as a copy of the built-in PolyGlass dark and light pair
+/// New custom themes start as a copy of the built-in Polyfrost dark and light pair
 fn create_theme(dispatch: &Actions) {
     let dispatch = dispatch.clone();
     // The window task below has no component context to find the router in
@@ -215,6 +241,7 @@ impl Component for ThemeFileMenu {
     fn render(&self) -> impl IntoElement {
         let mut anchor = use_state(|| (0., 0.));
         let mut menu_at = self.menu_at;
+        let mut deleting = use_state(|| false);
         let dispatch = use_dispatch();
         let alt = tf("oneclient.settings.appearance.theme.actions", &[&self.name]);
 
@@ -227,6 +254,7 @@ impl Component for ThemeFileMenu {
             })
             .child(
                 Button::new()
+                    .secondary()
                     .icon()
                     .width(Size::px(26.))
                     .height(Size::px(26.))
@@ -247,38 +275,56 @@ impl Component for ThemeFileMenu {
                 }
                 menu = theme_file_actions(menu, &self.id, &dispatch);
                 if self.custom {
-                    menu = theme_delete_action(menu, &self.id, &dispatch);
+                    menu = menu.separator().danger_action(
+                        IconType::Trash01,
+                        t("oneclient.common.delete"),
+                        move |()| deleting.set(true),
+                    );
                 }
                 menu.on_close(move |()| menu_at.set(None))
+            }))
+            .maybe_child((*deleting.read()).then(|| {
+                let id = self.id.clone();
+                let dispatch = dispatch.clone();
+                confirm_dialog(
+                    tf(
+                        "oneclient.settings.appearance.theme.delete_confirm.title",
+                        &[&self.name],
+                    ),
+                    t("oneclient.settings.appearance.theme.delete_confirm.body"),
+                    t("oneclient.common.delete"),
+                    true,
+                    (move |()| deleting.set(false)).into(),
+                    (move |()| {
+                        deleting.set(false);
+                        delete_family(&id, &dispatch);
+                    })
+                    .into(),
+                )
             }))
     }
 }
 
-fn theme_delete_action(menu: ContextMenu, id: &str, dispatch: &Actions) -> ContextMenu {
+fn delete_family(id: &str, dispatch: &Actions) {
     let id = id.to_owned();
     let dispatch = dispatch.clone();
-    menu.separator()
-        .danger_action(IconType::Trash01, t("oneclient.common.delete"), move |()| {
-            let id = id.clone();
-            let dispatch = dispatch.clone();
-            spawn_in_window(async move {
-                // Capture the ids that name this family before deletion, then repair only
-                // the current selection if it actually became invalid.
-                let affected = family_ids(&id);
-                match delete_theme(&id).await {
-                    Ok(()) => dispatch.edit_settings(|settings| {
-                        if theme_needs_fallback(&settings.theme, &affected, is_known) {
-                            settings.theme = "dark".into();
-                        }
-                    }),
-                    Err(err) => notify_failure(
-                        &dispatch,
-                        t("oneclient.settings.appearance.theme.delete_failed"),
-                        err,
-                    ),
+    spawn_in_window(async move {
+        // Capture the ids that name this family before deletion, then repair only
+        // the current selection if it actually became invalid.
+        let affected = family_ids(&id);
+        match delete_theme(&id).await {
+            Ok(()) => dispatch.edit_settings(|settings| {
+                if theme_needs_fallback(&settings.theme, &affected, is_known) {
+                    settings.theme = "dark".into();
                 }
-            });
-        })
+            }),
+            Err(err) => notify_failure(
+                &dispatch,
+                t("oneclient.settings.appearance.theme.delete_failed"),
+                err,
+            ),
+        }
+    });
 }
 
 /// Every setting value that selects the family `id` belongs to

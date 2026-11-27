@@ -16,6 +16,8 @@ const HEADING_LABEL: f32 = 16.;
 const HEADING_BOTTOM: f32 = 6.;
 const HEADING_HEIGHT: f32 = HEADING_TOP + HEADING_LABEL + HEADING_BOTTOM;
 const DIVIDER_MARGIN: f32 = 8.;
+/// A divider's line and the margin on either side of it
+const DIVIDER_HEIGHT: f32 = 1. + 2. * DIVIDER_MARGIN;
 /// The fade over the bottom of a rail that scrolls
 pub(super) const FADE_HEIGHT: f32 = crate::view::app::settings::SCROLL_FADE_HEIGHT;
 
@@ -45,13 +47,15 @@ pub(super) fn scroll(lens: Option<glass::PillTrack>) -> Rect {
         .map(lens, |el, track| track.viewport(el))
 }
 
-/// The scrolling rail. Its thumb stays visible while it overflows and sits in the gap
-/// beside the rail.
-pub(super) fn navigation(layout: WorkspaceLayout) -> ScrollArea {
+/// The scrolling rail. Its thumb sits in the gap beside the rail and only shows while the rail
+/// is scrolled or hovered, so it never stands next to the page's own scrollbar.
+pub(super) fn navigation(layout: WorkspaceLayout, controller: ScrollController) -> ScrollArea {
     let area = ScrollArea::new()
         .width(Size::fill())
         .height(Size::fill())
-        .padding(Gaps::new(0., layout.padding, 0., 0.));
+        .padding(Gaps::new(0., layout.padding, 0., 0.))
+        .auto_hide_scrollbar()
+        .scroll_controller(controller);
     // Glass dialogs have no solid surface to fade into
     if colors::active_theme().liquid_glass {
         area
@@ -59,6 +63,141 @@ pub(super) fn navigation(layout: WorkspaceLayout) -> ScrollArea {
         area.bottom_fade(colors::page_elevated())
             .bottom_fade_height(FADE_HEIGHT)
     }
+}
+
+/// The fade a rail row has to clear to read as a visible row
+fn fade_clearance() -> f32 {
+    if colors::active_theme().liquid_glass {
+        0.
+    } else {
+        FADE_HEIGHT
+    }
+}
+
+/// The scroll offset (negative, as the controller stores it) that brings a row spanning
+/// `row_top..row_top + row_height` of the rail's content fully into a `viewport` tall rail, clear
+/// of the `fade` at its bottom. `None` when the row is already visible at `scrolled`.
+pub(super) fn reveal_offset(
+    row_top: f32,
+    row_height: f32,
+    viewport: f32,
+    fade: f32,
+    scrolled: f32,
+) -> Option<i32> {
+    if viewport <= 0. {
+        return None;
+    }
+    let shown_top = -scrolled;
+    let shown_bottom = shown_top + viewport - fade;
+    let row_bottom = row_top + row_height;
+    if row_top < shown_top {
+        Some(-(row_top.max(0.).round() as i32))
+    } else if row_bottom > shown_bottom {
+        // The content's end clamps this, and the fade hides there
+        Some(-((row_bottom + fade - viewport).max(0.).ceil() as i32))
+    } else {
+        None
+    }
+}
+
+/// Like `reveal_offset`, but a rail with section headings scrolls so the active row's section
+/// starts at the top whenever that section's heading and the row fit together. The view then
+/// opens on a clean section boundary instead of cutting through the heading above it.
+pub(super) fn reveal_section_offset(
+    section_top: f32,
+    row_top: f32,
+    row_height: f32,
+    viewport: f32,
+    fade: f32,
+    scrolled: f32,
+) -> Option<i32> {
+    let offset = reveal_offset(row_top, row_height, viewport, fade, scrolled)?;
+    let span = row_top + row_height - section_top;
+    if section_top < row_top && span <= viewport - fade {
+        Some(-(section_top.max(0.).round() as i32))
+    } else {
+        Some(offset)
+    }
+}
+
+/// Keeps the active row of a scrolling rail in view: on mount, when the route changes and when
+/// the rail is resized. A rail the user scrolled stays where they left it until then. `row` is
+/// the row's section top (the row's own top in a rail without headings), its top and its height.
+pub(super) fn use_reveal_active(
+    controller: ScrollController,
+    route: &Route,
+    row: Option<(f32, f32, f32)>,
+    viewport: f32,
+) {
+    let fade = fade_clearance();
+    // The effect keeps its first closure, so everything it needs travels in the deps
+    let key = (
+        route.clone(),
+        row.map(|(section, top, height)| {
+            (
+                section.round() as i32,
+                top.round() as i32,
+                height.round() as i32,
+            )
+        }),
+        viewport.round() as i32,
+    );
+    use_side_effect_with_deps(&key, move |(_, row, viewport)| {
+        let Some((section, top, height)) = *row else {
+            return;
+        };
+        let mut controller = controller;
+        let (_, scrolled) = controller.into();
+        if let Some(offset) = reveal_section_offset(
+            section as f32,
+            top as f32,
+            height as f32,
+            *viewport as f32,
+            fade,
+            scrolled as f32,
+        ) {
+            controller.scroll_to_y(offset);
+        }
+    });
+}
+
+/// The height a group heading takes above its first row
+pub(super) fn heading_height() -> f32 {
+    HEADING_HEIGHT
+}
+
+fn rows_height(count: usize, row_height: f32, row_gap: f32) -> f32 {
+    count as f32 * row_height + count.saturating_sub(1) as f32 * row_gap
+}
+
+/// Where row `index` of `group` starts in a rail whose groups each open with a heading
+pub(super) fn headed_row_top(
+    groups: &[usize],
+    group: usize,
+    index: usize,
+    row_height: f32,
+    row_gap: f32,
+) -> f32 {
+    let before: f32 = groups[..group]
+        .iter()
+        .map(|&count| HEADING_HEIGHT + rows_height(count, row_height, row_gap))
+        .sum();
+    before + HEADING_HEIGHT + index as f32 * (row_height + row_gap)
+}
+
+/// Where row `index` of `group` starts in a rail whose groups are split by dividers
+pub(super) fn divided_row_top(
+    groups: &[usize],
+    group: usize,
+    index: usize,
+    row_height: f32,
+    row_gap: f32,
+) -> f32 {
+    let before: f32 = groups[..group]
+        .iter()
+        .map(|&count| rows_height(count, row_height, row_gap) + DIVIDER_HEIGHT)
+        .sum();
+    before + index as f32 * (row_height + row_gap)
 }
 
 /// How tall the scrolling part of a headed rail may be within `available`, given each group's
@@ -70,7 +209,7 @@ pub(super) fn viewport_height(
     row_height: f32,
     row_gap: f32,
 ) -> f32 {
-    let rows = |count: usize| count as f32 * row_height + count.saturating_sub(1) as f32 * row_gap;
+    let rows = |count: usize| rows_height(count, row_height, row_gap);
     let mut top = 0.;
     for (index, &count) in groups.iter().enumerate() {
         let label_top = top + HEADING_TOP;
@@ -122,11 +261,12 @@ pub(super) fn heading(label_text: &'static str) -> Rect {
 }
 
 pub(super) fn secondary_ink() -> Color {
-    let theme = colors::active_theme();
-    if theme.id == "dark" || theme.id == "minecraft-dark" {
-        colors::fg_primary().with_a(185)
-    } else {
-        colors::fg_secondary()
+    crate::view::app::settings::readable_secondary()
+}
+
+pub(super) fn clear_search(mut search: State<String>) {
+    if !search.peek().is_empty() {
+        search.set(String::new());
     }
 }
 
@@ -143,6 +283,9 @@ pub(super) struct Tab {
     pub has_dot: bool,
     pub height: f32,
     pub lens: Option<(glass::PillTrack, usize)>,
+    /// Cleared when the row is pressed, even the active one, so Settings search results give
+    /// way to the page the rail points at
+    pub search: Option<State<String>>,
 }
 
 impl Component for Tab {
@@ -155,6 +298,7 @@ impl Component for Tab {
         let lens = self.lens;
         let highlighted = lens.map_or(active, |(track, index)| track.highlights(index, active));
         let route = self.route.clone();
+        let search = self.search;
         let ink = if highlighted || hover() || keyboard {
             colors::fg_primary()
         } else {
@@ -183,9 +327,13 @@ impl Component for Tab {
             .on_press(move |event: Event<PressEventData>| {
                 // The vertical track only claims mouse drags. Touch and keyboard still
                 // use the button's normal press handling.
-                if !active && (lens.is_none() || !matches!(event.data(), PressEventData::Mouse(_)))
-                {
-                    select(&route);
+                if lens.is_none() || !matches!(event.data(), PressEventData::Mouse(_)) {
+                    if let Some(search) = search {
+                        clear_search(search);
+                    }
+                    if !active {
+                        select(&route);
+                    }
                 }
             })
             .child(Icon::new(self.icon).size(16.).color(ink))
@@ -239,5 +387,53 @@ mod tests {
     #[test]
     fn the_first_heading_never_collapses_the_rail() {
         assert_eq!(viewport_height(30., &SETTINGS, 32., 2.), 30.);
+    }
+
+    #[test]
+    fn row_tops_follow_headings_and_dividers() {
+        // LAUNCHER opens at 0, its first row sits under the 38 px heading
+        assert_eq!(headed_row_top(&SETTINGS, 0, 0, 32., 2.), 38.);
+        assert_eq!(headed_row_top(&SETTINGS, 0, 5, 32., 2.), 208.);
+        // ABOUT opens at 344, so Changelog starts 38 + 34 lower
+        assert_eq!(headed_row_top(&SETTINGS, 2, 1, 32., 2.), 416.);
+        // Groups of 2, 4 and 3 rows split by 17 px dividers
+        assert_eq!(divided_row_top(&[2, 4, 3], 0, 1, 32., 2.), 34.);
+        assert_eq!(
+            divided_row_top(&[2, 4, 3], 2, 0, 32., 2.),
+            66. + 17. + 134. + 17.
+        );
+    }
+
+    #[test]
+    fn the_active_row_is_scrolled_clear_of_the_fade_only_when_hidden() {
+        // Visible rows leave the rail where it is
+        assert_eq!(reveal_offset(38., 32., 300., 24., 0.), None);
+        // A row under the fade scrolls up until it clears it
+        assert_eq!(reveal_offset(416., 32., 300., 24., 0.), Some(-172));
+        // A row scrolled away above comes back to the top
+        assert_eq!(reveal_offset(38., 32., 300., 24., -200.), Some(-38));
+        // Nothing to do before the rail is measured
+        assert_eq!(reveal_offset(416., 32., 0., 24., 0.), None);
+    }
+
+    #[test]
+    fn a_hidden_row_brings_its_section_heading_with_it() {
+        // Row at 416 under a heading at 380: the view starts at the heading, not mid-way above it
+        assert_eq!(
+            reveal_section_offset(380., 416., 32., 300., 24., 0.),
+            Some(-380)
+        );
+        // A visible row still leaves the rail alone
+        assert_eq!(reveal_section_offset(0., 38., 32., 300., 24., 0.), None);
+        // When the heading and the row don't fit together, only the row is brought into view
+        assert_eq!(
+            reveal_section_offset(100., 416., 32., 300., 24., 0.),
+            reveal_offset(416., 32., 300., 24., 0.)
+        );
+        // A rail without headings passes the row's own top as its section
+        assert_eq!(
+            reveal_section_offset(416., 416., 32., 300., 24., 0.),
+            reveal_offset(416., 32., 300., 24., 0.)
+        );
     }
 }

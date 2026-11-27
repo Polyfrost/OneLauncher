@@ -215,11 +215,14 @@ impl Component for ClusterShell {
                         layout.padding,
                     ))
                     .child(cluster_tabs(
+                        &route,
                         active_tab,
                         cluster_id,
-                        show_game_log,
-                        show_datapacks,
-                        show_mod_tabs,
+                        TabVisibility {
+                            game_log: show_game_log,
+                            datapacks: show_datapacks,
+                            mod_tabs: show_mod_tabs,
+                        },
                         game_folder,
                         layout,
                     ))
@@ -448,15 +451,27 @@ impl Component for InstanceHeader {
     }
 }
 
+/// Which optional tabs an instance's rail shows
+#[derive(Clone, Copy)]
+struct TabVisibility {
+    game_log: bool,
+    datapacks: bool,
+    mod_tabs: bool,
+}
+
 fn cluster_tabs(
+    route: &Route,
     active: ClusterViewShellTab,
     cluster_id: i64,
-    show_game_log: bool,
-    show_datapacks: bool,
-    show_mod_tabs: bool,
+    visible: TabVisibility,
     game_folder: Option<GameFolder>,
     layout: WorkspaceLayout,
 ) -> impl IntoElement {
+    let TabVisibility {
+        game_log: show_game_log,
+        datapacks: show_datapacks,
+        mod_tabs: show_mod_tabs,
+    } = visible;
     use ClusterViewShellTab::*;
 
     let groups = [
@@ -494,11 +509,41 @@ fn cluster_tabs(
             has_dot: false,
             height: layout.row_height,
             lens: lens.map(|track| (track, index)),
+            search: None,
         }
         .into_element()
     };
 
     let settings_index = tabs.len() - 1;
+
+    // Scroll the rail to the active row. Settings is pinned below the scrolling part.
+    let shown: Vec<usize> = groups
+        .iter()
+        .map(|group| group.iter().flatten().count())
+        .filter(|count| *count > 0)
+        .collect();
+    let active_row = groups
+        .iter()
+        .filter(|group| group.iter().any(Option::is_some))
+        .enumerate()
+        .find_map(|(group, tabs)| {
+            let index = tabs.iter().flatten().position(|tab| *tab == active)?;
+            Some(workspace_rail::divided_row_top(
+                &shown,
+                group,
+                index,
+                layout.row_height,
+                layout.row_gap,
+            ))
+        });
+    let rail_scroll = use_scroll_controller(ScrollConfig::default);
+    let mut viewport = use_state(|| 0f32);
+    workspace_rail::use_reveal_active(
+        rail_scroll,
+        route,
+        active_row.map(|top| (top, top, layout.row_height)),
+        *viewport.read(),
+    );
 
     workspace_rail::column(layout)
         .map(lens, |el, track| {
@@ -508,51 +553,59 @@ fn cluster_tabs(
                 }
             })
         })
+        // Outside the scrolling part so it can also reach the pinned Settings row
+        .maybe_child(lens.map(|track| track.indicator(selected)))
         .child(
-            workspace_rail::scroll(lens).child(workspace_rail::navigation(layout).content(
-                move |_| {
-                    let mut index = 0;
-                    let mut content = rect()
+            workspace_rail::scroll(lens)
+                .on_sized(move |event: Event<SizedEventData>| {
+                    let height = event.area.height();
+                    if (*viewport.peek() - height).abs() > 0.5 {
+                        viewport.set(height);
+                    }
+                })
+                .child(
+                    workspace_rail::navigation(layout, rail_scroll).content(move |_| {
+                        let mut index = 0;
+                        let mut content = rect().vertical().width(Size::fill());
+                        for group in groups
+                            .iter()
+                            .filter(|group| group.iter().any(Option::is_some))
+                        {
+                            if index != 0 {
+                                content = content.child(workspace_rail::divider());
+                            }
+                            let rows = group.iter().flatten().map(|tab| {
+                                let row = make_tab(*tab, index);
+                                index += 1;
+                                row
+                            });
+                            content = content.child(
+                                rect()
+                                    .vertical()
+                                    .width(Size::fill())
+                                    .spacing(layout.row_gap)
+                                    .children(rows),
+                            );
+                        }
+                        content.into_element()
+                    }),
+                ),
+        )
+        // The instance-wide folder and Settings stay reachable however short the window is
+        .child(
+            workspace_rail::footer(layout)
+                .child(workspace_rail::divider())
+                .child(
+                    rect()
                         .vertical()
                         .width(Size::fill())
-                        .maybe_child(lens.map(|track| track.indicator(selected)));
-                    for group in groups
-                        .iter()
-                        .filter(|group| group.iter().any(Option::is_some))
-                    {
-                        if index != 0 {
-                            content = content.child(workspace_rail::divider());
-                        }
-                        let rows = group.iter().flatten().map(|tab| {
-                            let row = make_tab(*tab, index);
-                            index += 1;
-                            row
-                        });
-                        content = content.child(
-                            rect()
-                                .vertical()
-                                .width(Size::fill())
-                                .spacing(layout.row_gap)
-                                .children(rows),
-                        );
-                    }
-
-                    content
-                        .child(workspace_rail::divider())
-                        .child(
-                            rect()
-                                .vertical()
-                                .width(Size::fill())
-                                .spacing(layout.row_gap)
-                                .maybe_child(game_folder.clone().map(|folder| ClusterFolderRow {
-                                    folder,
-                                    height: layout.row_height,
-                                }))
-                                .child(make_tab(Settings, settings_index)),
-                        )
-                        .into_element()
-                },
-            )),
+                        .spacing(layout.row_gap)
+                        .maybe_child(game_folder.map(|folder| ClusterFolderRow {
+                            folder,
+                            height: layout.row_height,
+                        }))
+                        .child(make_tab(Settings, settings_index)),
+                ),
         )
 }
 
@@ -640,15 +693,18 @@ mod tests {
     use std::time::Duration;
 
     #[tokio::test]
-    async fn short_instance_rail_scrolls_to_settings_below_all_optional_tabs() {
+    async fn short_instance_rail_pins_settings_and_scrolls_the_tabs_above_it() {
         let (mut runner, ()) = TestingRunner::new(
             || {
                 cluster_tabs(
+                    &Route::ClusterTextures { cluster_id: 1 },
                     ClusterViewShellTab::Textures,
                     1,
-                    true,
-                    true,
-                    true,
+                    TabVisibility {
+                        game_log: true,
+                        datapacks: true,
+                        mod_tabs: true,
+                    },
                     Some(GameFolder {
                         path: std::path::PathBuf::new(),
                         shared: true,
@@ -671,10 +727,17 @@ mod tests {
                 })
                 .unwrap()
         };
+        // Settings and the game folder are pinned at the bottom of the rail, always visible
         let settings = bottom(&runner, ClusterViewShellTab::Settings.label());
-        assert!(settings > bottom(&runner, ClusterViewShellTab::GameLog.label()));
-        assert!(settings > bottom(&runner, t("oneclient.layout.cluster.game_folder")));
-        assert!(settings > 390.);
+        let folder = bottom(&runner, t("oneclient.layout.cluster.game_folder"));
+        assert!(
+            settings <= 390.,
+            "settings ended below the rail: {settings}"
+        );
+        assert!(folder < settings);
+        // The tabs above scroll, so Live log starts hidden below the pinned rows
+        let game_log = bottom(&runner, ClusterViewShellTab::GameLog.label());
+        assert!(game_log > folder - 32.);
 
         runner.send_event(PlatformEvent::Wheel {
             name: WheelEventName::Wheel,
@@ -685,10 +748,53 @@ mod tests {
         });
         runner.poll_n(Duration::ZERO, 5);
 
-        let settings = bottom(&runner, ClusterViewShellTab::Settings.label());
-        assert!(
-            settings <= 390.,
-            "settings ended below the rail: {settings}"
+        // The pinned rows stay put while the rest scrolls
+        assert_eq!(
+            bottom(&runner, ClusterViewShellTab::Settings.label()),
+            settings
         );
+        assert!(bottom(&runner, ClusterViewShellTab::GameLog.label()) < game_log);
+    }
+
+    #[tokio::test]
+    async fn short_instance_rail_opens_scrolled_to_the_active_tab() {
+        let (mut runner, ()) = TestingRunner::new(
+            || {
+                cluster_tabs(
+                    &Route::ProcessLogs { cluster_id: 1 },
+                    ClusterViewShellTab::GameLog,
+                    1,
+                    TabVisibility {
+                        game_log: true,
+                        datapacks: true,
+                        mod_tabs: true,
+                    },
+                    None,
+                    WorkspaceLayout::for_size(800., 600.),
+                )
+            },
+            (800., 300.).into(),
+            |_| (),
+            1.,
+        );
+        runner.poll_n(Duration::ZERO, 8);
+
+        let area = |runner: &TestingRunner, name| {
+            runner
+                .find(|node, element| {
+                    let mut access = element.accessibility().builder.clone();
+                    element.finish_accessibility(&mut access);
+                    (access.label() == Some(name)).then(|| node.layout().area)
+                })
+                .unwrap()
+        };
+        let live_log = area(&runner, ClusterViewShellTab::GameLog.label());
+        let settings = area(&runner, ClusterViewShellTab::Settings.label());
+        // Clear of the pinned divider and Settings below it
+        assert!(
+            live_log.max_y() <= settings.min_y() - 17.,
+            "live log {live_log:?} is hidden behind the pinned rows {settings:?}"
+        );
+        assert!(live_log.min_y() >= 0.);
     }
 }

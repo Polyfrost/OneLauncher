@@ -28,6 +28,11 @@ pub(super) fn loading_body() -> impl IntoElement {
         .into_element()
 }
 
+/// A detail page or version list that could not be fetched, with Retry
+pub(super) fn failed_body(message: &'static str, on_retry: impl FnMut(()) + 'static) -> Element {
+    super::super::load_failed(t(message), on_retry)
+}
+
 pub(super) fn tabs(active_tab: State<usize>, has_gallery: bool) -> impl IntoElement {
     let mut control = SegmentedControl::new(active_tab)
         .height(36.)
@@ -116,11 +121,27 @@ pub(super) fn versions_panel(
     on_remove: EventHandler<(String, String)>,
     installed: Option<Installed>,
     installing: bool,
+    status: ListStatus,
+    on_retry: impl FnMut(()) + 'static,
 ) -> impl IntoElement {
     let current = *versions_page.read();
     let total_pages = total_versions.div_ceil(VERSIONS_PAGE_SIZE).max(1);
 
-    let rows: Element = if versions.is_empty() {
+    let rows: Element = if status == ListStatus::Failed {
+        failed_body("oneclient.browser.package.versions.load_failed", on_retry)
+    } else if status == ListStatus::Loading {
+        rect()
+            .width(Size::fill())
+            .center()
+            .padding(Gaps::new_all(32.))
+            .child(
+                label()
+                    .text(t("oneclient.browser.package.versions.loading"))
+                    .font_size(text_size(13.))
+                    .color(colors::fg_secondary()),
+            )
+            .into_element()
+    } else if versions.is_empty() {
         rect()
             .width(Size::fill())
             .center()

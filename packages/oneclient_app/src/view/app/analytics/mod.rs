@@ -45,71 +45,35 @@ fn analytics_body_inner(analytics: &Analytics, force_all: bool) -> Element {
     root.into_element()
 }
 
-/// The empty-state card is sized to its content: with this padding the icon, two lines of copy
-/// and the action come to about 275 px, above the 260 px minimum the spec asks for. An explicit
-/// min-height would stretch the card in Freya, so the padding carries it.
-const EMPTY_PADDING: f32 = 40.;
-const EMPTY_MAX_WIDTH: f32 = 520.;
-/// The radius shared by rows, cards and panels across the workspace dialogs
-const SURFACE_RADIUS: f32 = 12.;
-
 /// What Statistics shows before any playtime is recorded: one readable message and the next step
 ///
 /// It replaces a dimmed dashboard of zeros, which read as disabled rather than empty. The card
 /// sits in the middle of the pane rather than filling it.
 pub fn analytics_empty(title: &str, hint: &str, action: Element) -> Element {
+    analytics_message(
+        IconType::BarChartSquare02,
+        colors::brand(),
+        title,
+        hint,
+        action,
+    )
+}
+
+/// The empty card's layout for any centered message, such as a failed load with Retry
+pub(super) fn analytics_message(
+    icon: IconType,
+    tint: Color,
+    title: &str,
+    hint: &str,
+    action: Element,
+) -> Element {
     rect()
         .width(Size::fill())
         .height(Size::fill())
         .center()
-        .child(
-            rect()
-                .vertical()
-                .width(Size::fill())
-                .max_width(Size::px(EMPTY_MAX_WIDTH))
-                .padding(Gaps::new_all(EMPTY_PADDING))
-                .cross_align(Alignment::Center)
-                .spacing(8.)
-                .corner_radius(rounded(SURFACE_RADIUS))
-                .background(colors::card())
-                .border(
-                    border_all_color(1., colors::component_border())
-                        .alignment(BorderAlignment::Inner),
-                )
-                .child(
-                    rect()
-                        .width(Size::px(48.))
-                        .height(Size::px(48.))
-                        .center()
-                        .corner_radius(rounded(SURFACE_RADIUS))
-                        .background(colors::brand().with_a(30))
-                        .child(
-                            Icon::new(IconType::BarChartSquare02)
-                                .size(24.)
-                                .color(colors::brand()),
-                        ),
-                )
-                .child(rect().height(Size::px(4.)))
-                .child(
-                    label()
-                        .text(title.to_string())
-                        .font_size(text_size(16.))
-                        .font_weight(FontWeight::SEMI_BOLD)
-                        .text_align(TextAlign::Center)
-                        .width(Size::fill())
-                        .color(colors::fg_primary()),
-                )
-                .child(
-                    label()
-                        .text(hint.to_string())
-                        .font_size(text_size(13.))
-                        .text_align(TextAlign::Center)
-                        .width(Size::fill())
-                        .color(crate::view::app::settings::readable_secondary()),
-                )
-                .child(rect().height(Size::px(8.)))
-                .child(action),
-        )
+        .child(crate::view::app::settings::status_card(
+            icon, tint, title, hint, action,
+        ))
         .into_element()
 }
 

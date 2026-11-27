@@ -74,6 +74,7 @@ impl Component for OverrideButton {
             .child(button)
             .maybe_child(open.read().then(|| OverrideModal {
                 uses_loader,
+                global: self.cluster.is_none(),
                 search_override: self.search_override,
                 initial,
                 open,
@@ -84,6 +85,9 @@ impl Component for OverrideButton {
 #[derive(PartialEq)]
 struct OverrideModal {
     uses_loader: bool,
+    /// No instance picked yet: the override only changes what is listed, an install still
+    /// resolves against the instance chosen then
+    global: bool,
     search_override: State<Option<SearchOverride>>,
     initial: SearchOverride,
     open: State<bool>,
@@ -162,7 +166,12 @@ impl Component for OverrideModal {
 
         override_dialog(
             t("oneclient.browser.override.title").to_string(),
-            t("oneclient.browser.override.description").to_string(),
+            if self.global {
+                t("oneclient.browser.override.description_global")
+            } else {
+                t("oneclient.browser.override.description")
+            }
+            .to_string(),
             control,
             move || open.set(false),
             Button::new()

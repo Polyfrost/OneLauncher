@@ -120,14 +120,23 @@ pub fn last_played_label(ts: Option<chrono::DateTime<chrono::Utc>>) -> String {
     let Some(ts) = ts else {
         return t("oneclient.ui.last_played.never").to_string();
     };
-    match (chrono::Utc::now() - ts).num_days() {
+    last_played_days((chrono::Utc::now() - ts).num_days())
+}
+
+fn last_played_days(days: i64) -> String {
+    match days {
         ..=0 => t("oneclient.ui.last_played.today").to_string(),
         1 => t("oneclient.ui.last_played.yesterday").to_string(),
         d @ 2..=6 => tf("oneclient.ui.last_played.days", &[&d]),
         d @ 7..=13 => tf("oneclient.ui.last_played.weeks.one", &[&(d / 7)]),
         d @ 14..=29 => tf("oneclient.ui.last_played.weeks.other", &[&(d / 7)]),
         d @ 30..=59 => tf("oneclient.ui.last_played.months.one", &[&(d / 30)]),
-        d => tf("oneclient.ui.last_played.months.other", &[&(d / 30)]),
+        d @ 60..=364 => tf(
+            "oneclient.ui.last_played.months.other",
+            &[&(d / 30).min(11)],
+        ),
+        d @ 365..=729 => tf("oneclient.ui.last_played.years.one", &[&(d / 365)]),
+        d => tf("oneclient.ui.last_played.years.other", &[&(d / 365)]),
     }
 }
 
@@ -298,4 +307,17 @@ pub(crate) fn is_text_entry(role: AccessibilityRole) -> bool {
             | AccessibilityRole::SearchInput
             | AccessibilityRole::PasswordInput
     )
+}
+
+#[cfg(test)]
+mod last_played_tests {
+    use super::last_played_days;
+
+    #[test]
+    fn long_ago_switches_from_months_to_years() {
+        assert_eq!(last_played_days(364), "11 months ago");
+        assert_eq!(last_played_days(365), "1 year ago");
+        assert_eq!(last_played_days(729), "1 year ago");
+        assert_eq!(last_played_days(730), "2 years ago");
+    }
 }

@@ -202,6 +202,30 @@ mod tests {
     }
 
     #[test]
+    fn empty_command_override_is_not_refilled_from_global() {
+        let mut global = GameSettingsProfile::default_global_profile();
+        global.launch_args = Some("-Xss4M".into());
+        let mut profile = GameSettingsProfile::default_global_profile();
+
+        crate::profiles::ProfileUpdate {
+            launch_args: oneclient_common::Patch::Set(String::new()),
+            ..Default::default()
+        }
+        .apply(&mut profile);
+        let mut restored = GameSettingsProfile::from_row(profile.into_row().unwrap()).unwrap();
+        restored.merge_global(&global);
+        assert_eq!(restored.launch_args.as_deref(), Some(""));
+
+        crate::profiles::ProfileUpdate {
+            launch_args: oneclient_common::Patch::Clear,
+            ..Default::default()
+        }
+        .apply(&mut restored);
+        restored.merge_global(&global);
+        assert_eq!(restored.launch_args.as_deref(), Some("-Xss4M"));
+    }
+
+    #[test]
     fn os_extra_keeps_the_keys_this_build_has_no_field_for() {
         let stored = r#"{"enable_gamemode":true,"use_discrete_gpu":true,"some_other_os_flag":7}"#;
 

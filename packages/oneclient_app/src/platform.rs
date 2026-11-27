@@ -738,3 +738,290 @@ pub mod macos {
         }
     }
 }
+
+#[cfg(target_os = "windows")]
+pub mod present_probe {
+    use std::ffi::CStr;
+    use std::time::Duration;
+
+    use freya::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use freya::winit::window::Window;
+    use freya_winit::plugins::{FreyaPlugin, PluginEvent, PluginHandle};
+    use skia_safe::{AlphaType, ColorType, ImageInfo};
+    use windows::Win32::Foundation::{HWND, POINT, RECT};
+    use windows::Win32::Graphics::Dwm::{
+        DWMWA_CLOAKED, DwmGetWindowAttribute, DwmIsCompositionEnabled,
+    };
+    use windows::Win32::Graphics::Gdi::{
+        BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, ClientToScreen, CreateCompatibleBitmap,
+        CreateCompatibleDC, DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, GetDIBits, HDC,
+        ReleaseDC, SRCCOPY, SelectObject,
+    };
+    use windows::Win32::Graphics::OpenGL::{
+        DescribePixelFormat, GL_RENDERER, GL_VENDOR, GL_VERSION, GetPixelFormat,
+        PIXELFORMATDESCRIPTOR, glGetString,
+    };
+    use windows::Win32::Storage::Xps::{PRINT_WINDOW_FLAGS, PrintWindow};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GWL_EXSTYLE, GWL_STYLE, GetClientRect, GetWindowLongPtrW,
+    };
+
+    const PW_CLIENT_FULL_CONTENT: PRINT_WINDOW_FLAGS = PRINT_WINDOW_FLAGS(0x1 | 0x2);
+    const CAPTURE_FRAMES: [u32; 2] = [2, 30];
+
+    #[derive(Default)]
+    pub struct PresentProbePlugin {
+        opengl: bool,
+        rendered: u32,
+        presented: u32,
+    }
+
+    impl FreyaPlugin for PresentProbePlugin {
+        fn plugin_id(&self) -> &'static str {
+            "oneclient-present-probe"
+        }
+
+        fn on_event(&mut self, event: &mut PluginEvent, _handle: PluginHandle) {
+            match event {
+                PluginEvent::WindowCreated {
+                    window,
+                    graphics_driver,
+                    gpu_name,
+                    ..
+                } => {
+                    self.opengl = *graphics_driver == "OpenGL";
+                    tracing::info!(
+                        driver = graphics_driver,
+                        gpu = gpu_name.unwrap_or("unknown"),
+                        "present probe: window created"
+                    );
+                    if let Some(hwnd) = hwnd(window) {
+                        log_window(hwnd);
+                        spawn_screen_capture(hwnd);
+                    }
+                }
+                PluginEvent::AfterRender { canvas, .. } if self.rendered < 1 => {
+                    self.rendered += 1;
+                    if self.opengl {
+                        log_gl_strings();
+                    }
+                    let size = canvas.base_layer_size();
+                    let info = ImageInfo::new(size, ColorType::BGRA8888, AlphaType::Premul, None);
+                    let row_bytes = size.width.max(0) as usize * 4;
+                    let mut pixels = vec![0u8; row_bytes * size.height.max(0) as usize];
+                    let ok = canvas.read_pixels(&info, &mut pixels, row_bytes, (0, 0));
+                    tracing::info!(
+                        ok,
+                        width = size.width,
+                        height = size.height,
+                        stats = %Stats::of(&pixels),
+                        "present probe: first frame skia readback"
+                    );
+                }
+                PluginEvent::AfterPresenting { window, .. } => {
+                    self.presented += 1;
+                    if CAPTURE_FRAMES.contains(&self.presented)
+                        && let Some(hwnd) = hwnd(window)
+                    {
+                        let stats = capture(hwnd, |dc, _, _, w, h| unsafe {
+                            PrintWindow(hwnd, dc, PW_CLIENT_FULL_CONTENT).as_bool() && w > 0 && h > 0
+                        });
+                        tracing::info!(
+                            frame = self.presented,
+                            stats = %stats.map_or("failed".to_owned(), |s| s.to_string()),
+                            "present probe: PrintWindow after present"
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    struct Stats {
+        pixels: usize,
+        lit: usize,
+        mean: [u64; 3],
+    }
+
+    impl Stats {
+        fn of(bgra: &[u8]) -> Self {
+            let mut lit = 0;
+            let mut sum = [0u64; 3];
+            for px in bgra.chunks_exact(4) {
+                if px[..3].iter().any(|&c| c > 16) {
+                    lit += 1;
+                }
+                for (total, &c) in sum.iter_mut().zip(&px[..3]) {
+                    *total += c as u64;
+                }
+            }
+            let pixels = bgra.len() / 4;
+            let n = pixels.max(1) as u64;
+            Self {
+                pixels,
+                lit,
+                mean: [sum[2] / n, sum[1] / n, sum[0] / n],
+            }
+        }
+    }
+
+    impl std::fmt::Display for Stats {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(
+                f,
+                "{}/{} non-black, mean rgb {:?}",
+                self.lit, self.pixels, self.mean
+            )
+        }
+    }
+
+    fn hwnd(window: &Window) -> Option<HWND> {
+        match window.window_handle().ok()?.as_raw() {
+            RawWindowHandle::Win32(handle) => Some(HWND(handle.hwnd.get() as _)),
+            _ => None,
+        }
+    }
+
+    fn log_window(hwnd: HWND) {
+        unsafe {
+            let style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+            let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+            let composition = DwmIsCompositionEnabled().map(|b| b.as_bool()).ok();
+            let mut cloaked = 0u32;
+            let _ = DwmGetWindowAttribute(
+                hwnd,
+                DWMWA_CLOAKED,
+                (&raw mut cloaked).cast(),
+                size_of::<u32>() as u32,
+            );
+
+            let dc = GetDC(Some(hwnd));
+            let format = GetPixelFormat(dc);
+            let mut pfd = PIXELFORMATDESCRIPTOR::default();
+            let described = format > 0
+                && DescribePixelFormat(
+                    dc,
+                    format,
+                    size_of::<PIXELFORMATDESCRIPTOR>() as u32,
+                    Some(&mut pfd),
+                ) > 0;
+            ReleaseDC(Some(hwnd), dc);
+
+            tracing::info!(
+                style = format_args!("{style:#x}"),
+                ex_style = format_args!("{ex_style:#x}"),
+                ?composition,
+                cloaked,
+                "present probe: window state"
+            );
+            if described {
+                tracing::info!(
+                    format,
+                    flags = format_args!("{:#x}", pfd.dwFlags.0),
+                    pixel_type = pfd.iPixelType.0,
+                    color = pfd.cColorBits,
+                    rgba = format_args!(
+                        "{}/{}/{}/{} shift {}/{}/{}/{}",
+                        pfd.cRedBits,
+                        pfd.cGreenBits,
+                        pfd.cBlueBits,
+                        pfd.cAlphaBits,
+                        pfd.cRedShift,
+                        pfd.cGreenShift,
+                        pfd.cBlueShift,
+                        pfd.cAlphaShift
+                    ),
+                    depth = pfd.cDepthBits,
+                    stencil = pfd.cStencilBits,
+                    "present probe: pixel format"
+                );
+            } else {
+                tracing::info!(format, "present probe: no pixel format on the window dc");
+            }
+        }
+    }
+
+    fn log_gl_strings() {
+        let get = |name| unsafe {
+            let ptr = glGetString(name);
+            (!ptr.is_null()).then(|| CStr::from_ptr(ptr.cast()).to_string_lossy().into_owned())
+        };
+        tracing::info!(
+            vendor = ?get(GL_VENDOR),
+            renderer = ?get(GL_RENDERER),
+            version = ?get(GL_VERSION),
+            "present probe: gl strings"
+        );
+    }
+
+    fn spawn_screen_capture(hwnd: HWND) {
+        let raw = hwnd.0 as isize;
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(4));
+            let hwnd = HWND(raw as _);
+            let stats = capture(hwnd, |dc, x, y, w, h| unsafe {
+                let screen = GetDC(None);
+                let ok = BitBlt(dc, 0, 0, w, h, Some(screen), x, y, SRCCOPY).is_ok();
+                ReleaseDC(None, screen);
+                ok
+            });
+            tracing::info!(
+                stats = %stats.map_or("failed".to_owned(), |s| s.to_string()),
+                "present probe: on-screen pixels after 4s"
+            );
+        });
+    }
+
+    fn capture(hwnd: HWND, blit: impl FnOnce(HDC, i32, i32, i32, i32) -> bool) -> Option<Stats> {
+        unsafe {
+            let mut rect = RECT::default();
+            GetClientRect(hwnd, &mut rect).ok()?;
+            let (w, h) = (rect.right - rect.left, rect.bottom - rect.top);
+            if w <= 0 || h <= 0 {
+                return None;
+            }
+            let mut origin = POINT::default();
+            if !ClientToScreen(hwnd, &mut origin).as_bool() {
+                return None;
+            }
+
+            let screen = GetDC(None);
+            let dc = CreateCompatibleDC(Some(screen));
+            let bitmap = CreateCompatibleBitmap(screen, w, h);
+            let previous = SelectObject(dc, bitmap.into());
+
+            let mut pixels = vec![0u8; w as usize * h as usize * 4];
+            let mut info = BITMAPINFO {
+                bmiHeader: BITMAPINFOHEADER {
+                    biSize: size_of::<BITMAPINFOHEADER>() as u32,
+                    biWidth: w,
+                    biHeight: -h,
+                    biPlanes: 1,
+                    biBitCount: 32,
+                    biCompression: BI_RGB.0,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let copied = blit(dc, origin.x, origin.y, w, h);
+            SelectObject(dc, previous);
+            let read = copied
+                && GetDIBits(
+                    dc,
+                    bitmap,
+                    0,
+                    h as u32,
+                    Some(pixels.as_mut_ptr().cast()),
+                    &mut info,
+                    DIB_RGB_COLORS,
+                ) == h;
+
+            let _ = DeleteObject(bitmap.into());
+            let _ = DeleteDC(dc);
+            ReleaseDC(None, screen);
+
+            read.then(|| Stats::of(&pixels))
+        }
+    }
+}

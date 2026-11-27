@@ -20,10 +20,11 @@ fn use_switch_transition<A: AnimatedValue>(
     value: State<bool>,
     mut run: impl 'static + FnMut(bool) -> A,
 ) -> UseAnimation<A> {
+    let on = use_memo(move || *value.read());
     use_animation(move |conf| {
         conf.on_change(OnChange::Rerun);
         conf.on_creation(OnCreation::Finish);
-        run(*value.read())
+        run(*on.read())
     })
 }
 
@@ -188,20 +189,60 @@ mod tests {
 
     use super::*;
 
-    fn app() -> impl IntoElement {
-        toggle_controlled(true, (|()| {}).into())
+    fn settle(app: fn() -> Element) -> TestingRunner {
+        let mut test = launch_test(app);
+        for _ in 0..5 {
+            test.sync_and_update();
+        }
+        test
+    }
+
+    fn track_is(test: &TestingRunner, color: Color) -> bool {
+        let fill = Fill::Color(color);
+        test.find(|_, element| {
+            Rect::try_downcast(element).filter(|rect| rect.style.background == fill)
+        })
+        .is_some()
+    }
+
+    fn mounted_on() -> Element {
+        toggle_controlled(true, (|()| {}).into()).into_element()
+    }
+
+    fn mounted_off() -> Element {
+        toggle_controlled(false, (|()| {}).into()).into_element()
+    }
+
+    fn rewritten_on() -> Element {
+        let mut value = use_state(|| true);
+        rect()
+            .child(toggle(value))
+            .child(
+                rect()
+                    .width(Size::px(50.))
+                    .height(Size::px(50.))
+                    .on_press(move |_| value.set(true)),
+            )
+            .into_element()
     }
 
     #[test]
-    fn a_switch_mounted_on_shows_on_without_animating() {
-        let mut test = launch_test(app);
-        test.sync_and_update();
+    fn a_switch_mounted_on_stays_on() {
+        assert!(track_is(&settle(mounted_on), colors::brand()));
+    }
 
-        let brand = Fill::Color(colors::brand());
-        let track = test.find(|_, element| {
-            Rect::try_downcast(element).filter(|rect| rect.style.background == brand)
-        });
+    #[test]
+    fn a_switch_mounted_off_stays_off() {
+        assert!(track_is(&settle(mounted_off), colors::control_off()));
+    }
 
-        assert!(track.is_some(), "the track should already be the on colour");
+    #[test]
+    fn writing_the_same_value_does_not_restart_the_animation() {
+        let mut test = settle(rewritten_on);
+        test.click_cursor((10., 40.));
+        for _ in 0..5 {
+            test.sync_and_update();
+            assert!(track_is(&test, colors::brand()));
+        }
     }
 }

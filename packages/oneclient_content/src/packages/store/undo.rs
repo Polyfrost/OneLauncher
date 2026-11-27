@@ -88,9 +88,7 @@ struct LocalDependencyCheck {
 
 impl LocalDependencyCheck {
     fn could_need(&self, metadata: &JarDependencies) -> bool {
-        // Nested jars' requirements aren't all represented by the parent metadata.
         metadata.provides.is_empty()
-            || !metadata.bundled.is_empty()
             || metadata.requires.iter().any(|id| {
                 self.supplied.contains(id)
                     || (!self.candidates_identified
@@ -529,6 +527,30 @@ mod tests {
 
     #[tokio::test]
     async fn remote_mods_can_require_an_undo_candidate_in_their_jar() {
+        check_linked_mod_requirements(false, true).await;
+    }
+
+    #[tokio::test]
+    async fn unrelated_nested_library_allows_undo() {
+        check_linked_mod_requirements(true, false).await;
+    }
+
+    #[tokio::test]
+    async fn nested_library_requirement_blocks_undo() {
+        check_linked_mod_requirements(true, true).await;
+    }
+
+    async fn jar_bytes(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut zip = async_zip::base::write::ZipFileWriter::new(Vec::new());
+        for &(name, contents) in entries {
+            let entry =
+                async_zip::ZipEntryBuilder::new(name.into(), async_zip::Compression::Stored);
+            zip.write_entry_whole(entry, contents).await.unwrap();
+        }
+        zip.close().await.unwrap()
+    }
+
+    async fn check_linked_mod_requirements(nested: bool, requires_candidate: bool) {
         use oneclient_common::domain::{GameLoader, ProviderId};
         use oneclient_db::models::{ClusterKind, NewCluster};
 
@@ -563,25 +585,43 @@ mod tests {
         )
         .await
         .unwrap();
+        let dependent_manifest: &[u8] = if requires_candidate {
+            br#"{"id":"dependent","depends":{"library":"*"}}"#
+        } else {
+            br#"{"id":"dependent","depends":{"minecraft":"*"}}"#
+        };
+        let dependent = jar_bytes(&[("fabric.mod.json", dependent_manifest)]).await;
+        let dependent = if nested {
+            let wrapper = jar_bytes(&[
+                (
+                    "fabric.mod.json",
+                    br#"{"id":"wrapper","jars":[{"file":"META-INF/jars/dependent.jar"}]}"#,
+                ),
+                ("META-INF/jars/dependent.jar", &dependent),
+            ])
+            .await;
+            jar_bytes(&[
+                (
+                    "fabric.mod.json",
+                    br#"{"id":"outer","jars":[{"file":"vendor/wrapper.jar"}]}"#,
+                ),
+                ("vendor/wrapper.jar", &wrapper),
+            ])
+            .await
+        } else {
+            dependent
+        };
         let mut hashes = Vec::new();
-        for (id, manifest) in [
-            ("library", br#"{"id":"library"}"#.as_slice()),
+        for (id, bytes) in [
             (
-                "dependent",
-                br#"{"id":"dependent","depends":{"library":"*"}}"#.as_slice(),
+                "library",
+                jar_bytes(&[("fabric.mod.json", br#"{"id":"library"}"#)]).await,
             ),
+            ("dependent", dependent),
         ] {
             let file_name = format!("{id}.jar");
             let path = dir.dir_path().join(&file_name);
-            let mut zip = async_zip::tokio::write::ZipFileWriter::with_tokio(
-                tokio::fs::File::create(&path).await.unwrap(),
-            );
-            let entry = async_zip::ZipEntryBuilder::new(
-                "fabric.mod.json".into(),
-                async_zip::Compression::Stored,
-            );
-            zip.write_entry_whole(entry, manifest).await.unwrap();
-            zip.close().await.unwrap();
+            tokio::fs::write(&path, bytes).await.unwrap();
             let hash = polyio::normalize_hash(&polyio::sha1_file(&path).await.unwrap());
             artifacts::insert_artifact(
                 &ctx.db,
@@ -620,10 +660,11 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
-        assert!(
+        assert_eq!(
             local_mods_may_need(cluster.id, &candidates, &ctx)
                 .await
-                .unwrap()
+                .unwrap(),
+            requires_candidate
         );
 
         // If the cached dependency manifest can't be read, Undo must also keep the library.

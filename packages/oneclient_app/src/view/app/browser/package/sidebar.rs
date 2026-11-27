@@ -14,7 +14,7 @@ const BUTTON_NAME_CHARS: usize = 22;
 
 pub(super) fn sidebar(
     project: Option<ProjectDetail>,
-    latest_version: Option<VersionSummary>,
+    latest: Result<Option<VersionSummary>, Element>,
     installer: Installer,
     confirm: LinkConfirmState,
     installed: Option<Installed>,
@@ -29,17 +29,12 @@ pub(super) fn sidebar(
     };
 
     let project_id = project.id.clone();
-    // Nothing to do when this version is already there or while an install is running
-    let have_latest = match (&installed, &latest_version) {
-        (Some(installed), Some(latest)) => installed.is_version(&latest.version_id),
-        _ => false,
-    };
-    let can_install = latest_version.is_some() && !have_latest && !installing && !waiting;
     let import_prompt = installer.import_prompt;
     let enable = installed
         .as_ref()
         .and_then(Installed::disabled_bundled)
         .and_then(|version| version.enable_action(installer.cluster_id));
+    let can_enable = enable.is_some();
 
     rect()
         .vertical()
@@ -114,49 +109,65 @@ pub(super) fn sidebar(
                         ),
                 ),
         )
-        .child(match enable {
-            Some(action) => EnableButton {
+        .maybe_child(enable.map(|action| {
+            EnableButton {
                 action,
                 variant: EnableVariant::Sidebar,
             }
-            .into_element(),
-            None => Button::new()
-                .primary()
-                .width(Size::fill())
-                .enabled(can_install)
-                .on_press({
-                    let installer = installer.clone();
-                    move |_| {
-                        if let Some(latest) = latest_version.clone() {
-                            installer.install_latest(
-                                project_id.clone(),
-                                latest.version_id,
-                                latest.version_number,
-                            );
-                        }
-                    }
-                })
-                .child(Icon::new(IconType::Download01).size(14.))
-                .text(if installing && installer.add_to_cluster {
-                    t("oneclient.browser.package.sidebar.adding").to_string()
-                } else if installing {
-                    t("oneclient.browser.package.sidebar.installing").to_string()
-                } else if installer.add_to_cluster {
-                    match &installer.cluster_name {
-                        Some(name) => tf(
-                            "oneclient.browser.package.sidebar.add_to",
-                            &[&shorten(name, BUTTON_NAME_CHARS, "\u{2026}")],
-                        ),
-                        None => t("oneclient.browser.package.sidebar.add_to_this").to_string(),
-                    }
-                } else if installer.modpack {
-                    t("oneclient.browser.package.sidebar.install_ellipsis").to_string()
-                } else if have_latest {
-                    t("oneclient.browser.package.sidebar.latest_installed").to_string()
-                } else {
-                    t("oneclient.browser.package.sidebar.install_latest").to_string()
-                })
-                .into_element(),
+            .into_element()
+        }))
+        .maybe_child(match latest {
+            Err(status) => Some(status),
+            Ok(_) if can_enable => None,
+            Ok(latest_version) => {
+                let have_latest = match (&installed, &latest_version) {
+                    (Some(installed), Some(latest)) => installed.is_version(&latest.version_id),
+                    _ => false,
+                };
+                let can_install =
+                    latest_version.is_some() && !have_latest && !installing && !waiting;
+                Some(
+                    Button::new()
+                        .primary()
+                        .width(Size::fill())
+                        .enabled(can_install)
+                        .on_press({
+                            let installer = installer.clone();
+                            move |_| {
+                                if let Some(latest) = latest_version.clone() {
+                                    installer.install_latest(
+                                        project_id.clone(),
+                                        latest.version_id,
+                                        latest.version_number,
+                                    );
+                                }
+                            }
+                        })
+                        .child(Icon::new(IconType::Download01).size(14.))
+                        .text(if installing && installer.add_to_cluster {
+                            t("oneclient.browser.package.sidebar.adding").to_string()
+                        } else if installing {
+                            t("oneclient.browser.package.sidebar.installing").to_string()
+                        } else if installer.add_to_cluster {
+                            match &installer.cluster_name {
+                                Some(name) => tf(
+                                    "oneclient.browser.package.sidebar.add_to",
+                                    &[&shorten(name, BUTTON_NAME_CHARS, "\u{2026}")],
+                                ),
+                                None => {
+                                    t("oneclient.browser.package.sidebar.add_to_this").to_string()
+                                }
+                            }
+                        } else if installer.modpack {
+                            t("oneclient.browser.package.sidebar.install_ellipsis").to_string()
+                        } else if have_latest {
+                            t("oneclient.browser.package.sidebar.latest_installed").to_string()
+                        } else {
+                            t("oneclient.browser.package.sidebar.install_latest").to_string()
+                        })
+                        .into_element(),
+                )
+            }
         })
         .maybe_child(import_prompt.map(|mut prompt| {
             Button::new()

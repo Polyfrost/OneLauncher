@@ -337,10 +337,10 @@ fn build_update(
 fn update_mode_field(mut selected: State<PackageUpdateMode>) -> impl IntoElement {
     let options: Vec<String> = PackageUpdateMode::ALL
         .iter()
-        .map(|mode| mode.label().to_string())
+        .map(|mode| super::update_mode_label(*mode).to_string())
         .collect();
 
-    Dropdown::new(selected.read().label(), options)
+    Dropdown::new(super::update_mode_label(*selected.read()), options)
         .width(settings_control_width())
         .height(Size::px(34.))
         .on_select(move |idx: usize| {

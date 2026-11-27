@@ -490,17 +490,18 @@ fn cluster_tabs(
         ],
     ];
 
-    let tabs: Vec<_> = groups
-        .iter()
-        .flatten()
-        .copied()
-        .flatten()
-        .chain([Settings])
-        .collect();
+    // The scrolling rows and the pinned Settings row each get their own glass track. One track
+    // across both would measure overflowed rows below the pinned one, and its release check
+    // would reject presses outside the scroll viewport, so pinned Settings could not be picked.
+    let tabs: Vec<_> = groups.iter().flatten().copied().flatten().collect();
+    let liquid = colors::active_theme().liquid_glass;
     let track = glass::use_vertical_pill_track(tabs.len());
-    let lens = colors::active_theme().liquid_glass.then_some(track);
+    let pinned_track = glass::use_vertical_pill_track(1);
+    let lens = liquid.then_some(track);
+    let pinned_lens = liquid.then_some(pinned_track);
     let selected = tabs.iter().position(|tab| *tab == active);
-    let make_tab = move |tab: ClusterViewShellTab, index| {
+    let settings_selected = (active == Settings).then_some(0);
+    let make_tab = move |tab: ClusterViewShellTab, lens: Option<glass::PillTrack>, index| {
         workspace_rail::Tab {
             label: tab.label(),
             icon: tab.icon(),
@@ -513,8 +514,6 @@ fn cluster_tabs(
         }
         .into_element()
     };
-
-    let settings_index = tabs.len() - 1;
 
     // Scroll the rail to the active row. Settings is pinned below the scrolling part.
     let shown: Vec<usize> = groups
@@ -536,10 +535,10 @@ fn cluster_tabs(
                 layout.row_gap,
             ))
         });
-    let rail_scroll = use_scroll_controller(ScrollConfig::default);
+    let rail_scroll = workspace_rail::use_rail_scroll();
     let mut viewport = use_state(|| 0f32);
     workspace_rail::use_reveal_active(
-        rail_scroll,
+        &rail_scroll,
         route,
         active_row.map(|top| (top, top, layout.row_height)),
         *viewport.read(),
@@ -553,8 +552,6 @@ fn cluster_tabs(
                 }
             })
         })
-        // Outside the scrolling part so it can also reach the pinned Settings row
-        .maybe_child(lens.map(|track| track.indicator(selected)))
         .child(
             workspace_rail::scroll(lens)
                 .on_sized(move |event: Event<SizedEventData>| {
@@ -564,9 +561,12 @@ fn cluster_tabs(
                     }
                 })
                 .child(
-                    workspace_rail::navigation(layout, rail_scroll).content(move |_| {
+                    workspace_rail::navigation(layout, &rail_scroll).content(move |_| {
                         let mut index = 0;
-                        let mut content = rect().vertical().width(Size::fill());
+                        let mut content = rect()
+                            .vertical()
+                            .width(Size::fill())
+                            .maybe_child(lens.map(|track| track.indicator(selected)));
                         for group in groups
                             .iter()
                             .filter(|group| group.iter().any(Option::is_some))
@@ -575,7 +575,7 @@ fn cluster_tabs(
                                 content = content.child(workspace_rail::divider());
                             }
                             let rows = group.iter().flatten().map(|tab| {
-                                let row = make_tab(*tab, index);
+                                let row = make_tab(*tab, lens, index);
                                 index += 1;
                                 row
                             });
@@ -594,6 +594,14 @@ fn cluster_tabs(
         // The instance-wide folder and Settings stay reachable however short the window is
         .child(
             workspace_rail::footer(layout)
+                .map(pinned_lens, |el, track| {
+                    track.events(el, move |_| {
+                        if active != Settings {
+                            workspace_rail::select(&Settings.route(cluster_id));
+                        }
+                    })
+                })
+                .maybe_child(pinned_lens.map(|track| track.indicator(settings_selected)))
                 .child(workspace_rail::divider())
                 .child(
                     rect()
@@ -604,7 +612,7 @@ fn cluster_tabs(
                             folder,
                             height: layout.row_height,
                         }))
-                        .child(make_tab(Settings, settings_index)),
+                        .child(make_tab(Settings, pinned_lens, 0)),
                 ),
         )
 }
@@ -754,6 +762,76 @@ mod tests {
             settings
         );
         assert!(bottom(&runner, ClusterViewShellTab::GameLog.label()) < game_log);
+    }
+
+    /// In the glass themes rail rows are picked through the pill track. The pinned Settings row
+    /// sits outside the scroll viewport, so it needs a track of its own to be clickable.
+    #[tokio::test]
+    async fn pinned_settings_can_be_picked_in_a_short_glass_rail() {
+        crate::theme::colors::apply("polyglass-dark", None);
+        workspace_rail::SELECTED.with(|cell| *cell.borrow_mut() = None);
+        let (mut runner, ()) = TestingRunner::new(
+            || {
+                crate::hooks::use_provide_station(|| {
+                    let mut app = crate::state::AppState::default();
+                    app.settings.settings.animations_enabled = false;
+                    app
+                });
+                cluster_tabs(
+                    &Route::ClusterOverview { cluster_id: 1 },
+                    ClusterViewShellTab::Overview,
+                    1,
+                    TabVisibility {
+                        game_log: true,
+                        datapacks: true,
+                        mod_tabs: true,
+                    },
+                    Some(GameFolder {
+                        path: std::path::PathBuf::new(),
+                        shared: true,
+                    }),
+                    WorkspaceLayout::for_size(800., 600.),
+                )
+            },
+            (800., 300.).into(),
+            |_| (),
+            1.,
+        );
+        runner.poll_n(Duration::ZERO, 8);
+
+        let area = |runner: &TestingRunner, name| {
+            runner
+                .find(|node, element| {
+                    let mut access = element.accessibility().builder.clone();
+                    element.finish_accessibility(&mut access);
+                    (access.label() == Some(name)).then(|| node.layout().area)
+                })
+                .unwrap()
+        };
+        let settings = area(&runner, ClusterViewShellTab::Settings.label());
+        assert!(settings.max_y() <= 300.);
+        runner.click_cursor((
+            f64::from(settings.min_x() + 40.),
+            f64::from(settings.center().y),
+        ));
+        runner.poll_n(Duration::ZERO, 4);
+        let picked = workspace_rail::SELECTED.with(|cell| cell.borrow_mut().take());
+
+        // A scrolling row is still picked through the main track
+        let textures = area(&runner, ClusterViewShellTab::Textures.label());
+        runner.click_cursor((
+            f64::from(textures.min_x() + 40.),
+            f64::from(textures.center().y),
+        ));
+        runner.poll_n(Duration::ZERO, 4);
+        let scrolled_pick = workspace_rail::SELECTED.with(|cell| cell.borrow_mut().take());
+        crate::theme::colors::apply("dark", None);
+
+        assert_eq!(picked, Some(Route::ClusterSettings { cluster_id: 1 }));
+        assert_eq!(
+            scrolled_pick,
+            Some(Route::ClusterTextures { cluster_id: 1 })
+        );
     }
 
     #[tokio::test]

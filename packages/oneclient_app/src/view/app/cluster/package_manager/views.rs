@@ -376,8 +376,8 @@ pub(super) struct Scope {
 #[allow(clippy::too_many_arguments)]
 pub(super) fn toolbar_bar(
     tabs: &[Tab],
-    active_idx: usize,
-    active: State<usize>,
+    selected: &Tab,
+    active: State<Tab>,
     search: State<String>,
     sort: State<Option<String>>,
     current_sort: SortMode,
@@ -396,14 +396,15 @@ pub(super) fn toolbar_bar(
     folder: Option<PathBuf>,
     scope: Option<Scope>,
 ) -> Element {
-    let local_tab = matches!(tabs.get(active_idx), Some(Tab::Local));
+    let local_tab = matches!(selected, Tab::Local);
 
     let labels: Vec<String> = tabs.iter().map(Tab::label).collect();
-    let current = labels.get(active_idx).cloned().unwrap_or_default();
+    let current = selected.label();
 
     // One compact dropdown replaces the row of category chips; it names the active value
     let category = {
         let mut active = active;
+        let tabs = tabs.to_vec();
         Dropdown::new(
             tf("oneclient.cluster.package_manager.category", &[&current]),
             labels,
@@ -413,7 +414,11 @@ pub(super) fn toolbar_bar(
         .width(Size::px(CATEGORY_W))
         .height(Size::px(CONTROL_H))
         .tooltip(t("oneclient.cluster.package_manager.category.tooltip"))
-        .on_select(move |idx: usize| active.set(idx))
+        .on_select(move |idx: usize| {
+            if let Some(tab) = tabs.get(idx) {
+                active.set_if_modified(tab.clone());
+            }
+        })
         .into_element()
     };
     let mut view_controls = vec![category];

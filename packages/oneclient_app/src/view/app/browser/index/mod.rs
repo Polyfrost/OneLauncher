@@ -313,29 +313,13 @@ impl Component for BrowserBody {
         let view_mode = use_view_state(&format!("browser.{package_type}")).layout;
         let compatible_only = use_browser_compat();
         let selected_categories = use_state(|| saved.categories.clone());
+        let mut parked_categories = use_state(|| saved.parked_categories.clone());
+        let mut categories_provider = use_state(|| saved.provider);
         let sort = use_state(|| saved.sort);
         let loader = use_state(|| saved.loader);
         let side = use_state(|| saved.side);
         let search_override = use_state(|| saved.search_override.clone());
         let page = use_state(|| saved.page);
-
-        {
-            let mut store = store;
-            let key = state_key.clone();
-            use_side_effect(move || {
-                let snapshot = BrowserUiState {
-                    query: query.read().clone(),
-                    provider: *provider.read(),
-                    categories: selected_categories.read().clone(),
-                    sort: *sort.read(),
-                    loader: *loader.read(),
-                    side: *side.read(),
-                    search_override: search_override.read().clone(),
-                    page: *page.read(),
-                };
-                store.write().insert(key.clone(), snapshot);
-            });
-        }
 
         // Debounce the search query so typing doesn't fire a request per keystroke
         let debounced_query = use_debounced(
@@ -378,8 +362,6 @@ impl Component for BrowserBody {
             provider.set(ProviderId::Modrinth);
         }
         let provider_id = *provider.read();
-        let mut parked_categories = use_state(HashMap::<ProviderId, Vec<String>>::new);
-        let mut categories_provider = use_state(|| saved.provider);
         let categories_from = *categories_provider.peek();
         if categories_from != provider_id {
             let mut selected = selected_categories;
@@ -392,6 +374,24 @@ impl Component for BrowserBody {
             );
             categories_provider.set(provider_id);
             selected.set(restored);
+        }
+        {
+            let mut store = store;
+            let key = state_key.clone();
+            use_side_effect(move || {
+                let snapshot = BrowserUiState {
+                    query: query.read().clone(),
+                    provider: *categories_provider.read(),
+                    categories: selected_categories.read().clone(),
+                    parked_categories: parked_categories.read().clone(),
+                    sort: *sort.read(),
+                    loader: *loader.read(),
+                    side: *side.read(),
+                    search_override: search_override.read().clone(),
+                    page: *page.read(),
+                };
+                store.write().insert(key.clone(), snapshot);
+            });
         }
         let categories_query = use_package_categories(provider_id, content_type);
         let all_categories = category_list(&categories_query);
@@ -1186,6 +1186,28 @@ mod tests {
         );
         assert_eq!(back, names(&["optimization"]));
         assert_eq!(parked[&ProviderId::CurseForge], names(&["Performance"]));
+    }
+
+    #[test]
+    fn reopening_browse_restores_the_other_providers_categories() {
+        let mut saved = BrowserUiState {
+            categories: names(&["optimization"]),
+            parked_categories: HashMap::from([(ProviderId::CurseForge, names(&["Performance"]))]),
+            ..BrowserUiState::default()
+        };
+        let store = HashMap::from([(state_key(3, "mods", false), saved.clone())]);
+        saved.parked_categories.clear();
+
+        let restored = store.get(&state_key(3, "mods", false)).unwrap();
+        let mut parked = restored.parked_categories.clone();
+        let categories = swap_provider_categories(
+            &mut parked,
+            restored.provider,
+            ProviderId::CurseForge,
+            restored.categories.clone(),
+        );
+        assert_eq!(categories, names(&["Performance"]));
+        assert_eq!(parked[&ProviderId::Modrinth], names(&["optimization"]));
     }
 
     #[test]

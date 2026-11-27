@@ -39,15 +39,19 @@ impl Component for SettingsStorage {
             })
             .child(label().text(t("oneclient.common.refresh")));
 
-        let mut page = settings_page().child(hero(&report, refresh.into_element()));
+        let mut page = settings_page().child(super::focus_anchor(
+            "storage.usage",
+            hero(&report, refresh.into_element()),
+        ));
 
         if scan.is_some() {
             page = page.child(scan_card(scan.as_ref()));
         }
 
-        page.child(first_section_header(t(
-            "oneclient.settings.storage.section.free_up_space",
-        )))
+        page.child(super::focus_anchor(
+            "storage.cleanup",
+            first_section_header(t("oneclient.settings.storage.section.free_up_space")),
+        ))
         .child(
             ReclaimRow {
                 icon: IconType::FileX02,

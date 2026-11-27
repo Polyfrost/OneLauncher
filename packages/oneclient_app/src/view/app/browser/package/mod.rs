@@ -15,8 +15,10 @@ use crate::hooks::{
     use_installs_snapshot, use_link_confirm, use_package_meta_batch, use_package_project,
     use_package_versions_when, version_list, versions_total,
 };
-use crate::hooks::{query_error, query_is_loading, settled_or_loading, use_cluster, use_clusters};
-use crate::i18n::tf;
+use crate::hooks::{
+    query_error, query_is_busy, query_is_loading, settled_or_loading, use_cluster, use_clusters,
+};
+use crate::i18n::{t, tf};
 use crate::install::IncompatibleMode;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
@@ -382,6 +384,33 @@ impl Component for BrowserPackage {
             preferred_version(latest_source, content_type)
         }
         .cloned();
+        let latest_query = if is_modpack {
+            all_versions_query
+        } else {
+            newest_query
+        };
+        let latest = match ListStatus::of(
+            latest_version.is_some(),
+            query_is_busy(&latest_query),
+            query_error(&latest_query).is_some(),
+        ) {
+            ListStatus::Ready => Ok(latest_version),
+            ListStatus::Loading => Err(rect()
+                .width(Size::fill())
+                .center()
+                .padding(Gaps::new_all(12.))
+                .child(
+                    label()
+                        .text(t("oneclient.browser.package.versions.loading"))
+                        .font_size(text_size(13.))
+                        .color(colors::fg_secondary()),
+                )
+                .into_element()),
+            ListStatus::Failed => Err(failed_body(
+                "oneclient.browser.package.versions.load_failed",
+                move |()| latest_query.invalidate(),
+            )),
+        };
         let loaders = if is_modpack && !add_to_cluster {
             loader_options(&all_versions)
         } else {
@@ -469,13 +498,7 @@ impl Component for BrowserPackage {
                     .auto_hide_scrollbar()
                     .padding(Gaps::new(0., SIDEBAR_GUTTER, 0., 0.))
                     .children([sidebar(
-                        project,
-                        latest_version,
-                        installer,
-                        confirm,
-                        installed,
-                        installing,
-                        waiting,
+                        project, latest, installer, confirm, installed, installing, waiting,
                     )
                     .into_element()]),
             )

@@ -114,26 +114,27 @@ fn sibling_id(id: &str) -> Option<String> {
     }
 }
 
-/// Pairs by id stem first, so a custom family that happens to share a built-in's name (a theme
-/// called "Polyfrost") still pairs with its own variant. Falls back to the family name, keeping
-/// built-ins and custom files apart.
-fn counterpart_in<'a>(themes: impl Iterator<Item = &'a Theme> + Clone, id: &str) -> Option<String> {
+/// The other variant of the same family: opposite light/dark, the same family name and the same
+/// origin (built-in or a custom file). Among several, the one whose id shares the stem wins, so a
+/// custom family named like a built-in ("Polyfrost") pairs with its own file. A matching file
+/// name alone never pairs two families, since deleting a family removes both variants.
+fn counterpart_in<'a>(
+    mut themes: impl Iterator<Item = &'a Theme> + Clone,
+    id: &str,
+) -> Option<String> {
     let theme = themes.clone().find(|theme| theme.id == id)?;
-    let opposite = |other: &&Theme| other.colors.light != theme.colors.light;
-    if let Some(sibling) = sibling_id(id)
-        && let Some(other) = themes
-            .clone()
-            .filter(opposite)
-            .find(|other| other.id == sibling)
-    {
-        return Some(other.id.clone());
-    }
     let family = family_name(&theme.name);
+    let same_family = |other: &&Theme| {
+        other.colors.light != theme.colors.light
+            && other.is_builtin() == theme.is_builtin()
+            && family_name(&other.name) == family
+    };
+    let sibling = sibling_id(id);
     themes
-        .filter(opposite)
-        .find(|other| {
-            other.is_builtin() == theme.is_builtin() && family_name(&other.name) == family
-        })
+        .clone()
+        .filter(same_family)
+        .find(|other| sibling.as_deref() == Some(other.id.as_str()))
+        .or_else(|| themes.find(same_family))
         .map(|other| other.id.clone())
 }
 
@@ -702,6 +703,23 @@ mod tests {
         let pair = |id| counterpart_in(themes.iter(), id);
         assert_eq!(pair("polyfrost").as_deref(), Some("polyfrost-2"));
         assert_eq!(pair("dark").as_deref(), Some("light"));
+    }
+
+    #[test]
+    fn matching_file_names_never_pair_two_families() {
+        // reef-dark.json holds family Reef, reef-light.json holds family Amber
+        THEMES.with_borrow_mut(|themes| {
+            themes.push(Rc::new(custom("test-cove-dark", "Reef Dark", "dark")));
+            themes.push(Rc::new(custom("test-cove-light", "Amber Light", "light")));
+        });
+        assert_eq!(counterpart("test-cove-dark"), None);
+        assert_eq!(counterpart("test-cove-light"), None);
+        // So deleting Reef removes only Reef's own file
+        let doomed: Vec<_> = family_variants("test-cove-dark")
+            .iter()
+            .map(|theme| theme.id.clone())
+            .collect();
+        assert_eq!(doomed, ["test-cove-dark"]);
     }
 
     #[test]

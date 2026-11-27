@@ -103,20 +103,22 @@ impl Component for AddRow {
             .horizontal()
             .width(Size::fill())
             .spacing(10.)
-            .child(
+            .child(super::inline_focus_anchor(
+                "java.install",
                 Button::new()
                     .primary()
                     .on_press(move |_| show_manager.set(true))
                     .child(Icon::new(IconType::Download01).size(14.))
                     .text(t("oneclient.settings.java.install_manager")),
-            )
-            .child(
+            ))
+            .child(super::inline_focus_anchor(
+                "java.add_folder",
                 Button::new()
                     .secondary()
                     .on_press(pick)
                     .child(Icon::new(IconType::Folder).size(14.))
                     .text(t("oneclient.settings.java.add_from_folder")),
-            )
+            ))
             .child(
                 Button::new()
                     .secondary()

@@ -29,6 +29,39 @@ const CORNERS: [(&str, f32); 4] = [
     ("oneclient.settings.theme_editor.corners.round", 1.5),
 ];
 
+/// The family as the editor opened it
+#[derive(Clone)]
+struct EditorSeed {
+    dark: Theme,
+    light: Theme,
+    family: String,
+    radius: f32,
+    pixel_icons: bool,
+}
+
+impl EditorSeed {
+    fn from_variants(variants: &[std::rc::Rc<Theme>]) -> Self {
+        let dark = (*variants[0]).clone();
+        let light = (*variants[variants.len() - 1]).clone();
+        Self {
+            family: family_name(&dark.name),
+            radius: dark.radius_scale,
+            pixel_icons: dark.pixel_icons,
+            dark,
+            light,
+        }
+    }
+
+    /// Whether the drafts hold anything Discard would throw away
+    fn differs(&self, dark: &Theme, light: &Theme, family: &str, radius: f32, pixel: bool) -> bool {
+        *dark != self.dark
+            || *light != self.light
+            || family != self.family
+            || radius != self.radius
+            || pixel != self.pixel_icons
+    }
+}
+
 /// Back to Appearance, where the editor is opened from, without stacking another copy of it
 fn leave_editor() {
     let router = RouterContext::get();
@@ -61,14 +94,16 @@ impl Component for SettingsThemeEditor {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
         let variants = use_hook(|| family_variants(&self.id));
-        let dark = use_state(|| (*variants[0]).clone());
-        let light = use_state(|| (*variants[variants.len() - 1]).clone());
+        // What the drafts are seeded from, so Discard only asks when something really changed
+        let seed = use_hook(|| EditorSeed::from_variants(&variants));
+        let dark = use_state(|| seed.dark.clone());
+        let light = use_state(|| seed.light.clone());
         let ids = [dark.peek().id.clone(), light.peek().id.clone()];
         let editing_light = use_state(|| colors::active_theme().colors.light);
         let draft = if *editing_light.read() { light } else { dark };
-        let name = use_state(|| family_name(&dark.peek().name));
-        let radius = use_state(|| dark.peek().radius_scale);
-        let pixel_icons = use_state(|| dark.peek().pixel_icons);
+        let name = use_state(|| seed.family.clone());
+        let radius = use_state(|| seed.radius);
+        let pixel_icons = use_state(|| seed.pixel_icons);
 
         // Dark and Light are added per variant, so they are dropped from the typed name
         let family = family_name(&name.read());
@@ -86,9 +121,13 @@ impl Component for SettingsThemeEditor {
             !family.is_empty() && family_taken(&family, &[&ids[0], &ids[1]]),
         );
         let valid = problem.is_none();
-        // The family as it opened, to tell whether Discard would drop anything
-        let original = use_hook(|| both.clone());
-        let dirty = both != original;
+        let dirty = seed.differs(
+            &dark.read(),
+            &light.read(),
+            &family,
+            *radius.read(),
+            *pixel_icons.read(),
+        );
         let mut confirming_discard = use_state(|| false);
 
         let settled = use_debounced(edited.clone(), Duration::from_millis(120));
@@ -438,6 +477,20 @@ mod tests {
             (0x12, 0x34, 0x56, 128)
         );
         assert_eq!(keep_alpha(picked, 255).a(), 255);
+    }
+
+    #[test]
+    fn discard_only_asks_once_something_changed() {
+        let dark = crate::theme::resolve_theme("dark");
+        let light = crate::theme::resolve_theme("light");
+        let seed = EditorSeed::from_variants(&[dark.clone(), light.clone()]);
+        let family = seed.family.clone();
+        assert!(!seed.differs(&dark, &light, &family, seed.radius, seed.pixel_icons));
+        assert!(seed.differs(&dark, &light, "Reef", seed.radius, seed.pixel_icons));
+        assert!(seed.differs(&dark, &light, &family, 0.5, seed.pixel_icons));
+        let mut tinted = (*dark).clone();
+        tinted.colors.card = Hex(Color::from_rgb(1, 2, 3));
+        assert!(seed.differs(&tinted, &light, &family, seed.radius, seed.pixel_icons));
     }
 
     #[test]

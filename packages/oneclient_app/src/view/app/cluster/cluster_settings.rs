@@ -1485,25 +1485,28 @@ impl Component for BrowserUpdateModeRow {
 
         let options: Vec<String> = PackageUpdateMode::ALL
             .iter()
-            .map(|mode| mode.label().to_string())
+            .map(|mode| crate::view::app::settings::update_mode_label(*mode).to_string())
             .collect();
 
         let control = {
             let dispatch = dispatch.clone();
-            Dropdown::new(resolved.label(), options)
-                .width(settings_control_width())
-                .height(Size::px(34.))
-                .on_select(move |idx: usize| {
-                    if let Some(mode) = PackageUpdateMode::ALL.get(idx).copied() {
-                        dispatch.update_cluster_profile(
-                            cluster_id,
-                            ProfileUpdate {
-                                browser_update_mode: Patch::Set(mode),
-                                ..Default::default()
-                            },
-                        );
-                    }
-                })
+            Dropdown::new(
+                crate::view::app::settings::update_mode_label(resolved),
+                options,
+            )
+            .width(settings_control_width())
+            .height(Size::px(34.))
+            .on_select(move |idx: usize| {
+                if let Some(mode) = PackageUpdateMode::ALL.get(idx).copied() {
+                    dispatch.update_cluster_profile(
+                        cluster_id,
+                        ProfileUpdate {
+                            browser_update_mode: Patch::Set(mode),
+                            ..Default::default()
+                        },
+                    );
+                }
+            })
         };
 
         let on_reset: EventHandler<()> = (move |()| {

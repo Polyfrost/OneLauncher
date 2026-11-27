@@ -281,7 +281,7 @@ impl InboxEntry {
             .any(|action| matches!(action.kind, NotificationActionKind::UndoInstall(_)))
     }
 
-    fn offers_undo(&self, undo: &crate::install::InstallUndo) -> bool {
+    pub(crate) fn offers_undo(&self, undo: &crate::install::InstallUndo) -> bool {
         self.actions.iter().any(
             |action| matches!(&action.kind, NotificationActionKind::UndoInstall(u) if u == undo),
         )
@@ -918,9 +918,25 @@ impl NotificationState {
         inbox: &mut Vec<InboxEntry>,
         undo: &crate::install::InstallUndo,
     ) {
+        self.consume_undos_where(inbox, |candidate| candidate == undo);
+    }
+
+    pub fn consume_cluster_undos(&mut self, inbox: &mut Vec<InboxEntry>, cluster_id: i64) {
+        self.consume_undos_where(inbox, |undo| undo.cluster_id == cluster_id);
+    }
+
+    fn consume_undos_where(
+        &mut self,
+        inbox: &mut Vec<InboxEntry>,
+        matches_undo: impl Fn(&crate::install::InstallUndo) -> bool,
+    ) {
         let ids: Vec<u64> = inbox
             .iter()
-            .filter(|entry| entry.offers_undo(undo))
+            .filter(|entry| {
+                entry.actions.iter().any(
+                    |action| matches!(&action.kind, NotificationActionKind::UndoInstall(undo) if matches_undo(undo)),
+                )
+            })
             .map(|entry| entry.id)
             .collect();
         for id in ids {
@@ -1748,6 +1764,29 @@ mod package_update_tests {
             inbox.iter().all(|e| e.id != id),
             "a toast-only notice must not linger in the inbox"
         );
+    }
+
+    #[test]
+    fn deleting_an_instance_consumes_only_its_undos() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+        let deleted = crate::install::InstallUndo::for_test(3);
+        let other = crate::install::InstallUndo::for_test(4);
+        let original = state.push_custom(&mut inbox, undo_spec(&deleted));
+        let retry = state.push_custom(&mut inbox, undo_spec(&deleted));
+        let kept = state.push_custom(&mut inbox, undo_spec(&other));
+        let regular = state.push_custom(&mut inbox, spec("Regular notice"));
+
+        state.consume_cluster_undos(&mut inbox, 3);
+
+        for id in [original, retry] {
+            assert!(!inbox.iter().any(|entry| entry.id == id));
+            assert!(!state.active_toast_entry_ids().contains(&id));
+        }
+        for id in [kept, regular] {
+            assert!(inbox.iter().any(|entry| entry.id == id));
+            assert!(state.active_toast_entry_ids().contains(&id));
+        }
     }
 }
 

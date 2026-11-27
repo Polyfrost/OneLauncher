@@ -76,9 +76,10 @@ impl Component for SettingsAppearance {
         // Same pickers as the onboarding Appearance step. The style cards add columns as the page
         // widens, so they keep their proportions
         settings_page()
-            .child(first_section_header(t(
-                "oneclient.settings.appearance.mode",
-            )))
+            .child(super::focus_anchor(
+                "appearance.theme",
+                first_section_header(t("oneclient.settings.appearance.mode")),
+            ))
             .child(theme_mode_picker(&settings.theme, &dispatch))
             .child(section_header_with_action(
                 t("oneclient.settings.appearance.style"),

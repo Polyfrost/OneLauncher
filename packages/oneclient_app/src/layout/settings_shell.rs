@@ -446,7 +446,7 @@ fn sidebar(
     let viewport = shown.map_or_else(Size::fill, Size::px);
 
     // Scroll the rail to the active row, which can start under the fade or below it
-    let rail_scroll = use_scroll_controller(ScrollConfig::default);
+    let rail_scroll = workspace_rail::use_rail_scroll();
     let active_row = groups.iter().enumerate().find_map(|(group, entry)| {
         let index = entry.tabs.iter().position(|tab| *tab == active)?;
         let top = workspace_rail::headed_row_top(
@@ -462,7 +462,7 @@ fn sidebar(
         Some((first - workspace_rail::heading_height(), top))
     });
     workspace_rail::use_reveal_active(
-        rail_scroll,
+        &rail_scroll,
         route,
         active_row.map(|(section, top)| (section, top, layout.row_height)),
         shown.unwrap_or(0.),
@@ -530,7 +530,7 @@ fn sidebar(
                 .child(
                     workspace_rail::scroll(lens)
                         .height(viewport)
-                        .child(workspace_rail::navigation(layout, rail_scroll).child(nav)),
+                        .child(workspace_rail::navigation(layout, &rail_scroll).child(nav)),
                 ),
         )
         .child(

@@ -850,20 +850,25 @@ pub(crate) fn confirm_dialog(
     )
 }
 
+/// A small dialog. Escape and a press outside it both call `on_close`; a caller with something
+/// in flight keeps it open by ignoring that call while it is pending.
 pub(crate) fn dialog(
     title: String,
     body: String,
     control: Option<Element>,
-    mut on_close: impl FnMut() + 'static,
+    on_close: impl FnMut() + 'static,
     buttons: [Element; 2],
 ) -> Element {
+    let on_close = std::rc::Rc::new(std::cell::RefCell::new(on_close));
+    let outside = on_close.clone();
     OverlayPopup::new()
-        .on_close(move |_| on_close())
+        .on_close(move |_| (on_close.borrow_mut())())
         .child(
             rect()
                 .width(Size::window_percent(100.))
                 .height(Size::window_percent(100.))
                 .center()
+                .on_press(move |_| (outside.borrow_mut())())
                 .child(
                     crate::theme::glass::popup_panel(rect(), ROW_RADIUS, colors::card())
                         .vertical()
@@ -872,6 +877,7 @@ pub(crate) fn dialog(
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
                         .border(border_all_color(1., colors::component_border()))
+                        .on_all_press(|event: Event<PressEventData>| event.stop_propagation())
                         .child(
                             label()
                                 .text(title)

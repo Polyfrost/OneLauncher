@@ -1827,6 +1827,15 @@ impl Actions {
         install: crate::install::PackageInstall,
         world: Option<String>,
     ) {
+        let undo = if install.undo.is_some()
+            && matches!(
+                oneclient_db::dao::cluster::get_by_id(&state.services.db, cluster_id).await,
+                Ok(None)
+            ) {
+            None
+        } else {
+            install.undo.as_ref()
+        };
         // Replaces the download's progress notification in place rather
         // than arriving as a second one
         let spec = match &install.result {
@@ -1841,9 +1850,8 @@ impl Actions {
                 level: Level::Info,
                 icon: Some(IconType::Download01),
                 progress: None,
-                actions: install
-                    .undo
-                    .iter()
+                actions: undo
+                    .into_iter()
                     .map(|undo| NotificationAction {
                         label: t("oneclient.actions.undo.label").to_string(),
                         kind: crate::notifications::NotificationActionKind::UndoInstall(
@@ -1853,7 +1861,7 @@ impl Actions {
                     .collect(),
                 // An install that can be undone stays in Notifications with its Undo after the
                 // toast goes, until the undo is used
-                toast_only: install.undo.is_none(),
+                toast_only: undo.is_none(),
             },
             Err(err) => NotificationSpec {
                 title: t("oneclient.actions.install_failed").to_string(),
@@ -1922,10 +1930,7 @@ impl Actions {
 
         spawn_global(async move {
             let finish = |actions: &Actions| {
-                let mut channel = actions
-                    .station
-                    .clone()
-                    .write_channel(AppChannel::Installs);
+                let mut channel = actions.station.clone().write_channel(AppChannel::Installs);
                 for package in &undo.packages {
                     channel
                         .installs
@@ -1955,16 +1960,28 @@ impl Actions {
 
     fn notify_undo(&self, report: &crate::install::UndoReport, undo: crate::install::InstallUndo) {
         if let Some(err) = &report.error {
-            undo.release();
-            self.notify(t("oneclient.actions.undo.failed"))
-                .body(err.clone())
-                .error()
-                .toast_only()
-                .action(NotificationAction {
-                    label: t("oneclient.actions.undo.label").to_string(),
-                    kind: crate::notifications::NotificationActionKind::UndoInstall(undo),
-                })
-                .send();
+            self.with_engine(|app| {
+                // The instance or notification may have been removed while Undo was running.
+                if !app.inbox.iter().any(|entry| entry.offers_undo(&undo)) {
+                    return;
+                }
+                undo.release();
+                app.notifications.push_custom(
+                    &mut app.inbox,
+                    NotificationSpec {
+                        title: t("oneclient.actions.undo.failed").to_string(),
+                        body: err.clone(),
+                        level: Level::Error,
+                        icon: None,
+                        progress: None,
+                        actions: vec![NotificationAction {
+                            label: t("oneclient.actions.undo.label").to_string(),
+                            kind: crate::notifications::NotificationActionKind::UndoInstall(undo),
+                        }],
+                        toast_only: true,
+                    },
+                );
+            });
             return;
         }
 
@@ -2004,6 +2021,13 @@ impl Actions {
             .icon(IconType::Trash01)
             .toast_only()
             .send();
+    }
+
+    pub(super) fn consume_cluster_undos(&self, cluster_id: ClusterId) {
+        self.with_engine(|app| {
+            app.notifications
+                .consume_cluster_undos(&mut app.inbox, cluster_id);
+        });
     }
 
     /// Shares the installs channel with [`Self::install_package`] so every row's

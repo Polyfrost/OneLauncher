@@ -402,9 +402,29 @@ pub async fn undo_install(state: &LauncherState, undo: &InstallUndo) -> UndoRepo
     };
     if let Err(err) = remove_install_group(undo, &content, &mut report).await {
         tracing::warn!(cluster_id = undo.cluster_id, %err, "failed to undo a package install");
-        report.error = Some(err.to_string());
+        if !undo_source_missing(&err) {
+            report.error = Some(err.to_string());
+        }
     }
     report
+}
+
+fn undo_source_missing(err: &anyhow::Error) -> bool {
+    use oneclient_content::{ContentError, packages::PackageError};
+    use std::io::ErrorKind;
+
+    match err.downcast_ref::<ContentError>() {
+        Some(ContentError::Package(
+            PackageError::ClusterNotFound(_) | PackageError::ArtifactMissing(_),
+        )) => true,
+        Some(
+            ContentError::Io(
+                polyio::IOError::IOError(source) | polyio::IOError::PathIOError { source, .. },
+            )
+            | ContentError::StdIo(source),
+        ) => source.kind() == ErrorKind::NotFound,
+        _ => false,
+    }
 }
 
 async fn remove_install_group(
@@ -970,6 +990,25 @@ async fn mark_new(cluster_id: i64, hash: &str, state: &LauncherState) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn undo_treats_missing_sources_as_spent_and_keeps_other_errors_retryable() {
+        use oneclient_content::{ContentError, packages::PackageError};
+        use std::io::{Error, ErrorKind};
+
+        for error in [
+            ContentError::from(PackageError::ClusterNotFound(1)),
+            ContentError::from(PackageError::ArtifactMissing("hash".into())),
+            ContentError::from(polyio::IOError::PathIOError {
+                source: Error::from(ErrorKind::NotFound),
+                path: "mod.jar".into(),
+            }),
+        ] {
+            assert!(undo_source_missing(&error.into()));
+        }
+        let error = ContentError::from(Error::from(ErrorKind::PermissionDenied));
+        assert!(!undo_source_missing(&error.into()));
+    }
     use oneclient_content::packages::ProviderId;
 
     #[test]

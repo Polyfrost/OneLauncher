@@ -805,7 +805,13 @@ impl MutationCapability for ClusterMutation {
                         .map_err(|err| oneclient_content::ContentError::InvalidData {
                             reason: err.to_string(),
                         });
-                    if outcome.is_ok() {
+                    if outcome.is_ok()
+                        || matches!(
+                            oneclient_db::dao::cluster::get_by_id(&services.db, *cluster_id).await,
+                            Ok(None)
+                        )
+                    {
+                        crate::hooks::use_dispatch().consume_cluster_undos(*cluster_id);
                         crate::hooks::forget_deleted_cluster(&state, *cluster_id).await;
                         services
                             .events

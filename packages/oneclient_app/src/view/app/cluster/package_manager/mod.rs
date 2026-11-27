@@ -528,7 +528,7 @@ fn package_list_text(
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum Tab {
     All,
     Category(String),
@@ -566,11 +566,9 @@ fn query_score(p: &PackageEntry, query: &SearchQuery) -> Option<MatchScore> {
     query.best_score([p.name.as_str(), p.file_name.as_str()])
 }
 
-fn hidden_filter(stored: Option<&str>, query: &SearchQuery) -> HiddenFilter {
+fn search_hidden_filter(saved: HiddenFilter, query: &SearchQuery) -> HiddenFilter {
     if query.is_empty() {
-        stored
-            .and_then(HiddenFilter::from_key)
-            .unwrap_or(HiddenFilter::Hide)
+        saved
     } else {
         HiddenFilter::Show
     }
@@ -580,14 +578,14 @@ fn hidden_filter(stored: Option<&str>, query: &SearchQuery) -> HiddenFilter {
 /// `Tab::All` searches the whole cluster
 fn visible_packages(
     items: &[PackageEntry],
-    tab: Option<&Tab>,
+    tab: &Tab,
     query: &SearchQuery,
     show: EnabledFilter,
     hidden: HiddenFilter,
 ) -> Vec<PackageEntry> {
     items
         .iter()
-        .filter(|p| tab.is_none_or(|t| t.matches(p)) && query_score(p, query).is_some())
+        .filter(|p| tab.matches(p) && query_score(p, query).is_some())
         .filter(|p| show.keep(p) && hidden.keep(p))
         .cloned()
         .collect()
@@ -634,6 +632,12 @@ fn build_tabs(categories: &[String], items: &[PackageEntry], hidden: HiddenFilte
         tabs.push(Tab::Deleted);
     }
     tabs
+}
+
+fn active_tab<'a>(tabs: &'a [Tab], selected: &Tab) -> &'a Tab {
+    tabs.iter()
+        .find(|tab| *tab == selected)
+        .unwrap_or(&Tab::All)
 }
 
 /// Records the dependency lists of anything installed before the launcher kept
@@ -753,7 +757,7 @@ impl Component for PackageManager {
         let shares_content = cluster
             .as_ref()
             .map(|cluster| cluster.shares_content(content_type));
-        let active = use_state(|| 0usize);
+        let active = use_state(|| Tab::All);
 
         let search = use_state(String::new);
         let advanced_open = use_state(|| false);
@@ -781,13 +785,12 @@ impl Component for PackageManager {
             .get(EnabledFilter::STORAGE_KEY)
             .and_then(|key| EnabledFilter::from_key(key))
             .unwrap_or(EnabledFilter::All);
-        let hidden = hidden_filter(
-            filters
-                .read()
-                .get(HiddenFilter::STORAGE_KEY)
-                .map(String::as_str),
-            &query,
-        );
+        let saved_hidden = filters
+            .read()
+            .get(HiddenFilter::STORAGE_KEY)
+            .and_then(|key| HiddenFilter::from_key(key))
+            .unwrap_or(HiddenFilter::Hide);
+        let hidden = search_hidden_filter(saved_hidden, &query);
         let card_layout = CardLayout::from(*layout.read());
 
         let bisecting = self.bisecting;
@@ -798,9 +801,8 @@ impl Component for PackageManager {
             .filter_map(|package| package.essential.map(|essential| essential.name))
             .collect();
 
-        let tabs = build_tabs(&self.categories, &items, hidden);
-        let active_idx = (*active.read()).min(tabs.len().saturating_sub(1));
-        let tab_filter = tabs.get(active_idx);
+        let tabs = build_tabs(&self.categories, &items, saved_hidden);
+        let tab_filter = active_tab(&tabs, &active.read());
 
         let mut filtered = visible_packages(&items, tab_filter, &query, show, hidden);
         sort_mode.sort(&mut filtered);
@@ -812,16 +814,16 @@ impl Component for PackageManager {
         let content_kind = if !query.is_empty() {
             ContentKind::NoMatches {
                 scope: match tab_filter {
-                    Some(Tab::All) | None => None,
-                    Some(tab) => Some(tab.label()),
+                    Tab::All => None,
+                    tab => Some(tab.label()),
                 },
             }
         } else if show != EnabledFilter::All {
             ContentKind::Filtered(filters)
         } else {
             match tab_filter {
-                Some(Tab::Browser) => ContentKind::Browser,
-                Some(Tab::Local) => ContentKind::Local,
+                Tab::Browser => ContentKind::Browser,
+                Tab::Local => ContentKind::Local,
                 _ => ContentKind::Other,
             }
         };
@@ -1041,14 +1043,14 @@ impl Component for PackageManager {
             .height(Size::fill())
             .child(toolbar_bar(
                 &tabs,
-                active_idx,
+                tab_filter,
                 active,
                 search,
                 sort,
                 sort_mode,
                 filters,
                 show,
-                hidden,
+                saved_hidden,
                 layout,
                 cluster_id,
                 package_type,
@@ -1144,15 +1146,50 @@ mod tests {
             assert_eq!(
                 visible_packages(
                     &rows,
-                    Some(&Tab::All),
+                    &Tab::All,
                     &query,
                     EnabledFilter::All,
-                    hidden_filter(Some("hide"), &query),
+                    search_hidden_filter(HiddenFilter::Hide, &query),
                 )
                 .len(),
                 count,
             );
         }
+    }
+
+    #[test]
+    fn search_keeps_the_online_scope_with_a_hidden_only_category() {
+        let rows = bundle_packages(
+            Vec::new(),
+            &[bundle(
+                "Hidden",
+                true,
+                vec![file("hidden-library", true, true)],
+            )],
+            &HashMap::new(),
+            &PackageMetaMap::new(),
+            &HashSet::new(),
+            ContentType::Mod,
+        );
+        let saved_hidden = HiddenFilter::Hide;
+        let selected = Tab::Browser;
+        let tabs = build_tabs(&[], &rows, saved_hidden);
+        assert_eq!(tabs, [Tab::All, Tab::Browser, Tab::Local]);
+
+        let query = SearchQuery::new("hidden-library");
+        let hidden = search_hidden_filter(saved_hidden, &query);
+        assert!(hidden.keep(&rows[0]));
+        let scope = active_tab(&tabs, &selected);
+        assert_eq!(scope, &Tab::Browser);
+        assert!(visible_packages(&rows, scope, &query, EnabledFilter::All, hidden).is_empty());
+
+        let tabs_with_category = build_tabs(&[], &rows, HiddenFilter::Show);
+        assert_eq!(tabs_with_category[1], Tab::Category("Hidden".into()));
+        assert_eq!(active_tab(&tabs_with_category, &selected), &Tab::Browser);
+        assert_eq!(
+            active_tab(&tabs, &Tab::Category("Hidden".into())),
+            &Tab::All
+        );
     }
 
     #[test]

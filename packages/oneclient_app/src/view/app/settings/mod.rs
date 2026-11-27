@@ -31,7 +31,7 @@ pub use theme_editor::SettingsThemeEditor;
 pub(crate) use launcher::take_terms_review_from_settings;
 
 use crate::{
-    components::{Button, Icon, IconType, OverlayPopup, ScrollArea, ScrollAreaCtx},
+    components::{Button, Icon, IconType, ScrollArea, ScrollAreaCtx},
     i18n::t,
     theme::{colors, rounded, rounded_px, text_size},
     ui::border_all_color,
@@ -123,6 +123,79 @@ fn take_pending_setting_focus(title: &str, description: &str) -> bool {
     })
 }
 
+/// Whether a search result just opened the target registered as `id` (a section or an action
+/// rather than a settings row). Consumed like `take_pending_setting_focus`.
+fn take_pending_focus_id(id: &str) -> bool {
+    PENDING_SETTING_FOCUS.with(|cell| {
+        let hit = cell.borrow().is_some_and(|pending| pending.id == id);
+        if hit {
+            *cell.borrow_mut() = None;
+        }
+        hit
+    })
+}
+
+/// A search target that isn't a settings row, such as Storage's Free up space section or the
+/// Java install actions. `id` is the search entry's id. When its result is picked the page
+/// scrolls here and outlines it for a moment, as it does for rows.
+pub(crate) fn focus_anchor(id: &'static str, child: impl IntoElement) -> Element {
+    FocusAnchor {
+        id,
+        inline: false,
+        child: child.into_element(),
+    }
+    .into_element()
+}
+
+/// `focus_anchor` for a button in a row of actions, sized to the button
+pub(crate) fn inline_focus_anchor(id: &'static str, child: impl IntoElement) -> Element {
+    FocusAnchor {
+        id,
+        inline: true,
+        child: child.into_element(),
+    }
+    .into_element()
+}
+
+#[derive(PartialEq)]
+struct FocusAnchor {
+    id: &'static str,
+    inline: bool,
+    child: Element,
+}
+
+impl Component for FocusAnchor {
+    fn render(&self) -> impl IntoElement {
+        let flash = use_state(|| false);
+        let id = self.id;
+        rect()
+            .width(if self.inline {
+                Size::auto()
+            } else {
+                Size::fill()
+            })
+            .corner_radius(rounded(12.))
+            .on_sized(move |event: Event<SizedEventData>| {
+                if take_pending_focus_id(id) {
+                    scroll_settings_to(event.area.min_y());
+                    flash_for(flash);
+                }
+            })
+            .maybe(*flash.read(), |el| {
+                el.border(border_all_color(2., colors::brand()).alignment(BorderAlignment::Outer))
+            })
+            .child(self.child.clone())
+    }
+}
+
+fn flash_for(mut flash: State<bool>) {
+    flash.set(true);
+    spawn(async move {
+        tokio::time::sleep(FOCUS_FLASH).await;
+        flash.set(false);
+    });
+}
+
 /// Space kept above a row the settings page scrolls to
 const FOCUS_MARGIN: f32 = 12.;
 
@@ -212,6 +285,16 @@ pub(crate) fn readable_secondary() -> Color {
     let primary = colors::fg_primary();
     let on_card = readable_on(secondary, primary, colors::card());
     readable_on(on_card, primary, colors::page_elevated())
+}
+
+/// The translated name of a package update mode, for the global and per-instance dropdowns
+pub(crate) fn update_mode_label(mode: oneclient_common::PackageUpdateMode) -> &'static str {
+    use oneclient_common::PackageUpdateMode::{Automatic, Prompt, Skip};
+    match mode {
+        Prompt => t("oneclient.settings.update_mode.prompt"),
+        Automatic => t("oneclient.settings.update_mode.automatic"),
+        Skip => t("oneclient.settings.update_mode.skip"),
+    }
 }
 
 /// The fade over the cut-off row of a settings page or rail that scrolls
@@ -334,8 +417,9 @@ pub(crate) fn retry_button(on_retry: EventHandler<()>) -> Element {
         .into_element()
 }
 
-/// A small confirmation dialog for settings actions that can't be undone. Pressing outside it
-/// or Escape cancels.
+/// A small confirmation dialog for settings actions that can't be undone. The same dialog as the
+/// instance pages' confirmations (`cluster::dialog`), with this action's own button. Pressing
+/// outside it or Escape cancels.
 pub(crate) fn confirm_dialog(
     title: impl Into<String>,
     body: impl Into<String>,
@@ -349,62 +433,24 @@ pub(crate) fn confirm_dialog(
     } else {
         Button::new().primary()
     };
-    let (outside, cancel) = (on_cancel.clone(), on_cancel.clone());
-    OverlayPopup::new()
-        .on_close(move |()| on_cancel.call(()))
-        .child(
-            rect()
-                .width(Size::window_percent(100.))
-                .height(Size::window_percent(100.))
-                .center()
-                .on_press(move |_| outside.call(()))
-                .child(
-                    rect()
-                        .vertical()
-                        .width(Size::px(420.))
-                        .max_width(Size::window_percent(90.))
-                        .spacing(14.)
-                        .padding(Gaps::new_all(20.))
-                        .corner_radius(rounded(14.))
-                        .background(colors::page_elevated())
-                        .border(border_all_color(1., colors::component_border()))
-                        .on_all_press(|event: Event<PressEventData>| event.stop_propagation())
-                        .child(
-                            label()
-                                .text(title.into())
-                                .font_size(text_size(16.))
-                                .font_weight(FontWeight::SEMI_BOLD)
-                                .color(colors::fg_primary()),
-                        )
-                        .child(
-                            label()
-                                .text(body.into())
-                                .font_size(text_size(12.))
-                                .width(Size::fill())
-                                .max_lines(4)
-                                .color(readable_secondary()),
-                        )
-                        .child(
-                            rect()
-                                .horizontal()
-                                .width(Size::fill())
-                                .main_align(Alignment::End)
-                                .spacing(8.)
-                                .child(
-                                    Button::new()
-                                        .secondary()
-                                        .on_press(move |_| cancel.call(()))
-                                        .text(t("oneclient.common.cancel")),
-                                )
-                                .child(
-                                    confirm_button
-                                        .on_press(move |_| on_confirm.call(()))
-                                        .text(confirm),
-                                ),
-                        ),
-                ),
-        )
-        .into_element()
+    let cancel = on_cancel.clone();
+    crate::view::app::cluster::dialog(
+        title.into(),
+        body.into(),
+        None,
+        move || on_cancel.call(()),
+        [
+            Button::new()
+                .secondary()
+                .on_press(move |_| cancel.call(()))
+                .text(t("oneclient.common.cancel"))
+                .into_element(),
+            confirm_button
+                .on_press(move |_| on_confirm.call(()))
+                .text(confirm)
+                .into_element(),
+        ],
+    )
 }
 
 pub fn settings_row(
@@ -504,7 +550,7 @@ impl Component for SettingsRow {
         let danger = self.tone == RowTone::Danger;
         let description_ink = readable_secondary();
         // A search result that opened this row scrolls to it and outlines it for a moment
-        let mut flash = use_state(|| false);
+        let flash = use_state(|| false);
         let focus_title = self.title;
         let focus_description = self.description.clone();
         let content_opacity = if self.tone == RowTone::Disabled {
@@ -523,11 +569,7 @@ impl Component for SettingsRow {
                 width.set_if_modified(Some(event.area.width()));
                 if take_pending_setting_focus(focus_title, &focus_description) {
                     scroll_settings_to(event.area.min_y());
-                    flash.set(true);
-                    spawn(async move {
-                        tokio::time::sleep(FOCUS_FLASH).await;
-                        flash.set(false);
-                    });
+                    flash_for(flash);
                 }
             })
             .maybe(*flash.read(), |el| {
@@ -719,6 +761,17 @@ mod tests {
         store_pending_focus("y.row", "Discord RPC", "");
         assert!(!take_pending_setting_focus("Other", ""));
         assert!(take_pending_setting_focus("Discord RPC", "Enable it."));
+    }
+
+    #[test]
+    fn a_section_or_action_target_takes_the_focus_by_id() {
+        store_pending_focus("storage.cleanup", "Free up space", "Remove unused files.");
+        assert!(!take_pending_focus_id("storage.usage"));
+        assert!(take_pending_focus_id("storage.cleanup"));
+        assert!(!take_pending_setting_focus(
+            "Free up space",
+            "Remove unused files."
+        ));
     }
 
     #[test]

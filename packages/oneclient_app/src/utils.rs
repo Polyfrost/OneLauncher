@@ -7,7 +7,6 @@ use oneclient_common::{ParsedMcVersion, VersionKey, format_mc_version, parse_mc_
 use oneclient_core::BundleArchive;
 use oneclient_core::clusters::Cluster;
 
-use oneclient_common::MEMORY_HEADROOM_GB;
 pub use oneclient_common::total_ram_mb;
 
 use crate::i18n::{format_placeholders, t, tf};
@@ -217,16 +216,15 @@ pub fn format_res((w, h): (u32, u32)) -> String {
     format!("{w}×{h}")
 }
 
-/// Prevents user from choosing his max amount of ram preset (e.g Someone has 16GB of RAM,
-/// so the max preset is 16GB - 2GB = 14GB)
 const MEMORY_PRESETS_GB: [u32; 11] = [2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64];
 
 pub fn memory_presets_mb() -> Vec<u32> {
     presets_for_total_gb((total_ram_mb() as f32 / 1024.).round() as u32)
 }
 
+/// Presets stop at half the machine's RAM
 fn presets_for_total_gb(total_gb: u32) -> Vec<u32> {
-    let usable_gb = total_gb.saturating_sub(MEMORY_HEADROOM_GB);
+    let usable_gb = total_gb / 2;
     if usable_gb == 0 {
         return vec![1024];
     }
@@ -604,20 +602,18 @@ mod tests {
     }
 
     #[test]
-    fn presets_stop_two_gigabytes_short_of_the_machine() {
-        assert_eq!(
-            presets_for_total_gb(16),
-            vec![2048, 3072, 4096, 6144, 8192, 12288, 14336]
-        );
+    fn presets_stop_at_half_the_machine() {
+        assert_eq!(presets_for_total_gb(16), vec![2048, 3072, 4096, 6144, 8192]);
         assert_eq!(
             presets_for_total_gb(32),
-            vec![2048, 3072, 4096, 6144, 8192, 12288, 16384, 24576, 30720]
+            vec![2048, 3072, 4096, 6144, 8192, 12288, 16384]
         );
+        assert_eq!(presets_for_total_gb(6), vec![2048, 3072]);
     }
 
     #[test]
     fn a_ceiling_landing_on_a_round_step_is_not_repeated() {
-        assert_eq!(presets_for_total_gb(8), vec![2048, 3072, 4096, 6144]);
+        assert_eq!(presets_for_total_gb(8), vec![2048, 3072, 4096]);
     }
 
     #[test]

@@ -333,6 +333,7 @@ async fn relink_cluster_files(
 
             let row = match PackageStore::import_local_file(
                 &file,
+                None,
                 content_type,
                 cluster_id,
                 &content,

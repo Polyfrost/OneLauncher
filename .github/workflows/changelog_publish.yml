@@ -31,5 +31,18 @@ jobs:
               }]' > changelog.json
           jq -r '.[].version' changelog.json
 
+      # GitHub's "latest" pointer lags a few seconds behind a fresh publish, so
+      # on publish upload to the triggering release instead of asking for latest.
       - name: Upload to latest release
-        run: gh release upload "$(gh release view --json tagName -q .tagName)" changelog.json --clobber
+        env:
+          EVENT_ACTION: ${{ github.event.action }}
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          EVENT_PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          if [ "$EVENT_ACTION" = published ] && [ "$EVENT_PRERELEASE" != true ]; then
+            TAG="$EVENT_TAG"
+          else
+            TAG="$(gh release view --json tagName -q .tagName)"
+          fi
+          echo "Uploading to $TAG"
+          gh release upload "$TAG" changelog.json --clobber

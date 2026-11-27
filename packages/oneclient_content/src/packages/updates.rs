@@ -68,6 +68,7 @@ pub struct BrowserUpdateCheck {
     /// Unreachable this run
     /// their cached rows are preserved not cleared
     pub unchecked: Vec<String>,
+    pub managed: Vec<String>,
 }
 
 impl BrowserUpdateCheck {
@@ -93,6 +94,18 @@ pub(crate) struct Candidate {
     pub(crate) enabled: bool,
 }
 
+fn bundle_owned(
+    info: &LinkedArtifactInfo,
+    bundle_hashes: &HashSet<String>,
+    bundle_projects: &HashSet<String>,
+) -> bool {
+    bundle_hashes.contains(&info.hash)
+        || info
+            .project_id
+            .as_ref()
+            .is_some_and(|id| bundle_projects.contains(id))
+}
+
 /// A missing bundle tracking row is the marker for "the user added this themselves"
 pub(crate) fn browser_installed_any(
     linked: &[LinkedArtifactInfo],
@@ -101,12 +114,7 @@ pub(crate) fn browser_installed_any(
 ) -> Vec<Candidate> {
     linked
         .iter()
-        .filter(|info| !bundle_hashes.contains(&info.hash))
-        .filter(|info| {
-            info.project_id
-                .as_ref()
-                .is_none_or(|id| !bundle_projects.contains(id))
-        })
+        .filter(|info| !bundle_owned(info, bundle_hashes, bundle_projects))
         .filter_map(|info| {
             let provider = info.provider?;
             if provider == ProviderId::Local {
@@ -162,7 +170,15 @@ async fn check_updates(
         cluster_id,
         ..Default::default()
     };
-    let candidates = pick_candidates(installed, only, &mut check.unchecked);
+    if let Some(only) = only {
+        check.managed = linked
+            .iter()
+            .filter(|info| only.contains(&info.hash))
+            .filter(|info| bundle_owned(info, &bundle_hashes, &bundle_projects))
+            .map(|info| info.hash.clone())
+            .collect();
+    }
+    let candidates = pick_candidates(installed, only, &check.managed, &mut check.unchecked);
     if candidates.is_empty() {
         return Ok(check);
     }
@@ -232,6 +248,7 @@ fn outside(hashes: impl Iterator<Item = String>, only: &HashSet<String>) -> Vec<
 fn pick_candidates(
     installed: Vec<Candidate>,
     only: Option<&HashSet<String>>,
+    managed: &[String],
     unchecked: &mut Vec<String>,
 ) -> Vec<Candidate> {
     let Some(only) = only else {
@@ -246,7 +263,11 @@ fn pick_candidates(
         .filter(|candidate| only.contains(&candidate.hash))
         .collect();
     let found: HashSet<&String> = candidates.iter().map(|candidate| &candidate.hash).collect();
-    unchecked.extend(only.iter().filter(|hash| !found.contains(hash)).cloned());
+    unchecked.extend(
+        only.iter()
+            .filter(|hash| !found.contains(hash) && !managed.contains(hash))
+            .cloned(),
+    );
     candidates
 }
 
@@ -360,6 +381,7 @@ async fn refresh(
         cluster_id,
         updates: stored,
         unchecked: check.unchecked,
+        managed: check.managed,
     })
 }
 
@@ -631,7 +653,7 @@ mod tests {
         );
 
         let mut unchecked = Vec::new();
-        let picked = pick_candidates(installed, None, &mut unchecked);
+        let picked = pick_candidates(installed, None, &[], &mut unchecked);
 
         assert_eq!(picked.len(), 1);
         assert_eq!(picked[0].hash, "a");
@@ -651,11 +673,40 @@ mod tests {
         let only: HashSet<String> = ["a", "b"].map(String::from).into_iter().collect();
 
         let mut unchecked = Vec::new();
-        let picked = pick_candidates(installed, Some(&only), &mut unchecked);
+        let picked = pick_candidates(installed, Some(&only), &[], &mut unchecked);
 
         assert_eq!(picked.len(), 1);
         assert_eq!(picked[0].hash, "a");
         assert_eq!(unchecked, vec!["b"]);
+    }
+
+    #[test]
+    fn a_requested_modpack_package_is_managed_not_unchecked() {
+        let bundles: HashSet<String> = ["b".to_string()].into_iter().collect();
+        let installed = browser_installed_any(
+            &[
+                linked("a", Some(ProviderId::Modrinth), Some("sodium"), Some("v1")),
+                linked(
+                    "b",
+                    Some(ProviderId::Modrinth),
+                    Some("polydium"),
+                    Some("v1"),
+                ),
+            ],
+            &bundles,
+            &HashSet::new(),
+        );
+        let only: HashSet<String> = ["a", "b"].map(String::from).into_iter().collect();
+
+        let mut unchecked = Vec::new();
+        let picked = pick_candidates(installed, Some(&only), &["b".to_string()], &mut unchecked);
+
+        assert_eq!(picked.len(), 1);
+        assert_eq!(picked[0].hash, "a");
+        assert!(
+            unchecked.is_empty(),
+            "modpack-owned files should not be reported as unchecked"
+        );
     }
 
     #[test]
@@ -677,6 +728,7 @@ mod tests {
             cluster_id: 1,
             updates: vec![make("a", true), make("b", false)],
             unchecked: Vec::new(),
+            managed: Vec::new(),
         };
 
         let pending = check.pending();

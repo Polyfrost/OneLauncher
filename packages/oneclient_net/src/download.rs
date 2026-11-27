@@ -578,6 +578,8 @@ mod tests {
 
     use super::*;
 
+    type RangeLabel = (&'static str, fn(usize, usize, usize) -> String);
+
     async fn serve(
         body: Arc<Vec<u8>>,
         ranged_hits: Arc<AtomicUsize>,
@@ -1039,7 +1041,7 @@ mod tests {
                 .map(|i| (i % 251) as u8)
                 .collect(),
         );
-        let labels: [(&str, fn(usize, usize, usize) -> String); 2] = [
+        let labels: [RangeLabel; 2] = [
             ("start", |a, b, length| {
                 format!("bytes {}-{b}/{length}", a + 1)
             }),

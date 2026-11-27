@@ -6,13 +6,14 @@ use crate::components::{
 use crate::disable;
 use crate::hooks::{
     EssentialGuardKind, Guarded, use_cluster_mutation, use_disable_confirm, use_dispatch,
-    use_essential_guard,
+    use_essential_guard, use_hold_countdown,
 };
 use crate::i18n::{t, tf};
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const BODY_MAX_H: f32 = 400.;
+const HOLD_SECONDS: u8 = 5;
 
 #[derive(PartialEq)]
 pub struct EssentialConfirmOverlay;
@@ -23,6 +24,13 @@ impl Component for EssentialConfirmOverlay {
         let cluster = use_cluster_mutation();
         let pending_disable = use_disable_confirm();
         let dispatch = use_dispatch();
+        let held = use_hold_countdown(
+            HOLD_SECONDS,
+            pending
+                .read()
+                .as_ref()
+                .map(|request| (request.name.clone(), request.kind)),
+        );
 
         let Some(request) = pending.read().clone() else {
             return rect().into_element();
@@ -46,6 +54,11 @@ impl Component for EssentialConfirmOverlay {
         };
 
         let then = request.then.clone();
+        let confirm_label = if held > 0 {
+            format!("{confirm_label} ({held})")
+        } else {
+            confirm_label.to_string()
+        };
 
         OverlayPopup::new()
             .overlay_level(OVERLAY_BASE_LEVEL + 3)
@@ -95,6 +108,7 @@ impl Component for EssentialConfirmOverlay {
                                     .child(
                                         Button::new()
                                             .secondary()
+                                            .enabled(held == 0)
                                             .on_press(move |_| {
                                                 match then.clone() {
                                                     Guarded::Mutate(action) => {

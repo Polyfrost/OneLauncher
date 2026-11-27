@@ -1,10 +1,8 @@
-use std::time::Duration;
-
 use freya::prelude::*;
 use oneclient_events::Answer;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
-use crate::hooks::{use_dispatch, use_notifications_snapshot};
+use crate::hooks::{use_dispatch, use_hold_countdown, use_notifications_snapshot};
 use crate::i18n::t;
 use crate::microsoft_java::{MICROSOFT_JAVA_CHOICE_INSTALL, MICROSOFT_JAVA_CHOICE_NEVER};
 use crate::theme::{colors, rounded, text_size};
@@ -19,36 +17,13 @@ impl Component for MicrosoftJavaPromptOverlay {
     fn render(&self) -> impl IntoElement {
         let snapshot = use_notifications_snapshot();
         let dispatch = use_dispatch();
-        let remaining = use_state(|| HOLD_SECONDS);
 
         let showing = snapshot
             .pending_prompt
             .as_ref()
             .is_some_and(|prompt| prompt.has_choice(MICROSOFT_JAVA_CHOICE_INSTALL));
 
-        use_side_effect_with_deps(&showing, move |&showing| {
-            let mut remaining = remaining;
-
-            if !showing {
-                remaining.set(HOLD_SECONDS);
-                return;
-            }
-
-            spawn(async move {
-                let mut remaining = remaining;
-                for step in (0..HOLD_SECONDS).rev() {
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-
-                    // Re-armed while this was sleeping so a newer prompt owns the
-                    // hold now and this countdown is stale
-                    if { *remaining.peek() } != step + 1 {
-                        return;
-                    }
-
-                    remaining.set(step);
-                }
-            });
-        });
+        let held = use_hold_countdown(HOLD_SECONDS, showing.then_some(()));
 
         let Some(prompt) = snapshot.pending_prompt.clone() else {
             return rect().into_element();
@@ -58,7 +33,6 @@ impl Component for MicrosoftJavaPromptOverlay {
             return rect().into_element();
         }
 
-        let held = *remaining.read();
         let locked = held > 0;
 
         let dismiss_label = prompt

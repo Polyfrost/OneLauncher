@@ -23,6 +23,8 @@ use crate::notifications::{BlockedDownloads, UnpublishedInstance};
 
 const MAX_LISTED: usize = 3;
 
+type ReviewedInstance = (ExternalInstance, Option<(u64, Vec<UnpublishedFile>)>);
+
 static QUEUE: Mutex<Option<Vec<ExternalImportJob>>> = Mutex::new(None);
 
 fn queue() -> MutexGuard<'static, Option<Vec<ExternalImportJob>>> {
@@ -188,7 +190,7 @@ impl Actions {
                 actions.start_external_imports(held.jobs.take().unwrap_or_default());
                 return;
             };
-            let to_check: Vec<(ExternalInstance, Option<(u64, Vec<UnpublishedFile>)>)> = held
+            let to_check: Vec<ReviewedInstance> = held
                 .jobs
                 .iter()
                 .flatten()

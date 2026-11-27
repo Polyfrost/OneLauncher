@@ -2475,7 +2475,7 @@ fn shop_card(ctx: &GridCtx, item: &StoreItem) -> Element {
         ))
         .maybe_child((variants.len() > 1).then(|| {
             label()
-                .text(tf("oneclient.wardrobe.variants", &[&variants.len()]))
+                .text(tf("oneclient.wardrobe.bundled", &[&variants.len()]))
                 .font_size(text_size(11.))
                 .color(colors::fg_secondary())
         }))

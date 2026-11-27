@@ -90,7 +90,7 @@ impl JavaRuntimeProvider for CorrettoRuntimeProvider {
             );
         }
 
-        packages.sort_by_key(|p| std::cmp::Reverse(p.java_version.first().copied().unwrap_or(0)));
+        super::sort_packages_by_major_desc(&mut packages);
         tracing::debug!(count = packages.len(), "listed Corretto packages");
         Ok(packages)
     }

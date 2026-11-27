@@ -529,12 +529,13 @@ impl PackageStore {
     #[tracing::instrument(level = "debug", skip(ctx))]
     pub async fn import_local_file(
         path: &Path,
+        hash: Option<&str>,
         content_type: ContentType,
         cluster_id: i64,
         ctx: &ContentCtx,
     ) -> ContentResult<ArtifactRow> {
         let cluster = Self::get_cluster(cluster_id, ctx).await?;
-        let row = store_local_file(path, content_type, &cluster, ctx).await?;
+        let row = store_local_file(path, hash, content_type, &cluster, ctx).await?;
 
         describe_imports(&[(row.clone(), content_type)], ctx).await;
         Ok(row)
@@ -557,7 +558,7 @@ impl PackageStore {
         let mut stored = Vec::with_capacity(files.len());
 
         for (path, content_type) in files {
-            match store_local_file(path, *content_type, &cluster, ctx).await {
+            match store_local_file(path, None, *content_type, &cluster, ctx).await {
                 Ok(row) => {
                     stored.push((row.clone(), *content_type));
                     report.imported.push(row);
@@ -639,13 +640,17 @@ pub(crate) async fn ensure_mods_unlocked(
 /// links it to the cluster working out what it is comes after
 async fn store_local_file(
     path: &Path,
+    hash: Option<&str>,
     content_type: ContentType,
     cluster: &ClusterRow,
     ctx: &ContentCtx,
 ) -> ContentResult<ArtifactRow> {
     ensure_takes_mods(content_type, cluster)?;
 
-    let row = cache_local_file(path, content_type, ctx).await?;
+    let row = match hash {
+        Some(hash) => cache_hashed_file(path, hash, content_type, ctx).await?,
+        None => cache_local_file(path, content_type, ctx).await?,
+    };
     PackageStore::link_artifact(&row, cluster, None, ctx).await?;
     Ok(row)
 }
@@ -655,15 +660,23 @@ pub async fn cache_local_file(
     content_type: ContentType,
     ctx: &ContentCtx,
 ) -> ContentResult<ArtifactRow> {
+    let hash = normalize_hash(&sha1_file(path).await?);
+    cache_hashed_file(path, &hash, content_type, ctx).await
+}
+
+async fn cache_hashed_file(
+    path: &Path,
+    hash: &str,
+    content_type: ContentType,
+    ctx: &ContentCtx,
+) -> ContentResult<ArtifactRow> {
     let file_name = path
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or_else(|| PackageError::InvalidLocalFile(path.display().to_string()))?
         .to_string();
 
-    let hash = normalize_hash(&sha1_file(path).await?);
-
-    if let Some(row) = artifact_dao::get_artifact_by_hash(&ctx.db, &hash).await?
+    if let Some(row) = artifact_dao::get_artifact_by_hash(&ctx.db, hash).await?
         && artifact_absolute_path(&row.path)?.exists()
     {
         return Ok(row);
@@ -686,7 +699,7 @@ pub async fn cache_local_file(
 
     artifact_dao::insert_artifact(
         &ctx.db,
-        &hash,
+        hash,
         content_type as i64,
         &stored_path,
         &file_name,

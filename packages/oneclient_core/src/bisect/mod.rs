@@ -448,15 +448,12 @@ pub async fn start_bisect(
     if bisect_dao::is_active(db, cluster_id).await? {
         return Err(BisectError::AlreadyRunning.into());
     }
-    match bisect_dao::any_active(db).await? {
-        Some(running) => {
-            let name = match state.clusters.get(running).await {
-                Ok(cluster) => cluster.name.clone(),
-                Err(_) => "another cluster".to_string(),
-            };
-            return Err(BisectError::RunningElsewhere { name }.into());
-        }
-        None => {}
+    if let Some(running) = bisect_dao::any_active(db).await? {
+        let name = match state.clusters.get(running).await {
+            Ok(cluster) => cluster.name.clone(),
+            Err(_) => "another cluster".to_string(),
+        };
+        return Err(BisectError::RunningElsewhere { name }.into());
     }
 
     let linked = PackageStore::list_linked_artifacts(cluster_id, &state.services.content()).await?;

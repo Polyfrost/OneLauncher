@@ -28,7 +28,13 @@ async fn open_zip_file(zip_path: &Path) -> PolyIOResult<FileZipReader> {
 pub async fn open_bounded_zip<R: AsyncBufRead + AsyncSeek + Unpin>(
     reader: R,
 ) -> Result<ZipArchiveReader<R>, IOError> {
-    Ok(ZipArchiveReader::open_with_options(reader, ZipOptions::untrusted()).await?)
+    // Java's ZipFile accepts bytes after the end-of-archive record, so a jar the game loads fine
+    // must not fail verification over them; every size and count limit stays on
+    let options = ZipOptions {
+        validate_eor_is_eoa: false,
+        ..ZipOptions::untrusted()
+    };
+    Ok(ZipArchiveReader::open_with_options(reader, options).await?)
 }
 
 pub async fn open_bounded_zip_file(

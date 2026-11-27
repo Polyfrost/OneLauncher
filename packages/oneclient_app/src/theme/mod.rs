@@ -114,6 +114,24 @@ fn sibling_id(id: &str) -> Option<String> {
     }
 }
 
+/// File names that would mark the other variant of `theme`, most specific first: the swapped
+/// `-dark`/`-light` suffix, then for a theme without one the derived `<id>-light`/`<id>-dark`, and
+/// for a suffixed theme its bare stem, which is how a single-file theme and its derived variant pair
+fn filename_candidates(theme: &Theme) -> Vec<String> {
+    let mut candidates: Vec<String> = sibling_id(&theme.id).into_iter().collect();
+    match ["-dark", "-light"]
+        .iter()
+        .find_map(|suffix| theme.id.strip_suffix(suffix))
+    {
+        Some(stem) => candidates.push(stem.to_string()),
+        None => {
+            let other = if theme.colors.light { "dark" } else { "light" };
+            candidates.push(format!("{}-{other}", theme.id));
+        }
+    }
+    candidates
+}
+
 /// A family must share its display name and origin. Reserve valid filename pairs before
 /// matching the remaining variants by name, where exactly one dark and one light must remain.
 fn counterpart_in<'a>(themes: impl Iterator<Item = &'a Theme> + Clone, id: &str) -> Option<String> {
@@ -123,10 +141,13 @@ fn counterpart_in<'a>(themes: impl Iterator<Item = &'a Theme> + Clone, id: &str)
         other.is_builtin() == theme.is_builtin() && family_name(&other.name) == family
     });
     let filename_pair = |variant: &Theme| {
-        let sibling = sibling_id(&variant.id)?;
-        family
-            .clone()
-            .find(|other| other.id == sibling && other.colors.light != variant.colors.light)
+        filename_candidates(variant)
+            .into_iter()
+            .find_map(|candidate| {
+                family.clone().find(|other| {
+                    other.id == candidate && other.colors.light != variant.colors.light
+                })
+            })
     };
     if let Some(other) = filename_pair(theme) {
         return Some(other.id.clone());
@@ -446,10 +467,9 @@ fn fill_missing_variants(themes: &mut Vec<Theme>) {
     let mut index = 0;
     while index < themes.len() {
         let theme = &themes[index];
-        let family = family_name(&theme.name);
-        let paired = themes.iter().any(|other| {
-            other.colors.light != theme.colors.light && family_name(&other.name) == family
-        });
+        // the same pairing rules the picker uses, so a theme that can't pair gets its own variant
+        // instead of disappearing from the picker
+        let paired = counterpart_in(themes.iter(), &theme.id).is_some();
         if !theme.is_builtin() && !paired {
             let base = builtin_colors(themes.iter(), !theme.colors.light);
             let derived = derived_variant(theme, base, |id| themes.iter().any(|t| t.id == id));
@@ -619,6 +639,33 @@ mod tests {
             dir: Some(PathBuf::from("themes")),
             ..builtin(base)
         }
+    }
+
+    #[test]
+    fn a_copied_theme_with_a_taken_name_still_gets_a_pair() {
+        // Two hand-copied single files share the name "Ocean": neither can pair by name, so each
+        // gets its own derived variant and pairs with it by file name instead of vanishing
+        let mut themes = vec![
+            builtin("dark"),
+            builtin("light"),
+            custom("ocean", "Ocean", "dark"),
+            custom("ocean-2", "Ocean", "dark"),
+        ];
+        fill_missing_variants(&mut themes);
+        let ids: Vec<_> = themes[4..].iter().map(|t| t.id.as_str()).collect();
+        assert_eq!(ids, ["ocean-light", "ocean-2-light"]);
+        assert_eq!(
+            counterpart_in(themes.iter(), "ocean").as_deref(),
+            Some("ocean-light")
+        );
+        assert_eq!(
+            counterpart_in(themes.iter(), "ocean-2").as_deref(),
+            Some("ocean-2-light")
+        );
+        assert_eq!(
+            counterpart_in(themes.iter(), "ocean-2-light").as_deref(),
+            Some("ocean-2")
+        );
     }
 
     #[test]

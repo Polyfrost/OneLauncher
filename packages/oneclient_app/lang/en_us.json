@@ -266,7 +266,7 @@
   "oneclient.actions.undo.dependencies_unverified": "Dependency information is incomplete. Try Undo again when package details are available.",
   "oneclient.actions.undo.failed": "Undo failed",
   "oneclient.actions.undo.label": "Undo",
-  "oneclient.actions.undo.link_kept": "This package is still installed but could not be removed safely. Try Undo again if the instance’s packages change.",
+  "oneclient.actions.undo.link_kept": "This package is still installed because another mod or instance still uses it. Try Undo again once nothing else needs it.",
   "oneclient.actions.undo.required": "Cannot remove %s while it is required by %s.",
   "oneclient.actions.undo.local_dependencies_unverified": "Undo could not verify whether another mod needs this package. The mods were left installed.",
   "oneclient.actions.undo.nothing.body": "%s was already removed or changed, so it was left alone.",

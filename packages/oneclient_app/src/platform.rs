@@ -841,16 +841,21 @@ pub mod present_probe {
     struct Stats {
         pixels: usize,
         lit: usize,
+        clear: usize,
         mean: [u64; 3],
     }
 
     impl Stats {
         fn of(bgra: &[u8]) -> Self {
             let mut lit = 0;
+            let mut clear = 0;
             let mut sum = [0u64; 3];
             for px in bgra.chunks_exact(4) {
                 if px[..3].iter().any(|&c| c > 16) {
                     lit += 1;
+                }
+                if px[3] == 0 {
+                    clear += 1;
                 }
                 for (total, &c) in sum.iter_mut().zip(&px[..3]) {
                     *total += c as u64;
@@ -861,6 +866,7 @@ pub mod present_probe {
             Self {
                 pixels,
                 lit,
+                clear,
                 mean: [sum[2] / n, sum[1] / n, sum[0] / n],
             }
         }
@@ -870,8 +876,8 @@ pub mod present_probe {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             write!(
                 f,
-                "{}/{} non-black, mean rgb {:?}",
-                self.lit, self.pixels, self.mean
+                "{}/{} non-black, {} alpha 0, mean rgb {:?}",
+                self.lit, self.pixels, self.clear, self.mean
             )
         }
     }

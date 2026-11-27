@@ -1119,39 +1119,44 @@ fn grid_meta(
         )
     };
 
-    let mut parts: Vec<Element> = Vec::new();
+    let mut details: Vec<String> = Vec::new();
     if !item.author.is_empty() {
-        parts.push(meta_text(
-            tf(
-                "oneclient.components.package_row.by_author",
-                &[&item.author],
-            ),
-            muted,
+        details.push(tf(
+            "oneclient.components.package_row.by_author",
+            &[&item.author],
         ));
     }
     if let Some(added) = item.added_label() {
-        parts.push(meta_text(added, muted));
+        details.push(added);
     }
     if let Some(version) = &item.version {
-        parts.push(meta_text(version.clone(), muted));
+        details.push(version.clone());
     }
-    parts.push(source);
 
-    let mut row = rect()
+    // The source leads and always shows in full; the details follow and trail off with an
+    // ellipsis on a narrow card instead of being cut mid-word against the switch
+    let row = rect()
         .horizontal()
         .width(Size::fill())
+        .content(Content::Flex)
         .cross_align(Alignment::Center)
         .spacing(5.)
-        .overflow(Overflow::Clip);
-
-    for (i, part) in parts.into_iter().enumerate() {
-        if i > 0 {
-            row = row.child(meta_text("\u{b7}".to_string(), muted));
-        }
-        row = row.child(part);
+        .overflow(Overflow::Clip)
+        .child(source);
+    if details.is_empty() {
+        return row.into_element();
     }
-
-    row.into_element()
+    row.child(meta_text("\u{b7}".to_string(), muted))
+        .child(
+            label()
+                .text(details.join(" \u{b7} "))
+                .width(Size::flex(1.))
+                .font_size(text_size(12.))
+                .max_lines(1)
+                .text_overflow(TextOverflow::Ellipsis)
+                .color(muted),
+        )
+        .into_element()
 }
 
 #[derive(PartialEq)]

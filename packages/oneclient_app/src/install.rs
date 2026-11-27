@@ -400,31 +400,40 @@ pub async fn undo_install(state: &LauncherState, undo: &InstallUndo) -> UndoRepo
         target: undo.target_name().to_string(),
         ..UndoReport::default()
     };
-    if let Err(err) = remove_install_group(undo, &content, &mut report).await {
+    let result = remove_install_group(undo, &content, &mut report).await;
+    if let Err(err) = &result {
         tracing::warn!(cluster_id = undo.cluster_id, %err, "failed to undo a package install");
-        if !undo_source_missing(&err) {
-            report.error = Some(err.to_string());
-        }
+    }
+    if !report.target_removed
+        && let Some(target) = undo.packages.first()
+    {
+        let link = oneclient_db::dao::artifact::matches_manual_artifact_link(
+            &content.db,
+            undo.cluster_id,
+            &target.hash,
+            &target.added_at,
+        )
+        .await
+        .map_err(Into::into);
+        report.error = undo_failure_message(result, link);
     }
     report
 }
 
-fn undo_source_missing(err: &anyhow::Error) -> bool {
+fn undo_failure_message(result: anyhow::Result<()>, link: anyhow::Result<bool>) -> Option<String> {
     use oneclient_content::{ContentError, packages::PackageError};
-    use std::io::ErrorKind;
-
-    match err.downcast_ref::<ContentError>() {
-        Some(ContentError::Package(
-            PackageError::ClusterNotFound(_) | PackageError::ArtifactMissing(_),
-        )) => true,
-        Some(
-            ContentError::Io(
-                polyio::IOError::IOError(source) | polyio::IOError::PathIOError { source, .. },
-            )
-            | ContentError::StdIo(source),
-        ) => source.kind() == ErrorKind::NotFound,
-        _ => false,
+    if matches!(link, Ok(false))
+        || matches!(
+            result.as_ref().err().and_then(|err| err.downcast_ref()),
+            Some(ContentError::Package(PackageError::ClusterNotFound(_)))
+        )
+    {
+        return None;
     }
+    Some(result.err().or_else(|| link.err()).map_or_else(
+        || t("oneclient.actions.undo.link_kept").to_string(),
+        |err| err.to_string(),
+    ))
 }
 
 async fn remove_install_group(
@@ -992,22 +1001,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn undo_treats_missing_sources_as_spent_and_keeps_other_errors_retryable() {
+    fn undo_retries_a_missing_jar_when_the_exact_install_link_still_exists() {
         use oneclient_content::{ContentError, packages::PackageError};
         use std::io::{Error, ErrorKind};
 
         for error in [
-            ContentError::from(PackageError::ClusterNotFound(1)),
             ContentError::from(PackageError::ArtifactMissing("hash".into())),
             ContentError::from(polyio::IOError::PathIOError {
                 source: Error::from(ErrorKind::NotFound),
-                path: "mod.jar".into(),
+                path: "unrelated.jar".into(),
             }),
+            ContentError::from(Error::from(ErrorKind::PermissionDenied)),
         ] {
-            assert!(undo_source_missing(&error.into()));
+            assert!(undo_failure_message(Err(error.into()), Ok(true)).is_some());
         }
-        let error = ContentError::from(Error::from(ErrorKind::PermissionDenied));
-        assert!(!undo_source_missing(&error.into()));
+        let error = ContentError::from(Error::from(ErrorKind::NotFound));
+        assert!(undo_failure_message(Err(error.into()), Ok(false)).is_none());
+        let error = ContentError::from(PackageError::ClusterNotFound(1));
+        assert!(undo_failure_message(Err(error.into()), Ok(true)).is_none());
+        assert!(undo_failure_message(Ok(()), Ok(true)).is_some());
+        assert!(
+            undo_failure_message(Ok(()), Err(anyhow::anyhow!("database unavailable"))).is_some()
+        );
+        assert!(undo_failure_message(Ok(()), Ok(false)).is_none());
     }
     use oneclient_content::packages::ProviderId;
 

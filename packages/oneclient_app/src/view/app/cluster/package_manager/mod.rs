@@ -607,8 +607,14 @@ pub fn bundle_categories(bundles: &[BundleWithUpdateStatus]) -> Vec<String> {
     cats
 }
 
-/// `hidden` applies here too so a category of only hidden dependencies offers no tab
-fn build_tabs(categories: &[String], items: &[PackageEntry], hidden: HiddenFilter) -> Vec<Tab> {
+/// A category of only hidden dependencies is available whenever search reveals those rows.
+fn build_tabs(
+    categories: &[String],
+    items: &[PackageEntry],
+    saved_hidden: HiddenFilter,
+    query: &SearchQuery,
+) -> Vec<Tab> {
+    let hidden = search_hidden_filter(saved_hidden, query);
     let mut cats: Vec<String> = categories.to_vec();
     for item in items.iter().filter(|p| hidden.keep(p)) {
         for c in &item.categories {
@@ -801,7 +807,7 @@ impl Component for PackageManager {
             .filter_map(|package| package.essential.map(|essential| essential.name))
             .collect();
 
-        let tabs = build_tabs(&self.categories, &items, saved_hidden);
+        let tabs = build_tabs(&self.categories, &items, saved_hidden, &query);
         let tab_filter = active_tab(&tabs, &active.read());
 
         let mut filtered = visible_packages(&items, tab_filter, &query, show, hidden);
@@ -1173,23 +1179,54 @@ mod tests {
         );
         let saved_hidden = HiddenFilter::Hide;
         let selected = Tab::Browser;
-        let tabs = build_tabs(&[], &rows, saved_hidden);
+        let tabs = build_tabs(&[], &rows, saved_hidden, &SearchQuery::new(""));
         assert_eq!(tabs, [Tab::All, Tab::Browser, Tab::Local]);
 
         let query = SearchQuery::new("hidden-library");
         let hidden = search_hidden_filter(saved_hidden, &query);
         assert!(hidden.keep(&rows[0]));
-        let scope = active_tab(&tabs, &selected);
+        let tabs_with_category = build_tabs(&[], &rows, saved_hidden, &query);
+        let scope = active_tab(&tabs_with_category, &selected);
         assert_eq!(scope, &Tab::Browser);
         assert!(visible_packages(&rows, scope, &query, EnabledFilter::All, hidden).is_empty());
 
-        let tabs_with_category = build_tabs(&[], &rows, HiddenFilter::Show);
         assert_eq!(tabs_with_category[1], Tab::Category("Hidden".into()));
         assert_eq!(active_tab(&tabs_with_category, &selected), &Tab::Browser);
         assert_eq!(
             active_tab(&tabs, &Tab::Category("Hidden".into())),
             &Tab::All
         );
+    }
+
+    #[test]
+    fn search_can_open_the_category_for_a_hidden_mod_from_a_declined_bundle() {
+        let bundles = [bundle(
+            "Declined",
+            false,
+            vec![file("hidden-library", true, true)],
+        )];
+        let categories = bundle_categories(&bundles);
+        let rows = bundle_packages(
+            Vec::new(),
+            &bundles,
+            &HashMap::new(),
+            &PackageMetaMap::new(),
+            &HashSet::new(),
+            ContentType::Mod,
+        );
+        let saved = HiddenFilter::Hide;
+        let category = Tab::Category("Declined".into());
+        assert!(!build_tabs(&categories, &rows, saved, &SearchQuery::new("")).contains(&category));
+
+        let query = SearchQuery::new("hidden-library");
+        let tabs = build_tabs(&categories, &rows, saved, &query);
+        let scope = active_tab(&tabs, &category);
+        assert_eq!(scope, &category);
+        let hidden = search_hidden_filter(saved, &query);
+        assert!(visible_packages(&rows, &Tab::All, &query, EnabledFilter::All, hidden).is_empty());
+        let matches = visible_packages(&rows, scope, &query, EnabledFilter::All, hidden);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].package_id, "hidden-library");
     }
 
     #[test]

@@ -53,14 +53,14 @@ pub(super) fn scroll(lens: Option<glass::PillTrack>) -> Rect {
 /// The scrolling rail. Its thumb sits in the gap beside the rail and only shows while the rail
 /// is scrolled or hovered, so it never stands next to the page's own scrollbar.
 pub(super) fn navigation(layout: WorkspaceLayout, rail: &RailScroll) -> ScrollArea {
-    let offset = rail.offset.clone();
+    let target = rail.target.clone();
     let area = ScrollArea::new()
         .width(Size::fill())
         .height(Size::fill())
         .padding(Gaps::new(0., layout.padding, 0., 0.))
         .auto_hide_scrollbar()
         .scroll_controller(rail.controller)
-        .on_ctx(move |ctx| offset.set(ctx.corrected_y));
+        .on_ctx(move |ctx| target.set(ctx.target_y));
     // Glass dialogs have no solid surface to fade into
     if colors::active_theme().liquid_glass {
         area
@@ -70,18 +70,18 @@ pub(super) fn navigation(layout: WorkspaceLayout, rail: &RailScroll) -> ScrollAr
     }
 }
 
-/// A rail's scroll controller and its last laid-out offset. The offset is kept outside the
+/// A rail's scroll controller and its last laid-out destination. The target is kept outside the
 /// reactive state so the reveal effect can read it without re-running on every scroll.
 #[derive(Clone)]
 pub(super) struct RailScroll {
     controller: ScrollController,
-    offset: Rc<Cell<f32>>,
+    target: Rc<Cell<f32>>,
 }
 
 pub(super) fn use_rail_scroll() -> RailScroll {
     RailScroll {
         controller: use_scroll_controller(ScrollConfig::default),
-        offset: use_hook(|| Rc::new(Cell::new(0.))),
+        target: use_hook(|| Rc::new(Cell::new(0.))),
     }
 }
 
@@ -163,21 +163,20 @@ pub(super) fn use_reveal_active(
         viewport.round() as i32,
     );
     let mut controller = rail.controller;
-    let offset = rail.offset.clone();
+    let target = rail.target.clone();
     // Only the route and the geometry re-run this: reading the controller here would subscribe
     // the effect to scrolling and snap a rail the user scrolled back to the active row
     use_side_effect_with_deps(&key, move |(_, row, viewport)| {
         let Some((section, top, height)) = *row else {
             return;
         };
-        let scrolled = offset.get();
         if let Some(offset) = reveal_section_offset(
             section as f32,
             top as f32,
             height as f32,
             *viewport as f32,
             fade,
-            scrolled,
+            target.get(),
         ) {
             controller.scroll_to_y(offset);
         }
@@ -469,5 +468,14 @@ mod tests {
             reveal_section_offset(416., 416., 32., 300., 24., 0.),
             reveal_offset(416., 32., 300., 24., 0.)
         );
+    }
+
+    #[test]
+    fn revealing_a_row_accounts_for_the_wheel_scroll_destination() {
+        let reveal = |offset| reveal_section_offset(30., 60., 32., 180., 24., offset);
+        // The selection is visible now, but the wheel animation will move it above the rail.
+        assert_eq!(reveal(-40.), None);
+        assert_eq!(reveal(-100.), Some(-30));
+        assert_eq!(reveal(-30.), None);
     }
 }

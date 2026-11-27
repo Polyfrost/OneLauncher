@@ -5,6 +5,7 @@ use std::path::Path;
 
 use async_zip::StoredZipEntry;
 use async_zip::base::read::seek::ZipFileReader;
+use async_zip::base::read1::{ZipOptions, seek::ZipArchiveReader};
 use futures_lite::{AsyncBufRead, AsyncSeek};
 use tokio_util::compat::{Compat, TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
@@ -21,6 +22,20 @@ async fn open_zip<R: AsyncBufRead + AsyncSeek + Unpin>(
 async fn open_zip_file(zip_path: &Path) -> PolyIOResult<FileZipReader> {
     let file = tokio::fs::File::open(zip_path).await?;
     open_zip(tokio::io::BufReader::new(file).compat()).await
+}
+
+/// Opens a ZIP for verification with central-directory limits checked before parsing.
+pub async fn open_bounded_zip<R: AsyncBufRead + AsyncSeek + Unpin>(
+    reader: R,
+) -> Result<ZipArchiveReader<R>, IOError> {
+    Ok(ZipArchiveReader::open_with_options(reader, ZipOptions::untrusted()).await?)
+}
+
+pub async fn open_bounded_zip_file(
+    path: &Path,
+) -> Result<ZipArchiveReader<impl AsyncBufRead + AsyncSeek + Unpin + Send>, IOError> {
+    let file = tokio::fs::File::open(path).await?;
+    open_bounded_zip(tokio::io::BufReader::new(file).compat()).await
 }
 
 fn entry_name(entry: &StoredZipEntry) -> Cow<'_, str> {
@@ -352,9 +367,7 @@ pub async fn read_zip_bytes_entries(
         let Ok(name) = entry.filename().as_str() else {
             continue;
         };
-        if !name.ends_with('/')
-            && filter(name)
-            && entry.uncompressed_size() <= MAX_ZIP_ENTRY_BYTES
+        if !name.ends_with('/') && filter(name) && entry.uncompressed_size() <= MAX_ZIP_ENTRY_BYTES
         {
             entries.push((name.to_string(), index));
         }

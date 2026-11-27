@@ -1,12 +1,10 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
+use async_zip::base::read1::seek::ZipArchiveReader;
 use futures_lite::io::{AsyncBufRead, AsyncReadExt, AsyncSeek, Cursor};
 use oneclient_common::domain::GameLoader;
 use serde::Deserialize;
-
-#[allow(deprecated)] // The pinned async_zip release exposes seekable ZIP reads here.
-type ZipFileReader<R> = async_zip::base::read::seek::ZipFileReader<R>;
 
 const MAX_DESCRIPTION: usize = 600;
 const MAX_DESCRIPTION_WINDOW: usize = MAX_DESCRIPTION * 8;
@@ -579,14 +577,13 @@ fn normalize_dependencies(out: &mut JarDependencies) {
 
 /// Returns no dependency proof when a relevant archive or manifest can't be verified.
 pub(crate) async fn verified_jar_dependencies(jar: &Path) -> Option<JarDependencies> {
-    let file = tokio::io::BufReader::new(tokio::fs::File::open(jar).await.ok()?);
-    let mut reader = ZipFileReader::with_tokio(file).await.ok()?;
+    let mut reader = polyio::open_bounded_zip_file(jar).await.ok()?;
     // Bound total decompression across the tree as well as each individual entry.
     let mut budget = polyio::MAX_METADATA_ENTRY_BYTES;
     let mut nested = Vec::new();
     let mut out = read_verified_archive(&mut reader, &mut nested, &mut budget).await?;
     while let Some(bytes) = nested.pop() {
-        let mut reader = ZipFileReader::new(Cursor::new(bytes)).await.ok()?;
+        let mut reader = polyio::open_bounded_zip(Cursor::new(bytes)).await.ok()?;
         let dependencies = read_verified_archive(&mut reader, &mut nested, &mut budget).await?;
         out.bundled.extend(dependencies.provides);
         out.requires.extend(dependencies.requires);
@@ -598,15 +595,15 @@ pub(crate) async fn verified_jar_dependencies(jar: &Path) -> Option<JarDependenc
 }
 
 async fn read_verified_archive<R: AsyncBufRead + AsyncSeek + Unpin>(
-    reader: &mut ZipFileReader<R>,
+    reader: &mut ZipArchiveReader<R>,
     nested: &mut Vec<Vec<u8>>,
     budget: &mut u64,
 ) -> Option<JarDependencies> {
     const JARJAR_METADATA: &str = "META-INF/jarjar/metadata.json";
     let mut indices = HashMap::new();
     let mut jars = HashSet::new();
-    for (index, entry) in reader.file().entries().iter().enumerate() {
-        let Ok(name) = entry.filename().as_str() else {
+    for (index, entry) in reader.cdrs().iter().enumerate() {
+        let Ok(name) = std::str::from_utf8(entry.insecure_file_name.as_bytes()) else {
             continue;
         };
         if is_nested_jar(name) {
@@ -658,25 +655,24 @@ async fn read_verified_archive<R: AsyncBufRead + AsyncSeek + Unpin>(
 }
 
 async fn read_verified_entry<R: AsyncBufRead + AsyncSeek + Unpin>(
-    reader: &mut ZipFileReader<R>,
+    reader: &mut ZipArchiveReader<R>,
     index: usize,
     budget: &mut u64,
 ) -> Option<Vec<u8>> {
     let cap = polyio::MAX_ZIP_ENTRY_BYTES.min(*budget);
-    let entry = &reader.file().entries()[index];
-    let size = entry.uncompressed_size();
-    let crc = entry.crc32();
+    let size = reader.cdrs()[index].uncompressed_size().ok()?;
     if size > cap {
         return None;
     }
-    let mut entry = reader.reader_without_entry(index).await.ok()?;
+    let mut entry = reader.file(index).await.ok()?;
     let mut bytes = Vec::new();
     (&mut entry)
         .take(size + 1)
         .read_to_end(&mut bytes)
         .await
         .ok()?;
-    if bytes.len() as u64 != size || entry.compute_hash() != crc {
+    // The reader also verifies the CRC at EOF.
+    if bytes.len() as u64 != size {
         return None;
     }
     *budget -= size;
@@ -884,6 +880,71 @@ mod tests {
 
     fn parse_mod_version(manifest: &str, text: &str) -> Option<String> {
         parse_mod(manifest, text)?.version
+    }
+
+    #[tokio::test]
+    async fn a_nested_zip64_directory_over_the_limits_is_unverified() {
+        use async_zip::error::ZipError;
+        use async_zip::{Compression, ZipEntryBuilder};
+
+        let mut writer = async_zip::base::write::ZipFileWriter::new(Vec::new()).force_zip64();
+        writer
+            .write_entry_whole(
+                ZipEntryBuilder::new(FABRIC.into(), Compression::Stored),
+                br#"{"id":"library"}"#,
+            )
+            .await
+            .unwrap();
+        let valid = writer.close().await.unwrap();
+        let record = valid.len() - (56 + 20 + 22);
+        let eocd = valid.len() - 22;
+        assert_eq!(&valid[record..record + 4], b"PK\x06\x06");
+
+        let mut excessive_count = valid.clone();
+        excessive_count[eocd + 8..eocd + 12].fill(0xff); // Read both counts from ZIP64.
+        let count = 64 * 1024 + 1u64;
+        excessive_count[record + 24..record + 32].copy_from_slice(&count.to_le_bytes());
+        excessive_count[record + 32..record + 40].copy_from_slice(&count.to_le_bytes());
+        assert!(matches!(
+            polyio::open_bounded_zip(Cursor::new(&excessive_count)).await,
+            Err(polyio::IOError::AsyncZipError(ZipError::NumFilesAboveMax(
+                _
+            )))
+        ));
+
+        let mut excessive_size = valid.clone();
+        excessive_size[eocd + 12..eocd + 16].fill(0xff); // Read the size from ZIP64.
+        let size = 16 * 1024 * 1024 + 1u64;
+        excessive_size[record + 40..record + 48].copy_from_slice(&size.to_le_bytes());
+        assert!(matches!(
+            polyio::open_bounded_zip(Cursor::new(&excessive_size)).await,
+            Err(polyio::IOError::AsyncZipError(ZipError::CDSizeAboveMax(_)))
+        ));
+
+        let dir = polyio::testing::ScratchDir::new("undo_nested_zip64");
+        polyio::create_dir_all(dir.path()).await.unwrap();
+        let jar = dir.path().join("outer.jar");
+        for (bytes, verified) in [
+            (&valid, true),
+            (&excessive_count, false),
+            (&excessive_size, false),
+        ] {
+            let file = tokio::fs::File::create(&jar).await.unwrap();
+            let mut outer = async_zip::tokio::write::ZipFileWriter::with_tokio(file);
+            outer
+                .write_entry_whole(
+                    ZipEntryBuilder::new("META-INF/jars/library.jar".into(), Compression::Stored),
+                    bytes,
+                )
+                .await
+                .unwrap();
+            outer.close().await.unwrap();
+            let dependencies = verified_jar_dependencies(&jar).await;
+            assert_eq!(
+                dependencies.map(|metadata| metadata.bundled),
+                verified.then(|| vec!["library".into()])
+            );
+        }
     }
 
     #[tokio::test]

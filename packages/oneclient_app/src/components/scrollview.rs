@@ -183,6 +183,7 @@ pub(crate) fn scrollbar_pos_and_size(inner: f32, viewport: f32, scroll: f32) -> 
 pub struct ScrollAreaCtx {
     pub corrected_x: f32,
     pub corrected_y: f32,
+    pub target_y: f32,
     pub viewport_w: f32,
     pub viewport_h: f32,
     pub at_bottom: bool,
@@ -740,6 +741,7 @@ impl ScrollArea {
         let ctx = ScrollAreaCtx {
             corrected_x,
             corrected_y,
+            target_y,
             viewport_w: (vp_w - gutter).max(0.),
             viewport_h: vp_h,
             at_bottom: scrolled_to_bottom(ct_h, vp_h, target_y),
@@ -1696,6 +1698,7 @@ mod tests {
                 let mut ctx = ScrollAreaCtx {
                     corrected_x: 0.,
                     corrected_y: 0.,
+                    target_y: 0.,
                     viewport_w: 320.,
                     viewport_h: 250.,
                     at_bottom: false,

@@ -1503,11 +1503,14 @@ fn package_info(
     });
     // Meta and description share one line so every list row keeps the same height
     let added = item.added_label();
+    // Copies of one mod often differ only by version, which is why one got skipped
+    let version = item.copy_status.as_ref().and(item.version.as_deref());
     let mut line = joined_line(
         author
             .iter()
             .chain(added.iter())
             .map(String::as_str)
+            .chain(version)
             .chain([item.description.as_str()]),
     );
     if line.is_empty() && item.file_name != item.name {

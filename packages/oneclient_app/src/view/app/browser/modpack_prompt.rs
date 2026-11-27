@@ -34,7 +34,7 @@ pub(crate) fn minecraft_choices(versions: &[VersionSummary]) -> Vec<MinecraftCho
         .filter(|mc| mc.bytes().all(|b| b.is_ascii_digit() || b == b'.'))
         .filter_map(|mc| parse_mc_version(mc).map(|p| (mc.clone(), (p.major, p.minor, p.patch))))
         .collect();
-    order.sort_by(|a, b| b.1.cmp(&a.1));
+    order.sort_by_key(|entry| std::cmp::Reverse(entry.1));
 
     let mut choices: Vec<MinecraftChoice> = Vec::new();
     for (mc, _) in order {

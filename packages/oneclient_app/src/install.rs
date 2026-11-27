@@ -879,16 +879,29 @@ pub async fn install_package_with(
         oneclient_events::TaskCategory::Packages,
     );
 
-    let result = PackageStore::install_to_cluster_recording_link(
-        provider,
-        &project,
-        &version,
-        cluster_id,
-        incompatible == IncompatibleMode::Allow,
-        false,
-        Some(&child),
-        &state.services.content(),
-    )
+    // An explicit install switches a link the user had turned off back on
+    let result = async {
+        let (artifact, _, added_at) = PackageStore::install_to_cluster_recording_link(
+            provider,
+            &project,
+            &version,
+            cluster_id,
+            incompatible == IncompatibleMode::Allow,
+            false,
+            Some(&child),
+            &content,
+        )
+        .await?;
+        let _mutation = oneclient_content::packages::package_mutation_guard().await;
+        let live = oneclient_content::bundles::set_artifact_enabled_to(
+            cluster_id,
+            &artifact.hash,
+            true,
+            &content,
+        )
+        .await?;
+        Ok::<_, oneclient_content::ContentError>((artifact, live, added_at))
+    }
     .await;
 
     child.finish();

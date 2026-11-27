@@ -1767,7 +1767,7 @@ impl Actions {
             return;
         }
 
-        set_invite_join(station.clone(), None);
+        set_invite_join(station, None);
         self.clear_chat_notices();
 
         if owner.is_none() {

@@ -26,6 +26,7 @@ pub struct NotificationAction {
     pub kind: NotificationActionKind,
 }
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Clone, Debug, PartialEq)]
 pub enum NotificationActionKind {
     /// A list so a batch sync stays a single "View changes" action not one button per cluster

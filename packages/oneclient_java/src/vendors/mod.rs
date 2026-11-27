@@ -111,6 +111,13 @@ pub trait JavaRuntimeProvider: Send + Sync {
     }
 }
 
+/// Vendors list builds in arbitrary order, so always show the newest major first.
+pub(super) fn sort_packages_by_major_desc(packages: &mut [JavaPackage]) {
+    packages.sort_by_key(|package| {
+        std::cmp::Reverse(package.java_version.first().copied().unwrap_or(0))
+    });
+}
+
 fn add_uncovered_majors(packages: &mut Vec<JavaPackage>, found: Vec<JavaPackage>) {
     let covered: Vec<u32> = packages
         .iter()

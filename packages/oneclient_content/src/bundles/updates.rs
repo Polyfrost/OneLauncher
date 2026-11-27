@@ -58,6 +58,8 @@ impl Default for Prefetches {
 }
 
 pub const BUNDLE_APPLY_BUDGET: Duration = Duration::from_secs(60);
+/// Longer launch budget for an instance with no bundle files yet, so it doesn't start with an empty mods folder
+pub(crate) const FIRST_BUNDLE_INSTALL_BUDGET: Duration = Duration::from_secs(5 * 60);
 
 fn prefetch_key(file: &BundleFile) -> String {
     let sha1 = match &file.kind {
@@ -161,10 +163,7 @@ pub async fn cluster_has_bundle_content(cluster_id: i64, ctx: &ContentCtx) -> Co
         return Ok(false);
     }
 
-    if !bundle_dao::list_bundle_tracked(&ctx.db, cluster_id)
-        .await?
-        .is_empty()
-    {
+    if bundle_dao::has_bundle_tracked(&ctx.db, cluster_id).await? {
         return Ok(true);
     }
 
@@ -1764,7 +1763,7 @@ mod tests {
             unreachable_file(),
             external_revision,
         ] {
-            let _ = shared_prefetch(&file, None, &ctx);
+            drop(shared_prefetch(&file, None, &ctx));
         }
 
         assert_eq!(ctx.prefetches.running.lock().unwrap().len(), 7);

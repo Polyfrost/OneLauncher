@@ -128,8 +128,8 @@ impl Component for ClusterLogs {
         let logs_query = use_cluster_logs(cluster_id);
         let upload = use_upload_log();
         let action = use_log_action();
-        let search = use_state(String::new);
-        let level = use_state(|| LevelFilter::All);
+        let mut search = use_state(String::new);
+        let mut level = use_state(|| LevelFilter::All);
         let mut confirm = use_state(|| None::<Confirm>);
         let mut category = use_state(|| Category::Logs);
         let mut selected = use_state(PathBuf::new);
@@ -265,6 +265,15 @@ impl Component for ClusterLogs {
                 .map(|line| Arc::<str>::from(line.text.as_str()))
                 .collect(),
         );
+        let viewer_numbers: Arc<Vec<usize>> =
+            Arc::new(lines.iter().map(|line| line.number).collect());
+        let filtered = !search.read().trim().is_empty() || *level.read() != LevelFilter::All;
+        let on_jump = filtered.then(|| {
+            EventHandler::from(move |()| {
+                search.set(String::new());
+                level.set(LevelFilter::All);
+            })
+        });
 
         if !running && try_cluster_logs(&logs_query).is_some_and(|files| files.is_empty()) {
             use super::folder_list::folder_button;
@@ -318,14 +327,17 @@ impl Component for ClusterLogs {
                 compact,
             ))
             .child(rect().width(Size::fill()).height(Size::flex(1.0)).child(
-                LogViewer::new("", viewer_lines).header(viewer_header(
-                    search,
-                    level,
-                    confirm,
-                    has_log,
-                    upload_path,
-                    search_id,
-                )),
+                LogViewer::new("", viewer_lines)
+                    .numbers(viewer_numbers)
+                    .on_jump(on_jump)
+                    .header(viewer_header(
+                        search,
+                        level,
+                        confirm,
+                        has_log,
+                        upload_path,
+                        search_id,
+                    )),
             ));
 
         cluster_content()

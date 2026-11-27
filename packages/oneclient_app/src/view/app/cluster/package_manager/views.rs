@@ -14,7 +14,7 @@ use crate::components::{
     ROW_GAP, ROW_RADIUS, bundled_delete_action, package_context_menu, parse_folder_pack_id,
     run_guarded, use_shared_delete,
 };
-use crate::hooks::{ClusterAction, Selection, use_cluster_mutation, use_dispatch};
+use crate::hooks::{ClusterAction, PackageCheck, Selection, use_cluster_mutation, use_dispatch};
 use crate::i18n::{t, tf};
 use crate::routes::Route;
 use crate::theme::{colors, rounded, text_size};
@@ -1128,7 +1128,11 @@ impl Component for ContentBox {
                         .filter(|_| item.update_checkable())
                         .map(|hash| {
                             let dispatch = dispatch.clone();
-                            let package = (hash, item.name.clone());
+                            let package = PackageCheck {
+                                hash,
+                                name: item.name.clone(),
+                                modpack: item.modpack.clone(),
+                            };
                             (move |()| {
                                 dispatch.check_package_updates(cluster_id, vec![package.clone()])
                             })

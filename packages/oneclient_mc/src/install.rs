@@ -1775,7 +1775,11 @@ mod tests {
         let plain: Library =
             serde_json::from_value(serde_json::json!({ "name": "com.google:gson:2.8" })).unwrap();
 
-        assert!(!natives_cover(&[x64_only.clone()], "aarch64", "amd64"));
+        assert!(!natives_cover(
+            std::slice::from_ref(&x64_only),
+            "aarch64",
+            "amd64"
+        ));
         assert!(natives_cover(
             &[both.clone(), plain.clone()],
             "aarch64",
@@ -1806,7 +1810,11 @@ mod tests {
         let arm64 = lib(format!("natives-{host}-arm64"));
         let other_os_arm64 = lib(String::from("natives-solaris-arm64"));
 
-        assert!(!natives_cover(&[x64.clone()], "aarch64", "amd64"));
+        assert!(!natives_cover(
+            std::slice::from_ref(&x64),
+            "aarch64",
+            "amd64"
+        ));
         assert!(!natives_cover(
             &[x64.clone(), other_os_arm64],
             "aarch64",

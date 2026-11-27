@@ -29,8 +29,8 @@ impl Component for ProcessLogs {
         let upload = use_upload_log();
         let action = use_log_action();
 
-        let search = use_state(String::new);
-        let level = use_state(|| LevelFilter::All);
+        let mut search = use_state(String::new);
+        let mut level = use_state(|| LevelFilter::All);
         let confirm = use_state(|| None::<Confirm>);
         let search_id = use_a11y();
         let filter = use_hook(|| Rc::new(RefCell::new(LiveLogFilter::new())));
@@ -51,11 +51,19 @@ impl Component for ProcessLogs {
         let body = if active {
             let lines = game.logs_for(self.cluster_id);
             let has_log = !lines.is_empty();
-            let visible = filter
+            let (visible, numbers) = filter
                 .borrow_mut()
                 .update(&lines, &search.read(), *level.read());
+            let on_jump = numbers.is_some().then(|| {
+                EventHandler::from(move |()| {
+                    search.set(String::new());
+                    level.set(LevelFilter::All);
+                })
+            });
 
             LogViewer::new(t("oneclient.cluster.process_logs.title"), visible)
+                .numbers(numbers)
+                .on_jump(on_jump)
                 .streaming(true)
                 .actions(viewer_controls(
                     search,
@@ -82,6 +90,9 @@ impl Component for ProcessLogs {
     }
 }
 
+/// Original line numbers of the visible lines, `None` when unfiltered
+type Numbers = Option<Arc<Vec<usize>>>;
+
 struct LiveLogFilter {
     search: String,
     level: LevelFilter,
@@ -89,6 +100,7 @@ struct LiveLogFilter {
     last_line: Option<Arc<str>>,
     carried: LogLevel,
     visible: Arc<Vec<Arc<str>>>,
+    numbers: Arc<Vec<usize>>,
 }
 
 impl LiveLogFilter {
@@ -100,6 +112,7 @@ impl LiveLogFilter {
             last_line: None,
             carried: LogLevel::Unknown,
             visible: Arc::default(),
+            numbers: Arc::default(),
         }
     }
 
@@ -108,13 +121,13 @@ impl LiveLogFilter {
         lines: &Arc<Vec<Arc<str>>>,
         search: &str,
         level: LevelFilter,
-    ) -> Arc<Vec<Arc<str>>> {
+    ) -> (Arc<Vec<Arc<str>>>, Numbers) {
         let wanted = level.to_level();
         if search.trim().is_empty() && wanted.is_none() {
             if self.processed != 0 {
                 *self = Self::new();
             }
-            return lines.clone();
+            return (lines.clone(), None);
         }
 
         // A live log only appends. A new session replaces the buffer with fresh lines.
@@ -130,7 +143,7 @@ impl LiveLogFilter {
         }
 
         let needle = (!search.trim().is_empty()).then(|| search.to_lowercase());
-        for line in &lines[self.processed..] {
+        for (index, line) in lines.iter().enumerate().skip(self.processed) {
             if let Some(wanted) = wanted {
                 self.carried = parse_level(line).unwrap_or(self.carried);
                 if wanted != self.carried {
@@ -144,11 +157,12 @@ impl LiveLogFilter {
                 continue;
             }
             Arc::make_mut(&mut self.visible).push(line.clone());
+            Arc::make_mut(&mut self.numbers).push(index + 1);
         }
 
         self.processed = lines.len();
         self.last_line = lines.last().cloned();
-        self.visible.clone()
+        (self.visible.clone(), Some(self.numbers.clone()))
     }
 }
 
@@ -160,27 +174,36 @@ mod tests {
     fn appended_lines_inherit_the_previous_log_level() {
         let mut filter = LiveLogFilter::new();
         let mut lines = Arc::new(vec![Arc::from("[Render thread/WARN] warning")]);
-        let first = filter.update(&lines, "", LevelFilter::Warn);
+        let (first, _) = filter.update(&lines, "", LevelFilter::Warn);
         Arc::make_mut(&mut lines).extend([Arc::from("continuation"), Arc::from("[INFO] ready")]);
 
-        let visible = filter.update(&lines, "", LevelFilter::Warn);
+        let (visible, numbers) = filter.update(&lines, "", LevelFilter::Warn);
         assert_eq!(first.len(), 1);
         assert_eq!(visible.len(), 2);
         assert_eq!(&*visible[1], "continuation");
+        assert_eq!(*numbers.unwrap(), vec![1, 2]);
+    }
+
+    #[test]
+    fn filtered_lines_keep_their_original_numbers() {
+        let mut filter = LiveLogFilter::new();
+        let lines = Arc::new(vec![Arc::from("[INFO] a"), Arc::from("[WARN] needle")]);
+        let (_, numbers) = filter.update(&lines, "needle", LevelFilter::All);
+        assert_eq!(*numbers.unwrap(), vec![2]);
     }
 
     #[test]
     fn a_new_log_or_filter_rebuilds_results() {
         let mut filter = LiveLogFilter::new();
         let first = Arc::new(vec![Arc::from("[WARN] First needle")]);
-        assert_eq!(filter.update(&first, "NEEDLE", LevelFilter::All).len(), 1);
+        assert_eq!(filter.update(&first, "NEEDLE", LevelFilter::All).0.len(), 1);
 
         let next = Arc::new(vec![Arc::from("[INFO] Next session")]);
-        assert!(filter.update(&next, "NEEDLE", LevelFilter::All).is_empty());
-        assert_eq!(filter.update(&next, "NEXT", LevelFilter::Info).len(), 1);
+        assert!(filter.update(&next, "NEEDLE", LevelFilter::All).0.is_empty());
+        assert_eq!(filter.update(&next, "NEXT", LevelFilter::Info).0.len(), 1);
         assert!(Arc::ptr_eq(
             &next,
-            &filter.update(&next, "", LevelFilter::All)
+            &filter.update(&next, "", LevelFilter::All).0
         ));
     }
 }

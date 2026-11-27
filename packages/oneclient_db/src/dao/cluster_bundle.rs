@@ -96,6 +96,21 @@ pub async fn get_bundle_tracked(
     .await
 }
 
+pub async fn has_bundle_tracked(pool: &SqlitePool, cluster_id: i64) -> Result<bool, sqlx::Error> {
+    let row = sqlx::query_scalar!(
+        r#"
+        SELECT 1 FROM cluster_artifacts
+        WHERE cluster_id = ? AND bundle_name IS NOT NULL
+        LIMIT 1
+        "#,
+        cluster_id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.is_some())
+}
+
 pub async fn has_bundle_mapping_for_package(
     pool: &SqlitePool,
     cluster_id: i64,

@@ -155,22 +155,7 @@ pub(crate) async fn take_bundles(
     let state = state.clone();
     let bundles = bundles.to_vec();
     let failure = crate::launcher::off_ui(async move {
-        match state.clusters.set_takes_bundles(cluster_id).await {
-            Ok(cluster) => {
-                let failure = set_up_bundles(&state, &cluster, Some(&bundles)).await;
-                oneclient_content::modpacks::recheck_duplicates(
-                    cluster_id,
-                    oneclient_content::modpacks::MODPACK_BUNDLE_NAME,
-                    &state.services.content(),
-                )
-                .await;
-                failure
-            }
-            Err(err) => {
-                tracing::warn!(cluster_id, error = %err, "could not turn on bundles for the improved instance");
-                Some(err.to_string())
-            }
-        }
+        turn_on_bundles(&state, cluster_id, Some(&bundles)).await
     })
     .await;
     if let Some(reason) = failure {
@@ -179,6 +164,29 @@ pub(crate) async fn take_bundles(
             .body(reason)
             .error()
             .send();
+    }
+}
+
+pub(crate) async fn turn_on_bundles(
+    state: &std::sync::Arc<oneclient_core::LauncherState>,
+    cluster_id: ClusterId,
+    selected: Option<&[String]>,
+) -> Option<String> {
+    match state.clusters.set_takes_bundles(cluster_id).await {
+        Ok(cluster) => {
+            let failure = set_up_bundles(state, &cluster, selected).await;
+            oneclient_content::modpacks::recheck_duplicates(
+                cluster_id,
+                oneclient_content::modpacks::MODPACK_BUNDLE_NAME,
+                &state.services.content(),
+            )
+            .await;
+            failure
+        }
+        Err(err) => {
+            tracing::warn!(cluster_id, error = %err, "could not turn on bundles for the instance");
+            Some(err.to_string())
+        }
     }
 }
 

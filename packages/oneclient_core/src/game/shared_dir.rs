@@ -756,7 +756,7 @@ async fn adopt_hand_edited(
             }
 
             let imported =
-                PackageStore::import_local_file(&path, content_type, cluster.id, &ctx).await;
+                PackageStore::import_local_file(&path, None, content_type, cluster.id, &ctx).await;
             let through_link = detach_overwritten_link(services, &path, &entry.hash).await;
 
             let edit = match imported {
@@ -1027,6 +1027,7 @@ async fn import_added(
             services,
             cluster,
             &dir.join(name),
+            None,
             ContentType::Mod,
             discard_stale,
         )
@@ -2389,8 +2390,29 @@ async fn import_from_dir(
         if manifest.is_some_and(|m| m.contains(&relative)) {
             continue;
         }
+        let mut hash = None;
+        if content_type != ContentType::Mod {
+            let Ok(sha1) = polyio::sha1_file(&path).await else {
+                failed.insert(name.to_owned());
+                continue;
+            };
+            let sha1 = polyio::normalize_hash(&sha1);
+            if matches_disabled_link(services, cluster, &path, &sha1).await {
+                continue;
+            }
+            hash = Some(sha1);
+        }
 
-        match adopt_file(services, cluster, &path, content_type, true).await {
+        match adopt_file(
+            services,
+            cluster,
+            &path,
+            hash.as_deref(),
+            content_type,
+            true,
+        )
+        .await
+        {
             Some(Ok(row)) => {
                 tracing::debug!(file = name, "registered manually-added content");
                 if discard_originals {
@@ -2411,6 +2433,7 @@ async fn adopt_file(
     services: &LauncherServices,
     cluster: &Cluster,
     path: &Path,
+    hash: Option<&str>,
     content_type: ContentType,
     discard_stale: bool,
 ) -> Option<oneclient_content::ContentResult<oneclient_db::models::ArtifactRow>> {
@@ -2433,7 +2456,8 @@ async fn adopt_file(
     }
 
     let imported =
-        PackageStore::import_local_file(path, content_type, cluster.id, &services.content()).await;
+        PackageStore::import_local_file(path, hash, content_type, cluster.id, &services.content())
+            .await;
     match &imported {
         Ok(row) => {
             if let Some(name) = path.file_name().and_then(|n| n.to_str())
@@ -2472,6 +2496,21 @@ async fn discard_adopted_original(
 
     if let Err(err) = polyio::remove_file(path).await {
         tracing::warn!(file = name, error = %err, "failed to clear the adopted original");
+    }
+}
+
+async fn matches_disabled_link(
+    services: &LauncherServices,
+    cluster: &Cluster,
+    path: &Path,
+    hash: &str,
+) -> bool {
+    match artifact_dao::get_cluster_artifact(&services.db, cluster.id, hash).await {
+        Ok(link) => link.is_some_and(|link| link.enabled == 0),
+        Err(err) => {
+            tracing::warn!(file = %path.display(), error = %err, "failed to look up the dropped file, leaving it");
+            true
+        }
     }
 }
 

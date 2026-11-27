@@ -223,6 +223,14 @@ pub fn minecraft_arguments(
                 resolution,
             )?);
         }
+        if !parsed.iter().any(|arg| arg == "--width") {
+            parsed.extend([
+                "--width".to_owned(),
+                resolution.width.to_string(),
+                "--height".to_owned(),
+                resolution.height.to_string(),
+            ]);
+        }
     }
 
     if let Some(args) = args {
@@ -1186,6 +1194,32 @@ mod tests {
         assert_eq!(args.first().unwrap(), "--username");
         assert_eq!(args[1], "player");
         assert_eq!(args.last().unwrap(), "--fabric");
+    }
+
+    #[test]
+    fn a_legacy_version_gets_the_profile_resolution() {
+        let dir = std::env::temp_dir();
+
+        let args = minecraft_arguments(
+            None,
+            Some("--username ${auth_player_name}"),
+            "token",
+            "player",
+            uuid::Uuid::nil(),
+            "1.8.9",
+            "1.8",
+            &dir,
+            &dir,
+            interfrost::api::minecraft::VersionType::Release,
+            Resolution::new(1280, 720),
+            "arm64",
+        )
+        .unwrap();
+
+        assert_eq!(
+            args,
+            ["--username", "player", "--width", "1280", "--height", "720"]
+        );
     }
 
     #[test]

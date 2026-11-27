@@ -20,8 +20,9 @@ const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
 static CLIENT: LazyLock<Result<reqwest::Client, String>> =
     LazyLock::new(|| build_socket_client().map_err(|err| err.to_string()));
 
-static TOKENS: LazyLock<Mutex<HashMap<(String, Uuid), (String, Instant)>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+type CachedTokens = HashMap<(String, Uuid), (String, Instant)>;
+
+static TOKENS: LazyLock<Mutex<CachedTokens>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]

@@ -2,6 +2,7 @@ mod actions;
 mod active_cluster;
 mod chat;
 mod debounce;
+mod hold_countdown;
 mod overlay_claims;
 mod queries;
 mod selection;
@@ -16,6 +17,7 @@ pub use chat::{
 };
 
 pub use debounce::use_debounced;
+pub use hold_countdown::use_hold_countdown;
 pub use overlay_claims::{
     OverlayClaims, use_overlay_claim, use_overlay_claim_when, use_overlay_claims,
     use_provide_overlay_claims,
@@ -38,8 +40,8 @@ pub use active_cluster::{
 
 pub(crate) use actions::listed;
 pub use actions::{
-    Actions, AlternativePick, COPIES_REQUEST, ExternalImportJob, NotificationBuilder, PumpSignal,
-    exporting,
+    Actions, AlternativePick, COPIES_REQUEST, ExternalImportJob, NotificationBuilder, PackageCheck,
+    PumpSignal, exporting,
     modpack_job_running, update_check_running,
 };
 pub use actions::{
@@ -49,7 +51,7 @@ pub use actions::{
 };
 pub use queries::ALL_VERSIONS;
 pub use queries::PackageUpdatesQuery;
-pub(crate) use queries::take_bundles;
+pub(crate) use queries::{take_bundles, turn_on_bundles};
 pub(crate) use queries::use_folder_watch;
 pub use queries::wardrobe;
 pub use queries::{

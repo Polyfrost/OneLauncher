@@ -208,6 +208,15 @@ fn main() {
     }
     .expect("Failed to initialize logger");
 
+    match rt.block_on(oneclient_core::relocate::migrate_shared_minecraft_dir()) {
+        Ok(Some(from)) => tracing::info!(
+            from = %from.display(),
+            "moved the shared Minecraft folder to its visible name"
+        ),
+        Ok(None) => {}
+        Err(err) => tracing::error!("{err}"),
+    }
+
     match adopted {
         Ok(Some(from)) => {
             tracing::info!(from = %from.display(), "moved out of the old launcher folder")

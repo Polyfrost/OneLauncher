@@ -136,11 +136,22 @@ pub fn cluster_reset_backups_dir() -> PathsResult<PathBuf> {
     Ok(data_dir()?.join(".reset-backups"))
 }
 
+/// Vanilla Minecraft uses a visible `minecraft` folder on macOS and the hidden
+/// `.minecraft` everywhere else. Match it so the shared game dir is easy to find.
+/// Folder name used by older OneClient installs and by vanilla outside macOS.
+pub const LEGACY_SHARED_MINECRAFT_DIR: &str = ".minecraft";
+
+pub const SHARED_MINECRAFT_DIR: &str = if cfg!(target_os = "macos") {
+    "minecraft"
+} else {
+    ".minecraft"
+};
+
 pub fn shared_minecraft_dir() -> PathsResult<PathBuf> {
-    Ok(data_dir()?.join(".minecraft"))
+    Ok(data_dir()?.join(SHARED_MINECRAFT_DIR))
 }
 
-/// Presence marks a cluster folder as its own game dir instead of the shared `.minecraft`
+/// Presence marks a cluster folder as its own game dir instead of the shared Minecraft folder
 pub const DEDICATED_MARKER: &str = ".dedicated_directory";
 
 pub const SHARED_GROUP_MARKER: &str = ".shared_group";
@@ -301,6 +312,22 @@ mod tests {
         for name in ["", ".", "..", "a/b", "a\\b", "../x", "/abs"] {
             assert!(!is_shared_group_name(name), "{name:?}");
         }
+    }
+
+    #[test]
+    fn shared_game_dir_matches_the_vanilla_name_for_this_platform() {
+        assert_eq!(
+            SHARED_MINECRAFT_DIR,
+            if cfg!(target_os = "macos") {
+                "minecraft"
+            } else {
+                ".minecraft"
+            }
+        );
+        assert_eq!(
+            shared_minecraft_dir().unwrap().file_name(),
+            Some(OsStr::new(SHARED_MINECRAFT_DIR))
+        );
     }
 
     #[test]

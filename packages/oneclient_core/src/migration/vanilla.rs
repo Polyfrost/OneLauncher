@@ -6,7 +6,7 @@ use oneclient_common::paths;
 
 use super::{ImportTarget, MigrationDetection, MigrationSource, SourceInstance};
 
-const ROOT_INSTANCE_NAME: &str = ".minecraft";
+const ROOT_INSTANCE_NAME: &str = paths::SHARED_MINECRAFT_DIR;
 
 const IMPORT_EXCLUDE_TOP: &[&str] = &[
     "mods",

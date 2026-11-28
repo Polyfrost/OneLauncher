@@ -5,9 +5,44 @@ use super::paths::{artifact_absolute_path, cache_file_path, relative_cache_path}
 use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
 use crate::packages::types::{ExternalFile, VersionDetail, VersionFile};
+use oneclient_common::constants::MODRINTH_CDN_PREFIX;
 use oneclient_common::domain::{ContentType, ProviderId};
 use oneclient_events::GroupedProgressChild;
 use polyio::{normalize_hash, sha1_file};
+use reqwest::header::{HeaderMap, HeaderValue};
+use serde::Serialize;
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DownloadReason {
+    Standalone,
+    Dependency,
+    Modpack,
+    Update,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DownloadMeta {
+    pub reason: DownloadReason,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub game_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub loader: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dependent_on: Option<String>,
+}
+
+fn download_headers(url: &str, meta: Option<&DownloadMeta>) -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    if let Some(meta) = meta
+        && url.starts_with(MODRINTH_CDN_PREFIX)
+        && let Ok(json) = serde_json::to_string(meta)
+        && let Ok(value) = HeaderValue::from_str(&json)
+    {
+        headers.insert("modrinth-download-meta", value);
+    }
+    headers
+}
 
 #[tracing::instrument(level = "debug", skip(child, ctx))]
 pub async fn ensure_artifact_file(
@@ -15,6 +50,7 @@ pub async fn ensure_artifact_file(
     url: &str,
     dest: &std::path::Path,
     child: Option<&GroupedProgressChild>,
+    meta: Option<&DownloadMeta>,
     ctx: &ContentCtx,
 ) -> ContentResult<u64> {
     if oneclient_net::matches_on_disk(dest, hash).await {
@@ -24,7 +60,7 @@ pub async fn ensure_artifact_file(
     tracing::debug!("downloading artifact file");
     // Modrinth and CurseForge both index by SHA-1
     let expected = polyio::Checksum::sha1(hash);
-    oneclient_net::download_verified(
+    oneclient_net::download_verified_with_headers(
         &ctx.net,
         &ctx.events,
         url,
@@ -34,6 +70,7 @@ pub async fn ensure_artifact_file(
         child
             .cloned()
             .map(oneclient_net::ResponseNotifyOptions::grouped),
+        &download_headers(url, meta),
     )
     .await?;
 
@@ -41,7 +78,7 @@ pub async fn ensure_artifact_file(
 }
 
 #[allow(clippy::too_many_arguments)]
-#[tracing::instrument(level = "debug", skip(version, file, child, ctx))]
+#[tracing::instrument(level = "debug", skip(version, file, child, meta, ctx))]
 pub async fn download_version_file(
     provider: ProviderId,
     project_id: &str,
@@ -50,6 +87,7 @@ pub async fn download_version_file(
     file: &VersionFile,
     force: bool,
     child: Option<&GroupedProgressChild>,
+    meta: Option<&DownloadMeta>,
     ctx: &ContentCtx,
 ) -> ContentResult<ArtifactRow> {
     let hash = normalize_hash(&file.sha1);
@@ -74,7 +112,7 @@ pub async fn download_version_file(
         &file.file_name,
     )?;
 
-    let size = ensure_artifact_file(&hash, &file.url, &dest, child, ctx).await?;
+    let size = ensure_artifact_file(&hash, &file.url, &dest, child, meta, ctx).await?;
     let stored_path = relative_cache_path(&dest)?;
 
     let row = artifact_dao::insert_artifact(
@@ -181,7 +219,7 @@ pub async fn download_external(
         &hash[..hash.len().min(16)],
         &file.name,
     )?;
-    let size = ensure_artifact_file(&hash, &file.url, &dest, child, ctx).await?;
+    let size = ensure_artifact_file(&hash, &file.url, &dest, child, None, ctx).await?;
     let stored_path = relative_cache_path(&dest)?;
 
     artifact_dao::insert_artifact(
@@ -194,4 +232,26 @@ pub async fn download_external(
     )
     .await
     .map_err(Into::into)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn meta_header_only_goes_to_modrinth() {
+        let modrinth = "https://cdn.modrinth.com/data/a/versions/b/c.jar";
+        let meta = DownloadMeta {
+            reason: DownloadReason::Modpack,
+            game_version: None,
+            loader: None,
+            dependent_on: Some("zSLSxmnP".to_string()),
+        };
+        assert_eq!(
+            download_headers(modrinth, Some(&meta))["modrinth-download-meta"],
+            r#"{"reason":"modpack","dependent_on":"zSLSxmnP"}"#
+        );
+        assert!(download_headers("https://github.com/a/b.jar", Some(&meta)).is_empty());
+        assert!(download_headers(modrinth, None).is_empty());
+    }
 }

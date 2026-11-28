@@ -164,6 +164,7 @@ pub async fn install_modpack(
         bundle_name,
         true,
         progress,
+        None,
         ctx,
         None,
     )
@@ -613,9 +614,10 @@ pub(super) async fn install_loose_file(
         child
     });
 
-    let result = store::ensure_artifact_file(&file.sha1, &file.url, &dest, child.as_ref(), ctx)
-        .await
-        .map(|_| ());
+    let result =
+        store::ensure_artifact_file(&file.sha1, &file.url, &dest, child.as_ref(), None, ctx)
+            .await
+            .map(|_| ());
 
     if let Some(child) = child {
         child.finish();

@@ -456,6 +456,7 @@ pub async fn apply_browser_package_update(
         true,
         false,
         child,
+        None,
         ctx,
     )
     .await?;
@@ -518,6 +519,7 @@ pub(crate) async fn install_new_dependencies(
             cluster_id,
             true,
             false,
+            None,
             None,
             ctx,
         )

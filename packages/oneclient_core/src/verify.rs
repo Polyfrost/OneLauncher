@@ -457,6 +457,7 @@ async fn repair_content(
             file,
             true,
             None,
+            None,
             &content,
         )
         .await

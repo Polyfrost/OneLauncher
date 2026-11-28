@@ -16,6 +16,7 @@ use crate::bundles::polymrpack::{self, PolyMrpackMeta};
 use crate::bundles::types::{BundleArchive, BundleFileKind};
 use crate::ctx::ContentCtx;
 use crate::error::{ContentError, ContentResult};
+use crate::packages::store::{DownloadMeta, DownloadReason};
 use oneclient_common::domain::{GameLoader, ProviderId};
 use oneclient_common::paths;
 use oneclient_net::RequestError;
@@ -83,6 +84,21 @@ impl BundlesManager {
             catalog: RwLock::new(()),
             catalog_revision: AtomicU64::new(0),
             syncing: Arc::new(Mutex::new(())),
+        }
+    }
+
+    pub async fn download_meta(&self, mc_version: &str, loader: GameLoader) -> DownloadMeta {
+        DownloadMeta {
+            reason: DownloadReason::Modpack,
+            game_version: Some(mc_version.to_string()),
+            loader: Some(loader.modrinth_name().to_string()),
+            dependent_on: self
+                .manifest
+                .read()
+                .await
+                .modrinth_versions
+                .get(mc_version)
+                .cloned(),
         }
     }
 

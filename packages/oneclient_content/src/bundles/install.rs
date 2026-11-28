@@ -18,8 +18,8 @@ use crate::ctx::ContentCtx;
 use crate::error::ContentError;
 use crate::error::ContentResult;
 use crate::packages::store::{
-    LiveSync, PackageStore, artifact_absolute_path, drop_unmanaged_mod, evict_if_unused,
-    try_unlink_materialized,
+    DownloadMeta, LiveSync, PackageStore, artifact_absolute_path,
+    drop_unmanaged_mod, evict_if_unused, try_unlink_materialized,
 };
 use crate::packages::types::{ExternalFile, LinkedArtifactInfo, VersionDetail};
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
@@ -342,6 +342,7 @@ pub async fn install_package_from_bundle(
     bundle_name: &str,
     skip_compatibility: bool,
     child: Option<&GroupedProgressChild>,
+    meta: Option<&DownloadMeta>,
     ctx: &ContentCtx,
 ) -> ContentResult<String> {
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
@@ -370,6 +371,7 @@ pub async fn install_package_from_bundle(
                 skip_compatibility,
                 false,
                 child,
+                meta,
                 ctx,
             )
             .await?;
@@ -439,6 +441,7 @@ async fn cached_copy_intact(hash: &str, ctx: &ContentCtx) -> bool {
 pub(crate) async fn prefetch_bundle_file(
     file: &BundleFile,
     child: Option<&GroupedProgressChild>,
+    meta: Option<&DownloadMeta>,
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
     match &file.kind {
@@ -457,8 +460,10 @@ pub(crate) async fn prefetch_bundle_file(
             .await;
             let version =
                 resolve_bundle_version(*provider, project_id, version_id, sha1, ctx).await?;
-            PackageStore::download_and_cache(*provider, &project, &version, false, child, ctx)
-                .await?;
+            PackageStore::download_and_cache(
+                *provider, &project, &version, false, child, meta, ctx,
+            )
+            .await?;
         }
         BundleFileKind::External { file: ext, .. } => {
             crate::packages::store::download_external(ext, false, child, ctx).await?;
@@ -519,6 +524,7 @@ pub async fn install_bundle(
         .iter()
         .find(|a| a.manifest.name == bundle_name)
         .ok_or(BundleError::NotFound(bundle_name.to_string()))?;
+    let meta = bundles.download_meta(&cluster.mc_version, loader).await;
 
     install_enabled_bundle_files(
         archive,
@@ -527,6 +533,7 @@ pub async fn install_bundle(
         true,
         skip_compatibility,
         None,
+        Some(&meta),
         ctx,
         None,
     )
@@ -919,6 +926,7 @@ pub async fn install_enabled_bundle_files(
     taken: bool,
     skip_compatibility: bool,
     progress: Option<&GroupedProgressSession>,
+    meta: Option<&DownloadMeta>,
     ctx: &ContentCtx,
     deadline: Option<Instant>,
 ) -> ContentResult<Vec<String>> {
@@ -969,6 +977,7 @@ pub async fn install_enabled_bundle_files(
         &bundle_name,
         skip_compatibility,
         progress,
+        meta,
         ctx,
         deadline,
     )
@@ -986,12 +995,14 @@ pub async fn install_enabled_bundle_files(
     Ok(installed)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn install_bundle_files(
     to_install: Vec<BundleFile>,
     cluster_id: i64,
     bundle_name: &str,
     skip_compatibility: bool,
     progress: Option<&GroupedProgressSession>,
+    meta: Option<&DownloadMeta>,
     ctx: &ContentCtx,
     deadline: Option<Instant>,
 ) -> Vec<(BundleFile, ContentResult<String>)> {
@@ -1007,13 +1018,14 @@ pub(crate) async fn install_bundle_files(
     let Some(deadline) = deadline else {
         return futures_util::stream::iter(to_install.into_iter().map(|file| async move {
             let child = file_child(&file, progress);
-            prefetch_until(&file, child.as_ref(), None, ctx).await;
+            prefetch_until(&file, child.as_ref(), None, meta, ctx).await;
             let result = link_file(
                 &file,
                 cluster_id,
                 bundle_name,
                 skip_compatibility,
                 child,
+                meta,
                 ctx,
             )
             .await;
@@ -1026,7 +1038,7 @@ pub(crate) async fn install_bundle_files(
 
     let fetched = futures_util::future::join_all(to_install.into_iter().map(|file| async move {
         let child = file_child(&file, progress);
-        let fetched = prefetch_until(&file, child.as_ref(), Some(deadline), ctx).await;
+        let fetched = prefetch_until(&file, child.as_ref(), Some(deadline), meta, ctx).await;
         (file, child, fetched)
     }))
     .await;
@@ -1055,8 +1067,16 @@ pub(crate) async fn install_bundle_files(
         Some((file, child))
     }))
     .map(|(file, child)| async move {
-        let result =
-            link_file(&file, cluster_id, bundle_name, skip_compatibility, child, ctx).await;
+        let result = link_file(
+            &file,
+            cluster_id,
+            bundle_name,
+            skip_compatibility,
+            child,
+            meta,
+            ctx,
+        )
+        .await;
         (file, result)
     })
     .buffer_unordered(BUNDLE_INSTALL_CONCURRENCY)
@@ -1085,6 +1105,7 @@ async fn link_file(
     bundle_name: &str,
     skip_compatibility: bool,
     child: Option<GroupedProgressChild>,
+    meta: Option<&DownloadMeta>,
     ctx: &ContentCtx,
 ) -> ContentResult<String> {
     let result = install_package_from_bundle(
@@ -1093,6 +1114,7 @@ async fn link_file(
         bundle_name,
         skip_compatibility,
         child.as_ref(),
+        meta,
         ctx,
     )
     .await;
@@ -1467,10 +1489,19 @@ pub async fn install_cluster_bundles(
         deadline => deadline,
     };
     let accepted = accepted_bundles(cluster_id, ctx).await?;
+    let meta = bundles.download_meta(&cluster.mc_version, loader).await;
     for archive in &archives {
         let taken = takes_bundle(archive, &accepted);
         let installed = install_enabled_bundle_files(
-            archive, &archives, cluster_id, taken, true, progress, ctx, deadline,
+            archive,
+            &archives,
+            cluster_id,
+            taken,
+            true,
+            progress,
+            Some(&meta),
+            ctx,
+            deadline,
         )
         .await?;
         tracing::info!(

@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use futures_util::StreamExt;
 use oneclient_events::{EventBus, GroupedProgressChild, TaskPhase};
 use polyio::{Checksum, ChecksumStream, normalize_hash};
-use reqwest::header::{ACCEPT_RANGES, CONTENT_RANGE, RANGE};
+use reqwest::header::{ACCEPT_RANGES, CONTENT_RANGE, HeaderMap, RANGE};
 use reqwest::{Method, StatusCode};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
@@ -42,8 +42,13 @@ const SLOW_WINDOW: Duration = if cfg!(test) {
 const SLOW_FLOOR_BYTES_PER_SEC: u64 = 64 * 1024;
 const MAX_SLOW_RECONNECTS: u32 = 3;
 
-fn file_request(url: &str, range: Option<(u64, u64)>) -> Result<HttpRequest, RequestError> {
+fn file_request(
+    url: &str,
+    range: Option<(u64, u64)>,
+    headers: &HeaderMap,
+) -> Result<HttpRequest, RequestError> {
     let mut request = reqwest::Request::new(Method::GET, url.parse()?);
+    request.headers_mut().extend(headers.clone());
     if let Some((start, end)) = range {
         request
             .headers_mut()
@@ -98,6 +103,30 @@ pub async fn download_verified(
     expected_size: u64,
     notify: Option<ResponseNotifyOptions>,
 ) -> Result<(), RequestError> {
+    download_verified_with_headers(
+        client,
+        events,
+        url,
+        dest,
+        expected,
+        expected_size,
+        notify,
+        &HeaderMap::new(),
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn download_verified_with_headers(
+    client: &RequestClient,
+    events: &EventBus,
+    url: &str,
+    dest: &Path,
+    expected: Option<&Checksum>,
+    expected_size: u64,
+    notify: Option<ResponseNotifyOptions>,
+    headers: &HeaderMap,
+) -> Result<(), RequestError> {
     // Callers fanning out over thousands of files pre-create the tree so this
     // stat avoids a blocking-pool round trip per file
     if let Some(parent) = dest.parent()
@@ -120,6 +149,7 @@ pub async fn download_verified(
             expected_size,
             notify.as_ref(),
             attempt < MAX_DOWNLOAD_ATTEMPTS,
+            headers,
         )
         .await
         {
@@ -152,6 +182,7 @@ async fn download_attempt(
     expected_size: u64,
     notify: Option<&ResponseNotifyOptions>,
     allow_ranged: bool,
+    headers: &HeaderMap,
 ) -> Result<(), RequestError> {
     let child = notify.and_then(ResponseNotifyOptions::child);
     if let Some(child) = child {
@@ -159,7 +190,7 @@ async fn download_attempt(
     }
 
     let started = Instant::now();
-    let response = client.send(file_request(url, None)?).await?;
+    let response = client.send(file_request(url, None, headers)?).await?;
     let version = response.version();
     let remote = response.remote_addr();
 
@@ -185,7 +216,7 @@ async fn download_attempt(
             .is_some_and(|value| value.as_bytes().eq_ignore_ascii_case(b"bytes"))
     {
         return download_ranged(
-            client, events, url, dest, expected, length, response, notify,
+            client, events, url, dest, expected, length, response, notify, headers,
         )
         .await;
     }
@@ -284,6 +315,7 @@ async fn download_ranged(
     length: u64,
     probe: reqwest::Response,
     notify: Option<&ResponseNotifyOptions>,
+    headers: &HeaderMap,
 ) -> Result<(), RequestError> {
     let started = Instant::now();
     let tmp = polyio::temp_sibling(dest);
@@ -316,6 +348,7 @@ async fn download_ranged(
                 let first = if start == 0 { probe.take() } else { None };
                 download_part(
                     client, events, url, &tmp, start, end, length, &received, first, notify,
+                    headers,
                 )
             });
         futures_util::future::try_join_all(parts).await?;
@@ -401,6 +434,7 @@ async fn download_part(
     received: &AtomicU64,
     first: Option<reqwest::Response>,
     notify: Option<&ResponseNotifyOptions>,
+    headers: &HeaderMap,
 ) -> Result<(), RequestError> {
     let mut file = tokio::fs::OpenOptions::new()
         .write(true)
@@ -422,7 +456,7 @@ async fn download_part(
             Some(response) => response,
             None => {
                 let response = client
-                    .send(file_request(url, Some((start + got, end)))?)
+                    .send(file_request(url, Some((start + got, end)), headers)?)
                     .await?;
                 if !serves_range(&response, start + got, length) {
                     return Err(RequestError::IncompleteBody {
@@ -967,6 +1001,7 @@ mod tests {
             0,
             None,
             true,
+            &HeaderMap::new(),
         )
         .await;
 

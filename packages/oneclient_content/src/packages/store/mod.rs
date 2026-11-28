@@ -6,7 +6,9 @@ pub mod undo;
 mod paths;
 
 pub(crate) use download::store_release_dependencies;
-pub use download::{download_external, download_version_file, ensure_artifact_file};
+pub use download::{
+    DownloadMeta, DownloadReason, download_external, download_version_file, ensure_artifact_file,
+};
 pub use gc::{
     GcReport, collect_unused_artifacts, evict_if_unused, find_unreferenced_files,
     remove_unreferenced_files,
@@ -87,6 +89,7 @@ impl PackageStore {
         version: &VersionDetail,
         force: bool,
         child: Option<&GroupedProgressChild>,
+        meta: Option<&DownloadMeta>,
         ctx: &ContentCtx,
     ) -> ContentResult<ArtifactRow> {
         let file = version.primary_file().ok_or(PackageError::NoPrimaryFile)?;
@@ -99,6 +102,7 @@ impl PackageStore {
             file,
             force,
             child,
+            meta,
             ctx,
         )
         .await
@@ -114,10 +118,12 @@ impl PackageStore {
         skip_compatibility: bool,
         force_download: bool,
         child: Option<&GroupedProgressChild>,
+        meta: Option<&DownloadMeta>,
         ctx: &ContentCtx,
     ) -> ContentResult<(ArtifactRow, LiveSync)> {
         Self::install_to_cluster_recording_link(
-            provider_id, project, version, cluster_id, skip_compatibility, force_download, child, ctx,
+            provider_id, project, version, cluster_id, skip_compatibility, force_download, child,
+            meta, ctx,
         )
         .await
         .map(|(artifact, live, _)| (artifact, live))
@@ -135,6 +141,7 @@ impl PackageStore {
         skip_compatibility: bool,
         force_download: bool,
         child: Option<&GroupedProgressChild>,
+        meta: Option<&DownloadMeta>,
         ctx: &ContentCtx,
     ) -> ContentResult<(ArtifactRow, LiveSync, Option<String>)> {
         tracing::info!("installing package to cluster");
@@ -145,7 +152,7 @@ impl PackageStore {
         }
 
         let artifact =
-            Self::download_and_cache(provider_id, project, version, force_download, child, ctx)
+            Self::download_and_cache(provider_id, project, version, force_download, child, meta, ctx)
                 .await?;
 
         let (enabled, added_at) = Self::link_artifact_recording_addition(&artifact, &cluster, None, ctx).await?;
@@ -594,7 +601,7 @@ impl PackageStore {
         let project = provider.get_project(project_id, ctx).await?;
 
         let Some(session) = progress else {
-            return Self::download_and_cache(provider_id, &project, &version, false, None, ctx)
+            return Self::download_and_cache(provider_id, &project, &version, false, None, None, ctx)
                 .await;
         };
         let size = version.primary_file().map_or(0, |file| file.size).max(1);
@@ -612,6 +619,7 @@ impl PackageStore {
                         &version,
                         false,
                         Some(&child),
+                        None,
                         ctx,
                     )
                     .await

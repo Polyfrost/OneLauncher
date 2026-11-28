@@ -261,8 +261,6 @@
   "oneclient.actions.test_progress": "Downloading assets",
   "oneclient.actions.tos_accepted.body": "Thanks. OneClient reconnects to Polyfrost services the next time you start it.",
   "oneclient.actions.tos_accepted.title": "Restart to finish",
-  "oneclient.actions.update_check.bundles_updated.body": "This instance's bundled mods were updated.",
-  "oneclient.actions.update_check.bundles_updated.title": "Mods updated",
   "oneclient.actions.update_check.busy.body": "This instance is being updated. Try again once that's done.",
   "oneclient.actions.update_check.busy.title": "Wait for the update check to finish",
   "oneclient.actions.update_check.exporting.body": "This instance is being exported. Check for updates once that's done.",

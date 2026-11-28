@@ -38,6 +38,7 @@ impl Component for Home {
         let stack = use_hook(consume_context::<HomeStack>);
         let mut open = stack.open;
         let key_claims = use_overlay_claims();
+        let wheel_claims = key_claims.clone();
         // Rendered scroll position of the stack in px, 0 = home, viewport height = versions
         let mut pos = use_state(|| 0f32);
         // Where the stack is easing toward
@@ -108,6 +109,7 @@ impl Component for Home {
 
         let wheel_mover = mover.clone();
         let on_wheel = move |e: Event<WheelEventData>| {
+            let claimed = wheel_claims.any();
             // macOS touchpad: settle the moment the finger lifts, then swallow the fling's
             // momentum so it neither drags the stack again nor scrolls the versions list
             if e.source == WheelSource::Pixel {
@@ -122,7 +124,7 @@ impl Component for Home {
                     TouchPhase::Ended | TouchPhase::Cancelled => {
                         finger_down.set(false);
                         // Only when the stack owns this gesture, not a list scrolled on versions
-                        if *pass_all.peek() {
+                        if *pass_all.peek() && !claimed {
                             coast_at.set(Some(Instant::now()));
                             settle();
                         }
@@ -130,6 +132,10 @@ impl Component for Home {
                     }
                     TouchPhase::Moved => {}
                 }
+            }
+
+            if claimed {
+                return;
             }
 
             let vh = *viewport_h.peek();

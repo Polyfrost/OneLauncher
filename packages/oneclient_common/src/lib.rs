@@ -3,6 +3,7 @@
 
 pub mod consent;
 pub mod constants;
+pub mod cpu;
 pub mod domain;
 pub mod memory;
 pub mod os_ext;
@@ -14,6 +15,7 @@ pub mod version;
 
 mod error;
 
+pub use cpu::total_cpu_cores;
 pub use domain::{
     ContentType, GameLoader, HashAlgorithm, PackageUpdateMode, ProviderId, Resolution,
 };

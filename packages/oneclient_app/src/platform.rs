@@ -189,6 +189,55 @@ fn select_in_file_manager(path: &std::path::Path) -> std::io::Result<()> {
         .map_err(std::io::Error::other)
 }
 
+/// winit can't see the desktop color scheme on Linux, so ask the settings portal.
+/// Calls `on_change` with `true` for dark and `false` for light, once at startup and then on
+/// every change. It blocks while the portal is around, so keep it off the UI thread
+#[cfg(target_os = "linux")]
+pub fn watch_portal_color_scheme(mut on_change: impl FnMut(bool)) -> zbus::Result<()> {
+    use zbus::zvariant::OwnedValue;
+
+    const NAMESPACE: &str = "org.freedesktop.appearance";
+    const KEY: &str = "color-scheme";
+
+    let connection = zbus::blocking::Connection::session()?;
+    let proxy = zbus::blocking::Proxy::new(
+        &connection,
+        "org.freedesktop.portal.Desktop",
+        "/org/freedesktop/portal/desktop",
+        "org.freedesktop.portal.Settings",
+    )?;
+    // subscribe before the first read so a change in between is not lost
+    let changes = proxy.receive_signal_with_args("SettingChanged", &[(0, NAMESPACE), (1, KEY)])?;
+    let initial: OwnedValue = proxy
+        .call("ReadOne", &(NAMESPACE, KEY))
+        .or_else(|_| proxy.call("Read", &(NAMESPACE, KEY)))?;
+    if let Some(dark) = scheme_is_dark(&initial) {
+        on_change(dark);
+    }
+    for message in changes {
+        let Ok((_, _, value)) = message.body().deserialize::<(String, String, OwnedValue)>() else {
+            continue;
+        };
+        if let Some(dark) = scheme_is_dark(&value) {
+            on_change(dark);
+        }
+    }
+    Ok(())
+}
+
+/// 0 is no preference, 1 is dark and 2 is light. `Read` wraps the u32 in an extra variant
+#[cfg(target_os = "linux")]
+fn scheme_is_dark(value: &zbus::zvariant::Value<'_>) -> Option<bool> {
+    use zbus::zvariant::Value;
+
+    match value {
+        Value::U32(1) => Some(true),
+        Value::U32(2) => Some(false),
+        Value::Value(inner) => scheme_is_dark(inner),
+        _ => None,
+    }
+}
+
 fn has_allowed_scheme(url: &str) -> bool {
     let Some((scheme, _)) = url.split_once(':') else {
         return false;

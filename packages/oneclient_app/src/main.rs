@@ -116,6 +116,32 @@ impl App for OneClientApp {
         theme::colors::bind_revision(palette_revision);
         let appearance = use_settings_snapshot().settings;
         let platform = Platform::get().current_window();
+        #[cfg(target_os = "linux")]
+        use_hook(move || {
+            let mut preferred = platform.preferred_theme;
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+            // a plain thread so it never holds up runtime shutdown while waiting for signals
+            std::thread::spawn(move || {
+                let result = oneclient_app::platform::watch_portal_color_scheme(|dark| {
+                    let _ = tx.send(dark);
+                });
+                if let Err(err) = result {
+                    tracing::debug!(%err, "settings portal unavailable, not following the desktop color scheme");
+                }
+            });
+            spawn(async move {
+                while let Some(dark) = rx.recv().await {
+                    let want = if dark {
+                        PreferredTheme::Dark
+                    } else {
+                        PreferredTheme::Light
+                    };
+                    if *preferred.peek() != want {
+                        preferred.set(want);
+                    }
+                }
+            });
+        });
         let system_dark = *platform.preferred_theme.read() == PreferredTheme::Dark;
         let scale_factor = *platform.scale_factor.read() as f32;
         let theme_id = theme::system_aware(&appearance.theme, system_dark);

@@ -224,6 +224,7 @@ mod tests {
                 vendor: String::from("Test"),
                 os_arch: String::from("x64"),
                 is_jdk,
+                java_home: String::new(),
             },
         )
     }

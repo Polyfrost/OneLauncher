@@ -112,6 +112,34 @@ impl JavaService {
         #[cfg(unix)]
         crate::install::restore_executable_bits(Path::new(&runtime.absolute_path));
 
+        // A recorded JDK can have a working bin/java while missing the compiler,
+        // jmods or headers. Verify the whole install whenever launch picks it.
+        if runtime.is_jdk {
+            return match checker::check_jdk_runtime(runtime.absolute_path.clone(), runtime.major)
+                .await
+            {
+                Ok(info) => Ok(Some(
+                    self.persist(Path::new(&runtime.absolute_path), &info)
+                        .await?,
+                )),
+                Err(err) if err.is_invalid_installation() => {
+                    tracing::warn!(
+                        path = %runtime.absolute_path,
+                        "forgetting incomplete Java runtime: {err}"
+                    );
+                    self.store.delete_by_path(&runtime.absolute_path).await?;
+                    Ok(None)
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        path = %runtime.absolute_path,
+                        "could not verify recorded Java runtime, trusting the record: {err}"
+                    );
+                    Ok(Some(runtime))
+                }
+            };
+        }
+
         if runtime.probe_version == PROBE_VERSION {
             if Path::new(&runtime.absolute_path).is_file() {
                 return Ok(Some(runtime));

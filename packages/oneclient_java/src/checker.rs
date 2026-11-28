@@ -1,4 +1,8 @@
-use std::{collections::HashMap, path::PathBuf, time::Duration};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use async_tempfile::TempDir;
 use tokio::sync::OnceCell;
@@ -19,6 +23,9 @@ pub struct JavaCheckInfo {
     /// Mod loaders and game tooling expect a JDK so the locator prefers one
     /// when both satisfy the requested major
     pub is_jdk: bool,
+    /// Where the probed runtime thinks its files live, used to check that a
+    /// JDK is complete rather than just launchable
+    pub java_home: String,
 }
 
 #[tracing::instrument(level = "debug", skip(absolute_path))]
@@ -103,7 +110,55 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
         version,
         vendor: vendor(&info),
         is_jdk: probe_flag(&info, "java.jdk"),
+        java_home: info.get("java.home").cloned().unwrap_or_default(),
     })
+}
+
+/// A full probe plus a check that the JDK actually has the parts a game
+/// tooling chain needs. A truncated extraction can still launch `java` while
+/// the compiler, `jmods` or the JNI headers are gone.
+#[tracing::instrument(level = "debug", skip(absolute_path))]
+pub async fn check_jdk_runtime(absolute_path: String, major: u32) -> JavaResult<JavaCheckInfo> {
+    let info = check_java_runtime(absolute_path.clone()).await?;
+    if !jdk_is_complete(&info, major) {
+        tracing::warn!(
+            path = %absolute_path,
+            home = %info.java_home,
+            "java installation is missing JDK parts"
+        );
+        return Err(JavaError::IncompleteJdk {
+            path: absolute_path,
+        });
+    }
+    Ok(info)
+}
+
+fn jdk_is_complete(info: &JavaCheckInfo, major: u32) -> bool {
+    if !info.is_jdk || info.java_home.is_empty() {
+        return false;
+    }
+
+    let mut home = Path::new(&info.java_home);
+    let javac = if cfg!(windows) { "javac.exe" } else { "javac" };
+    if !home.join("bin").join(javac).is_file()
+        && home
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("jre"))
+        && let Some(parent) = home.parent()
+    {
+        // Legacy JDKs report the nested jre as java.home
+        home = parent;
+    }
+    if !home.join("bin").join(javac).is_file() || !home.is_dir() {
+        return false;
+    }
+
+    if major <= 8 {
+        // Java 8 keeps the compiler in tools.jar and has no jmods
+        home.join("lib").join("tools.jar").is_file() && home.join("include").join("jni.h").is_file()
+    } else {
+        home.join("jmods").is_dir() && home.join("include").join("jni.h").is_file()
+    }
 }
 
 fn vendor(info: &HashMap<String, String>) -> String {
@@ -219,5 +274,42 @@ mod tests {
         assert!(!has_usable_awt(&info(&[("java.awt", "true")])));
         assert!(!has_usable_awt(&info(&[("java.awt.natives", "true")])));
         assert!(!has_usable_awt(&info(&[("java.awt.link", "true")])));
+    }
+
+    fn jdk_info(home: String, is_jdk: bool) -> JavaCheckInfo {
+        JavaCheckInfo {
+            version: "21.0.5".to_string(),
+            vendor: "Test".to_string(),
+            os_arch: "x64".to_string(),
+            is_jdk,
+            java_home: home,
+        }
+    }
+
+    #[test]
+    fn a_jdk_missing_its_parts_is_incomplete() {
+        let root = std::env::temp_dir().join(format!("oneclient-jdk-check-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("bin")).unwrap();
+        std::fs::create_dir_all(root.join("include")).unwrap();
+        std::fs::create_dir_all(root.join("lib")).unwrap();
+        let javac = if cfg!(windows) { "javac.exe" } else { "javac" };
+        std::fs::write(root.join("bin").join(javac), b"").unwrap();
+        std::fs::write(root.join("include").join("jni.h"), b"").unwrap();
+        let home = root.to_string_lossy().into_owned();
+        let info = jdk_info(home.clone(), true);
+
+        assert!(!jdk_is_complete(&info, 21), "jmods are missing");
+        std::fs::create_dir(root.join("jmods")).unwrap();
+        assert!(jdk_is_complete(&info, 21));
+        assert!(!jdk_is_complete(&jdk_info(home.clone(), false), 21));
+        assert!(!jdk_is_complete(&jdk_info(String::new(), true), 21));
+
+        // Java 8 keeps the compiler in tools.jar instead of jmods
+        assert!(!jdk_is_complete(&info, 8));
+        std::fs::write(root.join("lib").join("tools.jar"), b"").unwrap();
+        assert!(jdk_is_complete(&info, 8));
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

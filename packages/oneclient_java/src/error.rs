@@ -46,6 +46,11 @@ pub enum JavaError {
     )]
     MissingAwtSupport { path: String },
 
+    #[error(
+        "java installation at '{path}' is missing JDK parts (compiler, jmods or JNI headers), reinstall it"
+    )]
+    IncompleteJdk { path: String },
+
     #[error("selected java is version {found}, but version {expected} is required")]
     VersionMismatch { expected: u32, found: u32 },
 
@@ -69,6 +74,7 @@ impl JavaError {
             self,
             JavaError::InvalidJavaPath { .. }
                 | JavaError::MissingAwtSupport { .. }
+                | JavaError::IncompleteJdk { .. }
                 | JavaError::ParseVersion { .. }
         )
     }

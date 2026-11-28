@@ -88,7 +88,11 @@ async fn run_check(auto_install: bool, events: EventBus) -> anyhow::Result<()> {
     // under a package-managed path that an install would fail on or clobber
     if !can_self_update() {
         tracing::info!("install is not self-updatable (non-AppImage Linux); notifying only");
-        notify_manual_update(&events, &update.version);
+        #[cfg(target_os = "linux")]
+        let rpm_managed = tokio::task::spawn_blocking(rpm_manages_install)
+            .await
+            .unwrap_or(false);
+        notify_manual_update(&events, &update.version, rpm_managed);
         return Ok(());
     }
 
@@ -100,7 +104,26 @@ async fn run_check(auto_install: bool, events: EventBus) -> anyhow::Result<()> {
     download_and_install(update, events).await
 }
 
-fn notify_manual_update(events: &EventBus, version: &str) {
+fn notify_manual_update(events: &EventBus, version: &str, rpm_managed: bool) {
+    // rpm installs come from the COPR, where the package manager is the way
+    // to update - pointing them at the releases page invites a manual rpm
+    // that dnf would then not track. Everything else updates by hand from
+    // the releases page.
+    #[cfg(target_os = "linux")]
+    if rpm_managed {
+        events
+            .notify(t("oneclient.updater.available.title"))
+            .body(tf(
+                "oneclient.updater.manual.dnf.body",
+                &[&version],
+            ))
+            .send();
+        return;
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    let _ = rpm_managed;
+
     events
         .notify(t("oneclient.updater.available.title"))
         .body(tf(
@@ -114,7 +137,7 @@ fn notify_manual_update(events: &EventBus, version: &str) {
 /// Debug-only shows the notify-only toast that non-self-updatable installs get
 pub fn simulate_manual_update_toast() {
     match crate::launcher::state() {
-        Ok(state) => notify_manual_update(&state.services.events, "9999.9999.9999"),
+        Ok(state) => notify_manual_update(&state.services.events, "9999.9999.9999", false),
         Err(err) => tracing::warn!("simulated update toast failed: {err:#}"),
     }
 }
@@ -138,6 +161,24 @@ fn can_self_update() -> bool {
     {
         true
     }
+}
+
+/// True when the running binary belongs to an rpm package, i.e. a COPR
+/// install: those update through the package manager rather than the
+/// releases page. A system without rpm (or a hand-extracted binary) is not
+/// rpm-managed and keeps the releases-page instructions.
+#[cfg(target_os = "linux")]
+fn rpm_manages_install() -> bool {
+    let Ok(exe) = std::fs::read_link("/proc/self/exe") else {
+        return false;
+    };
+    std::process::Command::new("rpm")
+        .arg("-qf")
+        .arg(&exe)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
 }
 
 fn check_for_update() -> anyhow::Result<Option<Update>> {

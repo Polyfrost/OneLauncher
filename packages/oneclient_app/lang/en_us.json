@@ -2459,6 +2459,7 @@
   "oneclient.updater.finished.body": "OneClient %s is ready. Restart to apply.",
   "oneclient.updater.finished.title": "Finished Downloading",
   "oneclient.updater.manual.body": "OneClient %s is available. Download the latest package from %s to update.",
+  "oneclient.updater.manual.dnf.body": "OneClient %s is available. Update it with: sudo dnf upgrade --refresh",
   "oneclient.updater.prompt.body": "OneClient %s is ready to install. Download and install it now?",
   "oneclient.updater.prompt.install": "Install",
   "oneclient.updater.prompt.not_now": "Not now",

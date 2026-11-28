@@ -2219,6 +2219,7 @@
   "oneclient.settings.accounts.badge.expired": "Expired",
   "oneclient.settings.accounts.badge.signed_out": "Signed out",
   "oneclient.settings.accounts.drag_to_rotate": "Drag to rotate",
+  "oneclient.settings.accounts.edit_wardrobe": "Open wardrobe",
   "oneclient.settings.accounts.empty": "No accounts yet. Add one above.",
   "oneclient.settings.accounts.hero.active_account": "ACTIVE ACCOUNT",
   "oneclient.settings.accounts.hero.no_account": "No active account",

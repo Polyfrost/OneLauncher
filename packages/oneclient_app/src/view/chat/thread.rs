@@ -6,7 +6,9 @@ use oneclient_polyplus::{GroupKind, MAX_MESSAGE_LENGTH};
 use crate::chat::{ChatConversation, ChatMessage, MessageInvite, PendingMessage, ThreadStatus};
 use crate::components::{
     Avatar, Button, ContextMenu, Icon, IconType, OVERLAY_MAX_LEVEL, ScrollArea, TextInput,
+    TooltipPlacement, use_tooltip_anchor,
 };
+use crate::emoji::{self, EmojiEntry};
 use crate::hooks::{
     Actions, chat_draft, save_chat_draft, use_chat_invite_game, use_chat_online_count,
     use_chat_roster, use_chat_thread, use_dispatch, use_player_online, use_special_cooldown,
@@ -31,11 +33,12 @@ const EMOJI_CELL_PX: f32 = 34.;
 const EMOJI_GAP_PX: f32 = 2.;
 const EMOJI_SIDE_PX: f32 = 14.;
 
-const EMOJI: [&str; 40] = [
-    "😀", "😂", "🥲", "😍", "😎", "🤔", "😭", "😤", "👍", "👎", "👏", "🙏", "🔥", "✨", "💀", "🎉",
-    "❤️", "💙", "⭐", "👀", "💯", "✅", "❌", "🎮", "⚔️", "🛡️", "⛏️", "🏹", "💎", "🧱", "🪵", "🌲",
-    "🍞", "🍎", "🐷", "🐑", "🐔", "🏠", "🌋", "🚀",
-];
+const EMOJI_COLUMNS: usize = 8;
+const EMOJI_VISIBLE_ROWS: f32 = 5.;
+const EMOJI_GRID_WIDTH_PX: f32 =
+    EMOJI_COLUMNS as f32 * EMOJI_CELL_PX + (EMOJI_COLUMNS - 1) as f32 * EMOJI_GAP_PX;
+const EMOJI_GRID_HEIGHT_PX: f32 =
+    EMOJI_VISIBLE_ROWS * (EMOJI_CELL_PX + EMOJI_GAP_PX) - EMOJI_GAP_PX;
 
 const EDIT_PAD_X_PX: f32 = 6.;
 const EDIT_PAD_Y_PX: f32 = 2.;
@@ -916,7 +919,7 @@ fn submit_draft(
     cooling: bool,
     on_sent: &EventHandler<()>,
 ) {
-    let content = draft.read().clone();
+    let content = emoji::canonical_shortcodes(&draft.read());
     if content.trim().is_empty() || content.len() > MAX_MESSAGE_LENGTH {
         return;
     }
@@ -983,6 +986,8 @@ impl Component for Composer {
         let group_id = self.group_id;
         let mut draft = use_state(|| chat_draft(own_id, group_id));
         let mut emoji_open = use_state(|| false);
+        let mut emoji_query = use_state(String::new);
+        let mut emoji_base = use_state(Vec::<EmojiEntry>::new);
         let mut picker_area = use_state(Area::default);
         let mut toggle_area = use_state(Area::default);
         let mut loaded_edit = use_state(|| None::<i64>);
@@ -1049,6 +1054,59 @@ impl Component for Composer {
         let sent_by_press = self.on_sent.clone();
 
         let picker = emoji_open().then(|| {
+            let query = emoji_query.read().clone();
+            let entries = if query.trim().is_empty() {
+                emoji_base.read().clone()
+            } else {
+                emoji::search(&query)
+            };
+            let first = entries.first().copied();
+            let rows = entries.len().div_ceil(EMOJI_COLUMNS);
+
+            let grid = if entries.is_empty() {
+                rect()
+                    .width(Size::px(EMOJI_GRID_WIDTH_PX + EMOJI_SIDE_PX))
+                    .height(Size::px(EMOJI_GRID_HEIGHT_PX))
+                    .padding(Gaps::new(0., EMOJI_SIDE_PX, 0., 0.))
+                    .center()
+                    .child(
+                        label()
+                            .text(t("oneclient.chat.thread.emoji_no_matches"))
+                            .font_size(text_size(12.))
+                            .color(colors::fg_secondary()),
+                    )
+                    .into_element()
+            } else {
+                ScrollArea::new()
+                    .width(Size::px(EMOJI_GRID_WIDTH_PX + EMOJI_SIDE_PX))
+                    .height(Size::px(EMOJI_GRID_HEIGHT_PX))
+                    .padding(Gaps::new(0., EMOJI_SIDE_PX, 0., 0.))
+                    .reset_key(emoji_reset_key(&query))
+                    .lazy(rows, EMOJI_CELL_PX, EMOJI_GAP_PX, move |row| {
+                        let start = row * EMOJI_COLUMNS;
+                        let end = (start + EMOJI_COLUMNS).min(entries.len());
+                        rect()
+                            .horizontal()
+                            .spacing(EMOJI_GAP_PX)
+                            .children(
+                                entries[start..end]
+                                    .iter()
+                                    .map(|&entry| {
+                                        EmojiCell {
+                                            entry,
+                                            on_pick: EventHandler::new(move |_| {
+                                                pick_emoji(draft, entry)
+                                            }),
+                                        }
+                                        .into_element()
+                                    })
+                                    .collect::<Vec<_>>(),
+                            )
+                            .into_element()
+                    })
+                    .into_element()
+            };
+
             rect()
                 .position(Position::new_absolute().left(12.).bottom(56.))
                 .layer(Layer::Overlay)
@@ -1063,46 +1121,32 @@ impl Component for Composer {
                     }
                 })
                 .vertical()
-                .padding(Gaps::new_symmetric(10., EMOJI_SIDE_PX))
+                .padding(Gaps::new(10., 0., 10., EMOJI_SIDE_PX))
                 .spacing(8.)
                 .corner_radius(rounded(CARD_RADIUS_PX))
                 .background(colors::component_bg())
                 .border(inset_border(colors::component_border()))
                 .shadow(popup_shadow())
                 .child(
-                    rect().padding(Gaps::new(2., 0., 0., 0.)).child(
-                        label()
-                            .text(t("oneclient.chat.thread.emoji_heading"))
-                            .font_size(text_size(11.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .letter_spacing(0.44)
-                            .color(colors::fg_secondary()),
-                    ),
+                    TextInput::new(emoji_query)
+                        .width(Size::px(EMOJI_GRID_WIDTH_PX))
+                        .height(Size::px(30.))
+                        .font_size(text_size(12.))
+                        .auto_focus(true)
+                        .placeholder(t("oneclient.chat.thread.emoji_search"))
+                        .leading(
+                            Icon::new(IconType::SearchMd)
+                                .size(14.)
+                                .color(colors::fg_secondary())
+                                .into_element(),
+                        )
+                        .on_submit(move |_| {
+                            if let Some(entry) = first {
+                                pick_emoji(draft, entry);
+                            }
+                        }),
                 )
-                .children(
-                    EMOJI
-                        .chunks(8)
-                        .map(|row| {
-                            rect()
-                                .horizontal()
-                                .spacing(EMOJI_GAP_PX)
-                                .children(
-                                    row.iter()
-                                        .map(|emoji| {
-                                            EmojiCell {
-                                                emoji,
-                                                on_pick: EventHandler::new(move |_| {
-                                                    draft.write().push_str(emoji);
-                                                }),
-                                            }
-                                            .into_element()
-                                        })
-                                        .collect::<Vec<_>>(),
-                                )
-                                .into_element()
-                        })
-                        .collect::<Vec<_>>(),
-                )
+                .child(grid)
         });
 
         rect()
@@ -1162,7 +1206,13 @@ impl Component for Composer {
                             .on_sized(move |e: Event<SizedEventData>| {
                                 toggle_area.set_if_modified(e.area)
                             })
-                            .on_press(move |_| emoji_open.toggle())
+                            .on_press(move |_| {
+                                if !emoji_open() {
+                                    emoji_query.set(String::new());
+                                    emoji_base.set(emoji::default_entries());
+                                }
+                                emoji_open.toggle();
+                            })
                             .child(Icon::new(IconType::FaceSmile).size(18.).color(
                                 colors::fg_primary().with_a(if emoji_open() { 255 } else { 178 }),
                             )),
@@ -1234,9 +1284,22 @@ impl Component for Composer {
     }
 }
 
+fn pick_emoji(mut draft: State<String>, entry: EmojiEntry) {
+    emoji::record_recent(entry);
+    draft.write().push_str(entry.glyph);
+}
+
+fn emoji_reset_key(query: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    query.trim().hash(&mut hasher);
+    hasher.finish()
+}
+
 #[derive(PartialEq)]
 struct EmojiCell {
-    emoji: &'static str,
+    entry: EmojiEntry,
     on_pick: EventHandler<()>,
 }
 
@@ -1244,8 +1307,10 @@ impl Component for EmojiCell {
     fn render(&self) -> impl IntoElement {
         let mut hovered = use_state(|| false);
         let on_pick = self.on_pick.clone();
+        let shortcode = format!(":{}:", self.entry.alias());
+        let tooltip = use_tooltip_anchor(Some(shortcode.as_str().into()), TooltipPlacement::Top);
 
-        rect()
+        let cell = rect()
             .width(Size::px(EMOJI_CELL_PX))
             .height(Size::px(EMOJI_CELL_PX))
             .center()
@@ -1256,17 +1321,19 @@ impl Component for EmojiCell {
                 Color::TRANSPARENT
             })
             .cursor(CursorIcon::Pointer)
+            .a11y_alt(shortcode)
             .on_pointer_over(move |_| hovered.set(true))
             .on_pointer_out(move |_| hovered.set(false))
             .on_press(move |_| on_pick.call(()))
             .child(
                 label()
-                    .text(self.emoji)
+                    .text(self.entry.glyph)
                     .font_size(text_size(20.))
                     .line_height(1.)
                     .text_align(TextAlign::Center)
                     .width(Size::fill()),
-            )
+            );
+        tooltip.attach(cell)
     }
 }
 

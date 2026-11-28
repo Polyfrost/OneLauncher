@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 
 use chrono::{DateTime, FixedOffset, Utc};
-use regex::{Captures, Regex};
+use regex::Captures;
 use uuid::Uuid;
 
 use oneclient_common::GameLoader;
@@ -25,11 +25,11 @@ pub fn chat_visible(chat_window_focused: bool, social_open: bool, main_focused: 
 
 #[must_use]
 pub fn expand_shortcodes(text: &str) -> String {
-    static SHORTCODE: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r":([a-z0-9_+-]+):").expect("valid shortcode regex"));
-    SHORTCODE
+    crate::emoji::SHORTCODE
         .replace_all(text, |c: &Captures| {
-            emojis::get_by_shortcode(&c[1]).map_or_else(|| c[0].to_string(), |e| e.to_string())
+            crate::emoji::emoji_for_shortcode(&c[1])
+                .or_else(|| emojis::get_by_shortcode(&c[1]).map(emojis::Emoji::as_str))
+                .map_or_else(|| c[0].to_string(), str::to_string)
         })
         .into_owned()
 }
@@ -922,6 +922,17 @@ mod tests {
     #[test]
     fn shortcodes_become_emoji_and_unknown_ones_stay() {
         assert_eq!(expand_shortcodes("hi :fire: 12:30:45 :nope:"), "hi 🔥 12:30:45 :nope:");
+    }
+
+    #[test]
+    fn shortcodes_follow_the_game_catalog() {
+        assert_eq!(
+            expand_shortcodes(
+                ":face_with_open_eyes_and_hand_over_mouth: :rofl: :rolling_on_the_floor_laughing:"
+            ),
+            "🫢 🤣 🤣"
+        );
+        assert_eq!(expand_shortcodes(":us:"), "🇺🇸");
     }
 
     #[test]

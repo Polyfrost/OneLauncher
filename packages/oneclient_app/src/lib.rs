@@ -8,6 +8,7 @@ pub mod chat;
 pub mod cli;
 mod components;
 pub mod disable;
+mod emoji;
 pub mod essential;
 pub mod invite_join;
 pub mod events;

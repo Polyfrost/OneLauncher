@@ -4,6 +4,7 @@ use oneclient_db::models::ArtifactRow;
 use super::paths::{artifact_absolute_path, cache_file_path, relative_cache_path};
 use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
+use crate::packages::error::PackageError;
 use crate::packages::types::{ExternalFile, VersionDetail, VersionFile};
 use oneclient_common::domain::{ContentType, ProviderId};
 use oneclient_events::GroupedProgressChild;
@@ -64,6 +65,11 @@ pub async fn download_version_file(
                 return Ok(row);
             }
         }
+    }
+
+    // curseforge hands out no url when the author turned off third-party downloads
+    if file.url.is_empty() {
+        return Err(PackageError::DownloadBlocked(file.file_name.clone()).into());
     }
 
     let dest = cache_file_path(

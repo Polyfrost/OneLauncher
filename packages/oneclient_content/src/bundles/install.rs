@@ -18,22 +18,12 @@ use crate::ctx::ContentCtx;
 use crate::error::ContentError;
 use crate::error::ContentResult;
 use crate::packages::store::{
-    DownloadMeta, DownloadReason, LiveSync, PackageStore, artifact_absolute_path,
+    DownloadMeta, LiveSync, PackageStore, artifact_absolute_path,
     drop_unmanaged_mod, evict_if_unused, try_unlink_materialized,
 };
 use crate::packages::types::{ExternalFile, LinkedArtifactInfo, VersionDetail};
-use oneclient_common::constants::ONECLIENT_MODRINTH_VERSION_ID;
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use oneclient_events::{GroupedProgressChild, GroupedProgressSession, TaskCategory, TaskPhase};
-
-pub(crate) fn bundle_download_meta() -> DownloadMeta {
-    DownloadMeta {
-        reason: DownloadReason::Modpack,
-        game_version: None,
-        loader: None,
-        dependent_on: Some(ONECLIENT_MODRINTH_VERSION_ID.to_string()),
-    }
-}
 
 fn is_base62(s: &str) -> bool {
     !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric())
@@ -534,6 +524,7 @@ pub async fn install_bundle(
         .iter()
         .find(|a| a.manifest.name == bundle_name)
         .ok_or(BundleError::NotFound(bundle_name.to_string()))?;
+    let meta = bundles.download_meta(&cluster.mc_version, loader).await;
 
     install_enabled_bundle_files(
         archive,
@@ -542,6 +533,7 @@ pub async fn install_bundle(
         true,
         skip_compatibility,
         None,
+        Some(&meta),
         ctx,
         None,
     )
@@ -934,6 +926,7 @@ pub async fn install_enabled_bundle_files(
     taken: bool,
     skip_compatibility: bool,
     progress: Option<&GroupedProgressSession>,
+    meta: Option<&DownloadMeta>,
     ctx: &ContentCtx,
     deadline: Option<Instant>,
 ) -> ContentResult<Vec<String>> {
@@ -978,14 +971,13 @@ pub async fn install_enabled_bundle_files(
         "installing enabled bundle files"
     );
 
-    let meta = bundle_download_meta();
     let results = install_bundle_files(
         to_install,
         cluster_id,
         &bundle_name,
         skip_compatibility,
         progress,
-        Some(&meta),
+        meta,
         ctx,
         deadline,
     )
@@ -1497,10 +1489,19 @@ pub async fn install_cluster_bundles(
         deadline => deadline,
     };
     let accepted = accepted_bundles(cluster_id, ctx).await?;
+    let meta = bundles.download_meta(&cluster.mc_version, loader).await;
     for archive in &archives {
         let taken = takes_bundle(archive, &accepted);
         let installed = install_enabled_bundle_files(
-            archive, &archives, cluster_id, taken, true, progress, ctx, deadline,
+            archive,
+            &archives,
+            cluster_id,
+            taken,
+            true,
+            progress,
+            Some(&meta),
+            ctx,
+            deadline,
         )
         .await?;
         tracing::info!(

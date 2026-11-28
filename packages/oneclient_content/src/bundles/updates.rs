@@ -20,7 +20,7 @@ use futures_util::future::{BoxFuture, Shared};
 use futures_util::{FutureExt, StreamExt};
 
 use crate::bundles::install::{
-    BUNDLE_INSTALL_CONCURRENCY, accepted_bundles, bundle_cluster, bundle_download_meta,
+    BUNDLE_INSTALL_CONCURRENCY, accepted_bundles, bundle_cluster,
     decline_unasked_skyblock, disable_was_deliberate, external_ids_by_sha1, find_override,
     find_user_suppression, heal_bundle_activity, heal_restores, hidden_flags,
     install_package_from_bundle, overrides_outside_declined, prefetch_bundle_file,
@@ -607,7 +607,7 @@ pub async fn apply_bundle_updates_with(
     // Must run first
     // the check below never consults `enabled` so unrecorded disables would
     // read as healthy and be left untouched
-    let archives = {
+    let (archives, meta) = {
         let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
         let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Fabric);
         let archives = bundles.archives_for(ctx, &cluster.mc_version, loader).await;
@@ -615,7 +615,7 @@ pub async fn apply_bundle_updates_with(
             heal_bundle_activity(cluster_id, archives, ctx).await?;
             decline_unasked_skyblock(&cluster, archives, ctx).await?;
         }
-        archives
+        (archives, bundles.download_meta(&cluster.mc_version, loader).await)
     };
 
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
@@ -653,7 +653,6 @@ pub async fn apply_bundle_updates_with(
         s.expect(oneclient_events::TaskCategory::Packages, count, bytes);
     }
 
-    let meta = bundle_download_meta();
     let meta = Some(&meta);
     let mut to_fetch: Vec<BundleFile> = check
         .updates_available

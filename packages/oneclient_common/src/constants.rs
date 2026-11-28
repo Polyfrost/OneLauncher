@@ -7,7 +7,6 @@ pub const DISCORD_CLIENT_ID: &str = "1426999264633946334";
 
 pub const MODRINTH_API_URL: &str = "https://api.modrinth.com";
 pub const MODRINTH_CDN_PREFIX: &str = "https://cdn.modrinth.com/data/";
-pub const ONECLIENT_MODRINTH_VERSION_ID: &str = "zSLSxmnP";
 pub const CURSEFORGE_API_URL: &str = "https://api.curseforge.com/v1";
 pub const CURSEFORGE_GAME_ID: u32 = 432;
 pub const METADATA_API_URL: &str = "https://meta.polyfrost.org";

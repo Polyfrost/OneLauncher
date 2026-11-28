@@ -11,6 +11,8 @@ pub struct RemoteBundleEntry {
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BundleManifest {
     pub versions: HashMap<String, HashMap<String, Vec<RemoteBundleEntry>>>,
+    #[serde(default, rename = "modrinthVersions")]
+    pub modrinth_versions: HashMap<String, String>,
 }
 
 impl BundleManifest {

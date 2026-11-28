@@ -14,7 +14,7 @@ use tokio::net::TcpListener;
 use url::Url;
 use uuid::Uuid;
 
-use super::data::{AccountKind, BrowserLogin, DeviceCodeLogin, MinecraftAccount};
+use super::data::{AccountKind, BrowserLogin, DeviceCodeLogin, LoginPageCopy, MinecraftAccount};
 use super::error::{MinecraftAuthError, MinecraftAuthStep, friendly_xbox_error};
 use oneclient_common::constants::{MICROSOFT_CLIENT_ID, MINECRAFT_SCOPES};
 
@@ -95,10 +95,13 @@ pub struct PendingBrowserLogin {
     pkce_verifier: String,
     redirect_uri: String,
     csrf_state: String,
+    page_copy: LoginPageCopy,
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
-pub async fn begin_browser_login() -> Result<(BrowserLogin, PendingBrowserLogin), MinecraftAuthError>
+pub async fn begin_browser_login(
+    page_copy: LoginPageCopy,
+) -> Result<(BrowserLogin, PendingBrowserLogin), MinecraftAuthError>
 {
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
@@ -135,6 +138,7 @@ pub async fn begin_browser_login() -> Result<(BrowserLogin, PendingBrowserLogin)
         pkce_verifier,
         redirect_uri,
         csrf_state,
+        page_copy,
     };
 
     Ok((login, pending))
@@ -162,12 +166,12 @@ async fn wait_for_redirect(pending: &PendingBrowserLogin) -> Result<String, Mine
         let read = stream.read(&mut buf).await.unwrap_or(0);
         let request = String::from_utf8_lossy(&buf[..read]);
         let Some(target) = request.split_whitespace().nth(1) else {
-            respond(&mut stream, RedirectPage::Waiting).await;
+            respond(&mut stream, RedirectPage::Waiting, &pending.page_copy).await;
             continue;
         };
 
         if !target.contains('?') {
-            respond(&mut stream, RedirectPage::Waiting).await;
+            respond(&mut stream, RedirectPage::Waiting, &pending.page_copy).await;
             continue;
         }
 
@@ -190,21 +194,21 @@ async fn wait_for_redirect(pending: &PendingBrowserLogin) -> Result<String, Mine
 
         if let Some(error) = error {
             tracing::warn!(%error, "browser authorization failed");
-            respond(&mut stream, RedirectPage::Failed).await;
+            respond(&mut stream, RedirectPage::Failed, &pending.page_copy).await;
             return Err(MinecraftAuthError::BrowserAuthorizationFailed { error });
         }
 
         if state.as_deref() != Some(pending.csrf_state.as_str()) {
-            respond(&mut stream, RedirectPage::Failed).await;
+            respond(&mut stream, RedirectPage::Failed, &pending.page_copy).await;
             continue;
         }
 
         if let Some(code) = code {
-            respond(&mut stream, RedirectPage::Success).await;
+            respond(&mut stream, RedirectPage::Success, &pending.page_copy).await;
             return Ok(code);
         }
 
-        respond(&mut stream, RedirectPage::Waiting).await;
+        respond(&mut stream, RedirectPage::Waiting, &pending.page_copy).await;
     }
 }
 
@@ -215,8 +219,8 @@ enum RedirectPage {
     Failed,
 }
 
-async fn respond(stream: &mut tokio::net::TcpStream, page: RedirectPage) {
-    let body = redirect_page_html(page);
+async fn respond(stream: &mut tokio::net::TcpStream, page: RedirectPage, copy: &LoginPageCopy) {
+    let body = redirect_page_html(page, copy);
     let response = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         body.len(),
@@ -226,25 +230,25 @@ async fn respond(stream: &mut tokio::net::TcpStream, page: RedirectPage) {
     let _ = stream.flush().await;
 }
 
-fn redirect_page_html(page: RedirectPage) -> String {
+fn redirect_page_html(page: RedirectPage, copy: &LoginPageCopy) -> String {
     let (accent, glyph, heading, detail) = match page {
         RedirectPage::Waiting => (
             "#2567d8",
             r#"<div class="ring"></div>"#,
-            "Signing you in",
-            "Finish signing in with Microsoft in this window.",
+            copy.waiting_heading.as_str(),
+            copy.waiting_body.as_str(),
         ),
         RedirectPage::Success => (
             "#45de2b",
             r#"<svg viewBox="0 0 24 24" class="glyph"><path d="M20 6 9 17l-5-5"/></svg>"#,
-            "You're signed in!",
-            "You can close this tab and return to OneClient.",
+            copy.success_heading.as_str(),
+            copy.success_body.as_str(),
         ),
         RedirectPage::Failed => (
             "#ff0000",
             r#"<svg viewBox="0 0 24 24" class="glyph"><path d="M18 6 6 18M6 6l12 12"/></svg>"#,
-            "Sign-in failed",
-            "Something went wrong. Close this tab and try again from OneClient.",
+            copy.failed_heading.as_str(),
+            copy.failed_body.as_str(),
         ),
     };
 

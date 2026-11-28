@@ -86,3 +86,31 @@ impl MicrosoftLoginSession {
         &self.device.verification_uri
     }
 }
+
+/// Copy for the pages the loopback server shows the browser during a
+/// Microsoft sign-in. The UI layer fills it from the active locale - auth
+/// owns no strings of its own so the pages follow the launcher language -
+/// and defaults to the English text for callers without UI copy.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoginPageCopy {
+    pub waiting_heading: String,
+    pub waiting_body: String,
+    pub success_heading: String,
+    pub success_body: String,
+    pub failed_heading: String,
+    pub failed_body: String,
+}
+
+impl Default for LoginPageCopy {
+    fn default() -> Self {
+        Self {
+            waiting_heading: "Signing you in".into(),
+            waiting_body: "Finish signing in with Microsoft in this window.".into(),
+            success_heading: "You're signed in!".into(),
+            success_body: "You can close this tab and return to OneClient.".into(),
+            failed_heading: "Sign-in failed".into(),
+            failed_body: "Something went wrong. Close this tab and try again from OneClient."
+                .into(),
+        }
+    }
+}

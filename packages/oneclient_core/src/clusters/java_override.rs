@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use oneclient_cluster::ProfileUpdate;
+use interfrost::api::minecraft::VersionInfo;
 use oneclient_cluster::profiles::get_profile_or_default;
+use oneclient_cluster::{Cluster, ProfileUpdate};
 use oneclient_common::patch::Patch;
 use oneclient_db::dao::cluster_flag::{self as flag_dao, ClusterFlag};
 use oneclient_events::GroupedProgressSession;
@@ -19,44 +20,13 @@ pub async fn apply_bundle_java_override(
 ) -> LauncherResult<()> {
     let db = &state.services.db;
     let cluster = state.clusters.get(cluster_id).await?;
-    if !cluster.uses_bundles() {
-        return Ok(());
-    }
     let Some(profile_name) = cluster.setting_profile_name.as_deref() else {
         return Ok(());
     };
-
-    let archives = state
-        .bundles
-        .archives_for(
-            &state.services.content(),
-            &cluster.mc_version,
-            cluster.mc_loader,
-        )
-        .await?;
-    if archives.is_empty() {
-        return Ok(());
-    }
-
-    let taken = oneclient_content::bundles::taken_bundle_names(
-        cluster_id,
-        &archives,
-        &state.services.content(),
-    )
-    .await?;
-    let mut overrides = archives
-        .iter()
-        .filter(|archive| taken.contains(&archive.manifest.name))
-        .filter_map(|archive| {
-            archive
-                .manifest
-                .java_version_override
-                .map(|major| (archive.manifest.name.as_str(), major))
-        });
-
-    let Some((bundle, major)) = overrides.next() else {
+    let Some((bundle, major)) = bundle_java_major(state, &cluster).await? else {
         return Ok(());
     };
+    let bundle = bundle.as_str();
 
     let applied = major.to_string();
     if flag_dao::get(db, cluster_id, ClusterFlag::BundleJavaOverride)
@@ -65,19 +35,6 @@ pub async fn apply_bundle_java_override(
         == Some(&applied)
     {
         return Ok(());
-    }
-
-    for (other, other_major) in overrides {
-        if other_major != major {
-            tracing::warn!(
-                cluster_id,
-                bundle,
-                major,
-                other,
-                other_major,
-                "bundles disagree on the java version override; using the first"
-            );
-        }
     }
 
     let global = state.settings.read().global_game_settings.clone();
@@ -124,4 +81,75 @@ pub async fn apply_bundle_java_override(
     )
     .await?;
     Ok(())
+}
+
+pub(crate) async fn bundle_java_major(
+    state: &Arc<LauncherState>,
+    cluster: &Cluster,
+) -> LauncherResult<Option<(String, u32)>> {
+    if !cluster.uses_bundles() {
+        return Ok(None);
+    }
+
+    let archives = state
+        .bundles
+        .archives_for(
+            &state.services.content(),
+            &cluster.mc_version,
+            cluster.mc_loader,
+        )
+        .await?;
+    if archives.is_empty() {
+        return Ok(None);
+    }
+
+    let taken = oneclient_content::bundles::taken_bundle_names(
+        cluster.id,
+        &archives,
+        &state.services.content(),
+    )
+    .await?;
+    let mut overrides = archives
+        .iter()
+        .filter(|archive| taken.contains(&archive.manifest.name))
+        .filter_map(|archive| {
+            archive
+                .manifest
+                .java_version_override
+                .map(|major| (archive.manifest.name.as_str(), major))
+        });
+
+    let Some((bundle, major)) = overrides.next() else {
+        return Ok(None);
+    };
+
+    for (other, other_major) in overrides {
+        if other_major != major {
+            tracing::warn!(
+                cluster_id = cluster.id,
+                bundle,
+                major,
+                other,
+                other_major,
+                "bundles disagree on the java version override; using the first"
+            );
+        }
+    }
+
+    Ok(Some((bundle.to_owned(), major)))
+}
+
+pub(crate) async fn effective_java_major(
+    state: &Arc<LauncherState>,
+    cluster: &Cluster,
+    info: &VersionInfo,
+) -> Option<u32> {
+    match bundle_java_major(state, cluster).await {
+        Ok(Some((_, major))) => return Some(major),
+        Ok(None) => {}
+        Err(err) => {
+            tracing::warn!(cluster_id = cluster.id, error = %err, "could not read the bundle java override");
+        }
+    }
+    info.java_version.as_ref().map(|java| java.major_version)
 }

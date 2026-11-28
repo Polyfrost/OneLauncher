@@ -1,4 +1,4 @@
-mod java_override;
+pub(crate) mod java_override;
 mod loader_update;
 mod migrate;
 pub(crate) mod modpack;

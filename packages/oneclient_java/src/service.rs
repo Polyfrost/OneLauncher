@@ -315,7 +315,7 @@ impl JavaService {
         }
 
         match self
-            .download_for_arches(major, &[HostTarget::native().arch], None)
+            .download_for_arches(major, &[HostTarget::native().arch], None, None)
             .await
         {
             Ok(runtime) => Some(runtime),
@@ -467,8 +467,27 @@ impl JavaService {
                 Some(vendor) => {
                     let vendor = JavaVendor::from_str(vendor)
                         .unwrap_or_else(|_| JavaVendor::Other(vendor.to_string()));
-                    self.install_vendor_runtime(&vendor, major, native_ok, progress)
+                    match self
+                        .install_vendor_runtime(&vendor, major, native_ok, progress)
                         .await
+                    {
+                        Err(err) if !matches!(err, JavaError::Cancelled) => {
+                            tracing::warn!(
+                                ?vendor,
+                                major,
+                                "install failed, trying other vendors: {err}"
+                            );
+                            self.download_for_arches(
+                                major,
+                                &runtime_arches(native_ok),
+                                Some(&vendor),
+                                progress,
+                            )
+                            .await
+                            .map_err(|_| err)
+                        }
+                        result => result,
+                    }
                 }
                 None => self.download_and_register(major, native_ok, progress).await,
             },
@@ -489,7 +508,7 @@ impl JavaService {
         native_ok: bool,
         progress: Option<&GroupedProgressSession>,
     ) -> JavaResult<JavaRuntime> {
-        self.download_for_arches(major, &runtime_arches(native_ok), progress)
+        self.download_for_arches(major, &runtime_arches(native_ok), None, progress)
             .await
     }
 
@@ -498,6 +517,7 @@ impl JavaService {
         &self,
         major: u32,
         arches: &[HostArch],
+        skip: Option<&JavaVendor>,
         progress: Option<&GroupedProgressSession>,
     ) -> JavaResult<JavaRuntime> {
         let attempts: Vec<_> = arches
@@ -505,6 +525,7 @@ impl JavaService {
             .flat_map(|&arch| {
                 vendors::runtime_providers()
                     .into_iter()
+                    .filter(|p| skip != Some(&p.vendor()))
                     .map(move |p| (p, arch))
             })
             .collect();

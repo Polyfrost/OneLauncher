@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::data::{MicrosoftLoginSession, MinecraftAccount};
+use crate::data::{LoginPageCopy, MicrosoftLoginSession, MinecraftAccount};
 use crate::error::{AuthError, AuthResult, MinecraftAuthError};
 use crate::msa::{self, PendingBrowserLogin};
 use crate::store::{self, CredentialsStore};
@@ -60,11 +60,11 @@ impl AuthService {
     }
 
     #[tracing::instrument(skip_all)]
-    pub async fn begin_microsoft_login(&self) -> AuthResult<MicrosoftLoginSession> {
+    pub async fn begin_microsoft_login(&self, page_copy: LoginPageCopy) -> AuthResult<MicrosoftLoginSession> {
         tracing::info!("beginning Microsoft login");
         let client = self.net.http();
 
-        let (browser, pending) = msa::begin_browser_login().await?;
+        let (browser, pending) = msa::begin_browser_login(page_copy).await?;
         let device = msa::begin_device_login(client).await?;
 
         let mut logins = self.pending_logins.lock().await;
@@ -418,7 +418,9 @@ mod tests {
     /// Registers a login the way `begin_microsoft_login` does minus the device
     /// code request which is the only half that needs the network
     async fn register_login(service: &AuthService) -> MicrosoftLoginSession {
-        let (browser, pending) = msa::begin_browser_login().await.expect("loopback bind");
+        let (browser, pending) = msa::begin_browser_login(LoginPageCopy::default())
+            .await
+            .expect("loopback bind");
 
         service.pending_logins.lock().await.insert(
             browser.state.clone(),

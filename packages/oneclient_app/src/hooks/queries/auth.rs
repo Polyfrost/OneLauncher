@@ -4,11 +4,24 @@ use freya::query::{
     Mutation, MutationCapability, MutationStateData, QueriesStorage, Query, QueryCapability,
     UseMutation, UseQuery, use_mutation, use_query,
 };
-use oneclient_auth::{AccountKind, MicrosoftLoginSession, MinecraftAccount};
+use oneclient_auth::{AccountKind, LoginPageCopy, MicrosoftLoginSession, MinecraftAccount};
 use oneclient_core::LauncherError;
 use uuid::Uuid;
 
+use crate::i18n::t;
+
 const SIGN_OUT_LEAVE_LIMIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+fn login_page_copy() -> LoginPageCopy {
+    LoginPageCopy {
+        waiting_heading: t("oneclient.components.microsoft_login.page.waiting_heading").into(),
+        waiting_body: t("oneclient.components.microsoft_login.page.waiting_body").into(),
+        success_heading: t("oneclient.components.microsoft_login.page.success_heading").into(),
+        success_body: t("oneclient.components.microsoft_login.page.success_body").into(),
+        failed_heading: t("oneclient.components.microsoft_login.page.failed_heading").into(),
+        failed_body: t("oneclient.components.microsoft_login.page.failed_body").into(),
+    }
+}
 
 static HANDLED_LOGIN_CODE: Mutex<Option<String>> = Mutex::new(None);
 
@@ -137,7 +150,7 @@ impl MutationCapability for BeginMicrosoftLoginMutation {
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         Ok(crate::launcher::state()?
             .auth
-            .begin_microsoft_login()
+            .begin_microsoft_login(login_page_copy())
             .await?)
     }
 }
@@ -197,7 +210,10 @@ impl MutationCapability for AddMicrosoftAccountMutation {
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state()?;
-        let flow = state.auth.begin_microsoft_login().await?;
+        let flow = state
+            .auth
+            .begin_microsoft_login(login_page_copy())
+            .await?;
         Ok(state.auth.finish_microsoft_login(flow).await?)
     }
 

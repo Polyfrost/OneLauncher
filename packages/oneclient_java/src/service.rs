@@ -31,6 +31,8 @@ pub const INSTALLABLE_MAJORS: &[u32] = &[8, 11, 16, 17, 18, 19, 20, 21, 22, 23];
 
 pub const PROBE_VERSION: u32 = 2;
 
+const PATCH_FLOORS: &[(u32, &[u32])] = &[(25, &[25, 0, 5])];
+
 const _: () = assert!(PROBE_VERSION > 0);
 
 enum JavaPromptAnswer {
@@ -237,10 +239,12 @@ impl JavaService {
 
         if let Some(runtime) = &recorded
             && runtime.is_jdk
+            && !below_patch_floor(&runtime.version)
         {
             return Ok(runtime.clone());
         }
 
+        let mut chosen = recorded;
         if search_system {
             let located = crate::locate::locate_java().await?;
             self.register_located(&located).await?;
@@ -249,15 +253,28 @@ impl JavaService {
                 .filter(|(_, info)| !platform::wrong_arch_for_game(&info.os_arch, native_ok))
                 .collect();
 
-            // A located runtime only displaces a recorded one by being a JDK
+            // A located runtime displaces a recorded one by being a fixed build
+            // first and a JDK second
             if let Some((path, info)) = crate::locate::best_for_major(&usable, major)
-                && (info.is_jdk || recorded.is_none())
+                && chosen.as_ref().is_none_or(|runtime| {
+                    (!below_patch_floor(&info.version), info.is_jdk)
+                        > (!below_patch_floor(&runtime.version), runtime.is_jdk)
+                })
             {
-                return self.persist(path, info).await;
+                chosen = Some(self.persist(path, info).await?);
             }
         }
 
-        if let Some(runtime) = recorded {
+        if let Some(runtime) = chosen {
+            if below_patch_floor(&runtime.version) && auto_install {
+                match self.download_and_register(major, native_ok, progress).await {
+                    Ok(fixed) => return Ok(fixed),
+                    Err(err) => tracing::warn!(
+                        version = %runtime.version,
+                        "keeping a Java build with known GC bugs, no newer one installed: {err}"
+                    ),
+                }
+            }
             return Ok(runtime);
         }
 
@@ -266,6 +283,41 @@ impl JavaService {
         }
 
         self.prompt_and_install(major, native_ok, progress).await
+    }
+
+    #[tracing::instrument(level = "debug", skip(self, runtime, progress), fields(path = %runtime.absolute_path))]
+    pub async fn replace_below_floor(
+        &self,
+        runtime: JavaRuntime,
+        native_ok: bool,
+        progress: Option<&GroupedProgressSession>,
+    ) -> JavaRuntime {
+        if !below_patch_floor(&runtime.version) {
+            return runtime;
+        }
+
+        match self
+            .prepare(runtime.major, native_ok, false, true, progress)
+            .await
+        {
+            Ok(fixed) if !below_patch_floor(&fixed.version) => {
+                tracing::info!(
+                    from = %runtime.version,
+                    to = %fixed.version,
+                    path = %fixed.absolute_path,
+                    "pinned Java build has known GC bugs; launching with a fixed one"
+                );
+                fixed
+            }
+            Ok(_) => runtime,
+            Err(err) => {
+                tracing::warn!(
+                    version = %runtime.version,
+                    "pinned Java build has known GC bugs and no fixed one is available: {err}"
+                );
+                runtime
+            }
+        }
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
@@ -607,13 +659,25 @@ fn runtime_arches(native_ok: bool) -> Vec<HostArch> {
     }
 }
 
-fn pick_order(runtime: &JavaRuntime, preferred: &JavaVendor) -> (bool, bool, bool, Vec<u32>) {
+fn pick_order(runtime: &JavaRuntime, preferred: &JavaVendor) -> (bool, bool, bool, bool, Vec<u32>) {
     (
+        !below_patch_floor(&runtime.version),
         platform::runs_natively(&runtime.os_arch),
         &runtime.vendor == preferred,
         runtime.is_jdk,
         version_key(&runtime.version),
     )
+}
+
+#[must_use]
+pub(crate) fn below_patch_floor(version: &str) -> bool {
+    let Ok(major) = parse_major_version(version) else {
+        return false;
+    };
+    PATCH_FLOORS
+        .iter()
+        .find(|(floor_major, _)| *floor_major == major)
+        .is_some_and(|(_, floor)| version_key(version).as_slice() < *floor)
 }
 
 /// `21.0.9` sorts above `21.0.12` as text which is backwards so the components
@@ -704,6 +768,31 @@ mod tests {
     fn patch_numbers_are_compared_as_numbers_not_as_text() {
         assert!(version_key("21.0.12") > version_key("21.0.9"));
         assert_eq!(version_key("1.8.0_412"), vec![1, 8, 0, 412]);
+    }
+
+    #[test]
+    fn builds_below_the_patch_floor_are_flagged() {
+        assert!(below_patch_floor("25"));
+        assert!(below_patch_floor("25.0.2"));
+        assert!(below_patch_floor("25.0.4"));
+        assert!(!below_patch_floor("25.0.5"));
+        assert!(!below_patch_floor("25.0.5.1"));
+        assert!(!below_patch_floor("25.0.12"));
+        assert!(!below_patch_floor("21.0.1"));
+        assert!(!below_patch_floor("26"));
+    }
+
+    #[test]
+    fn a_fixed_build_beats_the_default_vendor_and_a_jdk() {
+        let picked = best(
+            vec![
+                runtime(JavaVendor::Microsoft, "25.0.2", true),
+                runtime(JavaVendor::Zulu, "25.0.5", false),
+            ],
+            &JavaVendor::Microsoft,
+        );
+
+        assert_eq!(picked.version, "25.0.5");
     }
 
     #[test]

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use crate::checker::{JavaCheckInfo, check_java_runtime};
 use crate::data::java_executable_relative_path;
 use crate::error::JavaResult;
-use crate::service::parse_major_version;
+use crate::service::{below_patch_floor, parse_major_version};
 use oneclient_common::constants::JAVA_BIN;
 
 pub type LocatedJava = (PathBuf, JavaCheckInfo);
@@ -44,10 +44,12 @@ pub fn best_for_major(candidates: &[LocatedJava], major: u32) -> Option<&Located
         .min_by(|(_, a), (_, b)| compare_candidates(a, b))
 }
 
-/// Best first a JDK beats a JRE outright then the newer version wins
+/// Best first a build without known GC bugs beats one with them, then a JDK
+/// beats a JRE, then the newer version wins
 fn compare_candidates(a: &JavaCheckInfo, b: &JavaCheckInfo) -> Ordering {
-    b.is_jdk
-        .cmp(&a.is_jdk)
+    below_patch_floor(&a.version)
+        .cmp(&below_patch_floor(&b.version))
+        .then_with(|| b.is_jdk.cmp(&a.is_jdk))
         .then_with(|| version_key(b).cmp(&version_key(a)))
 }
 
@@ -244,6 +246,16 @@ mod tests {
         ]);
 
         assert_eq!(ranking, vec!["/jdk-21.0.10", "/jdk-21.0.9"]);
+    }
+
+    #[test]
+    fn a_fixed_jre_beats_a_jdk_with_known_gc_bugs() {
+        let ranking = ranked(vec![
+            candidate("/jdk-25.0.2", "25.0.2", true),
+            candidate("/jre-25.0.5", "25.0.5", false),
+        ]);
+
+        assert_eq!(ranking, vec!["/jre-25.0.5", "/jdk-25.0.2"]);
     }
 
     #[test]

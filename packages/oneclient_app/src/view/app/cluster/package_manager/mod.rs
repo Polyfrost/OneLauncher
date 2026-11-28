@@ -731,21 +731,32 @@ impl Component for PackageManager {
 
         let searching = !query.is_empty();
         let filters = view.filters;
+        // A search has to surface hidden packages or a query could never reach
+        // them. Whatever the user picked before the search is remembered and
+        // resumes afterwards - resetting straight to Hide also wiped their
+        // choice every time the page was opened fresh (#957).
+        let chosen_hidden = use_state(|| None::<HiddenFilter>);
         use_side_effect_with_deps(&searching, move |&searching| {
             let mut filters = filters;
-            let next = if searching {
-                HiddenFilter::Show
-            } else {
-                HiddenFilter::Hide
-            };
+            let mut chosen_hidden = chosen_hidden;
             let current = filters
                 .peek()
                 .get(HiddenFilter::STORAGE_KEY)
                 .and_then(|key| HiddenFilter::from_key(key));
-            if current != Some(next) {
-                filters
-                    .write()
-                    .insert(HiddenFilter::STORAGE_KEY.into(), next.key().into());
+            if searching {
+                chosen_hidden.set(current);
+                if current != Some(HiddenFilter::Show) {
+                    filters
+                        .write()
+                        .insert(HiddenFilter::STORAGE_KEY.into(), HiddenFilter::Show.key().into());
+                }
+            } else {
+                let restored = (*chosen_hidden.read()).or(current).unwrap_or(HiddenFilter::Hide);
+                if current != Some(restored) {
+                    filters
+                        .write()
+                        .insert(HiddenFilter::STORAGE_KEY.into(), restored.key().into());
+                }
             }
         });
         let sort_mode = sort

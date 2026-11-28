@@ -1,5 +1,8 @@
 use freya::{
-    animation::{AnimColor, AnimNum, Ease, Function, use_animation_transition},
+    animation::{
+        AnimColor, AnimNum, AnimatedValue, Ease, Function, OnChange, OnCreation, UseAnimation,
+        use_animation,
+    },
     prelude::*,
 };
 
@@ -12,6 +15,18 @@ use crate::{
 const WIDTH: f32 = 40.;
 const HANDLE_SIZE: f32 = 16.;
 const TIME: u64 = 180;
+
+fn use_switch_transition<A: AnimatedValue>(
+    value: State<bool>,
+    mut run: impl 'static + FnMut(bool) -> A,
+) -> UseAnimation<A> {
+    let on = use_memo(move || *value.read());
+    use_animation(move |conf| {
+        conf.on_change(OnChange::Rerun);
+        conf.on_creation(OnCreation::Finish);
+        run(*on.read())
+    })
+}
 
 pub fn toggle(value: State<bool>) -> impl IntoElement {
     let mut v = value;
@@ -90,7 +105,7 @@ impl Component for Switch {
             colors::control_border()
         };
 
-        let background = use_animation_transition(value, |_, on| {
+        let background = use_switch_transition(value, |on| {
             if on {
                 AnimColor::new(colors::control_off(), colors::brand())
             } else {
@@ -101,7 +116,7 @@ impl Component for Switch {
             .ease(Ease::Out)
         });
 
-        let right_offset = use_animation_transition(value, |_, on| {
+        let right_offset = use_switch_transition(value, |on| {
             if on {
                 AnimNum::new(WIDTH - HANDLE_SIZE - 6., 0.)
             } else {
@@ -165,5 +180,69 @@ impl Component for Switch {
                             .position(Position::new_absolute().right(right_offset.read().value())),
                     ),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use freya_testing::prelude::*;
+
+    use super::*;
+
+    fn settle(app: fn() -> Element) -> TestingRunner {
+        let mut test = launch_test(app);
+        for _ in 0..5 {
+            test.sync_and_update();
+        }
+        test
+    }
+
+    fn track_is(test: &TestingRunner, color: Color) -> bool {
+        let fill = Fill::Color(color);
+        test.find(|_, element| {
+            Rect::try_downcast(element).filter(|rect| rect.style.background == fill)
+        })
+        .is_some()
+    }
+
+    fn mounted_on() -> Element {
+        toggle_controlled(true, (|()| {}).into()).into_element()
+    }
+
+    fn mounted_off() -> Element {
+        toggle_controlled(false, (|()| {}).into()).into_element()
+    }
+
+    fn rewritten_on() -> Element {
+        let mut value = use_state(|| true);
+        rect()
+            .child(toggle(value))
+            .child(
+                rect()
+                    .width(Size::px(50.))
+                    .height(Size::px(50.))
+                    .on_press(move |_| value.set(true)),
+            )
+            .into_element()
+    }
+
+    #[test]
+    fn a_switch_mounted_on_stays_on() {
+        assert!(track_is(&settle(mounted_on), colors::brand()));
+    }
+
+    #[test]
+    fn a_switch_mounted_off_stays_off() {
+        assert!(track_is(&settle(mounted_off), colors::control_off()));
+    }
+
+    #[test]
+    fn writing_the_same_value_does_not_restart_the_animation() {
+        let mut test = settle(rewritten_on);
+        test.click_cursor((10., 40.));
+        for _ in 0..5 {
+            test.sync_and_update();
+            assert!(track_is(&test, colors::brand()));
+        }
     }
 }

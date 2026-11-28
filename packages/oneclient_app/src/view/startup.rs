@@ -106,14 +106,13 @@ impl Component for Startup {
             let stale = settings.settings.accepted_tos_version < required_terms
                 || settings.settings.accepted_privacy_version < required_privacy;
 
+            let start = Route::start(settings.settings.start_tab);
             let destination = if !settings.settings.seen_onboarding {
                 Route::OnboardingWelcome {}
-            } else if settings.settings.declined_tos {
-                Route::Home {}
-            } else if stale {
+            } else if stale && !settings.settings.declined_tos {
                 Route::OnboardingTerms {}
             } else {
-                Route::Home {}
+                start
             };
 
             let heading_to_onboarding = matches!(destination, Route::OnboardingWelcome { .. });

@@ -1,4 +1,5 @@
 use freya::prelude::*;
+use oneclient_core::settings::StartTab;
 
 /// Home renders the home page and the versions page as one vertical stack. This state
 /// lives on `AppShell` so the navbar and the outlet backdrop can follow it too, and so
@@ -35,9 +36,18 @@ impl HomeStack {
 }
 
 pub fn use_provide_home_stack() {
-    let open = use_state(|| false);
-    let progress = use_state(|| 0f32);
-    let on_versions = use_state(|| false);
+    let start_on_versions = use_hook(|| {
+        crate::hooks::use_dispatch()
+            .station()
+            .peek()
+            .settings
+            .settings
+            .start_tab
+            == StartTab::Versions
+    });
+    let open = use_state(|| start_on_versions);
+    let progress = use_state(|| if start_on_versions { 1f32 } else { 0f32 });
+    let on_versions = use_state(|| start_on_versions);
     use_hook(|| {
         provide_context(HomeStack {
             open,

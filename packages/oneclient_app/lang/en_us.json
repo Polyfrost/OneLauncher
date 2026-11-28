@@ -2338,6 +2338,8 @@
   "oneclient.settings.launcher.section.system": "SYSTEM",
   "oneclient.settings.launcher.start_maximized.description": "Open the launcher window maximized. Applies on restart.",
   "oneclient.settings.launcher.start_maximized.title": "Start Maximized",
+  "oneclient.settings.launcher.start_tab.description": "The tab OneClient opens on when it starts.",
+  "oneclient.settings.launcher.start_tab.title": "Start Tab",
   "oneclient.settings.launcher.terms.accepted": "Accepted. Review them again at any time.",
   "oneclient.settings.launcher.terms.declined": "Declined. Poly+ and crash reporting stay off until you accept and restart OneClient.",
   "oneclient.settings.launcher.terms.review": "Review",

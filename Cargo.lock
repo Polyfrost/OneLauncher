@@ -2187,8 +2187,7 @@ dependencies = [
 [[package]]
 name = "freya"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "537b3de6c50962fa5a4aab047dadb41ba95e24730e4765cd0223bc5a31692ca4"
+source = "git+https://github.com/Polyfrost/freya?branch=support%2Fgl-hybrid-black#2b4f67a0b9348ffb17f04c6dcb0a1b15e82b3c55"
 dependencies = [
  "cfg-if",
  "freya-android",
@@ -2212,8 +2211,7 @@ dependencies = [
 [[package]]
 name = "freya-android"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b89dff718510c959520bbda62ba9dd85128e7d4c72233128053cd1b8d176cce"
+source = "git+https://github.com/Polyfrost/freya?branch=support%2Fgl-hybrid-black#2b4f67a0b9348ffb17f04c6dcb0a1b15e82b3c55"
 dependencies = [
  "freya-components",
  "freya-core",
@@ -2226,8 +2224,7 @@ dependencies = [
 [[package]]
 name = "freya-animation"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b43a5c91ac40d26cd11c76b3c1ff6f7dfdbef8d5ad8fdebc70c34432d5d93f75"
+source = "git+https://github.com/Polyfrost/freya?branch=support%2Fgl-hybrid-black#2b4f67a0b9348ffb17f04c6dcb0a1b15e82b3c55"
 dependencies = [
  "easer",
  "freya-core",
@@ -2236,8 +2233,7 @@ dependencies = [
 [[package]]
 name = "freya-borderless-plugin"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e74dcf677c858e477392f53a12ab1521f798540528fa99fd5ec39a634b2d4ff9"
+source = "git+https://github.com/Polyfrost/freya?branch=support%2Fgl-hybrid-black#2b4f67a0b9348ffb17f04c6dcb0a1b15e82b3c55"
 dependencies = [
  "freya-core",
  "freya-engine",
@@ -2248,8 +2244,7 @@ dependencies = [
 [[package]]
 name = "freya-clipboard"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "260e7180ee24548f1c6ee16e89b3b0e44190095aea3af7eead4f20604f6f5946"
+source = "git+https://github.com/Polyfrost/freya?branch=support%2Fgl-hybrid-black#2b4f67a0b9348ffb17f04c6dcb0a1b15e82b3c55"
 dependencies = [
  "copypasta",
  "freya-core",
@@ -2260,8 +2255,7 @@ dependencies = [
 [[package]]
 name = "freya-components"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3eb426641bd9f65eddd0eb5aaab2cc446f57e8778461d401be6e188b5bbff60"
+source = "git+https://github.com/Polyfrost/freya?branch=support%2Fgl-hybrid-black#2b4f67a0b9348ffb17f04c6dcb0a1b15e82b3c55"
 dependencies = [
  "accesskit",
  "anyhow",
@@ -2286,8 +2280,7 @@ dependencies = [
 [[package]]
 name = "freya-core"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0c03b5b8fed573099890f4a172db67e2164d6b601f279c739f36a28dec05e6c"
+source = "git+https://github.com/Polyfrost/freya?branch=support%2Fgl-hybrid-black#2b4f67a0b9348ffb17f04c6dcb0a1b15e82b3c55"
 dependencies = [
  "accesskit",
  "async-io",
@@ -2319,8 +2312,7 @@ dependencies = [
 [[package]]
 name = "freya-edit"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7c0fdb0ba4169ce3063ca86d1ab1499367104bbdea8acb24e538450761b5060"
+source = "git+https://github.com/Polyfrost/freya?branch=support%2Fgl-hybrid-black#2b4f67a0b9348ffb17f04c6dcb0a1b15e82b3c55"
 dependencies = [
  "bitflags 2.13.2",
  "freya-clipboard",
@@ -2334,8 +2326,7 @@ dependencies = [
 [[package]]
 name = "freya-engine"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f26322747de63199e99dd380506127cb502fb2af221a8323195db29690cef98d"
+source = "git+https://github.com/Polyfrost/freya?branch=support%2Fgl-hybrid-black#2b4f67a0b9348ffb17f04c6dcb0a1b15e82b3c55"
 dependencies = [
  "freya-skia-safe",
 ]
@@ -2343,8 +2334,7 @@ dependencies = [
 [[package]]
 name = "freya-markdown"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1c21d0a59d3d6701b227403bb07c270080571030c39827d2105020cebc7e6ee"
+source = "git+https://github.com/Polyfrost/freya?branch=support%2Fgl-hybrid-black#2b4f67a0b9348ffb17f04c6dcb0a1b15e82b3c55"
 dependencies = [
  "freya-components",
  "freya-core",
@@ -2355,8 +2345,7 @@ dependencies = [
 [[package]]
 name = "freya-metrics-plugin"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19877f8ffe6f27ab48452f55fd2b9e0ca4ad6e149ea466007c331d7c67c4d363"
+source = "git+https://github.com/Polyfrost/freya?branch=support%2Fgl-hybrid-black#2b4f67a0b9348ffb17f04c6dcb0a1b15e82b3c55"
 dependencies = [
  "freya-core",
  "freya-engine",
@@ -2367,8 +2356,7 @@ dependencies = [
 [[package]]
 name = "freya-query"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58b3da0612e71bfba997df6338a197758afc27ffd8c1d7c928c625da70fe901d"
+source = "git+https://github.com/Polyfrost/freya?branch=support%2Fgl-hybrid-black#2b4f67a0b9348ffb17f04c6dcb0a1b15e82b3c55"
 dependencies = [
  "freya-core",
  "futures-util",
@@ -2377,8 +2365,7 @@ dependencies = [
 [[package]]
 name = "freya-radio"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e1388b0d26a5cdeddd071712433ef77b149d1339941006807f630390968ac06"
+source = "git+https://github.com/Polyfrost/freya?branch=support%2Fgl-hybrid-black#2b4f67a0b9348ffb17f04c6dcb0a1b15e82b3c55"
 dependencies = [
  "freya-core",
 ]
@@ -2386,8 +2373,7 @@ dependencies = [
 [[package]]
 name = "freya-router"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e37aa66e177a04d89b4758a05eeace765358a5cfc61eec2c502dcaef2f31f870"
+source = "git+https://github.com/Polyfrost/freya?branch=support%2Fgl-hybrid-black#2b4f67a0b9348ffb17f04c6dcb0a1b15e82b3c55"
 dependencies = [
  "freya-core",
  "freya-router-macro",
@@ -2399,8 +2385,7 @@ dependencies = [
 [[package]]
 name = "freya-router-macro"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d5d6242a5cc75c8e8463557331b49808b751083de497fb16bf902734719cf93"
+source = "git+https://github.com/Polyfrost/freya?branch=support%2Fgl-hybrid-black#2b4f67a0b9348ffb17f04c6dcb0a1b15e82b3c55"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2411,8 +2396,7 @@ dependencies = [
 [[package]]
 name = "freya-sdk"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "adb95bb0825b9a28d68cb5120c7a4505e4999073585942948b771785a57bb934"
+source = "git+https://github.com/Polyfrost/freya?branch=support%2Fgl-hybrid-black#2b4f67a0b9348ffb17f04c6dcb0a1b15e82b3c55"
 dependencies = [
  "freya-core",
  "tokio",
@@ -2462,8 +2446,7 @@ dependencies = [
 [[package]]
 name = "freya-testing"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5796c4a3b2e2eaf966b4b7e32da04cbaae91133580f53bcf9006914861719605"
+source = "git+https://github.com/Polyfrost/freya?branch=support%2Fgl-hybrid-black#2b4f67a0b9348ffb17f04c6dcb0a1b15e82b3c55"
 dependencies = [
  "accesskit",
  "freya-clipboard",
@@ -2478,8 +2461,7 @@ dependencies = [
 [[package]]
 name = "freya-winit"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95694afeb922111045e6ac3d59728369647e16ebc20da36b41b4146d29a293fa"
+source = "git+https://github.com/Polyfrost/freya?branch=support%2Fgl-hybrid-black#2b4f67a0b9348ffb17f04c6dcb0a1b15e82b3c55"
 dependencies = [
  "accesskit",
  "accesskit_winit",
@@ -5068,7 +5050,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -5136,8 +5118,7 @@ checksum = "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
 [[package]]
 name = "pathgraph"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa0339ec7da1cff07a80109738535e8a0e8bd3563a81b90e6fbe7343e89885bb"
+source = "git+https://github.com/Polyfrost/freya?branch=support%2Fgl-hybrid-black#2b4f67a0b9348ffb17f04c6dcb0a1b15e82b3c55"
 
 [[package]]
 name = "percent-encoding"
@@ -5651,8 +5632,7 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 [[package]]
 name = "ragnarok"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10d56484b3e3d6dcc4de70f57c62fe155aaf729ab4a2765f2bdf9dea965655bb"
+source = "git+https://github.com/Polyfrost/freya?branch=support%2Fgl-hybrid-black#2b4f67a0b9348ffb17f04c6dcb0a1b15e82b3c55"
 dependencies = [
  "euclid",
  "hashbrown 0.16.1",
@@ -7263,8 +7243,7 @@ dependencies = [
 [[package]]
 name = "tiny-cache"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09d37996ad696bdaddd8d111c7d41ea535f80f9dbdf23f17df10387e2db2014b"
+source = "git+https://github.com/Polyfrost/freya?branch=support%2Fgl-hybrid-black#2b4f67a0b9348ffb17f04c6dcb0a1b15e82b3c55"
 dependencies = [
  "rustc-hash",
  "smallvec",
@@ -7273,8 +7252,7 @@ dependencies = [
 [[package]]
 name = "tiny-diff"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4cdf3342203c1e41a5a04e71629e99abb548a077feb570290473e75e28a23960"
+source = "git+https://github.com/Polyfrost/freya?branch=support%2Fgl-hybrid-black#2b4f67a0b9348ffb17f04c6dcb0a1b15e82b3c55"
 dependencies = [
  "hashbrown 0.16.1",
  "rustc-hash",
@@ -7283,8 +7261,7 @@ dependencies = [
 [[package]]
 name = "tiny-notify"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec5285e73e180e8fc40ad3e7ea2f0269ee7b3546678ca23e2f9f3d2a4db50ba6"
+source = "git+https://github.com/Polyfrost/freya?branch=support%2Fgl-hybrid-black#2b4f67a0b9348ffb17f04c6dcb0a1b15e82b3c55"
 
 [[package]]
 name = "tiny-skia"
@@ -7473,8 +7450,7 @@ checksum = "7d56353a2a665ad0f41a421187180aab746c8c325620617ad883a99a1cbe66d2"
 [[package]]
 name = "torin"
 version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7df0924fe98fb3afc38e072209a83222ec8f9e2b1aa5f145eb429b8ec7cd9448"
+source = "git+https://github.com/Polyfrost/freya?branch=support%2Fgl-hybrid-black#2b4f67a0b9348ffb17f04c6dcb0a1b15e82b3c55"
 dependencies = [
  "euclid",
  "hashbrown 0.16.1",
@@ -8254,7 +8230,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

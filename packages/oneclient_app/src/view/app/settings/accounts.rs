@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use freya::animation::{AnimNum, Function, OnFinish, use_animation};
 use freya::prelude::*;
 use freya::query::{MutationCapability, MutationStateData, UseMutation};
+use freya::router::RouterContext;
 use oneclient_auth::{AccountKind, MinecraftAccount};
 use uuid::Uuid;
 
@@ -606,8 +607,11 @@ impl Component for AccountRow {
                 Button::new()
                     .ghost()
                     .icon()
-                    .enabled(false)
-                    .tooltip(t("oneclient.common.edit"))
+                    .tooltip(t("oneclient.settings.accounts.edit_wardrobe"))
+                    .on_press(move |e: Event<PressEventData>| {
+                        e.stop_propagation();
+                        let _ = RouterContext::get().push(Route::Wardrobe {});
+                    })
                     .child(
                         Icon::new(IconType::Pencil01)
                             .size(18.)

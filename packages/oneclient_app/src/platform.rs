@@ -189,14 +189,21 @@ fn select_in_file_manager(path: &std::path::Path) -> std::io::Result<()> {
         .map_err(std::io::Error::other)
 }
 
+/// The raw string is what ends up with the opener, so it has to be a url we
+/// parsed, not one that merely starts with an allowed scheme. Control
+/// characters are refused outright: some handlers split arguments on them
 fn has_allowed_scheme(url: &str) -> bool {
-    let Some((scheme, _)) = url.split_once(':') else {
+    if url.chars().any(char::is_control) {
+        return false;
+    }
+
+    let Ok(parsed) = url::Url::parse(url) else {
         return false;
     };
 
     ALLOWED_URL_SCHEMES
         .iter()
-        .any(|allowed| scheme.eq_ignore_ascii_case(allowed))
+        .any(|allowed| parsed.scheme().eq_ignore_ascii_case(allowed))
 }
 
 #[cfg(target_os = "linux")]
@@ -735,6 +742,55 @@ pub mod macos {
                 should_handle_reopen as *const core::ffi::c_void,
                 c"c@:@c".as_ptr(),
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::has_allowed_scheme;
+
+    #[test]
+    fn ordinary_links_are_allowed() {
+        for url in [
+            "https://polyfrost.org",
+            "https://github.com/Polyfrost/OneLauncher/pull/1",
+            "http://localhost:8000/icon.png",
+            "mailto:someone@example.com",
+        ] {
+            assert!(has_allowed_scheme(url), "{url}");
+        }
+    }
+
+    #[test]
+    fn a_scheme_we_do_not_open_is_refused() {
+        for url in [
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "smb://host/share",
+            r"C:\Windows\System32",
+            "steam://run/1",
+        ] {
+            assert!(!has_allowed_scheme(url), "{url}");
+        }
+    }
+
+    #[test]
+    fn a_scheme_without_an_address_is_not_a_link() {
+        // `mailto:` parses with an empty path, so it is not covered here
+        for url in ["http:", "https:"] {
+            assert!(!has_allowed_scheme(url), "{url}");
+        }
+    }
+
+    #[test]
+    fn embedded_control_characters_are_refused() {
+        for url in [
+            "https://polyfrost.org\n--flag",
+            "https://polyfrost.org\t",
+            "http://example.com\u{0}",
+        ] {
+            assert!(!has_allowed_scheme(url), "{url:?}");
         }
     }
 }

@@ -452,6 +452,7 @@ pub async fn install_package(
             false,
             false,
             Some(&child),
+            None,
             &state.services.content(),
         )
         .await;
@@ -490,6 +491,7 @@ pub async fn install_package(
             incompatible == IncompatibleMode::Allow,
             false,
             Some(&child),
+            None,
             &content,
         )
         .await?;
@@ -557,6 +559,7 @@ async fn install_datapack(
             version,
             false,
             Some(&child),
+            None,
             &state.services.content(),
         )
         .await?;

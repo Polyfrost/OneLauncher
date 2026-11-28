@@ -928,6 +928,7 @@ pub async fn apply_release_migration_dependency(
         true,
         false,
         child,
+        None,
         ctx,
     )
     .await?;
@@ -964,6 +965,7 @@ pub async fn apply_release_migration_package(
         true,
         false,
         child,
+        None,
         ctx,
     )
     .await?;

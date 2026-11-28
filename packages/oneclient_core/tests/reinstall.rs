@@ -54,6 +54,7 @@ async fn reinstalling_a_disabled_mod_switches_it_on() {
         true,
         false,
         None,
+        None,
         &ctx,
     )
     .await

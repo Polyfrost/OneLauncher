@@ -20,11 +20,11 @@ use futures_util::future::{BoxFuture, Shared};
 use futures_util::{FutureExt, StreamExt};
 
 use crate::bundles::install::{
-    BUNDLE_INSTALL_CONCURRENCY, accepted_bundles, bundle_cluster, decline_unasked_skyblock,
-    disable_was_deliberate, external_ids_by_sha1, find_override, find_user_suppression,
-    heal_bundle_activity, heal_restores, hidden_flags, install_package_from_bundle,
-    overrides_outside_declined, prefetch_bundle_file, remove_artifact_from_cluster,
-    set_artifact_enabled_to, takes_bundle,
+    BUNDLE_INSTALL_CONCURRENCY, accepted_bundles, bundle_cluster, bundle_download_meta,
+    decline_unasked_skyblock, disable_was_deliberate, external_ids_by_sha1, find_override,
+    find_user_suppression, heal_bundle_activity, heal_restores, hidden_flags,
+    install_package_from_bundle, overrides_outside_declined, prefetch_bundle_file,
+    remove_artifact_from_cluster, set_artifact_enabled_to, takes_bundle,
 };
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
@@ -35,7 +35,7 @@ use crate::bundles::types::{
 };
 use crate::ctx::ContentCtx;
 use crate::error::{ContentError, ContentResult};
-use crate::packages::store::PackageStore;
+use crate::packages::store::{DownloadMeta, PackageStore};
 use crate::packages::types::LinkedArtifactInfo;
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 
@@ -76,6 +76,7 @@ fn prefetch_key(file: &BundleFile) -> String {
 fn shared_prefetch(
     file: &BundleFile,
     child: Option<&GroupedProgressChild>,
+    meta: Option<&DownloadMeta>,
     ctx: &ContentCtx,
 ) -> SharedPrefetch {
     let key = prefetch_key(file);
@@ -94,11 +95,12 @@ fn shared_prefetch(
     let task = tokio::spawn({
         let file = file.clone();
         let source = source.clone();
+        let meta = meta.cloned();
         let ctx = ctx.clone();
         let key = key.clone();
         async move {
             let _permit = ctx.prefetches.permits.acquire().await;
-            let fetched = prefetch_bundle_file(&file, Some(&source), &ctx).await;
+            let fetched = prefetch_bundle_file(&file, Some(&source), meta.as_ref(), &ctx).await;
             ctx.prefetches.running.lock().unwrap().remove(&key);
             fetched.map_err(|err| format!("{err:#}"))
         }
@@ -114,6 +116,7 @@ pub(crate) async fn prefetch_until(
     file: &BundleFile,
     child: Option<&GroupedProgressChild>,
     deadline: Option<Instant>,
+    meta: Option<&DownloadMeta>,
     ctx: &ContentCtx,
 ) -> Option<Result<(), String>> {
     let skip = || {
@@ -125,7 +128,7 @@ pub(crate) async fn prefetch_until(
     if past(deadline) {
         return skip();
     }
-    let task = shared_prefetch(file, child, ctx);
+    let task = shared_prefetch(file, child, meta, ctx);
     match deadline {
         Some(deadline) => {
             match tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), task).await {
@@ -650,6 +653,8 @@ pub async fn apply_bundle_updates_with(
         s.expect(oneclient_events::TaskCategory::Packages, count, bytes);
     }
 
+    let meta = bundle_download_meta();
+    let meta = Some(&meta);
     let mut to_fetch: Vec<BundleFile> = check
         .updates_available
         .iter()
@@ -671,7 +676,7 @@ pub async fn apply_bundle_updates_with(
             c.set_phase(oneclient_events::TaskPhase::Downloading);
             c
         });
-        let Some(fetched) = prefetch_until(&file, child.as_ref(), deadline, ctx).await else {
+        let Some(fetched) = prefetch_until(&file, child.as_ref(), deadline, meta, ctx).await else {
             return (file, None);
         };
         if let Some(child) = child {
@@ -748,6 +753,7 @@ pub async fn apply_bundle_updates_with(
             &update.bundle_name,
             true,
             None,
+            meta,
             ctx,
         )
         .await
@@ -780,6 +786,7 @@ pub async fn apply_bundle_updates_with(
             &addition.bundle_name,
             true,
             None,
+            meta,
             ctx,
         )
         .await
@@ -1684,7 +1691,11 @@ mod tests {
         let session = GroupedProgressSession::start(&events, "test");
         let child = session.child("unreachable.jar", 1, TaskCategory::Packages);
 
-        assert!(shared_prefetch(&file, Some(&child), &ctx).await.is_err());
+        assert!(
+            shared_prefetch(&file, Some(&child), None, &ctx)
+                .await
+                .is_err()
+        );
 
         while let Ok(event) = rx.try_recv() {
             assert!(
@@ -1705,10 +1716,10 @@ mod tests {
         let (ctx, _events, _rx) = test_ctx(dir.dir_path()).await;
         let file = unreachable_file();
 
-        assert!(shared_prefetch(&file, None, &ctx).await.is_err());
+        assert!(shared_prefetch(&file, None, None, &ctx).await.is_err());
         assert!(ctx.prefetches.running.lock().unwrap().is_empty());
 
-        let retry = shared_prefetch(&file, None, &ctx);
+        let retry = shared_prefetch(&file, None, None, &ctx);
         assert_eq!(ctx.prefetches.running.lock().unwrap().len(), 1);
         assert!(retry.await.is_err());
     }
@@ -1763,7 +1774,7 @@ mod tests {
             unreachable_file(),
             external_revision,
         ] {
-            drop(shared_prefetch(&file, None, &ctx));
+            drop(shared_prefetch(&file, None, None, &ctx));
         }
 
         assert_eq!(ctx.prefetches.running.lock().unwrap().len(), 7);
@@ -1777,8 +1788,8 @@ mod tests {
         let session = GroupedProgressSession::start(&events, "test");
         let joiner = session.child("joiner", 10, TaskCategory::Packages);
 
-        let _started = shared_prefetch(&file, None, &ctx);
-        let _joined = shared_prefetch(&file, Some(&joiner), &ctx);
+        let _started = shared_prefetch(&file, None, None, &ctx);
+        let _joined = shared_prefetch(&file, Some(&joiner), None, &ctx);
         let source = ctx.prefetches.running.lock().unwrap()[&prefetch_key(&file)]
             .1
             .clone();
@@ -1822,6 +1833,7 @@ mod tests {
             "Bundle",
             true,
             Some(&session),
+            None,
             &ctx,
             Some(Instant::now()),
         )

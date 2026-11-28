@@ -113,9 +113,13 @@ impl Component for PackageUpdatePopup {
         };
 
         let close = dispatch.clone();
+        let close_clusters: Vec<ClusterId> = groups.iter().map(|group| group.cluster_id).collect();
 
         OverlayPopup::new()
-            .on_close(move |_| close.close_package_updates())
+            .on_close(move |_| {
+                silence_if_ticked(dont_show_again, &close_clusters, &close);
+                close.close_package_updates();
+            })
             .child(
                 rect()
                     .width(Size::window_percent(100.))
@@ -201,9 +205,9 @@ fn content(
 ) -> impl IntoElement {
     let dismiss = dispatch.clone();
     let proceed_dispatch = dispatch.clone();
-    let dsa_dispatch = dispatch.clone();
     let total: usize = groups.iter().map(|group| group.packages.len()).sum();
     let clusters: Vec<ClusterId> = groups.iter().map(|group| group.cluster_id).collect();
+    let dismiss_clusters = clusters.clone();
 
     let subtitle = match groups {
         [only] if total == 1 => tf(
@@ -285,28 +289,21 @@ fn content(
                         .child(
                             Button::new()
                                 .ghost()
-                                .on_press(move |_| dismiss.close_package_updates())
+                                .on_press(move |_| {
+                                    silence_if_ticked(dont_show_again, &dismiss_clusters, &dismiss);
+                                    dismiss.close_package_updates();
+                                })
                                 .text(t("oneclient.common.cancel")),
                         )
                         .child(
                             Button::new()
                                 .primary()
                                 .on_press(move |_| {
-                                    if *dont_show_again.peek() {
-                                        // A cluster override outranks the global one, so the prompt
-                                        // is only silenced by writing the cluster that raised it
-                                        for cluster_id in &clusters {
-                                            dsa_dispatch.update_cluster_profile(
-                                                *cluster_id,
-                                                ProfileUpdate {
-                                                    browser_update_mode: Patch::Set(
-                                                        PackageUpdateMode::Skip,
-                                                    ),
-                                                    ..Default::default()
-                                                },
-                                            );
-                                        }
-                                    }
+                                    silence_if_ticked(
+                                        dont_show_again,
+                                        &clusters,
+                                        &proceed_dispatch,
+                                    );
 
                                     let answers = choices.read();
                                     let mut chosen = Vec::new();
@@ -332,6 +329,27 @@ fn content(
                         ),
                 ),
         )
+}
+
+/// A cluster override outranks the global one, so the prompt is only silenced by
+/// writing the cluster that raised it
+fn silence_if_ticked(
+    dont_show_again: State<bool>,
+    clusters: &[ClusterId],
+    dispatch: &crate::Actions,
+) {
+    if !*dont_show_again.peek() {
+        return;
+    }
+    for cluster_id in clusters {
+        dispatch.update_cluster_profile(
+            *cluster_id,
+            ProfileUpdate {
+                browser_update_mode: Patch::Set(PackageUpdateMode::Skip),
+                ..Default::default()
+            },
+        );
+    }
 }
 
 fn update_list(

@@ -194,8 +194,14 @@ fn month_header(
         .cross_align(Alignment::Center)
         .child(arrow(IconType::ChevronsLeft, can_prev, back, -1))
         .child(
+            // Numbered placeholders: languages order the month and the year
+            // differently ("November 2026" vs "2026년 11월"), so the word
+            // order lives in the translation, not here.
             label()
-                .text(format!("{} {}", month_name(shown.month0()), shown.year()))
+                .text(tf(
+                    "oneclient.components.date_range_picker.month_year",
+                    &[&month_name(shown.month0()), &shown.year()],
+                ))
                 .font_size(text_size(13.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .width(Size::flex(1.0))

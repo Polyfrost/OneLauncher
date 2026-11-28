@@ -1478,6 +1478,7 @@
   "oneclient.components.date_range_picker.month.march": "March",
   "oneclient.components.date_range_picker.month.may": "May",
   "oneclient.components.date_range_picker.month.november": "November",
+  "oneclient.components.date_range_picker.month_year": "%1$s %2$s",
   "oneclient.components.date_range_picker.month.october": "October",
   "oneclient.components.date_range_picker.month.september": "September",
   "oneclient.components.date_range_picker.pick_end": "From %s — pick an end date",

@@ -116,7 +116,9 @@ impl Component for AccountHeader {
             None => t("oneclient.components.control_center.not_signed_in").to_string(),
         };
         let subtitle = match (account.as_ref(), unusable) {
-            (_, true) => t("oneclient.components.control_center.microsoft_required"),
+            // The default-account query no longer errors for offline-only
+            // stores, so this is a generic failure to read any account
+            (_, true) => t("oneclient.components.control_center.no_account"),
             (Some(account), false) if account.is_microsoft() => {
                 t("oneclient.components.control_center.microsoft_account")
             }

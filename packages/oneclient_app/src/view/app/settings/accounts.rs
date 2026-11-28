@@ -8,16 +8,16 @@ use uuid::Uuid;
 use super::{section_header, settings_page};
 use crate::Route;
 use crate::components::{
-    Avatar, Button, Icon, IconType, MicrosoftLogin, OverlayPopup, PlayerModel, TextInput,
+    Avatar, Button, Dropdown, Icon, IconType, MicrosoftLogin, OverlayPopup, PlayerModel, TextInput,
     use_microsoft_login,
 };
 use crate::hooks::{
     AddOfflineAccountKeys, RefreshAccountKeys, RemoveAccountKeys, SetDefaultAccountKeys,
-    accounts_have_microsoft, try_accounts, try_default_account, use_accounts,
+    SetOfflineAppearanceKeys, try_accounts, try_default_account, use_accounts,
     use_add_offline_account, use_current_account, use_refresh_account, use_remove_account,
-    use_set_default_account,
+    use_set_default_account, use_set_offline_appearance,
 };
-use crate::i18n::t;
+use crate::i18n::{t, tf};
 use crate::layout::SearchItem;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
@@ -41,10 +41,12 @@ impl Component for SettingsAccounts {
         let set_default = use_set_default_account();
         let remove = use_remove_account();
         let refresh = use_refresh_account();
+        let set_appearance = use_set_offline_appearance();
 
         let mut username = use_state(String::new);
         let mut show_offline = use_state(|| false);
         let mut closing_offline = use_state(|| false);
+        let editing_appearance = use_state(|| None::<Uuid>);
 
         use_side_effect(move || {
             if !*closing_offline.read() {
@@ -66,11 +68,15 @@ impl Component for SettingsAccounts {
         let accounts = try_accounts(&accounts_query).unwrap_or_default();
         let default_account = try_default_account(&default_query);
         let default_id = default_account.as_ref().map(|a| a.id);
-        let has_microsoft = accounts_have_microsoft(&accounts);
 
         let offline_name = username.read().trim().to_string();
         let offline_uuid = (!offline_name.is_empty())
             .then(|| oneclient_auth::offline_uuid(&offline_name).to_string());
+        // Vanilla profiles can never carry such a name so online servers will
+        // reject it, but it is still useful for local testing
+        let offline_warning = (!offline_name.is_empty())
+            .then(|| oneclient_auth::offline_username_warning(&offline_name))
+            .flatten();
 
         let offline_error = mutation_err_text(&add_offline);
 
@@ -93,6 +99,8 @@ impl Component for SettingsAccounts {
                     expires: account.expires,
                     signed_out: account.needs_sign_in(),
                     is_default: Some(account.id) == default_id,
+                    customizable: account.is_offline(),
+                    editing_appearance,
                     set_default,
                     remove,
                     refresh,
@@ -105,10 +113,13 @@ impl Component for SettingsAccounts {
             rows.push(empty_state());
         }
 
+        let editing = editing_appearance
+            .read()
+            .and_then(|id| accounts.iter().find(|account| account.id == id).cloned());
+
         settings_page()
             .child(hero(
                 default_account,
-                has_microsoft,
                 msa.pending,
                 msa.error.clone(),
                 move |_| show_offline.set(true),
@@ -125,10 +136,19 @@ impl Component for SettingsAccounts {
                 offline_dialog(
                     username,
                     offline_uuid,
+                    offline_warning,
                     offline_error,
                     on_confirm_offline,
                     show_offline,
                 )
+            }))
+            .maybe_child(editing.map(|account| {
+                AppearanceDialog {
+                    account,
+                    editing_appearance,
+                    set_appearance,
+                }
+                .into_element()
             }))
             .maybe_child(msa.popup())
             .into_element()
@@ -137,7 +157,6 @@ impl Component for SettingsAccounts {
 
 fn hero(
     account: Option<MinecraftAccount>,
-    has_microsoft: bool,
     microsoft_pending: bool,
     error: Option<String>,
     on_open_offline: impl FnMut(Event<PressEventData>) + 'static,
@@ -224,7 +243,6 @@ fn hero(
                                 .child(
                                     Button::new()
                                         .secondary()
-                                        .enabled(has_microsoft)
                                         .on_press(on_open_offline)
                                         .child(Icon::new(IconType::Plus).size(16.))
                                         .text(t("oneclient.settings.accounts.add_offline")),
@@ -232,13 +250,6 @@ fn hero(
                         )
                         .map(error, |el, msg| {
                             el.child(hint_line(IconType::AlertTriangle, msg, colors::danger()))
-                        })
-                        .maybe(!has_microsoft, |el| {
-                            el.child(hint_line(
-                                IconType::InfoCircle,
-                                t("oneclient.settings.accounts.microsoft_required").to_string(),
-                                colors::fg_secondary(),
-                            ))
                         }),
                 ),
         )
@@ -298,6 +309,7 @@ where
 fn offline_dialog(
     username: State<String>,
     uuid_preview: Option<String>,
+    warning: Option<String>,
     error: Option<String>,
     on_confirm: impl FnMut(Event<PressEventData>) + 'static,
     mut show_offline: State<bool>,
@@ -336,7 +348,17 @@ fn offline_dialog(
                                 )))
                                 .child(TextInput::new(username).placeholder(t(
                                     "oneclient.settings.accounts.offline.username_placeholder",
-                                ))),
+                                )))
+                                .map(warning, |el, warning| {
+                                    el.child(hint_line(
+                                        IconType::AlertTriangle,
+                                        tf(
+                                            "oneclient.settings.accounts.offline.username_warning",
+                                            &[&warning],
+                                        ),
+                                        colors::fg_secondary(),
+                                    ))
+                                }),
                         )
                         .child(
                             rect()
@@ -407,6 +429,200 @@ fn hint_line(icon: IconType, text: String, color: Color) -> impl IntoElement {
         .into_element()
 }
 
+/// Skin and cape editor for offline accounts. Offline profiles have no
+/// session-server textures so the launcher stores and renders these itself.
+struct AppearanceDialog {
+    account: MinecraftAccount,
+    editing_appearance: State<Option<Uuid>>,
+    set_appearance: crate::hooks::UseSetOfflineAppearance,
+}
+
+impl PartialEq for AppearanceDialog {
+    fn eq(&self, other: &Self) -> bool {
+        self.account.id == other.account.id
+            && self.account.custom_skin() == other.account.custom_skin()
+            && self.account.custom_cape() == other.account.custom_cape()
+    }
+}
+
+impl Component for AppearanceDialog {
+    fn render(&self) -> impl IntoElement {
+        let account = self.account.clone();
+        let mut editing = self.editing_appearance;
+        let set_appearance = self.set_appearance;
+
+        let skin_url = use_state(|| {
+            account
+                .custom_skin()
+                .map(|t| t.source.clone())
+                .unwrap_or_default()
+        });
+        let cape_url = use_state(|| {
+            account
+                .custom_cape()
+                .map(|t| t.source.clone())
+                .unwrap_or_default()
+        });
+        let mut closing = use_state(|| false);
+
+        let model_options = vec![
+            t("oneclient.settings.accounts.appearance.model_wide").to_string(),
+            t("oneclient.settings.accounts.appearance.model_slim").to_string(),
+        ];
+        let mut model_idx =
+            use_state(
+                || match account.custom_skin().and_then(|t| t.model.as_deref()) {
+                    Some(oneclient_auth::CustomTexture::SLIM) => 1,
+                    _ => 0,
+                },
+            );
+
+        let error = mutation_err_text(&set_appearance);
+
+        use_side_effect(move || {
+            if !*closing.read() {
+                return;
+            }
+            match &*set_appearance.read().state() {
+                MutationStateData::Settled { res: Ok(()), .. } => {
+                    closing.set(false);
+                    editing.set(None);
+                }
+                MutationStateData::Settled { res: Err(_), .. } => {
+                    closing.set(false);
+                }
+                _ => {}
+            }
+        });
+
+        let on_save = {
+            let account_id = account.id;
+            let mut closing = closing;
+            move |_| {
+                let skin = skin_url.read().trim().to_string();
+                let cape = cape_url.read().trim().to_string();
+                let has_skin = !skin.is_empty();
+                let has_cape = !cape.is_empty();
+                let model = if *model_idx.read() == 1 {
+                    oneclient_auth::CustomTexture::SLIM
+                } else {
+                    oneclient_auth::CustomTexture::WIDE
+                }
+                .to_string();
+
+                set_appearance.mutate(SetOfflineAppearanceKeys {
+                    id: account_id,
+                    skin_url: has_skin.then_some(skin),
+                    skin_model: has_skin.then_some(model),
+                    cape_url: has_cape.then_some(cape),
+                });
+                closing.set(true);
+            }
+        };
+
+        OverlayPopup::new()
+            .on_close(move |()| editing.set(None))
+            .child(
+                rect()
+                    .width(Size::window_percent(100.))
+                    .height(Size::window_percent(100.))
+                    .center()
+                    .child(
+                        rect()
+                            .vertical()
+                            .width(Size::px(420.))
+                            .max_width(Size::window_percent(90.))
+                            .spacing(16.)
+                            .padding(Gaps::new_all(20.))
+                            .corner_radius(rounded(16.))
+                            .background(colors::page_elevated())
+                            .border(border_all_color(1., colors::component_border()))
+                            .child(
+                                label()
+                                    .text(tf(
+                                        "oneclient.settings.accounts.appearance.title",
+                                        &[&self.account.username],
+                                    ))
+                                    .font_size(text_size(18.))
+                                    .font_weight(FontWeight::SEMI_BOLD)
+                                    .max_lines(1)
+                                    .color(colors::fg_primary()),
+                            )
+                            .child(
+                                label()
+                                    .text(t("oneclient.settings.accounts.appearance.note"))
+                                    .font_size(text_size(12.))
+                                    .color(colors::fg_secondary()),
+                            )
+                            .child(
+                                rect()
+                                    .vertical()
+                                    .width(Size::fill())
+                                    .spacing(6.)
+                                    .child(field_label(t(
+                                        "oneclient.settings.accounts.appearance.skin",
+                                    )))
+                                    .child(TextInput::new(skin_url).placeholder(t(
+                                        "oneclient.settings.accounts.appearance.skin_placeholder",
+                                    ))),
+                            )
+                            .child(
+                                rect()
+                                    .vertical()
+                                    .width(Size::fill())
+                                    .spacing(6.)
+                                    .child(field_label(t(
+                                        "oneclient.settings.accounts.appearance.model",
+                                    )))
+                                    .child(
+                                        Dropdown::new(
+                                            model_options[*model_idx.read()].clone(),
+                                            model_options,
+                                        )
+                                        .width(Size::fill())
+                                        .on_select(move |idx| model_idx.set(idx)),
+                                    ),
+                            )
+                            .child(
+                                rect()
+                                    .vertical()
+                                    .width(Size::fill())
+                                    .spacing(6.)
+                                    .child(field_label(t(
+                                        "oneclient.settings.accounts.appearance.cape",
+                                    )))
+                                    .child(TextInput::new(cape_url).placeholder(t(
+                                        "oneclient.settings.accounts.appearance.cape_placeholder",
+                                    ))),
+                            )
+                            .map(error, |el, msg| {
+                                el.child(hint_line(IconType::AlertTriangle, msg, colors::danger()))
+                            })
+                            .child(
+                                rect()
+                                    .horizontal()
+                                    .width(Size::fill())
+                                    .main_align(Alignment::End)
+                                    .spacing(8.)
+                                    .child(
+                                        Button::new()
+                                            .ghost()
+                                            .on_press(move |_| editing.set(None))
+                                            .text(t("oneclient.common.cancel")),
+                                    )
+                                    .child(
+                                        Button::new()
+                                            .primary()
+                                            .on_press(on_save)
+                                            .text(t("oneclient.common.save")),
+                                    ),
+                            ),
+                    ),
+            )
+            .into_element()
+    }
+}
+
 const REFRESH_SPIN_TIME: u64 = 800;
 
 const REFRESHING_OPACITY: f32 = 0.7;
@@ -421,6 +637,10 @@ struct AccountRow {
     expires: DateTime<Utc>,
     signed_out: bool,
     is_default: bool,
+    /// Offline accounts carry custom skins and capes the launcher renders
+    /// itself so their rows open the appearance editor
+    customizable: bool,
+    editing_appearance: State<Option<Uuid>>,
     set_default: crate::hooks::UseSetDefaultAccount,
     remove: crate::hooks::UseRemoveAccount,
     refresh: crate::hooks::UseRefreshAccount,
@@ -602,18 +822,32 @@ impl Component for AccountRow {
                     )
                     .into_element()
             }))
-            .child(
-                Button::new()
+            .child({
+                let mut edit_button = Button::new()
                     .ghost()
                     .icon()
-                    .enabled(false)
-                    .tooltip(t("oneclient.common.edit"))
+                    .enabled(self.customizable)
+                    .tooltip(if self.customizable {
+                        t("oneclient.settings.accounts.edit_appearance")
+                    } else {
+                        t("oneclient.common.edit")
+                    })
                     .child(
                         Icon::new(IconType::Pencil01)
                             .size(18.)
                             .color(colors::fg_secondary()),
-                    ),
-            )
+                    );
+
+                if self.customizable {
+                    let mut editing = self.editing_appearance;
+                    edit_button = edit_button.on_press(move |e: Event<PressEventData>| {
+                        e.stop_propagation();
+                        editing.set(Some(id));
+                    });
+                }
+
+                edit_button
+            })
             .child(
                 Button::new()
                     .ghost()

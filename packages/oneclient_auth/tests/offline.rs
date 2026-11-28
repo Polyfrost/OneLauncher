@@ -1,5 +1,8 @@
 use chrono::{TimeDelta, Utc};
-use oneclient_auth::{AccountKind, CredentialsStore, offline_account, offline_uuid};
+use oneclient_auth::{
+    AccountKind, CredentialsStore, offline_account, offline_username_error,
+    offline_username_warning, offline_uuid,
+};
 use uuid::Uuid;
 
 fn isolate_launcher_dir() {
@@ -16,6 +19,54 @@ fn fake_microsoft_account(username: &str) -> oneclient_auth::MinecraftAccount {
     account
 }
 
+#[tokio::test]
+async fn offline_appearance_round_trips_through_auth_json() {
+    isolate_launcher_dir();
+
+    let mut store = CredentialsStore::default();
+    let offline = store.add_offline_account("Steve".into()).unwrap();
+    let id = offline.id;
+
+    let appearance = oneclient_auth::AccountAppearance {
+        skin: Some(oneclient_auth::CustomTexture {
+            source: "https://example.com/steve.png".into(),
+            model: Some(oneclient_auth::CustomTexture::SLIM.into()),
+        }),
+        cape: Some(oneclient_auth::CustomTexture {
+            source: "https://example.com/cape.png".into(),
+            model: None,
+        }),
+    };
+    store.set_offline_appearance(id, appearance).await.unwrap();
+
+    let reloaded = CredentialsStore::load().await.unwrap();
+    let account = reloaded.get_account(id).expect("entry must survive");
+    assert_eq!(
+        account.custom_skin().map(|t| t.source.as_str()),
+        Some("https://example.com/steve.png")
+    );
+    assert_eq!(
+        account.custom_cape().map(|t| t.source.as_str()),
+        Some("https://example.com/cape.png")
+    );
+}
+
+#[tokio::test]
+async fn appearance_is_rejected_for_microsoft_accounts() {
+    isolate_launcher_dir();
+
+    let mut store = CredentialsStore::default();
+    let msa = fake_microsoft_account("MsaUser");
+    let id = msa.id;
+    store.users.insert(id, msa);
+
+    let err = store
+        .set_offline_appearance(id, Default::default())
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("offline accounts"));
+}
+
 #[test]
 fn offline_uuid_matches_vanilla_algorithm() {
     let id = offline_uuid("Notch");
@@ -28,13 +79,15 @@ fn offline_uuid_matches_vanilla_algorithm() {
 }
 
 #[tokio::test]
-async fn offline_account_blocked_without_microsoft() {
+async fn offline_account_allowed_without_microsoft() {
     isolate_launcher_dir();
 
     let mut store = CredentialsStore::default();
-    let err = store.add_offline_account("Steve".into()).unwrap_err();
+    let offline = store.add_offline_account("Steve".into()).unwrap();
 
-    assert!(err.to_string().contains("Microsoft"));
+    assert_eq!(offline.kind, AccountKind::Offline);
+    assert_eq!(offline.username, "Steve");
+    assert_eq!(offline.custom_skin(), None);
 }
 
 #[tokio::test]
@@ -51,20 +104,36 @@ async fn offline_account_allowed_when_microsoft_exists() {
 }
 
 #[tokio::test]
-async fn default_offline_fails_when_last_microsoft_removed() {
+async fn blank_offline_username_is_fatal() {
     isolate_launcher_dir();
 
     let mut store = CredentialsStore::default();
-    let msa = fake_microsoft_account("MsaUser");
-    let msa_id = msa.id;
-    store.users.insert(msa_id, msa);
+    let err = store.add_offline_account("   ".into()).unwrap_err();
 
-    let offline = store.add_offline_account("Steve".into()).unwrap();
-    store.default_user = Some(offline.id);
-    store.users.remove(&msa_id);
+    assert!(err.to_string().contains("invalid offline username"));
+}
 
-    let err = store.default_account().await.unwrap_err();
-    assert!(err.to_string().contains("Microsoft"));
+#[test]
+fn unusual_offline_usernames_warn_instead_of_blocking() {
+    assert_eq!(offline_username_warning("Steve"), None);
+    assert_eq!(offline_username_error("Steve"), None);
+
+    let warning =
+        offline_username_warning("Steve!").expect("exclamation mark is not vanilla-legal");
+    assert!(warning.contains("outside letters"));
+
+    let warning = offline_username_warning("ab").expect("too short");
+    assert!(warning.contains("shorter than 3"));
+
+    let warning = offline_username_warning("aVeryLongUsernameOver16").expect("too long");
+    assert!(warning.contains("longer than 16"));
+
+    assert_eq!(
+        offline_username_error("Steve!"),
+        None,
+        "only blank names are fatal"
+    );
+    assert!(offline_username_error("  ").is_some());
 }
 
 #[test]

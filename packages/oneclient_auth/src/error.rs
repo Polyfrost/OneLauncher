@@ -128,9 +128,6 @@ pub enum AuthError {
     #[error("sign-in was cancelled")]
     LoginCancelled,
 
-    #[error("offline mode requires at least one Microsoft account to be signed in")]
-    OfflineRequiresMicrosoft,
-
     #[error("invalid offline username: {reason}")]
     InvalidOfflineUsername { reason: String },
 
@@ -144,4 +141,7 @@ pub enum AuthError {
 
     #[error("account already exists for username {username:?}")]
     DuplicateUsername { username: String },
+
+    #[error("custom skins and capes are only available for offline accounts")]
+    CustomAppearanceOffline,
 }

@@ -8,12 +8,12 @@ use oneclient_core::clusters::ClusterKind;
 
 use crate::hooks::{
     settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot,
-    use_launcher, use_version_metadata,
+    use_launcher, use_settings_snapshot, use_version_metadata,
 };
 use crate::i18n::t;
 use crate::routes::Route;
 use crate::theme::{colors, text_size};
-use crate::utils::sort_clusters_for_home;
+use crate::utils::sort_clusters_for_home_pinned;
 use crate::view::app::{launch_button_state, launch_syncing, shared_dir_taken};
 
 #[derive(PartialEq)]
@@ -29,7 +29,10 @@ impl Component for ActiveClusterPanel {
 
         let clusters = settled_or_loading(&clusters_query).unwrap_or_default();
 
-        let sorted = sort_clusters_for_home(clusters);
+        let sorted = sort_clusters_for_home_pinned(
+            clusters,
+            &use_settings_snapshot().settings.pinned_cluster_ids,
+        );
 
         if active_id.read().is_none()
             && let Some(first) = sorted.first()
@@ -94,6 +97,9 @@ impl Component for ActiveClusterPanel {
         let cluster_id = cluster.id;
         let syncing = launch_syncing(&launcher, cluster.uses_bundles());
         let shared_dir_taken = shared_dir_taken(&game, &sorted, cluster_id);
+        let allow_duplicate = use_settings_snapshot()
+            .settings
+            .allow_parallel_running_clusters;
 
         rect()
             .vertical()
@@ -129,7 +135,13 @@ impl Component for ActiveClusterPanel {
                     .child(launch_button(
                         cluster_id,
                         dispatch,
-                        launch_button_state(&game, cluster_id, syncing, shared_dir_taken),
+                        launch_button_state(
+                            &game,
+                            cluster_id,
+                            syncing,
+                            shared_dir_taken,
+                            allow_duplicate,
+                        ),
                     ))
                     .child(cluster_settings_button(cluster_id)),
             )

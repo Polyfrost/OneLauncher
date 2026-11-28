@@ -3,8 +3,6 @@ use md5::{Digest, Md5};
 use uuid::Uuid;
 
 use super::data::{AccountKind, MinecraftAccount};
-use super::error::AuthError;
-use crate::error::AuthResult;
 
 pub fn offline_uuid(username: &str) -> Uuid {
     let mut hasher = Md5::new();
@@ -18,24 +16,48 @@ pub fn offline_uuid(username: &str) -> Uuid {
     Uuid::from_bytes(bytes)
 }
 
-pub fn validate_offline_username(username: &str) -> AuthResult<()> {
+/// Fatal username problems. Only a name that cannot identify a player at all
+/// (empty or blank) blocks creation, everything else is a warning.
+pub fn offline_username_error(username: &str) -> Option<String> {
+    if username.trim().is_empty() {
+        return Some("username cannot be empty".into());
+    }
+
+    None
+}
+
+/// Non-fatal username problems. Vanilla profiles can never carry these names
+/// so online servers will reject them, but they are still useful for local
+/// testing and custom servers, so the launcher warns instead of refusing.
+pub fn offline_username_warning(username: &str) -> Option<String> {
+    let mut reasons: Vec<String> = Vec::new();
+
     let len = username.chars().count();
     if !(3..=16).contains(&len) {
-        return Err(AuthError::InvalidOfflineUsername {
-            reason: "username must be 3-16 characters".into(),
-        });
+        let reason = if len < 3 {
+            "shorter than 3 characters"
+        } else {
+            "longer than 16 characters"
+        };
+        reasons.push(reason.to_string());
     }
 
     if !username
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '_')
     {
-        return Err(AuthError::InvalidOfflineUsername {
-            reason: "username may only contain letters, digits, and underscores".into(),
-        });
+        reasons.push("contains characters outside letters, digits, and underscores".to_string());
     }
 
-    Ok(())
+    if username != username.trim() {
+        reasons.push("has leading or trailing whitespace".to_string());
+    }
+
+    if reasons.is_empty() {
+        None
+    } else {
+        Some(reasons.join(", "))
+    }
 }
 
 #[tracing::instrument(level = "debug", fields(username = %username))]
@@ -49,5 +71,6 @@ pub fn offline_account(username: String) -> MinecraftAccount {
         expires: Utc::now() + Duration::days(3650),
         kind: AccountKind::Offline,
         signed_out: false,
+        appearance: None,
     }
 }

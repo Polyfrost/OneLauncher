@@ -11,11 +11,14 @@ mod service;
 mod store;
 
 pub use data::{
-    AccountKind, BrowserLogin, DeviceCodeLogin, MicrosoftLoginSession, MinecraftAccount,
+    AccountAppearance, AccountKind, BrowserLogin, CustomTexture, DeviceCodeLogin,
+    MicrosoftLoginSession, MinecraftAccount,
 };
 pub use diagnostics::{AuthErrorGuidance, AuthErrorSample, diagnose_auth_error, preview_samples};
 pub use error::{AuthError, AuthResult, MinecraftAuthError, MinecraftAuthStep};
 pub use msa::PendingBrowserLogin;
-pub use offline::{offline_account, offline_uuid, validate_offline_username};
+pub use offline::{
+    offline_account, offline_username_error, offline_username_warning, offline_uuid,
+};
 pub use service::{AuthService, MICROSOFT_LOGIN_PROGRESS};
 pub use store::CredentialsStore;

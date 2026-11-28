@@ -5,7 +5,8 @@ use oneclient_common::parse_mc_version;
 
 use crate::components::{Button, Icon, IconType, TabBar, TabItem};
 use crate::hooks::{
-    use_bisect, use_cluster, use_dispatch, use_game_snapshot, use_launcher, use_version_metadata,
+    use_bisect, use_cluster, use_dispatch, use_game_snapshot, use_launcher, use_settings_snapshot,
+    use_version_metadata,
 };
 use crate::i18n::t;
 use crate::routes::Route;
@@ -125,7 +126,16 @@ impl Component for ClusterShell {
             .as_ref()
             .is_none_or(|c| crate::view::app::cluster::supports_datapacks(&c.mc_version));
         let show_mod_tabs = cluster.as_ref().is_none_or(|c| !c.lacks_mod_loader());
-        let launch_state = launch_button_state(&game, cluster_id, syncing, shared_dir_taken);
+        let allow_duplicate = use_settings_snapshot()
+            .settings
+            .allow_parallel_running_clusters;
+        let launch_state = launch_button_state(
+            &game,
+            cluster_id,
+            syncing,
+            shared_dir_taken,
+            allow_duplicate,
+        );
         let bisecting = use_bisect(cluster_id).is_some();
         let mut question_hidden = use_state(|| false);
         let mut sharing = use_state(|| false);

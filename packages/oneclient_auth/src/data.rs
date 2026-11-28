@@ -22,6 +22,35 @@ pub struct MinecraftAccount {
     /// launch until the user signs in to it again
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub signed_out: bool,
+    /// Custom cosmetic data, used by offline accounts. Offline profiles have
+    /// no session-server textures so the launcher stores and renders these
+    /// itself. Microsoft accounts keep using the real Mojang wardrobe.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub appearance: Option<AccountAppearance>,
+}
+
+/// Custom skin and cape of an offline account.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AccountAppearance {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skin: Option<CustomTexture>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cape: Option<CustomTexture>,
+}
+
+/// A texture the launcher applies itself. `source` is an https URL or an
+/// absolute local path to a PNG file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CustomTexture {
+    pub source: String,
+    /// Skin model hint: `"slim"` (Alex) or `"wide"` (Steve). Capes ignore it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+}
+
+impl CustomTexture {
+    pub const SLIM: &str = "slim";
+    pub const WIDE: &str = "wide";
 }
 
 fn default_account_kind() -> AccountKind {
@@ -43,6 +72,18 @@ impl MinecraftAccount {
 
     pub fn is_expired(&self) -> bool {
         self.expires <= Utc::now() + chrono::TimeDelta::seconds(60)
+    }
+
+    pub fn appearance(&self) -> Option<&AccountAppearance> {
+        self.appearance.as_ref()
+    }
+
+    pub fn custom_skin(&self) -> Option<&CustomTexture> {
+        self.appearance.as_ref().and_then(|a| a.skin.as_ref())
+    }
+
+    pub fn custom_cape(&self) -> Option<&CustomTexture> {
+        self.appearance.as_ref().and_then(|a| a.cape.as_ref())
     }
 }
 

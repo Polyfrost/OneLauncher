@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use futures_util::{StreamExt, stream};
 use interfrost::api::minecraft::{
     Asset, AssetsIndex, DownloadType, Library, LibraryDownload, Os, Version, VersionInfo,
+    VersionType,
 };
 use interfrost::api::modded::LoaderVersion;
 use reqwest::Method;
@@ -1530,7 +1531,8 @@ pub async fn get_loader_version(
         return Ok(resolved);
     }
 
-    if !saw_matching || loader_version.is_some() {
+    // A doomed fetch round-trip only delays an offline launch
+    if (!saw_matching || loader_version.is_some()) && oneclient_net::status::current().online {
         metadata.fetch_all(ctx).await;
         manifest = metadata.get_modded(loader)?;
         (saw_matching, resolved) = resolve_from_manifest(manifest);
@@ -1566,10 +1568,29 @@ pub async fn resolve_minecraft_version(
     ctx: &McCtx,
     mc_version: &str,
 ) -> McResult<(Version, usize, bool)> {
-    let mut manifest = metadata.get_vanilla_or_fetch(ctx).await?;
+    let offline = !oneclient_net::status::current().online;
+
+    let mut manifest = match metadata.get_vanilla_or_fetch(ctx).await {
+        Ok(manifest) => manifest,
+        Err(err) if offline => {
+            // No cached manifest and no way to fetch one launching an already
+            // installed version still works its profile json sits on disk
+            if installed_version_info_exists(mc_version).await {
+                tracing::info!(
+                    version = %mc_version,
+                    "offline without a manifest cache; using the installed version profile"
+                );
+                return Ok((offline_version_entry(mc_version), 0, false));
+            }
+            return Err(err);
+        }
+        Err(err) => return Err(err),
+    };
+
     let mut version_index = manifest.versions.iter().position(|it| it.id == mc_version);
 
-    if version_index.is_none() {
+    // A doomed fetch round-trip only delays an offline launch
+    if version_index.is_none() && !offline {
         metadata.fetch_all(ctx).await;
         manifest = metadata.get_vanilla()?;
         version_index = manifest.versions.iter().position(|it| it.id == mc_version);
@@ -1584,6 +1605,35 @@ pub async fn resolve_minecraft_version(
         version_index,
         is_version_updated(version_index, versions),
     ))
+}
+
+/// A placeholder manifest entry for offline launches of installed versions the
+/// empty url makes any attempt to fetch its json fail cleanly instead of
+/// hitting the network
+fn offline_version_entry(mc_version: &str) -> Version {
+    Version {
+        id: mc_version.to_string(),
+        type_: VersionType::Release,
+        url: String::new(),
+        time: chrono::Utc::now(),
+        release_time: chrono::Utc::now(),
+        sha1: String::new(),
+        compliance_level: 1,
+        original_sha1: None,
+    }
+}
+
+async fn installed_version_info_exists(mc_version: &str) -> bool {
+    let Ok(dir) = paths::versions_dir() else {
+        return false;
+    };
+    let stem = mc_version.to_string();
+    let path = dir.join(mc_version).join(version_info_file_name(
+        &stem,
+        GameLoader::Vanilla.get_format_version(),
+    ));
+
+    read_cached_version_info(&path).await.is_some()
 }
 
 #[tracing::instrument(skip(metadata, ctx), level = "debug")]

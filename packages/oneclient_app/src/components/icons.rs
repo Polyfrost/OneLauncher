@@ -162,6 +162,7 @@ pub enum IconType {
     PaintPour,
     ParagraphWrap,
     Pencil01,
+    Pin01,
     Play,
     Plus,
     RefreshCcw02,

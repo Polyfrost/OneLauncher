@@ -3,7 +3,7 @@ use freya::router::RouterContext;
 use oneclient_core::clusters::Cluster;
 
 use crate::components::{ContextMenu, IconType};
-use crate::hooks::{modpack_job_running, use_game_snapshot};
+use crate::hooks::{modpack_job_running, use_dispatch, use_game_snapshot, use_settings_snapshot};
 use crate::i18n::t;
 use crate::routes::Route;
 use crate::view::app::DeleteInstanceModal;
@@ -105,6 +105,8 @@ pub struct ClusterContextMenu {
 impl Component for ClusterContextMenu {
     fn render(&self) -> impl IntoElement {
         let game = use_game_snapshot();
+        let dispatch = use_dispatch();
+        let pins = use_settings_snapshot().settings.pinned_cluster_ids;
         let mut deleting = use_state(|| false);
         let mut position = self.position;
         let target = self.target.clone();
@@ -125,6 +127,52 @@ impl Component for ClusterContextMenu {
                     let _ = RouterContext::get().push(route.clone());
                 });
             }
+
+            let pin_index = pins.iter().position(|id| *id == cluster_id);
+            if let Some(index) = pin_index {
+                if index > 0 {
+                    let dispatch = dispatch.clone();
+                    context = context.action(
+                        IconType::ArrowLeft,
+                        t("oneclient.components.cluster_menu.move_earlier"),
+                        move |()| {
+                            position.set(None);
+                            dispatch.move_pinned_cluster(cluster_id, -1);
+                        },
+                    );
+                }
+                if index < pins.len() - 1 {
+                    let dispatch = dispatch.clone();
+                    context = context.action(
+                        IconType::ArrowRight,
+                        t("oneclient.components.cluster_menu.move_later"),
+                        move |()| {
+                            position.set(None);
+                            dispatch.move_pinned_cluster(cluster_id, 1);
+                        },
+                    );
+                }
+                let dispatch = dispatch.clone();
+                context = context.action(
+                    IconType::Pin01,
+                    t("oneclient.components.cluster_menu.unpin"),
+                    move |()| {
+                        position.set(None);
+                        dispatch.unpin_cluster(cluster_id);
+                    },
+                );
+            } else {
+                let dispatch = dispatch.clone();
+                context = context.action(
+                    IconType::Pin01,
+                    t("oneclient.components.cluster_menu.pin"),
+                    move |()| {
+                        position.set(None);
+                        dispatch.pin_cluster(cluster_id);
+                    },
+                );
+            }
+
             if can_delete {
                 context = context.separator().danger_action(
                     IconType::Trash01,

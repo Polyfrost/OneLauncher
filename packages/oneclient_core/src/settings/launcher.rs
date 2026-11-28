@@ -83,6 +83,9 @@ pub struct LauncherSettings {
     pub accepted_privacy_version: u32,
     pub declined_tos: bool,
     pub seen_versions: Vec<String>,
+    /// Home screen pin order front of the vec shows first missing or deleted
+    /// clusters are skipped wherever the order is applied
+    pub pinned_cluster_ids: Vec<i64>,
     pub seen_changelog_version: Option<String>,
     pub acknowledged_disable_warnings: Vec<String>,
     pub pending_release_migrations: Vec<String>,
@@ -149,6 +152,7 @@ impl Default for LauncherSettings {
             accepted_privacy_version: 0,
             declined_tos: false,
             seen_versions: Vec::new(),
+            pinned_cluster_ids: Vec::new(),
             seen_changelog_version: None,
             acknowledged_disable_warnings: Vec::new(),
             pending_release_migrations: Vec::new(),

@@ -5,9 +5,9 @@ use uuid::Uuid;
 use oneclient_common::paths;
 use oneclient_events::EventBus;
 
-use crate::data::{AccountKind, MinecraftAccount};
+use crate::data::{AccountAppearance, AccountKind, MinecraftAccount};
 use crate::error::{AuthError, AuthResult};
-use crate::offline::{offline_account, validate_offline_username};
+use crate::offline::{offline_account, offline_username_error};
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, Default)]
 pub struct CredentialsStore {
@@ -91,11 +91,9 @@ impl CredentialsStore {
     }
 
     fn insert_offline_account(&mut self, username: String) -> AuthResult<MinecraftAccount> {
-        if !self.has_microsoft_account() {
-            return Err(AuthError::OfflineRequiresMicrosoft);
+        if let Some(reason) = offline_username_error(&username) {
+            return Err(AuthError::InvalidOfflineUsername { reason });
         }
-
-        validate_offline_username(&username)?;
 
         if self
             .users
@@ -108,6 +106,27 @@ impl CredentialsStore {
         let account = offline_account(username);
         self.users.insert(account.id, account.clone());
         Ok(account)
+    }
+
+    /// Custom appearance is an offline-account feature Microsoft accounts use
+    /// the real Mojang wardrobe instead
+    #[tracing::instrument(level = "debug", skip(self), fields(%id))]
+    pub async fn set_offline_appearance(
+        &mut self,
+        id: Uuid,
+        appearance: AccountAppearance,
+    ) -> AuthResult<()> {
+        let Some(account) = self.users.get_mut(&id) else {
+            return Err(AuthError::AccountNotFound(id));
+        };
+
+        if !account.is_offline() {
+            return Err(AuthError::CustomAppearanceOffline);
+        }
+
+        account.appearance = Some(appearance);
+        self.save().await?;
+        Ok(())
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%account.id))]
@@ -204,10 +223,6 @@ impl CredentialsStore {
         let Some(account) = self.users.get(&id).cloned() else {
             return Ok(None);
         };
-
-        if account.is_offline() && !self.has_microsoft_account() {
-            return Err(AuthError::OfflineRequiresMicrosoft);
-        }
 
         Ok(Some(account))
     }

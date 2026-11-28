@@ -1,0 +1,37 @@
+name: Sync fork with upstream
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly catch-up, Monday 06:20 UTC
+    - cron: "20 6 * * 1"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync from Polyfrost/OneLauncher
+        uses: aormsby/gh-action-sync-upstream-action@v3.4
+        with:
+          upstream_sync_repo: Polyfrost/OneLauncher
+          upstream_sync_branch: main
+          target_sync_branch: main
+          target_repo_token: ${{ secrets.GITHUB_TOKEN }}
+          git_config_user: github-actions[bot]
+          git_config_email: 41898282+github-actions[bot]@users.noreply.github.com
+          shallow_since: "2025-01-01"
+
+      - name: Report result
+        run: |
+          if [ -n "$(git log HEAD --not --remotes=origin/main --oneline 2>/dev/null)" ]; then
+            echo "::notice::Synced new upstream commits to main."
+          else
+            echo "Already up to date."
+          fi

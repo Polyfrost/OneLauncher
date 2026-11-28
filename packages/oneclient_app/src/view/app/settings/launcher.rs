@@ -64,6 +64,11 @@ impl Component for SettingsLauncher {
             move || v
         });
 
+        let allow_parallel = use_state({
+            let v = settings.allow_parallel_running_clusters;
+            move || v
+        });
+
         let mut first = use_state(|| true);
         use_side_effect(move || {
             let discord = *discord_rpc.read();
@@ -73,6 +78,7 @@ impl Component for SettingsLauncher {
             let tray = *show_tray_icon.read();
             let behaviour = *launch_behaviour.read();
             let game_log = *open_game_log.read();
+            let parallel = *allow_parallel.read();
             if *first.peek() {
                 first.set(false);
                 return;
@@ -85,6 +91,7 @@ impl Component for SettingsLauncher {
                 next.show_tray_icon = tray;
                 next.launch_behaviour = behaviour;
                 next.open_game_log_on_launch = game_log;
+                next.allow_parallel_running_clusters = parallel;
             });
         });
 
@@ -162,6 +169,16 @@ impl Component for SettingsLauncher {
                 ),
             ))
             .child(settings_row(
+                IconType::LayersThree01,
+                t("oneclient.settings.launcher.parallel_clusters.title"),
+                t("oneclient.settings.launcher.parallel_clusters.description"),
+                resettable(
+                    toggle(allow_parallel),
+                    allow_parallel,
+                    defaults.allow_parallel_running_clusters,
+                ),
+            ))
+            .child(settings_row(
                 IconType::Moon01,
                 t("oneclient.settings.launcher.close_behaviour.title"),
                 t("oneclient.settings.launcher.close_behaviour.description"),
@@ -209,7 +226,11 @@ fn launch_behaviour_field(mut selected: State<LaunchBehaviour>) -> impl IntoElem
 fn close_behaviour_field(mut background: State<bool>) -> impl IntoElement {
     let exit = t("oneclient.settings.launcher.close_behaviour.exit");
     let to_background = t("oneclient.settings.launcher.close_behaviour.background");
-    let current = if *background.read() { to_background } else { exit };
+    let current = if *background.read() {
+        to_background
+    } else {
+        exit
+    };
 
     Dropdown::new(current, vec![exit.to_string(), to_background.to_string()])
         .width(Size::px(220.))

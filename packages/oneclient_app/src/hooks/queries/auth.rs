@@ -360,6 +360,7 @@ impl MutationCapability for RefreshAllAccountsMutation {
 pub type UseSetDefaultAccount = UseMutation<SetDefaultAccountMutation>;
 pub type UseRemoveAccount = UseMutation<RemoveAccountMutation>;
 pub type UseRefreshAccount = UseMutation<RefreshAccountMutation>;
+pub type UseSetOfflineAppearance = UseMutation<SetOfflineAppearanceMutation>;
 
 pub fn use_begin_microsoft_login() -> UseMutation<BeginMicrosoftLoginMutation> {
     use_mutation(Mutation::new(BeginMicrosoftLoginMutation))
@@ -381,6 +382,51 @@ pub fn use_add_offline_account() -> UseMutation<AddOfflineAccountMutation> {
     use_mutation(Mutation::new(AddOfflineAccountMutation))
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct SetOfflineAppearanceMutation;
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct SetOfflineAppearanceKeys {
+    pub id: Uuid,
+    pub skin_url: Option<String>,
+    pub skin_model: Option<String>,
+    pub cape_url: Option<String>,
+}
+
+impl MutationCapability for SetOfflineAppearanceMutation {
+    type Ok = ();
+    type Err = LauncherError;
+    type Keys = SetOfflineAppearanceKeys;
+
+    async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        let appearance = oneclient_auth::AccountAppearance {
+            skin: keys
+                .skin_url
+                .clone()
+                .map(|source| oneclient_auth::CustomTexture {
+                    source,
+                    model: keys.skin_model.clone(),
+                }),
+            cape: keys
+                .cape_url
+                .clone()
+                .map(|source| oneclient_auth::CustomTexture {
+                    source,
+                    model: None,
+                }),
+        };
+
+        Ok(crate::launcher::state()?
+            .auth
+            .set_offline_appearance(keys.id, appearance)
+            .await?)
+    }
+
+    async fn on_settled(&self, keys: &Self::Keys, _result: &Result<Self::Ok, Self::Err>) {
+        invalidate_auth_queries(Some(keys.id)).await;
+    }
+}
+
 pub fn use_remove_account() -> UseMutation<RemoveAccountMutation> {
     use_mutation(Mutation::new(RemoveAccountMutation))
 }
@@ -391,6 +437,10 @@ pub fn use_set_default_account() -> UseMutation<SetDefaultAccountMutation> {
 
 pub fn use_refresh_account() -> UseMutation<RefreshAccountMutation> {
     use_mutation(Mutation::new(RefreshAccountMutation))
+}
+
+pub fn use_set_offline_appearance() -> UseMutation<SetOfflineAppearanceMutation> {
+    use_mutation(Mutation::new(SetOfflineAppearanceMutation))
 }
 
 pub fn use_refresh_all_accounts() -> UseMutation<RefreshAllAccountsMutation> {

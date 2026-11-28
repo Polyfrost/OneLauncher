@@ -45,16 +45,16 @@ use tokio::sync::mpsc;
 use crate::components::IconType;
 use crate::hooks::{GraphicsBackendQuery, PackageUpdatesQuery};
 use crate::i18n::{t, tf};
+use crate::install::IncompatibleMode;
 use crate::launcher::off_ui;
 use crate::notifications::{
     BundleChoices, ClusterUpdateSummary, NotificationAction, NotificationSpec, OptionalModRef,
     OptionalModsGroup, OptionalModsOutcome, PackageUpdateGroup, PendingPrompt,
 };
 use crate::state::{
-    AppChannel, AppState, AsyncStatus, FlaggedInstallPrompt, IncompatibleInstallPrompt, MissingModInstall,
-    RelocationState,
+    AppChannel, AppState, AsyncStatus, FlaggedInstallPrompt, IncompatibleInstallPrompt,
+    MissingModInstall, RelocationState,
 };
-use crate::install::IncompatibleMode;
 use crate::{invalidate_java_queries, launcher};
 
 pub static COPIES_REQUEST: Mutex<Option<(i64, Vec<String>)>> = Mutex::new(None);
@@ -308,9 +308,50 @@ impl Actions {
         self.persist();
     }
 
+    /// Pins a cluster to the front of the home screen rail
+    pub fn pin_cluster(&self, cluster_id: ClusterId) {
+        self.edit_settings(move |next| {
+            if !next.pinned_cluster_ids.contains(&cluster_id) {
+                next.pinned_cluster_ids.insert(0, cluster_id);
+            }
+        });
+    }
+
+    pub fn unpin_cluster(&self, cluster_id: ClusterId) {
+        self.edit_settings(move |next| {
+            next.pinned_cluster_ids.retain(|id| *id != cluster_id);
+        });
+    }
+
+    /// Swaps the cluster with its neighbour in the pin order
+    pub fn move_pinned_cluster(&self, cluster_id: ClusterId, offset: isize) {
+        self.edit_settings(move |next| {
+            let Some(index) = next
+                .pinned_cluster_ids
+                .iter()
+                .position(|id| *id == cluster_id)
+            else {
+                return;
+            };
+
+            let last = next.pinned_cluster_ids.len().saturating_sub(1);
+            let Some(target) = usize::try_from(index as isize + offset)
+                .ok()
+                .filter(|target| *target <= last)
+            else {
+                return;
+            };
+
+            next.pinned_cluster_ids.swap(index, target);
+        });
+    }
+
     /// Applies the net config before resyncing so the sync fetches the new channel
     pub fn set_nightly_bundles(&self, enabled: bool) {
-        if self.mutate_settings(|s| s.nightly_bundles = enabled).is_none() {
+        if self
+            .mutate_settings(|s| s.nightly_bundles = enabled)
+            .is_none()
+        {
             return;
         }
         let actions = self.clone();
@@ -1211,12 +1252,18 @@ impl Actions {
             return;
         }
 
+        let allow_duplicate = self
+            .station
+            .peek()
+            .settings
+            .settings
+            .allow_parallel_running_clusters;
         let claimed = self
             .station
             .clone()
             .write_channel(AppChannel::Game)
             .game
-            .begin_launch(cluster_id);
+            .begin_launch(cluster_id, allow_duplicate);
         if !claimed {
             return;
         }
@@ -1448,7 +1495,8 @@ impl Actions {
 
     pub fn kill_cluster(&self, cluster_id: ClusterId) {
         let Ok(state) = launcher::state() else { return };
-        if !state.games.kill(cluster_id) {
+        // A duplicate run is tracked under the cluster's shadow id
+        if !state.games.kill(cluster_id) && !state.games.kill(-cluster_id) {
             tracing::debug!(cluster_id, "kill requested but no tracked process");
         }
     }
@@ -1633,12 +1681,18 @@ impl Actions {
                         report.imported.iter().map(|row| row.hash.clone()).collect();
                     let duplicates = off_ui({
                         let state = state.clone();
-                        async move { oneclient_core::game::shadowed_bundle_mods(&state, cluster_id).await }
+                        async move {
+                            oneclient_core::game::shadowed_bundle_mods(&state, cluster_id).await
+                        }
                     })
                     .await;
                     let copied = imported.iter().any(|hash| {
                         duplicates.copies.contains_key(hash)
-                            || duplicates.copies.values().flatten().any(|copy| copy == hash)
+                            || duplicates
+                                .copies
+                                .values()
+                                .flatten()
+                                .any(|copy| copy == hash)
                     });
                     // Set before the refetch so the mods list sees it when the new copies arrive
                     if copied {
@@ -1650,7 +1704,10 @@ impl Actions {
                         // `current()` reads a component context this global task doesn't
                         // have, so parse the plain route string instead
                         if let Some(router) = &router
-                            && router.full_route_string().parse::<crate::routes::Route>().ok()
+                            && router
+                                .full_route_string()
+                                .parse::<crate::routes::Route>()
+                                .ok()
                                 != Some(mods.clone())
                         {
                             let _ = router.push(mods);
@@ -2160,6 +2217,13 @@ impl Actions {
         };
 
         spawn_global(async move {
+            // Renewal against unreachable servers would either fail after
+            // timeouts or keep tokens it cannot validate anyway
+            if !oneclient_net::status::current().online {
+                tracing::debug!("offline; skipping the startup session check");
+                return;
+            }
+
             let signed_out = off_ui(async move { state.auth.check_expired_sessions().await }).await;
             if signed_out {
                 super::invalidate_auth_queries(None).await;
@@ -2452,6 +2516,17 @@ impl Actions {
         cluster_id: ClusterId,
         manual: bool,
     ) -> Option<UpdateCheck> {
+        // Offline every check is a doomed round-trip launch with whatever is on
+        // disk the installed files are the source of truth until we are back
+        if !oneclient_net::status::current().online {
+            tracing::info!(cluster_id, "offline; skipping the pre-launch update checks");
+            return Some(UpdateCheck {
+                found: false,
+                failed: false,
+                bundle_budget: None,
+            });
+        }
+
         let loader = crate::loader_update::offer_before_launch(self, cluster_id, manual).await;
         self.resolve_bundle_choices_before_launch(state, cluster_id)
             .await;

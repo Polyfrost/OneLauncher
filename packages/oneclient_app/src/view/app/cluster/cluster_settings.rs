@@ -1326,10 +1326,7 @@ impl Component for TextRow {
                     return;
                 }
                 last.set(raw.clone());
-                let patch = match raw.trim() {
-                    "" => Patch::Clear,
-                    v => Patch::Set(v.to_string()),
-                };
+                let patch = Patch::Set(raw.trim().to_string());
                 dispatch.update_cluster_profile(cluster_id, field.patch(patch));
             });
         }

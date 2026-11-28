@@ -328,13 +328,16 @@ fn toolbar_actions(
                 "oneclient.cluster.package_manager.select.count",
                 &[&count],
             ))
+            .width(Size::px(90.))
             .font_size(text_size(12.))
             .max_lines(1)
+            .text_overflow(TextOverflow::Ellipsis)
             .color(colors::fg_secondary())
             .into_element(),
         Button::new()
             .secondary()
             .height(Size::px(CONTROL_H))
+            .width(Size::px(103.))
             .font_size(text_size(12.))
             .on_press(move |_| selection.toggle_all(&all_paths))
             .text(if every {
@@ -343,18 +346,16 @@ fn toolbar_actions(
                 t("oneclient.cluster.package_manager.select.select_all")
             })
             .into_element(),
+        ghost(t("oneclient.cluster.screenshots.deselect_all"))
+            .enabled(count > 0 && !every)
+            .on_press(move |_| selection.clear())
+            .into_element(),
     ];
-    if count > 0 && !every {
-        actions.push(
-            ghost(t("oneclient.cluster.screenshots.deselect_all"))
-                .on_press(move |_| selection.clear())
-                .into_element(),
-        );
-    }
     actions.push(
         Button::new()
             .danger()
             .height(Size::px(CONTROL_H))
+            .width(Size::px(114.))
             .font_size(text_size(12.))
             .enabled(count > 0)
             .on_press(move |_| confirm_delete.set(true))

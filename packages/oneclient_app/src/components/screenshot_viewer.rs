@@ -367,6 +367,7 @@ fn header_row(
     rect()
         .horizontal()
         .width(Size::fill())
+        .height(Size::px(42.))
         .content(Content::Flex)
         .cross_align(Alignment::Center)
         .child(
@@ -377,6 +378,9 @@ fn header_row(
                 .child(
                     label()
                         .text(info.name.clone())
+                        .width(Size::fill())
+                        .max_lines(1)
+                        .text_overflow(TextOverflow::Ellipsis)
                         .font_size(text_size(15.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
@@ -384,6 +388,9 @@ fn header_row(
                 .child(
                     label()
                         .text(meta)
+                        .width(Size::fill())
+                        .max_lines(1)
+                        .text_overflow(TextOverflow::Ellipsis)
                         .font_size(text_size(11.))
                         .color(colors::fg_secondary()),
                 ),

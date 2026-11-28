@@ -49,16 +49,14 @@ impl Component for OverrideButton {
             .height(Size::px(self.height))
             .padding(Gaps::new_symmetric(0., 10.))
             .on_press(move |_| open.set(true))
-            .child(
-                Icon::new(IconType::Sliders04)
-                    .size(12.)
-                    .color(colors::fg_primary()),
-            );
+            .child(Icon::new(IconType::Sliders04).size(12.))
+            .text(t("oneclient.browser.override.button"));
         let button = match &current {
-            Some(o) => button.primary().text(summary(o, uses_loader)),
-            None => button
-                .secondary()
-                .text(t("oneclient.browser.override.button")),
+            Some(o) => button
+                .primary()
+                .alt(t("oneclient.browser.override.button"))
+                .tooltip(summary(o, uses_loader)),
+            None => button.secondary(),
         };
 
         let initial = current.unwrap_or_else(|| SearchOverride {

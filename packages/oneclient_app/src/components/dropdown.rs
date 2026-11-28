@@ -177,8 +177,14 @@ impl Component for Dropdown {
                     a11y_id.request_focus();
                 }
             })
+            // Measured on a wrapper: the tooltip needs the trigger's own on_sized for its anchor
             .child(
-                tooltip
+                rect()
+                    .width(Size::fill())
+                    .on_sized(move |e: Event<SizedEventData>| {
+                        button_area.set_if_modified(Some(e.area));
+                    })
+                    .child(tooltip
                     .attach(rect())
                     .width(Size::fill())
                     .height(self.height.clone())
@@ -196,9 +202,6 @@ impl Component for Dropdown {
                     .on_pointer_over(move |_| hovering.set(true))
                     .on_pointer_out(move |_| hovering.set(false))
                     .on_global_pointer_up(on_global_pointer_up)
-                    .on_sized(move |e: Event<SizedEventData>| {
-                        button_area.set_if_modified(Some(e.area));
-                    })
                     .on_press(move |e: Event<PressEventData>| {
                         e.prevent_default();
                         e.stop_propagation();
@@ -218,7 +221,7 @@ impl Component for Dropdown {
                         Icon::new(IconType::ChevronDown)
                             .size(14.)
                             .color(colors::fg_secondary()),
-                    ),
+                    )),
             )
             .maybe_child(is_open.then(|| {
                 rect().width(Size::px(0.)).height(Size::px(0.)).child(

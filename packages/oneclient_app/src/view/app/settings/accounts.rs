@@ -8,8 +8,8 @@ use uuid::Uuid;
 use super::{PAGE_GAP, confirm_dialog, first_section_header, settings_page, settings_row_surface};
 use crate::Route;
 use crate::components::{
-    Avatar, Button, Icon, IconType, MicrosoftLogin, OverlayPopup, PlayerModel, TextInput,
-    use_microsoft_login,
+    Avatar, Button, Icon, IconType, MicrosoftLogin, OverlayPopup, PlayerModel, ScrollArea,
+    TextInput, use_microsoft_login,
 };
 use crate::hooks::{
     AddOfflineAccountKeys, RefreshAccountKeys, RemoveAccountKeys, SetDefaultAccountKeys,
@@ -376,9 +376,15 @@ fn offline_dialog(
                                         .color(colors::fg_secondary()),
                                 ),
                         )
-                        .map(error, |el, msg| {
-                            el.child(hint_line(IconType::AlertTriangle, msg, colors::danger()))
-                        })
+                        .child(
+                            ScrollArea::new()
+                                .width(Size::fill())
+                                .height(Size::px(36.))
+                                .children(error.map(|msg| {
+                                    hint_line(IconType::AlertTriangle, msg, colors::danger())
+                                        .into_element()
+                                })),
+                        )
                         .child(
                             rect()
                                 .horizontal()

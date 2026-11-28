@@ -606,6 +606,7 @@ impl Component for StyleCard {
                 name: family_name(&theme.name),
                 custom: !theme.is_builtin(),
                 menu_at,
+                preview: theme.clone(),
             }))
     }
 }
@@ -632,7 +633,7 @@ fn selection_mark(selected: bool) -> Element {
 
 /// One of the launcher's own icons, picked from the previewed theme's icon set rather than
 /// the active one so each card shows its own style
-fn theme_icon(theme: &Theme, name: &str, size: f32, color: Color) -> Element {
+pub(super) fn theme_icon(theme: &Theme, name: &str, size: f32, color: Color) -> Element {
     let pixel_path = format!("icons/pixel/{name}.svg");
     let path = if theme.pixel_icons && AppAssets::get(&pixel_path).is_some() {
         pixel_path
@@ -757,7 +758,7 @@ fn play_button(theme: &Theme, pixel: bool, dense: bool) -> Element {
                 } else {
                     FontWeight::SEMI_BOLD
                 })
-                .color(Color::WHITE),
+                .color(colors::on_color(theme.colors.accent.0)),
         )
         .into_element()
 }

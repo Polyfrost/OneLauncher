@@ -5,17 +5,21 @@ use freya::router::RouterContext;
 use oneclient_core::settings::LauncherSettings;
 
 use super::settings_page;
-use crate::components::{Button, ColorPicker, ContextMenu, Icon, IconType, toggle};
+use crate::components::{
+    Button, ColorPicker, ContextMenu, Icon, IconType, TooltipPlacement, toggle, use_tooltip_anchor,
+};
 use crate::hooks::{Actions, use_debounced, use_dispatch, use_settings_snapshot};
 use crate::i18n::{t, tf};
 use crate::layout::SearchItem;
 use crate::routes::Route;
+use crate::ui::border_all_color;
 use crate::theme::{
-    colors, copy_family, delete_theme, duplicate_theme, export_theme, family_variants,
+    Theme, colors, copy_family, glass, delete_theme, duplicate_theme, export_theme, family_variants,
     import_theme, is_known, system_theme_id, text_size,
 };
 use crate::view::app::settings::appearance_picker::{
-    compose_theme, section, section_with_action, split_theme, style_picker, theme_mode_picker,
+    compose_theme, section, section_with_action, split_theme, style_picker, theme_icon,
+    theme_mode_picker,
 };
 use crate::view::app::settings::{
     confirm_dialog, readable_secondary, resettable, section_header, settings_row,
@@ -119,6 +123,8 @@ fn select_family(dispatch: &Actions, family: &str) {
 /// "Looking to change your language?" with a link to the Language page
 fn language_link() -> impl IntoElement {
     let mut hovered = use_state(|| false);
+    let a11y_id = use_a11y();
+    let keyboard = use_focus(a11y_id)() == Focus::Keyboard;
     let link = t("oneclient.settings.appearance.language_link");
     rect()
         .horizontal()
@@ -133,6 +139,7 @@ fn language_link() -> impl IntoElement {
         )
         .child(
             rect()
+                .a11y_id(a11y_id)
                 .a11y_role(AccessibilityRole::Link)
                 .a11y_focusable(true)
                 .a11y_alt(link)
@@ -149,7 +156,7 @@ fn language_link() -> impl IntoElement {
                         .font_weight(FontWeight::MEDIUM)
                         // The link color the Markdown pages use, readable on every surface
                         .color(colors::code_info())
-                        .maybe(*hovered.read(), |el| {
+                        .maybe(*hovered.read() || keyboard, |el| {
                             el.text_decoration(TextDecoration::Underline)
                         }),
                 ),
@@ -241,6 +248,9 @@ pub(super) struct ThemeFileMenu {
     pub(super) custom: bool,
     /// Owned by the card so a right-click on it opens this menu too
     pub(super) menu_at: State<Option<(f32, f32)>>,
+    /// The theme the card previews; the button is drawn in it like the card's Play button,
+    /// so every card keeps its own look whichever style is applied
+    pub(super) preview: Theme,
 }
 
 impl Component for ThemeFileMenu {
@@ -248,8 +258,42 @@ impl Component for ThemeFileMenu {
         let mut anchor = use_state(|| (0., 0.));
         let mut menu_at = self.menu_at;
         let mut deleting = use_state(|| false);
+        let mut hovered = use_state(|| false);
         let dispatch = use_dispatch();
         let alt = tf("oneclient.settings.appearance.theme.actions", &[&self.name]);
+        let a11y_id = use_a11y();
+        let keyboard = use_focus(a11y_id)() == Focus::Keyboard;
+        let tooltip = use_tooltip_anchor(Some(alt.clone().into()), TooltipPlacement::Top);
+        let preview = &self.preview;
+        let palette = preview.colors;
+        let radius = 6. * preview.radius_scale;
+        let face = rect().corner_radius(CornerRadius::new_all(radius));
+        let face = if preview.liquid_glass {
+            glass::panel(face, preview, radius, palette.card.0)
+        } else {
+            face.background(palette.card.0)
+                .border(border_all_color(1., palette.border.0))
+        };
+        let face = face
+            .width(Size::px(26.))
+            .height(Size::px(26.))
+            .center()
+            .maybe(*hovered.read(), |el| {
+                el.background(palette.text.0.with_a(28))
+            })
+            .maybe(keyboard, |el| {
+                el.border(border_all_color(1.5, palette.text.0))
+            })
+            .a11y_id(a11y_id)
+            .a11y_role(AccessibilityRole::Button)
+            .a11y_focusable(true)
+            .a11y_alt(alt)
+            .cursor(CursorIcon::Pointer)
+            // The tooltip owns pointer-enter and pointer-leave on this rect
+            .on_pointer_over(move |_| hovered.set_if_modified(true))
+            .on_pointer_out(move |_| hovered.set_if_modified(false))
+            .on_press(move |_| menu_at.set(Some(*anchor.peek())))
+            .child(theme_icon(preview, "dots-vertical", 14., palette.text.0));
 
         rect()
             .position(Position::new_absolute().top(8.).right(8.))
@@ -258,17 +302,7 @@ impl Component for ThemeFileMenu {
                 let frame = event.data().area;
                 anchor.set_if_modified((frame.min_x(), frame.max_y()));
             })
-            .child(
-                Button::new()
-                    .secondary()
-                    .icon()
-                    .width(Size::px(26.))
-                    .height(Size::px(26.))
-                    .alt(alt.clone())
-                    .tooltip(alt)
-                    .on_press(move |_| menu_at.set(Some(*anchor.peek())))
-                    .child(Icon::new(IconType::DotsVertical).size(14.)),
-            )
+            .child(tooltip.attach(face))
             .maybe_child((*menu_at.read()).map(|(x, y)| {
                 let mut menu = ContextMenu::new(x, y).title(self.name.clone());
                 if self.custom {

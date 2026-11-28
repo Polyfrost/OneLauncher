@@ -330,35 +330,49 @@ fn version_row(
                         .color(colors::fg_secondary()),
                 ),
         )
-        .maybe_child(
-            installed
-                .as_ref()
-                .map(|installed| installed_badge(installed.source, 11.).into_element()),
+        .child(
+            rect()
+                .vertical()
+                .width(Size::px(94.))
+                .min_height(Size::px(44.))
+                .center()
+                .spacing(4.)
+                .maybe_child(
+                    installed
+                        .as_ref()
+                        .map(|installed| installed_badge(installed.source, 11.)),
+                )
+                .maybe_child(
+                    installed
+                        .as_ref()
+                        .filter(|_| duplicated)
+                        .map(|installed| activity_badge(installed.enabled)),
+                ),
         )
-        .maybe_child(
-            installed
-                .as_ref()
-                .filter(|_| duplicated)
-                .map(|installed| activity_badge(installed.enabled).into_element()),
+        .child(
+            rect()
+                .horizontal()
+                .width(Size::px(78.))
+                .main_align(Alignment::End)
+                .child(match enable {
+                    Some(action) => EnableButton {
+                        action,
+                        variant: EnableVariant::VersionRow,
+                    }
+                    .into_element(),
+                    None => version_button(
+                        installed,
+                        v.name,
+                        project_id,
+                        version_id,
+                        version_label,
+                        installer,
+                        on_remove,
+                        installing,
+                    )
+                    .into_element(),
+                }),
         )
-        .child(match enable {
-            Some(action) => EnableButton {
-                action,
-                variant: EnableVariant::VersionRow,
-            }
-            .into_element(),
-            None => version_button(
-                installed,
-                v.name,
-                project_id,
-                version_id,
-                version_label,
-                installer,
-                on_remove,
-                installing,
-            )
-            .into_element(),
-        })
 }
 
 /// A bundle pin with nothing linked leaves nothing to press no artifact to remove and installing by hand would duplicate it

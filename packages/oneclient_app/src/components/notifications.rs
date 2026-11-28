@@ -353,15 +353,13 @@ fn row_body(
                                 .font_size(text_size(10.))
                                 .color(colors::fg_secondary()),
                         )
-                        .maybe(!entry.read, |el| {
-                            el.child(
-                                rect()
-                                    .width(Size::px(6.))
-                                    .height(Size::px(6.))
-                                    .corner_radius(rounded(3.))
-                                    .background(colors::brand()),
-                            )
-                        }),
+                        .child(
+                            rect()
+                                .width(Size::px(6.))
+                                .height(Size::px(6.))
+                                .corner_radius(rounded(3.))
+                                .maybe(!entry.read, |dot| dot.background(colors::brand())),
+                        ),
                 ),
         )
         .child(

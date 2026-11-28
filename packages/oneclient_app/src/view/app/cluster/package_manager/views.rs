@@ -232,11 +232,14 @@ impl Bulk {
                     "oneclient.cluster.package_manager.select.count",
                     &[&self.count],
                 ))
+                .width(Size::px(90.))
                 .font_size(text_size(12.))
                 .max_lines(1)
+                .text_overflow(TextOverflow::Ellipsis)
                 .color(colors::fg_secondary())
                 .into_element(),
             button(toggle_icon, toggle_label.to_string())
+                .width(Size::px(122.))
                 .on_press(move |_| selection.toggle_all(&order))
                 .into_element(),
             button(
@@ -261,6 +264,7 @@ impl Bulk {
                 ),
             )
             .danger()
+            .width(Size::px(114.))
             .enabled(self.deletable > 0)
             .on_press(move |_| delete.call(()))
             .into_element(),

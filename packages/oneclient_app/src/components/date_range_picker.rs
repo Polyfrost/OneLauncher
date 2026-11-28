@@ -12,6 +12,7 @@ const CELL_GAP: f32 = 2.;
 const WEEKS: u32 = 6;
 const POPUP_WIDTH: f32 = 7. * CELL + 6. * CELL_GAP + 24. + 2.;
 const POPUP_OFFSET: f32 = 4.;
+const TRIGGER_WIDTH: f32 = 144.;
 
 pub type DateRange = (NaiveDate, NaiveDate);
 
@@ -80,7 +81,9 @@ impl Component for DateRangePicker {
             .child(
                 rect()
                     .horizontal()
+                    .width(Size::px(TRIGGER_WIDTH))
                     .height(Size::px(self.height))
+                    .content(Content::Flex)
                     .cross_align(Alignment::Center)
                     .spacing(6.)
                     .padding(Gaps::new_symmetric(0., 10.))
@@ -100,6 +103,7 @@ impl Component for DateRangePicker {
                     ))
                     .cursor(CursorIcon::Pointer)
                     .a11y_role(AccessibilityRole::Button)
+                    .a11y_alt(trigger_text.clone())
                     .on_pointer_enter(move |_| hovering.set(true))
                     .on_pointer_leave(move |_| hovering.set(false))
                     .on_sized(move |e: Event<SizedEventData>| {
@@ -118,8 +122,10 @@ impl Component for DateRangePicker {
                     .child(
                         label()
                             .text(trigger_text)
+                            .width(Size::flex(1.))
                             .font_size(text_size(12.))
                             .max_lines(1)
+                            .text_overflow(TextOverflow::Ellipsis)
                             .color(colors::fg_primary()),
                     ),
             )

@@ -21,6 +21,8 @@ use crate::view::app::{
 /// Launch button height; the icon buttons beside it are squares of the same size
 const ACTION_HEIGHT: f32 = 36.;
 const ACTION_ICON_SIZE: f32 = 20.;
+/// Fits the longest launch stage ("Folder in use") at the header's font size
+const LAUNCH_MIN_WIDTH: f32 = 124.;
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum ClusterViewShellTab {
@@ -425,6 +427,8 @@ impl Component for InstanceHeader {
                     .primary()
                     .medium()
                     .height(Size::px(ACTION_HEIGHT))
+                    // Wide enough for every launch stage, so Share doesn't shift as it changes
+                    .min_width(Size::px(text_size(LAUNCH_MIN_WIDTH)))
                     .enabled(launch_enabled)
                     .on_press(move |_| {
                         if launch_enabled {
@@ -552,15 +556,18 @@ fn cluster_tabs(
                 }
             })
         })
+        // Measured on a wrapper: the glass track's viewport needs the scroll rect's own on_sized
         .child(
-            workspace_rail::scroll(lens)
+            rect()
+                .width(Size::fill())
+                .height(Size::flex(1.))
                 .on_sized(move |event: Event<SizedEventData>| {
                     let height = event.area.height();
                     if (*viewport.peek() - height).abs() > 0.5 {
                         viewport.set(height);
                     }
                 })
-                .child(
+                .child(workspace_rail::scroll(lens).height(Size::fill()).child(
                     workspace_rail::navigation(layout, &rail_scroll).content(move |_| {
                         let mut index = 0;
                         let mut content = rect()
@@ -589,7 +596,7 @@ fn cluster_tabs(
                         }
                         content.into_element()
                     }),
-                ),
+                )),
         )
         // The instance-wide folder and Settings stay reachable however short the window is
         .child(
@@ -669,8 +676,9 @@ impl Component for ClusterFolderRow {
             .a11y_focusable(true)
             .a11y_alt(name)
             .cursor(CursorIcon::Pointer)
-            .on_pointer_enter(move |_| hover.set_if_modified(true))
-            .on_pointer_leave(move |_| hover.set_if_modified(false))
+            // The tooltip owns pointer-enter and pointer-leave on this rect
+            .on_pointer_over(move |_| hover.set_if_modified(true))
+            .on_pointer_out(move |_| hover.set_if_modified(false))
             .on_press(move |_| {
                 std::fs::create_dir_all(&path).ok();
                 crate::platform::open_path(&path.to_string_lossy());

@@ -323,6 +323,9 @@ pub(super) struct Tab {
 
 impl Component for Tab {
     fn render(&self) -> impl IntoElement {
+        // The glass track brings its own hover and claims the row's pointer-leave, so the row
+        // tracks hover only without a lens, and forgets it under one: a theme switch can't
+        // leave a row looking hovered
         let mut hover = use_state(|| false);
         let id = use_a11y();
         let focus = use_focus(id);
@@ -330,9 +333,13 @@ impl Component for Tab {
         let active = self.active;
         let lens = self.lens;
         let highlighted = lens.map_or(active, |(track, index)| track.highlights(index, active));
+        if lens.is_some() && *hover.peek() {
+            hover.set(false);
+        }
+        let hovered = lens.is_none() && hover();
         let route = self.route.clone();
         let search = self.search;
-        let ink = if highlighted || hover() || keyboard {
+        let ink = if highlighted || hovered || keyboard {
             colors::fg_primary()
         } else {
             secondary_ink()
@@ -341,7 +348,7 @@ impl Component for Tab {
         row(self.height)
             .background(if active && lens.is_none() {
                 colors::brand().with_a(if colors::is_light() { 34 } else { 67 })
-            } else if hover() && !highlighted && lens.is_none() {
+            } else if hovered && !highlighted {
                 colors::ghost_overlay_hover()
             } else {
                 Color::TRANSPARENT
@@ -354,8 +361,10 @@ impl Component for Tab {
             .a11y_focusable(true)
             .a11y_alt(self.label)
             .cursor(CursorIcon::Pointer)
-            .on_pointer_enter(move |_| hover.set_if_modified(true))
-            .on_pointer_leave(move |_| hover.set_if_modified(false))
+            .maybe(lens.is_none(), |el| {
+                el.on_pointer_enter(move |_| hover.set_if_modified(true))
+                    .on_pointer_leave(move |_| hover.set_if_modified(false))
+            })
             .map(lens, |el, (track, index)| track.option(el, index, true))
             .on_press(move |event: Event<PressEventData>| {
                 // The vertical track only claims mouse drags. Touch and keyboard still

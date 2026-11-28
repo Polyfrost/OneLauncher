@@ -89,9 +89,14 @@ fn picker_width(measured: f32, chrome: f32, fallback: f32) -> f32 {
     }
 }
 
-/// Measures a picker label off to the side, at the trigger's own type size
-fn label_probe(text: &'static str, mut widths: State<[f32; 3]>, slot: usize) -> Element {
+/// Measures the widest option at the trigger's own type size
+fn label_probe(
+    labels: impl IntoIterator<Item = &'static str>,
+    mut widths: State<[f32; 3]>,
+    slot: usize,
+) -> Element {
     rect()
+        .vertical()
         .position(Position::new_absolute().left(0.).top(0.))
         .opacity(0.)
         .on_sized(move |event: Event<SizedEventData>| {
@@ -100,7 +105,11 @@ fn label_probe(text: &'static str, mut widths: State<[f32; 3]>, slot: usize) -> 
                 widths.write()[slot] = w;
             }
         })
-        .child(label().text(text).max_lines(1).font_size(text_size(13.)))
+        .children(
+            labels
+                .into_iter()
+                .map(|text| label().text(text).max_lines(1).font_size(text_size(13.))),
+        )
         .into_element()
 }
 
@@ -833,7 +842,7 @@ fn results_toolbar(
     const SPACING: f32 = 8.;
     let compact = width > 0. && width < COMPACT_RESULTS_W;
     let filter_w = if compact { 108. } else { 132. };
-    // Each picker as wide as its label: the result count gives way before a picker is cut short
+    // The result count gives way before the pickers run out of room for their options
     let [side_label_w, loader_label_w, sort_label_w] = *label_widths.read();
     let side_w = picker_width(side_label_w, PICKER_CHROME_W, filter_w);
     let loader_w = picker_width(loader_label_w, PICKER_CHROME_W, filter_w);
@@ -892,11 +901,11 @@ fn results_toolbar(
             height: PICKER_H,
         })
         // Probed across the whole toolbar's width so a label is never measured squeezed
-        .maybe_child(side.map(|side| label_probe(side_label(*side.read()), label_widths, 0)))
+        .maybe_child(side.map(|_| label_probe(sides().map(|(_, text)| text), label_widths, 0)))
         .maybe_child(
-            loader.map(|loader| label_probe(loader_label(*loader.read()), label_widths, 1)),
+            loader.map(|_| label_probe(loaders().map(|(_, text)| text), label_widths, 1)),
         )
-        .child(label_probe(sort_label(*sort.read()), label_widths, 2))
+        .child(label_probe(sorts().map(|(_, text)| text), label_widths, 2))
         .child(
             SegmentedControl::new(view_mode)
                 .static_indicator()

@@ -186,6 +186,7 @@ pub struct PackageRow {
     item: PackageEntry,
     cluster_id: i64,
     package_type: &'static str,
+    content_type: ContentType,
     layout: CardLayout,
     on_context: EventHandler<(f32, f32)>,
     selected: bool,
@@ -196,11 +197,17 @@ pub struct PackageRow {
 }
 
 impl PackageRow {
-    pub fn new(item: PackageEntry, cluster_id: i64, package_type: &'static str) -> Self {
+    pub fn new(
+        item: PackageEntry,
+        cluster_id: i64,
+        package_type: &'static str,
+        content_type: ContentType,
+    ) -> Self {
         Self {
             item,
             cluster_id,
             package_type,
+            content_type,
             layout: CardLayout::List,
             on_context: (|_| {}).into(),
             selected: false,
@@ -264,7 +271,8 @@ impl Component for PackageRow {
         let icon = package_icon(&item, &icon_query, icon_size);
 
         let on_toggle: EventHandler<()> = {
-            let action = toggle_action(&item, cluster_id, !item.enabled).filter(|_| !item.locked);
+            let action = toggle_action(&item, cluster_id, self.content_type, !item.enabled)
+                .filter(|_| !item.locked);
             let item = item.clone();
             let warnings = disable_warnings(&warnings_query);
             let pending_disable = use_disable_confirm();
@@ -361,11 +369,13 @@ impl Component for PackageRow {
 pub(crate) fn toggle_action(
     item: &PackageEntry,
     cluster_id: i64,
+    content_type: ContentType,
     enabled: bool,
 ) -> Option<ClusterAction> {
     if let Some((name, _)) = item.folder_pack() {
         return Some(ClusterAction::SetFolderPackEnabled {
             cluster_id,
+            content_type,
             name: name.to_string(),
             enabled,
         });

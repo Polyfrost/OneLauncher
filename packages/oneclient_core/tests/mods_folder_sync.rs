@@ -2,7 +2,7 @@ use oneclient_common::domain::{ContentType, GameLoader};
 use oneclient_content::packages::PackageStore;
 use oneclient_content::packages::store::manifest::{self, MaterializedManifest};
 use oneclient_core::clusters::CreateClusterOptions;
-use oneclient_core::game::{sync_cluster_mods, sync_cluster_packs};
+use oneclient_core::game::{import_manual_content, list_folder_packs, sync_cluster_mods};
 
 fn jar(tag: &str) -> Vec<u8> {
     let mut bytes = b"PK\x05\x06".to_vec();
@@ -124,7 +124,7 @@ async fn a_mod_removed_in_the_launcher_stays_removed_before_the_first_launch() {
 }
 
 #[tokio::test]
-async fn packs_dropped_in_while_the_launcher_is_open_are_listed() {
+async fn loose_packs_are_listed_until_the_launch_import_takes_them() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
     let global = state.settings.read().global_game_settings.clone();
     let cluster = state
@@ -137,40 +137,29 @@ async fn packs_dropped_in_while_the_launcher_is_open_are_listed() {
         .unwrap();
     assert!(cluster.shares_content(ContentType::ResourcePack));
 
-    let ctx = state.services.content();
-    let names = || async {
-        let mut names: Vec<String> = PackageStore::list_linked_artifacts(cluster.id, &ctx)
-            .await
-            .unwrap()
-            .into_iter()
-            .map(|link| link.cluster_file_name)
-            .collect();
-        names.sort();
-        names
+    let names = |content_type| {
+        let (state, cluster) = (&state, &cluster);
+        async move {
+            list_folder_packs(&state.services, cluster, content_type)
+                .await
+                .into_iter()
+                .map(|pack| pack.name)
+                .collect::<Vec<_>>()
+        }
     };
 
-    let shared_packs = cluster.game_dir().unwrap().join("resourcepacks");
+    let game_dir = cluster.game_dir().unwrap();
+    let shared_packs = game_dir.join("resourcepacks");
     std::fs::create_dir_all(&shared_packs).unwrap();
     std::fs::write(shared_packs.join("a.zip"), jar("pack a")).unwrap();
-    assert!(sync_cluster_packs(&state, cluster.id).await);
-    assert_eq!(names().await, vec!["a.zip".to_owned()]);
-    assert!(
-        !sync_cluster_packs(&state, cluster.id).await,
-        "a second pass over an untouched folder changes nothing"
-    );
-
     let own_shaders = cluster.dir().unwrap().join("shaderpacks");
     std::fs::create_dir_all(&own_shaders).unwrap();
     std::fs::write(own_shaders.join("b.zip"), jar("shader b")).unwrap();
-    assert!(sync_cluster_packs(&state, cluster.id).await);
-    assert_eq!(names().await, vec!["a.zip".to_owned(), "b.zip".to_owned()]);
-    assert!(
-        cluster
-            .game_dir()
-            .unwrap()
-            .join("shaderpacks/b.zip")
-            .exists(),
-        "a pack in the cluster's own folder moves into the shared one"
-    );
+
+    assert_eq!(names(ContentType::ResourcePack).await, vec!["a.zip"]);
+    assert_eq!(names(ContentType::Shader).await, vec!["b.zip"]);
+
+    import_manual_content(&state.services, &cluster, &game_dir).await;
     assert!(shared_packs.join("a.zip").exists());
+    assert!(names(ContentType::ResourcePack).await.is_empty());
 }

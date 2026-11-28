@@ -1018,6 +1018,7 @@ impl Component for ContentBox {
                 cluster.mutate(match parse_folder_pack_id(&hash) {
                     Some((name, enabled)) => ClusterAction::RemoveFolderPack {
                         cluster_id,
+                        content_type,
                         name: name.to_string(),
                         enabled,
                     },
@@ -1045,7 +1046,7 @@ impl Component for ContentBox {
                 let order = order.clone();
                 let click_key = key.clone();
                 let copies_key = key.clone();
-                PackageRow::new(item, cluster_id, package_type)
+                PackageRow::new(item, cluster_id, package_type, content_type)
                     .layout(layout)
                     .selection(is_selected, selecting, move |()| {
                         selection.click(click_key.clone(), &order)
@@ -1123,7 +1124,7 @@ impl Component for ContentBox {
                         .width(Size::fill())
                         .height(Size::px(CARD_H))
                         .child(
-                            PackageRow::new(entry, cluster_id, package_type)
+                            PackageRow::new(entry, cluster_id, package_type, content_type)
                                 .on_context(move |(x, y)| menu.set(Some((x, y, for_menu.clone()))))
                                 .key(key),
                         )

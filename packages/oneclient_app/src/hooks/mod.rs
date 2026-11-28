@@ -93,7 +93,7 @@ pub use queries::{
     use_log_action, use_log_content, use_migratable_routes, use_migration, use_modpack_sources,
     use_mods_folder_sync, use_named_profiles, use_onboarding_bundles, use_package_categories,
     use_package_meta_batch, use_package_project, use_package_search, use_package_updates,
-    use_package_versions_when, use_packs_folder_sync, use_player_profile, use_player_skin,
+    use_package_versions_when, use_packs_folder_watch, use_player_profile, use_player_skin,
     use_project_web_urls,
     use_provider_versions, use_refresh_account, use_refresh_all_accounts, use_remove_account,
     use_screenshot_action, use_screenshot_folder_watch, use_set_default_account, use_shadowed_mods,

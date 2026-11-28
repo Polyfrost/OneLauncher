@@ -53,7 +53,19 @@ pub fn parse_launch_url(raw: &str) -> Option<String> {
 
     let folder = percent_decode_str(path).decode_utf8().ok()?;
     let folder = folder.trim();
-    (!folder.is_empty()).then(|| folder.to_string())
+    is_cluster_folder(folder).then(|| folder.to_string())
+}
+
+/// Whether `folder` can only ever name one folder inside the clusters
+/// directory. Cluster folders are made through `ClusterManager::sanitize_name`,
+/// but a launch link arrives from outside the launcher, so it is checked here
+/// instead of being trusted to be well formed
+#[must_use]
+pub fn is_cluster_folder(folder: &str) -> bool {
+    !folder.is_empty()
+        && folder != "."
+        && folder != ".."
+        && !folder.contains(['/', '\\', '\0'])
 }
 
 #[must_use]
@@ -85,7 +97,7 @@ mod tests {
 
     #[test]
     fn punctuation_in_a_folder_name_round_trips() {
-        for folder in ["My Pack (1.8.9)", "a/b", "100%", "zażółć gęślą jaźń"] {
+        for folder in ["My Pack (1.8.9)", "100%", "zażółć gęślą jaźń"] {
             assert_eq!(
                 parse_launch_url(&launch_url(folder)).as_deref(),
                 Some(folder),
@@ -120,6 +132,17 @@ mod tests {
     #[test]
     fn an_unknown_host_is_refused() {
         assert_eq!(parse_launch_url(&format!("{SCHEME}://install/pack")), None);
+    }
+
+    #[test]
+    fn a_folder_that_could_leave_the_clusters_folder_is_refused() {
+        for bad in ["..", "../..", "..%2F..%2Fx", "a%2Fb", "a%5Cb", "%2E%2E%2Fetc"] {
+            assert_eq!(
+                parse_launch_url(&format!("{SCHEME}://launch/{bad}")),
+                None,
+                "{bad:?}"
+            );
+        }
     }
 
     #[test]

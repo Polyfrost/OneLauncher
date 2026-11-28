@@ -11,9 +11,9 @@ impl Cli {
 
         while let Some(arg) = args.next() {
             if let Some(value) = arg.strip_prefix("--launch=") {
-                cli.launch = non_empty(value.to_string());
+                cli.launch = launch_folder(value.to_string());
             } else if arg == "--launch" {
-                cli.launch = args.next().and_then(non_empty);
+                cli.launch = args.next().and_then(launch_folder);
             } else if let Some(value) = arg.strip_prefix("--share=") {
                 cli.share = share_code(value);
             } else if arg == "--share" {
@@ -33,9 +33,10 @@ fn share_code(value: &str) -> Option<String> {
     oneclient_core::sharing::ShareCode::parse(value).map(|code| code.as_str().to_string())
 }
 
-fn non_empty(value: String) -> Option<String> {
-    let trimmed = value.trim();
-    (!trimmed.is_empty()).then(|| trimmed.to_string())
+/// A launch target is a cluster folder name, never a path the CLI may choose
+fn launch_folder(value: String) -> Option<String> {
+    let value = value.trim();
+    crate::protocol::is_cluster_folder(value).then(|| value.to_string())
 }
 
 #[must_use]
@@ -81,6 +82,16 @@ mod tests {
             parse(&["--launch", "My Pack (1.8.9)"]).launch.as_deref(),
             Some("My Pack (1.8.9)"),
         );
+    }
+
+    #[test]
+    fn a_launch_folder_that_could_leave_the_clusters_folder_is_refused() {
+        for bad in ["..", "../x", "a/b", "a\\b"] {
+            assert_eq!(parse(&["--launch", bad]).launch, None, "{bad:?}");
+
+            let joined = format!("--launch={bad}");
+            assert_eq!(parse(&[joined.as_str()]).launch, None, "{bad:?}");
+        }
     }
 
     #[test]

@@ -6,7 +6,7 @@ use std::{cell::RefCell, rc::Rc};
 use accesskit::Toggled;
 use freya::prelude::*;
 
-use super::appearance::ThemeFileMenu;
+use super::appearance::{KEBAB_SIZE, ThemeFileMenu};
 use crate::AppAssets;
 use crate::components::{Icon, IconType, open_menu_at};
 use crate::hooks::{Actions, use_dispatch};
@@ -586,7 +586,7 @@ impl Component for StyleCard {
                     .corner_radius(CornerRadius::new_all((outer_radius - CARD_RING).max(0.)))
                     .overflow(Overflow::Clip)
                     .background(colors::card())
-                    .child(miniature(theme, pixel, dense))
+                    .child(miniature(theme, pixel, dense, self.manage))
                     .child(
                         rect()
                             .width(Size::fill())
@@ -599,7 +599,9 @@ impl Component for StyleCard {
         let card = radio.accessibility(card, index, self.selected_index);
         rect()
             .width(Size::flex(1.))
-            .maybe(self.manage, |el| el.on_secondary_down(open_menu_at(menu_at)))
+            .maybe(self.manage, |el| {
+                el.on_secondary_down(open_menu_at(menu_at))
+            })
             .child(radio.keyboard(card, index, key_select))
             .maybe_child(self.manage.then(|| ThemeFileMenu {
                 id: theme.id.clone(),
@@ -607,6 +609,7 @@ impl Component for StyleCard {
                 custom: !theme.is_builtin(),
                 menu_at,
                 preview: theme.clone(),
+                inset: CARD_RING + preview_padding(dense),
             }))
     }
 }
@@ -649,9 +652,14 @@ pub(super) fn theme_icon(theme: &Theme, name: &str, size: f32, color: Color) -> 
         .into_element()
 }
 
+/// Between the preview's edge and its header and panel
+fn preview_padding(dense: bool) -> f32 {
+    if dense { 7. } else { 9. }
+}
+
 /// Drawn with the previewed theme rather than the active one, so both cards stay honest
 /// whichever style is currently applied
-fn miniature(theme: &Theme, pixel: bool, dense: bool) -> Element {
+fn miniature(theme: &Theme, pixel: bool, dense: bool, manage: bool) -> Element {
     let palette = theme.colors;
     let radius = |r: f32| CornerRadius::new_all(r * theme.radius_scale);
     let font = theme.font.clone();
@@ -675,6 +683,8 @@ fn miniature(theme: &Theme, pixel: bool, dense: bool) -> Element {
     let top_bar = rect()
         .horizontal()
         .width(Size::fill())
+        // The card's menu button sits in this row, so it is as tall in every font
+        .maybe(manage, |el| el.height(Size::px(KEBAB_SIZE)))
         .cross_align(Alignment::Center)
         .spacing(6.)
         .child(theme_icon(theme, "icon-logo", 13., header_ink))
@@ -721,7 +731,8 @@ fn miniature(theme: &Theme, pixel: bool, dense: bool) -> Element {
         .background(palette.page.0)
         .width(Size::fill())
         .height(Size::px(if dense {
-            PREVIEW_HEIGHT_DENSE
+            // The taller header must not squeeze the panel around Play
+            PREVIEW_HEIGHT_DENSE + if manage { 6. } else { 0. }
         } else {
             PREVIEW_HEIGHT
         }))
@@ -731,7 +742,7 @@ fn miniature(theme: &Theme, pixel: bool, dense: bool) -> Element {
                 .width(Size::fill())
                 .height(Size::fill())
                 .content(Content::Flex)
-                .padding(if dense { 7. } else { 9. })
+                .padding(preview_padding(dense))
                 .spacing(if dense { 6. } else { 8. })
                 .child(top_bar)
                 .child(instance),

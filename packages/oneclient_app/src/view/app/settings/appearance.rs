@@ -240,6 +240,8 @@ fn import_button(dispatch: &Actions) -> Element {
         .into_element()
 }
 
+pub(super) const KEBAB_SIZE: f32 = 22.;
+
 /// The kebab itself, in the previewed theme
 #[derive(PartialEq)]
 struct ThemeFileButton {
@@ -267,8 +269,8 @@ impl Component for ThemeFileButton {
                 .border(border_all_color(1., palette.border.0))
         };
         let face = face
-            .width(Size::px(26.))
-            .height(Size::px(26.))
+            .width(Size::px(KEBAB_SIZE))
+            .height(Size::px(KEBAB_SIZE))
             .center()
             .maybe(*hovered.read(), |el| {
                 el.background(palette.text.0.with_a(28))
@@ -301,6 +303,8 @@ pub(super) struct ThemeFileMenu {
     /// The theme the card previews; the button is drawn in it like the card's Play button,
     /// so every card keeps its own look whichever style is applied
     pub(super) preview: Theme,
+    /// From the card's edges to the preview's content, so the button lines up with its panel
+    pub(super) inset: f32,
 }
 
 impl Component for ThemeFileMenu {
@@ -317,7 +321,7 @@ impl Component for ThemeFileMenu {
         };
 
         rect()
-            .position(Position::new_absolute().top(8.).right(8.))
+            .position(Position::new_absolute().top(self.inset).right(self.inset))
             .layer(Layer::Relative(3))
             .on_sized(move |event: Event<SizedEventData>| {
                 let frame = event.data().area;

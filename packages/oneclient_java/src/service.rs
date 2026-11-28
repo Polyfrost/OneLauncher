@@ -266,9 +266,14 @@ impl JavaService {
         }
 
         if let Some(runtime) = chosen {
-            if below_patch_floor(&runtime.version) && auto_install {
+            if below_patch_floor(&runtime.version) {
                 match self.download_and_register(major, native_ok, progress).await {
-                    Ok(fixed) => return Ok(fixed),
+                    Ok(fixed) if !below_patch_floor(&fixed.version) => return Ok(fixed),
+                    Ok(fixed) => tracing::warn!(
+                        version = %runtime.version,
+                        downloaded = %fixed.version,
+                        "keeping a Java build with known GC bugs, the download has them too"
+                    ),
                     Err(err) => tracing::warn!(
                         version = %runtime.version,
                         "keeping a Java build with known GC bugs, no newer one installed: {err}"
@@ -290,6 +295,7 @@ impl JavaService {
         &self,
         runtime: JavaRuntime,
         native_ok: bool,
+        search_system: bool,
         progress: Option<&GroupedProgressSession>,
     ) -> JavaRuntime {
         if !below_patch_floor(&runtime.version) {
@@ -297,7 +303,7 @@ impl JavaService {
         }
 
         match self
-            .prepare(runtime.major, native_ok, false, true, progress)
+            .prepare(runtime.major, native_ok, search_system, true, progress)
             .await
         {
             Ok(fixed) if !below_patch_floor(&fixed.version) => {

@@ -323,7 +323,7 @@ async fn start(
         Some(runtime) if !oneclient_java::wrong_arch_for_game(&runtime.os_arch, native_ok) => {
             state
                 .java
-                .replace_below_floor(runtime, native_ok, Some(&progress))
+                .replace_below_floor(runtime, native_ok, search_for_java, Some(&progress))
                 .await
         }
         pinned => {

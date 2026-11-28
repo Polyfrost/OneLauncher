@@ -124,6 +124,8 @@ pub fn performance_flags(
     } else if use_g1 {
         flags.push("-XX:+UseG1GC".to_string());
         flags.push("-XX:+ParallelRefProcEnabled".to_string());
+        flags.push("-XX:MaxGCPauseMillis=50".to_string());
+        flags.push("-XX:+ExplicitGCInvokesConcurrent".to_string());
     }
 
     if compact_headers {
@@ -778,6 +780,8 @@ mod tests {
                     "-Xms512M".to_string(),
                     "-XX:+UseG1GC".to_string(),
                     "-XX:+ParallelRefProcEnabled".to_string(),
+                    "-XX:MaxGCPauseMillis=50".to_string(),
+                    "-XX:+ExplicitGCInvokesConcurrent".to_string(),
                 ],
                 "{mem}M should get no hand-picked sizing"
             );
@@ -941,7 +945,13 @@ mod tests {
     fn a_tiny_profile_never_starts_above_its_ceiling() {
         assert_eq!(
             flags(21, "amd64", 256),
-            vec!["-Xms256M", "-XX:+UseG1GC", "-XX:+ParallelRefProcEnabled",],
+            vec![
+                "-Xms256M",
+                "-XX:+UseG1GC",
+                "-XX:+ParallelRefProcEnabled",
+                "-XX:MaxGCPauseMillis=50",
+                "-XX:+ExplicitGCInvokesConcurrent",
+            ],
             "a start size above the maximum is refused by the JVM outright"
         );
     }

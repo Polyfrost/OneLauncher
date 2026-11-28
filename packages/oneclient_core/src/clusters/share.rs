@@ -592,13 +592,14 @@ async fn exported_java(state: &Arc<LauncherState>, cluster: &Cluster) -> Option<
         .await
         .ok()
         .flatten()?;
-    let required = super::required_java_major(state, cluster.id)
+    let required = super::prepare::cluster_version_info(state, cluster.id)
         .await
         .inspect_err(|err| {
             tracing::debug!(cluster_id = cluster.id, error = %err, "could not tell which java the version needs");
         })
         .ok()
-        .flatten();
+        .and_then(|info| info.java_version)
+        .map(|java| java.major_version);
     if required == Some(runtime.major) {
         return None;
     }

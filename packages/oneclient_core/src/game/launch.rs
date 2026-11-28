@@ -202,6 +202,9 @@ async fn start(
         )
         .await
     {
+        if err.is_cancelled() {
+            return Err(err);
+        }
         tracing::warn!(cluster_id, error = %err, "failed to apply bundle java override");
     }
 
@@ -310,7 +313,8 @@ async fn start(
     }
 
     let native_ok = crate::game::natives::native_java_ok(&version_info);
-    let required_major = version_info.java_version.as_ref().map(|v| v.major_version);
+    let required_major =
+        crate::clusters::java_override::effective_java_major(state, &cluster, &version_info).await;
     let pinned = state
         .java
         .runtime_for_profile(profile.java_path.as_deref())

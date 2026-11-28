@@ -175,8 +175,9 @@ pub async fn required_java_major(
     state: &Arc<LauncherState>,
     cluster_id: i64,
 ) -> LauncherResult<Option<u32>> {
+    let cluster = state.clusters.get(cluster_id).await?;
     let info = cluster_version_info(state, cluster_id).await?;
-    Ok(info.java_version.map(|java| java.major_version))
+    Ok(super::java_override::effective_java_major(state, &cluster, &info).await)
 }
 
 pub(crate) async fn cluster_version_info(
@@ -269,9 +270,9 @@ pub async fn estimate_cluster_download(
 
     let mut total = game_download_bytes(&state.services, &info).await;
 
-    if let Some(java) = &info.java_version {
+    if let Some(major) = super::java_override::effective_java_major(state, &cluster, &info).await {
         let installed = state.java.list_runtimes().await.unwrap_or_default();
-        if !installed.iter().any(|rt| rt.major == java.major_version) {
+        if !installed.iter().any(|rt| rt.major == major) {
             total += JRE_ESTIMATE_BYTES;
         }
     }
@@ -324,10 +325,8 @@ async fn install_cluster(
     )
     .await?;
 
-    let java_major = version_info
-        .java_version
-        .as_ref()
-        .map(|v| v.major_version)
+    let java_major = super::java_override::effective_java_major(state, cluster, &version_info)
+        .await
         .ok_or(ClusterError::MissingJavaVersion)?;
 
     let java = if let Some(runtime) = state

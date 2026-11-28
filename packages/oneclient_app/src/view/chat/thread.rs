@@ -1,3 +1,5 @@
+use std::sync::OnceLock;
+
 use freya::prelude::*;
 use uuid::Uuid;
 
@@ -5,7 +7,8 @@ use oneclient_polyplus::{GroupKind, MAX_MESSAGE_LENGTH};
 
 use crate::chat::{ChatConversation, ChatMessage, MessageInvite, PendingMessage, ThreadStatus};
 use crate::components::{
-    Avatar, Button, ContextMenu, Icon, IconType, OVERLAY_MAX_LEVEL, ScrollArea, TextInput,
+    Avatar, Button, ContextMenu, Icon, IconType, LazySection, OVERLAY_MAX_LEVEL, ScrollArea,
+    TextInput,
 };
 use crate::hooks::{
     Actions, chat_draft, save_chat_draft, use_chat_invite_game, use_chat_online_count,
@@ -30,12 +33,39 @@ const ROW_WINDOW_STEP: usize = 100;
 const EMOJI_CELL_PX: f32 = 34.;
 const EMOJI_GAP_PX: f32 = 2.;
 const EMOJI_SIDE_PX: f32 = 14.;
+const EMOJI_GRID_MAX_HEIGHT_PX: f32 = 280.;
 
 const EMOJI: [&str; 40] = [
     "😀", "😂", "🥲", "😍", "😎", "🤔", "😭", "😤", "👍", "👎", "👏", "🙏", "🔥", "✨", "💀", "🎉",
     "❤️", "💙", "⭐", "👀", "💯", "✅", "❌", "🎮", "⚔️", "🛡️", "⛏️", "🏹", "💎", "🧱", "🪵", "🌲",
     "🍞", "🍎", "🐷", "🐑", "🐔", "🏠", "🌋", "🚀",
 ];
+
+/// Every emoji known to the `emojis` crate, including those outside the curated quick grid.
+fn all_emojis() -> &'static [&'static str] {
+    static ALL: OnceLock<Vec<&'static str>> = OnceLock::new();
+    ALL.get_or_init(|| emojis::iter().map(|emoji| emoji.as_str()).collect())
+}
+
+fn search_emojis(query: &str) -> Vec<&'static str> {
+    let trimmed = query.trim();
+    let needle = trimmed.to_lowercase();
+    if needle.is_empty() {
+        return EMOJI.to_vec();
+    }
+
+    let shortcode_needle = needle.trim_matches(':');
+    emojis::iter()
+        .filter(|emoji| {
+            emoji.as_str() == trimmed
+                || emoji.name().to_lowercase().contains(&needle)
+                || emoji
+                    .shortcode()
+                    .is_some_and(|shortcode| shortcode.contains(shortcode_needle))
+        })
+        .map(|emoji| emoji.as_str())
+        .collect()
+}
 
 const EDIT_PAD_X_PX: f32 = 6.;
 const EDIT_PAD_Y_PX: f32 = 2.;
@@ -983,6 +1013,8 @@ impl Component for Composer {
         let group_id = self.group_id;
         let mut draft = use_state(|| chat_draft(own_id, group_id));
         let mut emoji_open = use_state(|| false);
+        let emoji_search = use_state(String::new);
+        let mut emoji_show_all = use_state(|| false);
         let mut picker_area = use_state(Area::default);
         let mut toggle_area = use_state(Area::default);
         let mut loaded_edit = use_state(|| None::<i64>);
@@ -1049,6 +1081,14 @@ impl Component for Composer {
         let sent_by_press = self.on_sent.clone();
 
         let picker = emoji_open().then(|| {
+            let query = emoji_search.read().clone();
+            let show_all = *emoji_show_all.read();
+            let results = if query.trim().is_empty() && show_all {
+                all_emojis().to_vec()
+            } else {
+                search_emojis(&query)
+            };
+
             rect()
                 .position(Position::new_absolute().left(12.).bottom(56.))
                 .layer(Layer::Overlay)
@@ -1070,39 +1110,84 @@ impl Component for Composer {
                 .border(inset_border(colors::component_border()))
                 .shadow(popup_shadow())
                 .child(
-                    rect().padding(Gaps::new(2., 0., 0., 0.)).child(
-                        label()
-                            .text(t("oneclient.chat.thread.emoji_heading"))
-                            .font_size(text_size(11.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .letter_spacing(0.44)
-                            .color(colors::fg_secondary()),
-                    ),
+                    rect()
+                        .horizontal()
+                        .width(Size::fill())
+                        .height(Size::px(20.))
+                        .padding(Gaps::new(2., 0., 0., 0.))
+                        .spacing(8.)
+                        .cross_align(Alignment::Center)
+                        .child(
+                            label()
+                                .text(t("oneclient.chat.thread.emoji_heading"))
+                                .font_size(text_size(11.))
+                                .font_weight(FontWeight::MEDIUM)
+                                .letter_spacing(0.44)
+                                .color(colors::fg_secondary()),
+                        )
+                        .child(rect().width(Size::flex(1.)).height(Size::fill()))
+                        .child(
+                            Button::new()
+                                .ghost()
+                                .small()
+                                .text(t(if show_all {
+                                    "oneclient.chat.thread.emoji_show_less"
+                                } else {
+                                    "oneclient.chat.thread.emoji_show_all"
+                                }))
+                                .on_press(move |_| emoji_show_all.set(!show_all)),
+                        ),
                 )
-                .children(
-                    EMOJI
-                        .chunks(8)
-                        .map(|row| {
-                            rect()
-                                .horizontal()
-                                .spacing(EMOJI_GAP_PX)
-                                .children(
-                                    row.iter()
-                                        .map(|emoji| {
-                                            EmojiCell {
-                                                emoji,
-                                                on_pick: EventHandler::new(move |_| {
-                                                    draft.write().push_str(emoji);
-                                                }),
-                                            }
-                                            .into_element()
-                                        })
-                                        .collect::<Vec<_>>(),
-                                )
+                .child(
+                    TextInput::new(emoji_search)
+                        .width(Size::fill())
+                        .height(Size::px(32.))
+                        .font_size(text_size(12.))
+                        .placeholder(t("oneclient.chat.thread.emoji_search_placeholder"))
+                        .leading(
+                            Icon::new(IconType::SearchMd)
+                                .size(14.)
+                                .color(colors::fg_secondary())
+                                .into_element(),
+                        ),
+                )
+                .maybe_child(results.is_empty().then(|| {
+                    label()
+                        .text(t("oneclient.chat.thread.emoji_no_results"))
+                        .font_size(text_size(12.))
+                        .color(colors::fg_secondary())
+                }))
+                .child({
+                    // The full catalogue is ~1,900 emoji. Render only the rows
+                    // inside the viewport instead of one component per emoji.
+                    let mut pick_draft = draft;
+                    ScrollArea::new()
+                        .width(Size::fill())
+                        .height(Size::auto())
+                        .max_height(Size::px(EMOJI_GRID_MAX_HEIGHT_PX))
+                        .lazy_sections(
+                            vec![LazySection {
+                                header: false,
+                                count: results.len(),
+                            }],
+                            EMOJI_CELL_PX,
+                            EMOJI_GAP_PX,
+                            EMOJI_CELL_PX,
+                            8,
+                            0.,
+                            move |index| {
+                                let emoji = results[index];
+                                EmojiCell {
+                                    emoji,
+                                    on_pick: EventHandler::new(move |_| {
+                                        pick_draft.write().push_str(emoji);
+                                    }),
+                                }
                                 .into_element()
-                        })
-                        .collect::<Vec<_>>(),
-                )
+                            },
+                            |_| rect().into_element(),
+                        )
+                })
         });
 
         rect()
@@ -1282,5 +1367,35 @@ mod tests {
         assert_eq!(seconds_until(None), 0);
         assert_eq!(seconds_until(Some(chrono::Utc::now().fixed_offset() - chrono::Duration::hours(1))), 0);
         assert_eq!(seconds_until(Some(chrono::Utc::now().fixed_offset() + chrono::Duration::milliseconds(300))), 1);
+    }
+
+    #[test]
+    fn emoji_search_returns_defaults_without_a_query() {
+        assert_eq!(search_emojis(""), EMOJI.to_vec());
+        assert_eq!(search_emojis("   "), EMOJI.to_vec());
+    }
+
+    #[test]
+    fn emoji_search_matches_names_shortcodes_and_characters() {
+        assert!(search_emojis("rocket").contains(&"🚀"));
+        assert!(search_emojis("FIRE").contains(&"🔥"));
+        assert!(search_emojis(":fire:").contains(&"🔥"));
+        assert!(search_emojis("🔥").contains(&"🔥"));
+        assert!(search_emojis("not-an-emoji").is_empty());
+    }
+
+    #[test]
+    fn all_emojis_covers_the_full_catalogue() {
+        assert!(all_emojis().len() > EMOJI.len());
+        assert!(EMOJI.iter().all(|emoji| all_emojis().contains(emoji)));
+
+        let extra = all_emojis()
+            .iter()
+            .find(|emoji| !EMOJI.contains(emoji))
+            .expect("catalogue should contain more than the quick grid");
+        let name = emojis::get(extra)
+            .expect("listed emoji should be resolvable")
+            .name();
+        assert!(search_emojis(&name.to_lowercase()).contains(extra));
     }
 }

@@ -183,7 +183,7 @@ fn launch_button(
         .enabled(enabled)
         .padding(Gaps::new_symmetric(8., 24.))
         // Wide enough for every launch stage, so the settings button beside it stays put
-        .min_width(Size::px(text_size(156.)))
+        .width(Size::px(160.))
         .on_press(move |_| {
             if enabled {
                 dispatch.launch_cluster(cluster_id);

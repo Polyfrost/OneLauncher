@@ -21,8 +21,9 @@ use crate::view::app::{
 /// Launch button height; the icon buttons beside it are squares of the same size
 const ACTION_HEIGHT: f32 = 36.;
 const ACTION_ICON_SIZE: f32 = 20.;
-/// Fits the longest launch stage ("Folder in use") at the header's font size
-const LAUNCH_MIN_WIDTH: f32 = 124.;
+/// Fits the longest launch stage ("Downloading") in every theme's font. A minimum width won't do:
+/// Freya adds the button's content on top of it.
+const LAUNCH_WIDTH: f32 = 124.;
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum ClusterViewShellTab {
@@ -428,7 +429,7 @@ impl Component for InstanceHeader {
                     .medium()
                     .height(Size::px(ACTION_HEIGHT))
                     // Wide enough for every launch stage, so Share doesn't shift as it changes
-                    .min_width(Size::px(text_size(LAUNCH_MIN_WIDTH)))
+                    .width(Size::px(LAUNCH_WIDTH))
                     .enabled(launch_enabled)
                     .on_press(move |_| {
                         if launch_enabled {
@@ -882,5 +883,55 @@ mod tests {
             "live log {live_log:?} is hidden behind the pinned rows {settings:?}"
         );
         assert!(live_log.min_y() >= 0.);
+    }
+}
+
+#[cfg(test)]
+mod folder_row_tests {
+    use super::*;
+    use freya_testing::TestingRunner;
+    use std::time::Duration;
+
+    fn shows(runner: &TestingRunner, text: &str) -> bool {
+        runner
+            .find(|_, element| {
+                Label::try_downcast(element).filter(|label| label.text.as_ref() == text)
+            })
+            .is_some()
+    }
+
+    fn station() {
+        crate::hooks::use_provide_station(|| {
+            let mut app = crate::state::AppState::default();
+            app.settings.settings.animations_enabled = false;
+            app
+        });
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_game_folder_explains_itself_on_hover() {
+        fn app() -> impl IntoElement {
+            station();
+            crate::components::use_provide_tooltips();
+            rect()
+                .width(Size::px(200.))
+                .child(ClusterFolderRow {
+                    folder: GameFolder {
+                        path: std::path::PathBuf::new(),
+                        shared: false,
+                    },
+                    height: 32.,
+                })
+                .child(crate::components::TooltipHost)
+        }
+        let (mut runner, ()) = TestingRunner::new(app, (600., 300.).into(), |_| (), 1.);
+        let tip = t("oneclient.layout.cluster.game_folder.tooltip");
+        runner.poll_n(Duration::ZERO, 4);
+        runner.move_cursor((80., 16.));
+        runner.poll(Duration::from_millis(20), Duration::from_millis(900));
+        assert!(shows(&runner, tip));
+        runner.move_cursor((80., 200.));
+        runner.poll_n(Duration::ZERO, 4);
+        assert!(!shows(&runner, tip));
     }
 }

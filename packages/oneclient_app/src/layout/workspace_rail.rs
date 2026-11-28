@@ -480,6 +480,70 @@ mod tests {
     }
 
     #[test]
+    fn a_row_hovered_under_glass_is_not_left_hovered_by_a_theme_switch() {
+        use freya_testing::TestingRunner;
+        use std::time::Duration;
+
+        fn app() -> impl IntoElement {
+            crate::hooks::use_provide_station(|| {
+                let mut app = crate::state::AppState::default();
+                app.settings.settings.animations_enabled = false;
+                app
+            });
+            let glass = use_consume::<State<bool>>();
+            let track = glass::use_pill_track(2);
+            rect()
+                .vertical()
+                .width(Size::px(200.))
+                .children((0..2).map(|index| {
+                    Tab {
+                        label: ["One", "Two"][index],
+                        icon: IconType::Folder,
+                        route: Route::Home {},
+                        active: false,
+                        has_dot: false,
+                        height: 32.,
+                        lens: glass().then_some((track, index)),
+                        search: None,
+                    }
+                    .into_element()
+                }))
+        }
+        let (mut runner, mut glass) = TestingRunner::new(
+            app,
+            (200., 200.).into(),
+            |runner| runner.provide_root_context(|| State::create(true)),
+            1.,
+        );
+        let clear: Fill = Color::TRANSPARENT.into();
+        let background = |runner: &TestingRunner, name: &str| {
+            runner
+                .find(|_, element| {
+                    (element.accessibility().builder.label() == Some(name))
+                        .then(|| element.style().background.clone())
+                })
+                .unwrap()
+        };
+        runner.poll_n(Duration::ZERO, 4);
+        for y in [16., 48., 150.] {
+            runner.move_cursor((100., y));
+            runner.poll_n(Duration::ZERO, 3);
+        }
+        runner.run_in(|| glass.set(false));
+        runner.poll_n(Duration::ZERO, 4);
+        assert_eq!(background(&runner, "One"), clear);
+        assert_eq!(background(&runner, "Two"), clear);
+
+        // An ordinary hover still shows, then clears
+        runner.move_cursor((100., 16.));
+        runner.poll_n(Duration::ZERO, 3);
+        assert_ne!(background(&runner, "One"), clear);
+        runner.move_cursor((100., 150.));
+        runner.poll_n(Duration::ZERO, 3);
+        assert_eq!(background(&runner, "One"), clear);
+    }
+
+    #[test]
     fn revealing_a_row_accounts_for_the_wheel_scroll_destination() {
         let reveal = |offset| reveal_section_offset(30., 60., 32., 180., 24., offset);
         // The selection is visible now, but the wheel animation will move it above the rail.

@@ -259,7 +259,11 @@ pub fn file_choice_header(choice: FileChoice) -> Element {
 fn file_list(choice: FileChoice, files: Option<Vec<SettingFile>>, fill: bool) -> Element {
     let frame = rect()
         .width(Size::fill())
-        .height(if fill { Size::flex(1.) } else { Size::px(LIST_HEIGHT) })
+        .height(if fill {
+            Size::flex(1.)
+        } else {
+            Size::px(LIST_HEIGHT)
+        })
         .corner_radius(rounded(10.))
         .background(colors::page())
         .border(border_all_color(1., colors::component_border()))

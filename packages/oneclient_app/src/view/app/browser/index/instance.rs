@@ -767,3 +767,73 @@ mod tests {
         assert!(summary_fits(1000., 5));
     }
 }
+
+#[cfg(test)]
+mod toolbar_tests {
+    use super::*;
+    use freya_testing::TestingRunner;
+    use std::time::Duration;
+
+    /// The side picker only exists on Modrinth; it must not push the switch that toggles it
+    #[test]
+    fn switching_provider_leaves_the_switch_and_sort_in_place() {
+        fn app() -> impl IntoElement {
+            crate::hooks::use_provide_station(|| {
+                let mut app = crate::state::AppState::default();
+                app.settings.settings.animations_enabled = false;
+                app
+            });
+            let provider = use_consume::<State<ProviderId>>();
+            let side = use_state(|| None::<SearchSide>);
+            let parts = Toolbar {
+                placeholder: "Search mods".into(),
+                target: None,
+                override_button: None,
+                provider,
+                curseforge_blocked: false,
+                query: use_state(String::new),
+                sort: use_state(|| SearchSort::Relevance),
+                loader: None,
+                side: (provider() == ProviderId::Modrinth).then_some(side),
+                side_slot: true,
+            };
+            toolbar(
+                parts,
+                use_state(|| 0.),
+                use_state(|| 0.),
+                use_state(|| 0.),
+                use_state(|| 0.),
+            )
+        }
+        for width in [1400., 700.] {
+            let (mut runner, provider) = TestingRunner::new(
+                app,
+                (width, 300.).into(),
+                |runner| runner.provide_root_context(|| State::create(ProviderId::Modrinth)),
+                1.,
+            );
+            let area = |runner: &TestingRunner, text: &str| {
+                runner
+                    .find(|node, element| {
+                        Label::try_downcast(element)
+                            .filter(|label| label.text.as_ref() == text)
+                            .map(|_| node.layout().area)
+                    })
+                    .unwrap_or_else(|| panic!("no {text} at {width}"))
+            };
+            runner.poll_n(Duration::ZERO, 8);
+            let names = ["CurseForge", "Relevance"];
+            let before = names.map(|name| area(&runner, name));
+            let target = before[0].center();
+            runner.click_cursor((f64::from(target.x), f64::from(target.y)));
+            runner.poll_n(Duration::ZERO, 8);
+            runner.run_in(|| assert_eq!(*provider.peek(), ProviderId::CurseForge));
+            let after = names.map(|name| area(&runner, name));
+            for (a, b) in before.iter().zip(&after) {
+                // The label's weight changes when selected, so compare centres
+                assert!((a.center().x - b.center().x).abs() < 3., "{a:?} {b:?}");
+                assert_eq!(a.min_y(), b.min_y());
+            }
+        }
+    }
+}

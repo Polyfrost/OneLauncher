@@ -12,11 +12,11 @@ use crate::hooks::{Actions, use_debounced, use_dispatch, use_settings_snapshot};
 use crate::i18n::{t, tf};
 use crate::layout::SearchItem;
 use crate::routes::Route;
-use crate::ui::border_all_color;
 use crate::theme::{
-    Theme, colors, copy_family, glass, delete_theme, duplicate_theme, export_theme, family_variants,
-    import_theme, is_known, system_theme_id, text_size,
+    Theme, colors, copy_family, delete_theme, duplicate_theme, export_theme, family_variants,
+    glass, import_theme, is_known, system_theme_id, text_size,
 };
+use crate::ui::border_all_color;
 use crate::view::app::settings::appearance_picker::{
     compose_theme, section, section_with_action, split_theme, style_picker, theme_icon,
     theme_mode_picker,
@@ -240,27 +240,19 @@ fn import_button(dispatch: &Actions) -> Element {
         .into_element()
 }
 
-/// The kebab menu on a style card; custom families can also be edited and deleted
+/// The kebab itself, in the previewed theme
 #[derive(PartialEq)]
-pub(super) struct ThemeFileMenu {
-    pub(super) id: String,
-    pub(super) name: String,
-    pub(super) custom: bool,
-    /// Owned by the card so a right-click on it opens this menu too
-    pub(super) menu_at: State<Option<(f32, f32)>>,
-    /// The theme the card previews; the button is drawn in it like the card's Play button,
-    /// so every card keeps its own look whichever style is applied
-    pub(super) preview: Theme,
+struct ThemeFileButton {
+    alt: String,
+    preview: Theme,
+    on_press: EventHandler<()>,
 }
 
-impl Component for ThemeFileMenu {
+impl Component for ThemeFileButton {
     fn render(&self) -> impl IntoElement {
-        let mut anchor = use_state(|| (0., 0.));
-        let mut menu_at = self.menu_at;
-        let mut deleting = use_state(|| false);
         let mut hovered = use_state(|| false);
-        let dispatch = use_dispatch();
-        let alt = tf("oneclient.settings.appearance.theme.actions", &[&self.name]);
+        let alt = self.alt.clone();
+        let on_press = self.on_press.clone();
         let a11y_id = use_a11y();
         let keyboard = use_focus(a11y_id)() == Focus::Keyboard;
         let tooltip = use_tooltip_anchor(Some(alt.clone().into()), TooltipPlacement::Top);
@@ -292,8 +284,37 @@ impl Component for ThemeFileMenu {
             // The tooltip owns pointer-enter and pointer-leave on this rect
             .on_pointer_over(move |_| hovered.set_if_modified(true))
             .on_pointer_out(move |_| hovered.set_if_modified(false))
-            .on_press(move |_| menu_at.set(Some(*anchor.peek())))
+            .on_press(move |_| on_press.call(()))
             .child(theme_icon(preview, "dots-vertical", 14., palette.text.0));
+        tooltip.attach(face)
+    }
+}
+
+/// The kebab menu on a style card; custom families can also be edited and deleted
+#[derive(PartialEq)]
+pub(super) struct ThemeFileMenu {
+    pub(super) id: String,
+    pub(super) name: String,
+    pub(super) custom: bool,
+    /// Owned by the card so a right-click on it opens this menu too
+    pub(super) menu_at: State<Option<(f32, f32)>>,
+    /// The theme the card previews; the button is drawn in it like the card's Play button,
+    /// so every card keeps its own look whichever style is applied
+    pub(super) preview: Theme,
+}
+
+impl Component for ThemeFileMenu {
+    fn render(&self) -> impl IntoElement {
+        let mut anchor = use_state(|| (0., 0.));
+        let mut menu_at = self.menu_at;
+        let mut deleting = use_state(|| false);
+        let dispatch = use_dispatch();
+        let alt = tf("oneclient.settings.appearance.theme.actions", &[&self.name]);
+        let face = ThemeFileButton {
+            alt,
+            preview: self.preview.clone(),
+            on_press: (move |()| menu_at.set(Some(*anchor.peek()))).into(),
+        };
 
         rect()
             .position(Position::new_absolute().top(8.).right(8.))
@@ -302,7 +323,7 @@ impl Component for ThemeFileMenu {
                 let frame = event.data().area;
                 anchor.set_if_modified((frame.min_x(), frame.max_y()));
             })
-            .child(tooltip.attach(face))
+            .child(face)
             .maybe_child((*menu_at.read()).map(|(x, y)| {
                 let mut menu = ContextMenu::new(x, y).title(self.name.clone());
                 if self.custom {
@@ -559,5 +580,89 @@ mod tests {
         assert!(theme_needs_fallback(system, &affected, |_| false));
         assert!(!theme_needs_fallback(system, &affected, |_| true));
         assert!(!theme_needs_fallback("system:other", &affected, |_| false));
+    }
+}
+
+#[cfg(test)]
+mod kebab_tests {
+    use super::*;
+    use freya_testing::TestingRunner;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn the_kebab_wears_its_cards_theme_tints_on_hover_and_opens_the_menu() {
+        type Fixture = (State<Option<(f32, f32)>>, State<bool>);
+
+        fn app() -> impl IntoElement {
+            crate::hooks::use_provide_station(|| {
+                let mut app = crate::state::AppState::default();
+                app.settings.settings.animations_enabled = false;
+                app
+            });
+            crate::components::use_provide_tooltips();
+            let (menu_at, minecraft) = use_consume::<Fixture>();
+            // The active theme changes; the previewed one doesn't
+            colors::apply(
+                if minecraft() {
+                    "minecraft-dark"
+                } else {
+                    "dark"
+                },
+                None,
+            );
+            rect()
+                .width(Size::px(200.))
+                .height(Size::px(200.))
+                .child(ThemeFileButton {
+                    alt: format!("Options {}", minecraft()),
+                    preview: (*crate::theme::resolve_theme("dark")).clone(),
+                    on_press: (move |()| {
+                        let mut menu_at = menu_at;
+                        menu_at.set(Some((0., 0.)));
+                    })
+                    .into(),
+                })
+        }
+        let (mut runner, (menu_at, mut minecraft)) = TestingRunner::new(
+            app,
+            (200., 200.).into(),
+            |runner| {
+                runner.provide_root_context(|| -> Fixture {
+                    (State::create(None), State::create(false))
+                })
+            },
+            1.,
+        );
+        let face = |runner: &TestingRunner| {
+            runner
+                .find(|node, element| {
+                    let a11y = element.accessibility();
+                    (a11y.builder.role() == AccessibilityRole::Button).then(|| {
+                        let style = element.style();
+                        (
+                            style.background.clone(),
+                            style.corner_radius,
+                            node.layout().area.center(),
+                        )
+                    })
+                })
+                .unwrap()
+        };
+        runner.poll_n(Duration::ZERO, 4);
+        let (idle, radius, center) = face(&runner);
+        runner.run_in(|| minecraft.set(true));
+        runner.poll_n(Duration::ZERO, 4);
+        assert_eq!((face(&runner).0, face(&runner).1), (idle.clone(), radius));
+
+        let at = (f64::from(center.x), f64::from(center.y));
+        runner.move_cursor(at);
+        runner.poll_n(Duration::ZERO, 4);
+        assert_ne!(face(&runner).0, idle);
+        runner.move_cursor((20., 180.));
+        runner.poll_n(Duration::ZERO, 4);
+        assert_eq!(face(&runner).0, idle);
+        runner.click_cursor(at);
+        runner.run_in(|| assert!(menu_at.peek().is_some()));
+        colors::apply("dark", None);
     }
 }

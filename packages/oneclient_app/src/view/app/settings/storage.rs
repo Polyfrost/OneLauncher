@@ -72,7 +72,9 @@ impl Component for SettingsStorage {
                 }
                 .into_element(),
             )
-            .child(section_header(t("oneclient.settings.storage.section.usage")))
+            .child(section_header(t(
+                "oneclient.settings.storage.section.usage",
+            )))
             .child(usage_list(
                 &report.categories,
                 colors::brand(),
@@ -100,64 +102,70 @@ fn hero(
         + report.legacy_cluster_content.bytes
         + report.unused_natives.bytes;
 
-    let subtitle = if reclaimable > 0 {
-        tf(
+    // Progress replaces the subtitle and runs along the card's foot, so a refresh moves nothing
+    let subtitle = match scan {
+        Some(scan) if scan.total > 0 => {
+            format!("{}… {} / {}", scan.label, scan.current, scan.total)
+        }
+        Some(scan) => format!("{}…", scan.label),
+        None if reclaimable > 0 => tf(
             "oneclient.settings.storage.reclaimable",
             &[&format_bytes(reclaimable)],
-        )
-    } else {
-        t("oneclient.settings.storage.nothing_to_free").to_string()
+        ),
+        None => t("oneclient.settings.storage.nothing_to_free").to_string(),
     };
 
-    rect()
-        .vertical()
+    let summary = rect()
+        .horizontal()
         .width(Size::fill())
-        .spacing(8.)
+        .content(Content::Flex)
+        .cross_align(Alignment::Center)
+        .spacing(16.)
         .padding(Gaps::new_symmetric(20., 16.))
+        .child(
+            rect()
+                .vertical()
+                .width(Size::flex(1.0))
+                .spacing(2.)
+                .child(
+                    label()
+                        .text(format_bytes(report.total_bytes))
+                        .max_lines(1)
+                        .text_overflow(TextOverflow::Ellipsis)
+                        .font_size(text_size(28.))
+                        .font_weight(FontWeight::BOLD)
+                        .color(colors::fg_primary()),
+                )
+                .child(
+                    label()
+                        .text(subtitle)
+                        .font_size(text_size(12.))
+                        .max_lines(1)
+                        .text_overflow(TextOverflow::Ellipsis)
+                        .color(if scan.is_none() && reclaimable > 0 {
+                            colors::brand()
+                        } else {
+                            colors::fg_secondary()
+                        }),
+                ),
+        )
+        .child(refresh);
+
+    rect()
+        .width(Size::fill())
         .corner_radius(rounded(12.))
         .background(colors::card())
-        .child(
+        .child(summary)
+        .maybe_child(scan.map(|scan| {
+            let fraction = if scan.total > 0 {
+                scan.current as f32 / scan.total as f32
+            } else {
+                0.
+            };
             rect()
-                .horizontal()
-                .width(Size::fill())
-                .content(Content::Flex)
-                .cross_align(Alignment::Center)
-                .spacing(16.)
-                .child(
-                    rect()
-                        .vertical()
-                        .width(Size::flex(1.0))
-                        .spacing(2.)
-                        .child(
-                            label()
-                                .text(format_bytes(report.total_bytes))
-                                .max_lines(1)
-                                .text_overflow(TextOverflow::Ellipsis)
-                                .font_size(text_size(28.))
-                                .font_weight(FontWeight::BOLD)
-                                .color(colors::fg_primary()),
-                        )
-                        .child(
-                            label()
-                                .text(subtitle)
-                                .font_size(text_size(12.))
-                                .max_lines(1)
-                                .text_overflow(TextOverflow::Ellipsis)
-                                .color(if reclaimable > 0 {
-                                    colors::brand()
-                                } else {
-                                    colors::fg_secondary()
-                                }),
-                        ),
-                )
-                .child(refresh),
-        )
-        .child(
-            rect()
-                .width(Size::fill())
-                .height(Size::px(30.))
-                .maybe_child(scan.map(|scan| scan_details(Some(scan)))),
-        )
+                .position(Position::new_absolute().left(16.).right(16.).bottom(8.))
+                .child(proportion_bar(fraction, colors::brand()))
+        }))
         .into_element()
 }
 
@@ -453,5 +461,68 @@ inventory::submit! {
             "leftover",
         ],
         route: Route::SettingsStorage {},
+    }
+}
+
+#[cfg(test)]
+mod hero_tests {
+    use super::*;
+
+    #[test]
+    fn a_refresh_keeps_the_cards_height() {
+        use freya_testing::TestingRunner;
+        use std::time::Duration;
+
+        fn app() -> impl IntoElement {
+            let scan = use_consume::<State<bool>>();
+            let progress = StorageScanProgress {
+                label: "Measuring".into(),
+                current: 1,
+                total: 4,
+            };
+            let report = StorageReport {
+                total_bytes: 44_000_000,
+                categories: Vec::new(),
+                clusters: Vec::new(),
+                unreferenced_cache: Default::default(),
+                legacy_cluster_content: Default::default(),
+                unused_natives: Default::default(),
+            };
+            let refresh = rect().width(Size::px(60.)).height(Size::px(32.));
+            rect()
+                .width(Size::px(400.))
+                .child(hero(
+                    &report,
+                    refresh.into_element(),
+                    scan().then_some(&progress),
+                ))
+                .child(
+                    rect()
+                        .width(Size::px(10.))
+                        .height(Size::px(10.))
+                        .a11y_alt("below"),
+                )
+        }
+        let (mut runner, mut scan) = TestingRunner::new(
+            app,
+            (400., 300.).into(),
+            |runner| runner.provide_root_context(|| State::create(false)),
+            1.,
+        );
+        let below = |runner: &TestingRunner| {
+            runner
+                .find(|node, element| {
+                    (element.accessibility().builder.label() == Some("below"))
+                        .then(|| node.layout().area.min_y())
+                })
+                .unwrap()
+        };
+        runner.poll_n(Duration::ZERO, 3);
+        let idle = below(&runner);
+        runner.run_in(|| scan.set(true));
+        runner.poll_n(Duration::ZERO, 3);
+        assert_eq!(below(&runner), idle);
+        // A slot kept for the progress used to leave a gap here
+        assert!(idle < 110., "{idle}");
     }
 }

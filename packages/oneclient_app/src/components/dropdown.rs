@@ -184,44 +184,49 @@ impl Component for Dropdown {
                     .on_sized(move |e: Event<SizedEventData>| {
                         button_area.set_if_modified(Some(e.area));
                     })
-                    .child(tooltip
-                    .attach(rect())
-                    .width(Size::fill())
-                    .height(self.height.clone())
-                    .horizontal()
-                    .content(Content::Flex)
-                    .cross_align(Alignment::Center)
-                    .spacing(6.)
-                    .padding(Gaps::new_symmetric(0., if compact { 8. } else { 12. }))
-                    .corner_radius(glass::control_radius(if compact { 6. } else { 8. }))
-                    .background(trigger_bg)
-                    .border(border_all_color(1., trigger_border).alignment(BorderAlignment::Inner))
-                    .a11y_id(a11y_id)
-                    .a11y_focusable(true)
-                    .a11y_role(AccessibilityRole::Button)
-                    .on_pointer_over(move |_| hovering.set(true))
-                    .on_pointer_out(move |_| hovering.set(false))
-                    .on_global_pointer_up(on_global_pointer_up)
-                    .on_press(move |e: Event<PressEventData>| {
-                        e.prevent_default();
-                        e.stop_propagation();
-                        open.toggle();
-                    })
-                    .maybe_child(leading)
                     .child(
-                        label()
-                            .text(selected)
-                            .width(Size::flex(1.))
-                            .max_lines(1)
-                            .text_overflow(TextOverflow::Ellipsis)
-                            .font_size(text_size(if compact { 12. } else { 13. }))
-                            .color(colors::fg_primary()),
-                    )
-                    .child(
-                        Icon::new(IconType::ChevronDown)
-                            .size(14.)
-                            .color(colors::fg_secondary()),
-                    )),
+                        tooltip
+                            .attach(rect())
+                            .width(Size::fill())
+                            .height(self.height.clone())
+                            .horizontal()
+                            .content(Content::Flex)
+                            .cross_align(Alignment::Center)
+                            .spacing(6.)
+                            .padding(Gaps::new_symmetric(0., if compact { 8. } else { 12. }))
+                            .corner_radius(glass::control_radius(if compact { 6. } else { 8. }))
+                            .background(trigger_bg)
+                            .border(
+                                border_all_color(1., trigger_border)
+                                    .alignment(BorderAlignment::Inner),
+                            )
+                            .a11y_id(a11y_id)
+                            .a11y_focusable(true)
+                            .a11y_role(AccessibilityRole::Button)
+                            .on_pointer_over(move |_| hovering.set(true))
+                            .on_pointer_out(move |_| hovering.set(false))
+                            .on_global_pointer_up(on_global_pointer_up)
+                            .on_press(move |e: Event<PressEventData>| {
+                                e.prevent_default();
+                                e.stop_propagation();
+                                open.toggle();
+                            })
+                            .maybe_child(leading)
+                            .child(
+                                label()
+                                    .text(selected)
+                                    .width(Size::flex(1.))
+                                    .max_lines(1)
+                                    .text_overflow(TextOverflow::Ellipsis)
+                                    .font_size(text_size(if compact { 12. } else { 13. }))
+                                    .color(colors::fg_primary()),
+                            )
+                            .child(
+                                Icon::new(IconType::ChevronDown)
+                                    .size(14.)
+                                    .color(colors::fg_secondary()),
+                            ),
+                    ),
             )
             .maybe_child(is_open.then(|| {
                 rect().width(Size::px(0.)).height(Size::px(0.)).child(
@@ -357,5 +362,56 @@ impl Component for DropdownOption {
                     }))
                     .into_element()
             }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use freya_testing::TestingRunner;
+    use std::time::Duration;
+
+    fn shows(runner: &TestingRunner, text: &str) -> bool {
+        runner
+            .find(|_, element| {
+                Label::try_downcast(element).filter(|label| label.text.as_ref() == text)
+            })
+            .is_some()
+    }
+
+    fn station() {
+        crate::hooks::use_provide_station(|| {
+            let mut app = crate::state::AppState::default();
+            app.settings.settings.animations_enabled = false;
+            app
+        });
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_tooltip_outlives_a_move_across_the_trigger() {
+        fn app() -> impl IntoElement {
+            station();
+            crate::components::use_provide_tooltips();
+            rect()
+                .padding(100.)
+                .child(
+                    Dropdown::new("All", vec!["All".into()])
+                        .width(Size::px(132.))
+                        .height(Size::px(34.))
+                        .tooltip("Pick one"),
+                )
+                .child(crate::components::TooltipHost)
+        }
+        let (mut runner, ()) = TestingRunner::new(app, (400., 300.).into(), |_| (), 1.);
+        runner.poll_n(Duration::ZERO, 4);
+        runner.move_cursor((150., 115.));
+        runner.poll(Duration::from_millis(20), Duration::from_millis(900));
+        assert!(shows(&runner, "Pick one"));
+        runner.move_cursor((190., 120.));
+        runner.poll_n(Duration::ZERO, 4);
+        assert!(shows(&runner, "Pick one"));
+        runner.move_cursor((350., 280.));
+        runner.poll_n(Duration::ZERO, 4);
+        assert!(!shows(&runner, "Pick one"));
     }
 }

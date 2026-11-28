@@ -2011,6 +2011,8 @@
   "oneclient.microsoft_java.switched.next_launch": "This cluster is back on Automatic and will pick the optimized Microsoft %s JDK from its next launch.",
   "oneclient.microsoft_java.switched.title": "Java switched",
   "oneclient.mutations.action_failed": "Action failed",
+  "oneclient.mutations.accounts.added.body": "Signed in as %s",
+  "oneclient.mutations.accounts.added.title": "Account added",
   "oneclient.mutations.blocked.already_resetting": "This instance is already being reset.",
   "oneclient.mutations.blocked.export_before_reset": "Wait for the export to finish before resetting this instance.",
   "oneclient.mutations.blocked.game_before_delete": "Close the game before deleting this instance.",

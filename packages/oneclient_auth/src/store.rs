@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use oneclient_common::paths;
-use oneclient_events::EventBus;
 
 use crate::data::{AccountKind, MinecraftAccount};
 use crate::error::{AuthError, AuthResult};
@@ -55,11 +54,7 @@ impl CredentialsStore {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(username = %account.username))]
-    pub async fn commit_account(
-        &mut self,
-        account: MinecraftAccount,
-        events: &EventBus,
-    ) -> AuthResult<MinecraftAccount> {
+    pub async fn commit_account(&mut self, account: MinecraftAccount) -> AuthResult<MinecraftAccount> {
         self.users.insert(account.id, account.clone());
 
         if self.default_user.is_none() {
@@ -68,10 +63,6 @@ impl CredentialsStore {
 
         self.save().await?;
         tracing::debug!("committed account to credentials store");
-        events
-            .notify("Account added")
-            .body(format!("Signed in as {}", account.username))
-            .send();
         Ok(account)
     }
 

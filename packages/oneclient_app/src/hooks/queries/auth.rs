@@ -8,6 +8,8 @@ use oneclient_auth::{AccountKind, MicrosoftLoginSession, MinecraftAccount};
 use oneclient_core::LauncherError;
 use uuid::Uuid;
 
+use crate::i18n::{t, tf};
+
 const SIGN_OUT_LEAVE_LIMIT: std::time::Duration = std::time::Duration::from_secs(10);
 
 static HANDLED_LOGIN_CODE: Mutex<Option<String>> = Mutex::new(None);
@@ -126,6 +128,21 @@ pub async fn invalidate_auth_queries(account_id: Option<Uuid>) {
     }
 }
 
+async fn notify_account_added(account: &MinecraftAccount) {
+    let Ok(state) = crate::launcher::state() else {
+        return;
+    };
+    state
+        .services
+        .events
+        .notify(t("oneclient.mutations.accounts.added.title"))
+        .body(tf(
+            "oneclient.mutations.accounts.added.body",
+            &[&account.username],
+        ))
+        .send();
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct BeginMicrosoftLoginMutation;
 
@@ -160,6 +177,7 @@ impl MutationCapability for FinishMicrosoftLoginMutation {
     async fn on_settled(&self, _keys: &Self::Keys, result: &Result<Self::Ok, Self::Err>) {
         if let Ok(account) = result {
             invalidate_auth_queries(Some(account.id)).await;
+            notify_account_added(account).await;
         }
     }
 }
@@ -204,6 +222,7 @@ impl MutationCapability for AddMicrosoftAccountMutation {
     async fn on_settled(&self, _keys: &Self::Keys, result: &Result<Self::Ok, Self::Err>) {
         if let Ok(account) = result {
             invalidate_auth_queries(Some(account.id)).await;
+            notify_account_added(account).await;
         }
     }
 }

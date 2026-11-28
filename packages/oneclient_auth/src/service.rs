@@ -167,11 +167,7 @@ impl AuthService {
 
         let account = result?;
         tracing::info!(username = %account.username, "Microsoft login succeeded");
-        self.store
-            .lock()
-            .await
-            .commit_account(account, &self.events)
-            .await
+        self.store.lock().await.commit_account(account).await
     }
 
     /// The entry is deliberately left in the map `finish_microsoft_login` may

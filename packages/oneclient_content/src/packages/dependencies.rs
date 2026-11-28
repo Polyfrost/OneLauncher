@@ -187,24 +187,22 @@ pub async fn find_mod_for_cluster(
 ) -> ContentResult<Option<ModInstallTarget>> {
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
 
-    let project = match provider.get_project(mod_id, ctx).await {
-        Ok(project) if project.content_type == ContentType::Mod => Some((project.id, project.name)),
-        Ok(project) => {
-            tracing::debug!(
-                mod_id,
-                content_type = ?project.content_type,
-                "the mod id names a project that is not a mod, searching instead"
-            );
-            search_mod(provider, mod_id, name, &cluster, ctx).await?
-        }
-        Err(err) => {
-            tracing::debug!(
-                mod_id,
-                "no project under the mod id, searching instead: {err}"
-            );
-            search_mod(provider, mod_id, name, &cluster, ctx).await?
-        }
-    };
+    let mut project = lookup_mod(provider, mod_id, name, &cluster, ctx).await?;
+    // A manifest asks for a library by its container id, and the container id
+    // is not always the id the library is published under. OneConfig ships as
+    // the container `oneconfigv1` while Modrinth publishes it as `oneconfig`,
+    // so an install keyed on the manifest id reported a miss for a library
+    // most Polyfrost mods need (#1327).
+    if project.is_none()
+        && let Some(alias) = published_alias(mod_id)
+    {
+        tracing::debug!(
+            mod_id,
+            alias,
+            "nothing under the manifest id, retrying under the published id"
+        );
+        project = lookup_mod(provider, alias, name, &cluster, ctx).await?;
+    }
 
     let Some((project_id, name)) = project else {
         return Ok(None);
@@ -398,6 +396,45 @@ async fn search_mod(
         .map(|hit| (hit.id, hit.name)))
 }
 
+/// The id a library is published under, when a manifest's container id for it
+/// differs. OneConfig ships as the container `oneconfigv1` (what fabric.mod.json
+/// and Forge metadata ask for) but lives on Modrinth as `oneconfig`.
+fn published_alias(mod_id: &str) -> Option<&str> {
+    match mod_id {
+        "oneconfigv1" => Some("oneconfig"),
+        _ => None,
+    }
+}
+
+async fn lookup_mod(
+    provider: &dyn PackageProvider,
+    mod_id: &str,
+    name: Option<&str>,
+    cluster: &ClusterRow,
+    ctx: &ContentCtx,
+) -> ContentResult<Option<(String, String)>> {
+    match provider.get_project(mod_id, ctx).await {
+        Ok(project) if project.content_type == ContentType::Mod => {
+            Ok(Some((project.id, project.name)))
+        }
+        Ok(project) => {
+            tracing::debug!(
+                mod_id,
+                content_type = ?project.content_type,
+                "the mod id names a project that is not a mod, searching instead"
+            );
+            search_mod(provider, mod_id, name, cluster, ctx).await
+        }
+        Err(err) => {
+            tracing::debug!(
+                mod_id,
+                "no project under the mod id, searching instead: {err}"
+            );
+            search_mod(provider, mod_id, name, cluster, ctx).await
+        }
+    }
+}
+
 fn squash(text: &str) -> String {
     text.chars()
         .filter(char::is_ascii_alphanumeric)
@@ -564,6 +601,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_oneconfig_container_id_points_at_its_published_project() {
+        assert_eq!(published_alias("oneconfigv1"), Some("oneconfig"));
+        assert_eq!(
+            published_alias("oneconfig"),
+            None,
+            "already published under this id"
+        );
+        assert_eq!(published_alias("sodium"), None);
+    }
+
+    #[test]
     fn a_version_is_offered_only_for_the_game_version_it_names() {
         let offered = |stated: &[&str], mc_version: &str| {
             supports_game_version(
@@ -582,7 +630,7 @@ mod tests {
         assert!(
             !offered(&["26.1"], "26.1.2"),
             "strict where the launch-time check is lenient: #830 stopped 26.1 \
-			 builds being offered to a 26.1.2 cluster"
+                         builds being offered to a 26.1.2 cluster"
         );
         assert!(!offered(&["1.21.11"], "26.1.2"));
         assert!(

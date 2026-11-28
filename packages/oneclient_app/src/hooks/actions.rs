@@ -2267,6 +2267,7 @@ impl Actions {
         let mut changed = false;
         let mut incomplete = !synced;
         let mut failures = Vec::new();
+        let mut applied: Option<oneclient_core::ApplyBundleUpdatesResult> = None;
         let started = Instant::now();
         let budget_left =
             || (!manual).then(|| BUNDLE_APPLY_BUDGET.saturating_sub(started.elapsed()));
@@ -2286,7 +2287,7 @@ impl Actions {
             })
             .await
             {
-                Ok(result) => {
+                Ok(mut result) => {
                     if synced && result.settled() {
                         self.record_bundle_checks([cluster_id]);
                     }
@@ -2296,17 +2297,23 @@ impl Actions {
                         || !result.removals_applied.is_empty();
 
                     if !result.stopped_early {
-                        result.failures().cloned().collect()
+                        let failures = result.failures().cloned().collect();
+                        applied = Some(result);
+                        failures
                     } else if attempt == 1 {
                         incomplete = true;
+                        let failed = result.downloads_failed.len();
+                        applied = Some(result);
                         tracing::warn!(
                             cluster_id,
-                            failed = result.downloads_failed.len(),
+                            failed,
                             "bundle updates could not be downloaded in full; launching on the current content, they go at the next launch"
                         );
                         Vec::new()
                     } else {
-                        result.downloads_failed
+                        let failed = std::mem::take(&mut result.downloads_failed);
+                        applied = Some(result);
+                        failed
                     }
                 }
                 Err(err) if attempt == 1 => {
@@ -2340,10 +2347,20 @@ impl Actions {
         }
 
         if failures.is_empty() {
-            if manual && changed {
-                self.notify(t("oneclient.actions.update_check.bundles_updated.title"))
-                    .body(t("oneclient.actions.update_check.bundles_updated.body"))
-                    .send();
+            // The grouped session's own entry only ever says Complete, so what
+            // actually changed goes out as its own notification, with the
+            // per-package breakdown behind a View changes action (#1088). The
+            // manual check reduced the same information to a countless toast.
+            if changed
+                && let Some(result) = applied
+                && let Some(spec) = crate::install::cluster_update_notification(
+                    cluster_id,
+                    &result,
+                    &state.services,
+                )
+                .await
+            {
+                self.push_notification(spec);
             }
             return Some(UpdateCheck {
                 found: changed,

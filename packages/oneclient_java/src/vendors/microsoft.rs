@@ -105,7 +105,7 @@ async fn resolve_package(
     Ok(Some(
         JavaPackage {
             archive: MICROSOFT_EXT.1,
-            download_url: download_url(&build.filename),
+            download_url: download_url(major, arch),
             java_version: build.java_version,
             name: build.filename,
             vendor: JavaVendor::Microsoft,
@@ -170,15 +170,16 @@ fn version_from_filename(filename: &str) -> Option<Vec<u32>> {
 /// Microsoft never published a JRE so every link is a kit by construction
 fn checksum_url(major: u32, arch: &str) -> JavaResult<Url> {
     Ok(Url::parse(&format!(
-        "https://aka.ms/download-jdk/microsoft-jdk-{major}-{MICROSOFT_OS}-{arch}.{}.sha256sum.txt",
-        MICROSOFT_EXT.0
+        "{}.sha256sum.txt",
+        download_url(major, arch)
     ))?)
 }
 
-/// Prefer the versioned link the checksum names over the major-only one it was
-/// read through so the download cannot drift onto a newer build mid-release
-fn download_url(filename: &str) -> String {
-    format!("https://aka.ms/download-jdk/{filename}")
+fn download_url(major: u32, arch: &str) -> String {
+    format!(
+        "https://aka.ms/download-jdk/microsoft-jdk-{major}-{MICROSOFT_OS}-{arch}.{}",
+        MICROSOFT_EXT.0
+    )
 }
 
 fn publishes_host_build(major: u32, arch: &str) -> bool {
@@ -223,6 +224,16 @@ mod tests {
 
         assert!(url.as_str().contains("microsoft-jdk-21-"));
         assert!(!url.as_str().contains("jre"));
+    }
+
+    #[test]
+    fn the_archive_comes_from_the_link_its_checksum_was_read_through() {
+        let checksum = checksum_url(21, "x64").expect("a valid url");
+
+        assert_eq!(
+            checksum.as_str(),
+            format!("{}.sha256sum.txt", download_url(21, "x64"))
+        );
     }
 
     #[test]

@@ -48,7 +48,7 @@ pub enum RequestError {
     #[error("Failed to serialize request body: {0}")]
     SerializeError(#[source] serde_json::Error),
 
-    #[error("{source_desc} has SHA-1 {actual}, expected {expected}")]
+    #[error("{source_desc} hashed to {actual}, expected {expected}")]
     HashMismatch {
         source_desc: String,
         expected: String,

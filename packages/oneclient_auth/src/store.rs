@@ -24,7 +24,12 @@ impl CredentialsStore {
         }
 
         match polyio::read_json(&path).await {
-            Ok(store) => Ok(store),
+            Ok(store) => {
+                // Repairs a store written before this was tightened, and a
+                // file another tool or an older build created
+                owner_only(&path).await;
+                Ok(store)
+            }
             Err(err) => {
                 tracing::warn!("failed to read auth file: {err}");
                 Ok(Self::default())
@@ -37,6 +42,7 @@ impl CredentialsStore {
         let path = paths::auth_file()?;
 
         polyio::write_json_atomic(&path, self).await?;
+        owner_only(&path).await;
         Ok(())
     }
 
@@ -213,6 +219,27 @@ impl CredentialsStore {
     }
 }
 
+/// The store holds Microsoft refresh tokens, and `write_atomic` creates its
+/// scratch file with the process umask: on a stock 022 the credentials would be
+/// readable by every other user on the machine. Windows inherits the ACL of the
+/// user's own directory, so only unix needs the explicit mode
+#[cfg(unix)]
+async fn owner_only(path: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+
+    if let Err(err) =
+        tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).await
+    {
+        tracing::warn!(
+            path = %path.display(),
+            "could not restrict the credentials file to its owner: {err}"
+        );
+    }
+}
+
+#[cfg(not(unix))]
+async fn owner_only(_path: &std::path::Path) {}
+
 /// A transient failure must keep the existing token discarding it because
 /// Wi-Fi dropped would sign the user out of a working account
 pub(crate) fn is_transient_auth_error(err: &AuthError) -> bool {
@@ -221,4 +248,35 @@ pub(crate) fn is_transient_auth_error(err: &AuthError) -> bool {
         AuthError::Minecraft(crate::error::MinecraftAuthError::RequestError { source, .. })
             if source.is_connect() || source.is_timeout()
     )
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn a_written_store_is_readable_only_by_its_owner() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = std::env::temp_dir().join(format!(
+            "oneclient-auth-perms-{}-{}",
+            std::process::id(),
+            Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("auth.json");
+
+        polyio::write_json_atomic(&path, CredentialsStore::default())
+            .await
+            .unwrap();
+        owner_only(&path).await;
+
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        std::fs::remove_dir_all(&dir).ok();
+
+        assert_eq!(
+            mode, 0o600,
+            "the credentials file must not be readable by other users"
+        );
+    }
 }

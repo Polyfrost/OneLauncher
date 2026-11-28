@@ -1,3 +1,10 @@
+## 2.13.1 (2026-11-28)
+
+### Fixes
+
+- G1 now targets 50ms pauses and runs System.gc() concurrently instead of as a full GC by [Wyvest](https://github.com/Wyvest)
+- Microsoft JDK installs no longer fail with a hash mismatch when Microsoft respins a build by [Wyvest](https://github.com/Wyvest)
+
 ## 2.13.0 (2026-11-26)
 
 ### Features

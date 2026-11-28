@@ -205,3 +205,23 @@ codegen-units = 16
 debug = true
 lto = false
 strip = false
+
+[patch.crates-io]
+freya = { git = "https://github.com/Polyfrost/freya", branch = "support/gl-hybrid-black" }
+freya-android = { git = "https://github.com/Polyfrost/freya", branch = "support/gl-hybrid-black" }
+freya-animation = { git = "https://github.com/Polyfrost/freya", branch = "support/gl-hybrid-black" }
+freya-borderless-plugin = { git = "https://github.com/Polyfrost/freya", branch = "support/gl-hybrid-black" }
+freya-clipboard = { git = "https://github.com/Polyfrost/freya", branch = "support/gl-hybrid-black" }
+freya-components = { git = "https://github.com/Polyfrost/freya", branch = "support/gl-hybrid-black" }
+freya-core = { git = "https://github.com/Polyfrost/freya", branch = "support/gl-hybrid-black" }
+freya-edit = { git = "https://github.com/Polyfrost/freya", branch = "support/gl-hybrid-black" }
+freya-engine = { git = "https://github.com/Polyfrost/freya", branch = "support/gl-hybrid-black" }
+freya-markdown = { git = "https://github.com/Polyfrost/freya", branch = "support/gl-hybrid-black" }
+freya-metrics-plugin = { git = "https://github.com/Polyfrost/freya", branch = "support/gl-hybrid-black" }
+freya-query = { git = "https://github.com/Polyfrost/freya", branch = "support/gl-hybrid-black" }
+freya-radio = { git = "https://github.com/Polyfrost/freya", branch = "support/gl-hybrid-black" }
+freya-router = { git = "https://github.com/Polyfrost/freya", branch = "support/gl-hybrid-black" }
+freya-router-macro = { git = "https://github.com/Polyfrost/freya", branch = "support/gl-hybrid-black" }
+freya-sdk = { git = "https://github.com/Polyfrost/freya", branch = "support/gl-hybrid-black" }
+freya-testing = { git = "https://github.com/Polyfrost/freya", branch = "support/gl-hybrid-black" }
+freya-winit = { git = "https://github.com/Polyfrost/freya", branch = "support/gl-hybrid-black" }

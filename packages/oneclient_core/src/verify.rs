@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use oneclient_common::paths;
 use oneclient_content::packages::PackageStore;
@@ -22,14 +22,18 @@ struct VerifyClaim(i64);
 
 impl VerifyClaim {
     fn take(cluster_id: i64) -> Self {
-        *VERIFYING.lock().unwrap().entry(cluster_id).or_default() += 1;
+        *VERIFYING
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .entry(cluster_id)
+            .or_default() += 1;
         Self(cluster_id)
     }
 }
 
 impl Drop for VerifyClaim {
     fn drop(&mut self) {
-        let mut verifying = VERIFYING.lock().unwrap();
+        let mut verifying = VERIFYING.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(count) = verifying.get_mut(&self.0) {
             *count -= 1;
             if *count == 0 {
@@ -41,7 +45,10 @@ impl Drop for VerifyClaim {
 
 #[must_use]
 pub fn is_verifying(cluster_id: i64) -> bool {
-    VERIFYING.lock().unwrap().contains_key(&cluster_id)
+    VERIFYING
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .contains_key(&cluster_id)
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]

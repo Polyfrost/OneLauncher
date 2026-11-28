@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use oneclient_cluster::{Cluster, ClusterError, ClusterKind, ClusterUpdate};
 use oneclient_common::domain::ContentType;
@@ -42,7 +42,7 @@ impl ResetClaim {
     pub fn take(cluster_id: i64) -> Option<Self> {
         RESETTING
             .lock()
-            .unwrap()
+            .unwrap_or_else(PoisonError::into_inner)
             .insert(cluster_id)
             .then_some(Self(cluster_id))
     }
@@ -55,13 +55,19 @@ impl ResetClaim {
 
 impl Drop for ResetClaim {
     fn drop(&mut self) {
-        RESETTING.lock().unwrap().remove(&self.0);
+        RESETTING
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&self.0);
     }
 }
 
 #[must_use]
 pub fn is_resetting(cluster_id: i64) -> bool {
-    RESETTING.lock().unwrap().contains(&cluster_id)
+    RESETTING
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .contains(&cluster_id)
 }
 
 pub async fn reset_unfinished(state: &LauncherState, cluster_id: i64) -> LauncherResult<bool> {

@@ -22,7 +22,7 @@ pub use share::{
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use freya::prelude::spawn_global;
@@ -192,13 +192,16 @@ impl Actions {
     fn bundle_check_due(&self, cluster_id: ClusterId) -> bool {
         self.bundle_checks
             .lock()
-            .unwrap()
+            .unwrap_or_else(PoisonError::into_inner)
             .due(cluster_id, Instant::now())
     }
 
     fn record_bundle_checks(&self, cluster_ids: impl IntoIterator<Item = ClusterId>) {
         let now = Instant::now();
-        let mut log = self.bundle_checks.lock().unwrap();
+        let mut log = self
+            .bundle_checks
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         for cluster_id in cluster_ids {
             log.record(cluster_id, now);
         }
@@ -1642,7 +1645,9 @@ impl Actions {
                     });
                     // Set before the refetch so the mods list sees it when the new copies arrive
                     if copied {
-                        *COPIES_REQUEST.lock().unwrap() = Some((cluster_id, imported));
+                        *COPIES_REQUEST
+                            .lock()
+                            .unwrap_or_else(PoisonError::into_inner) = Some((cluster_id, imported));
                     }
                     super::invalidate_cluster_queries().await;
                     if copied {
@@ -2885,14 +2890,20 @@ struct UpdateCheckClaim(ClusterId);
 
 impl UpdateCheckClaim {
     fn take(cluster_id: ClusterId) -> Self {
-        UPDATE_CHECKS.lock().unwrap().insert(cluster_id);
+        UPDATE_CHECKS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(cluster_id);
         Self(cluster_id)
     }
 }
 
 impl Drop for UpdateCheckClaim {
     fn drop(&mut self) {
-        UPDATE_CHECKS.lock().unwrap().remove(&self.0);
+        UPDATE_CHECKS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&self.0);
     }
 }
 
@@ -2904,7 +2915,7 @@ impl ClusterWrite {
     fn take(cluster_id: ClusterId) -> Self {
         *CLUSTER_WRITES
             .lock()
-            .unwrap()
+            .unwrap_or_else(PoisonError::into_inner)
             .entry(cluster_id)
             .or_default() += 1;
         Self(cluster_id)
@@ -2913,7 +2924,9 @@ impl ClusterWrite {
 
 impl Drop for ClusterWrite {
     fn drop(&mut self) {
-        let mut writes = CLUSTER_WRITES.lock().unwrap();
+        let mut writes = CLUSTER_WRITES
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         if let Some(count) = writes.get_mut(&self.0) {
             *count -= 1;
             if *count == 0 {
@@ -2924,12 +2937,18 @@ impl Drop for ClusterWrite {
 }
 
 fn cluster_writing(cluster_id: ClusterId) -> bool {
-    CLUSTER_WRITES.lock().unwrap().contains_key(&cluster_id)
+    CLUSTER_WRITES
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .contains_key(&cluster_id)
 }
 
 #[must_use]
 pub fn update_check_running(cluster_id: ClusterId) -> bool {
-    UPDATE_CHECKS.lock().unwrap().contains(&cluster_id)
+    UPDATE_CHECKS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .contains(&cluster_id)
 }
 
 async fn launch(actions: &Actions, cluster_id: ClusterId, extra_jvm_arg: Option<String>) {

@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::sync::PoisonError;
 
 use super::*;
 
@@ -988,7 +989,9 @@ impl Component for ContentBox {
             })
             .collect();
         use_side_effect_with_deps(&copy_groups, move |groups| {
-            let mut request = crate::hooks::COPIES_REQUEST.lock().unwrap();
+            let mut request = crate::hooks::COPIES_REQUEST
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
             let Some((_, wanted)) = request.as_ref().filter(|(cluster, _)| *cluster == cluster_id)
             else {
                 return;

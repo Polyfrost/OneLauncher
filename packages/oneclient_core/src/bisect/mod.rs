@@ -5,7 +5,7 @@ mod version;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, PoisonError};
 use std::time::SystemTime;
 
 use oneclient_common::domain::ContentType;
@@ -1435,20 +1435,29 @@ struct Switching(i64);
 
 impl Drop for Switching {
     fn drop(&mut self) {
-        SWITCHING.lock().unwrap().remove(&self.0);
+        SWITCHING
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&self.0);
     }
 }
 
 /// Whether a search is changing this cluster's mods right now
 #[must_use]
 pub fn is_switching(cluster_id: i64) -> bool {
-    SWITCHING.lock().unwrap().contains(&cluster_id)
+    SWITCHING
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .contains(&cluster_id)
 }
 
 /// Claims the cluster before checking for a game, while a launch marks itself active before
 /// checking `is_switching`, so the two can't both go ahead
 fn ensure_idle(state: &Arc<LauncherState>, cluster_id: i64) -> Result<Switching, BisectError> {
-    SWITCHING.lock().unwrap().insert(cluster_id);
+    SWITCHING
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(cluster_id);
     let claim = Switching(cluster_id);
     if state.games.is_active(cluster_id) {
         Err(BisectError::GameRunning)

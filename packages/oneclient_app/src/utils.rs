@@ -303,6 +303,22 @@ pub fn count_label(count: usize, one: &str, many: &str) -> String {
     format_placeholders(if count == 1 { one } else { many }, &[&count])
 }
 
+const MAX_LISTED: usize = 3;
+
+/// A short comma-separated list, with longer lists collapsed to "and N more".
+pub fn listed(names: &[String]) -> String {
+    let shown = names
+        .iter()
+        .take(MAX_LISTED)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(", ");
+    match names.len().saturating_sub(MAX_LISTED) {
+        0 => shown,
+        extra => tf("oneclient.actions.listed.more", &[&shown, &extra]),
+    }
+}
+
 pub fn shorten(text: &str, max_chars: usize, ellipsis: &str) -> String {
     let text = text.trim();
     if text.chars().count() <= max_chars {

@@ -15,7 +15,10 @@ use crate::install::IncompatibleMode;
 use crate::view::app::ClusterPickerModal;
 use crate::view::app::cluster::dialog;
 
-use super::{InstallSource, Installed, WorldInstallPrompt, installed_map, preferred_version};
+use super::{
+    DATAPACK_VERSION_LIMIT, InstallSource, Installed, WorldInstallPrompt, installed_map,
+    ownership_ready, preferred_version,
+};
 
 #[derive(Clone, PartialEq)]
 pub(super) struct InstallRequest {
@@ -166,7 +169,11 @@ impl Component for SelectedInstall {
             Some(self.cluster.mc_version.clone()),
             (kind == ContentType::Mod).then_some(self.cluster.mc_loader),
             0,
-            VERSIONS_PAGE_SIZE,
+            if kind == ContentType::DataPack {
+                DATAPACK_VERSION_LIMIT
+            } else {
+                VERSIONS_PAGE_SIZE
+            },
         );
         let result = self
             .install
@@ -195,11 +202,11 @@ impl Component for SelectedInstall {
                     .or_else(|| query_error(&overrides))
             })
             .flatten();
-        let ownership_ready = datapack
-            || (!query_is_busy(&content)
-                && !query_is_busy(&bundles)
-                && !query_is_busy(&overrides)
-                && ownership_error.is_none());
+        let ownership_ready = ownership_ready(
+            !datapack,
+            query_is_busy(&content) || query_is_busy(&bundles) || query_is_busy(&overrides),
+            ownership_error.is_some(),
+        );
         let installed = if ownership_ready && !datapack {
             installed_map(
                 cluster_content_items(&content),
@@ -430,6 +437,7 @@ mod tests {
                     bundle_name: "test".into(),
                     package_id: "sodium".into(),
                     manifest_default: enabled,
+                    removed: !enabled,
                 }),
             }],
             unversioned_enabled: None,
@@ -487,9 +495,32 @@ mod tests {
                     version
                 ),
                 Some(TargetIntent::Enable(
-                    ClusterAction::SetBundlePackageEnabled {
+                    ClusterAction::SetBundlePackageRemoved {
                         cluster_id: 3,
-                        enabled: true,
+                        removed: false,
+                        ..
+                    }
+                ))
+            ));
+        }
+    }
+
+    #[test]
+    fn removed_bundle_pin_uses_the_restore_action() {
+        let installed = bundled(false);
+        for version in [None, Some("1")] {
+            assert!(matches!(
+                target_intent(
+                    &request(version),
+                    ProviderId::Modrinth,
+                    3,
+                    Some(&installed),
+                    version
+                ),
+                Some(TargetIntent::Enable(
+                    ClusterAction::SetBundlePackageRemoved {
+                        cluster_id: 3,
+                        removed: false,
                         ..
                     }
                 ))

@@ -21,7 +21,7 @@ use crate::hooks::use_cluster;
 use crate::hooks::{
     BROWSE_PAGE_SIZE, BrowserUiState, bundle_overrides_map, bundles_with_status_items,
     category_list, cluster_content_items, content_type_for_slug, pick_version_metadata,
-    query_error, search_items, search_pending, search_total, settled_or_loading,
+    query_error, query_is_busy, query_is_loading, search_items, search_pending, search_total, settled_or_loading,
     use_browser_compat, use_browser_state_store, use_browser_type, use_bundle_overrides,
     use_bundles_with_status, use_cluster_content, use_clusters, use_debounced,
     use_package_categories, use_package_search, use_versions, use_view_state, versions_metadata,
@@ -36,7 +36,7 @@ use crate::view::app::clusters::ClusterPickerButton;
 use super::{
     EnableButton, EnableVariant, InstallSource, Installed, ListStatus, ModpackVersionPrompt,
     Thumbnail, WorldInstallPrompt, control_radius, installed_map, load_failed, minecraft_choices,
-    preferred_version,
+    ownership_ready, preferred_version, settled_page,
 };
 use crate::utils::abbreviate_number;
 
@@ -437,10 +437,19 @@ impl Component for BrowserBody {
             *page.read(),
         );
 
+        let content = use_cluster_content(cluster_id, content_type);
+        let bundles = use_bundles_with_status(cluster_id);
+        let overrides = use_bundle_overrides(cluster_id);
+        let ownership_ready = ownership_ready(
+            cluster_id != 0 && !matches!(content_type, ContentType::DataPack | ContentType::Modpack),
+            query_is_loading(&content) || query_is_loading(&bundles) || query_is_loading(&overrides),
+            query_error(&content).is_some() || query_error(&bundles).is_some()
+                || query_error(&overrides).is_some(),
+        );
         let installed = installed_map(
-            cluster_content_items(&use_cluster_content(cluster_id, content_type)),
-            &bundles_with_status_items(&use_bundles_with_status(cluster_id)),
-            &bundle_overrides_map(&use_bundle_overrides(cluster_id)),
+            cluster_content_items(&content),
+            &bundles_with_status_items(&bundles),
+            &bundle_overrides_map(&overrides),
         );
         let installed = if matches!(content_type, ContentType::DataPack | ContentType::Modpack) {
             Default::default()
@@ -454,6 +463,11 @@ impl Component for BrowserBody {
         let failed = query_error(&search).is_some();
         let status = ListStatus::of(!packages.is_empty(), pending, failed);
         let retry = move |()| search.invalidate();
+        let settled = !query_is_busy(&search) && !failed && settled_or_loading(&search).is_some();
+        let clamped = settled_page(*page_state.peek(), total, BROWSE_PAGE_SIZE, settled);
+        if *page_state.peek() != clamped {
+            page_state.set(clamped);
+        }
         let current_page = *page.read();
         let mode = *view_mode.read();
         let results_key = scroll_key(
@@ -514,6 +528,7 @@ impl Component for BrowserBody {
                 side_slot: content_type == ContentType::Mod,
                 packages,
                 installed,
+                ownership_ready,
                 add_to_cluster: cluster_modpacks,
                 search_override: overridden,
                 pending,
@@ -564,6 +579,7 @@ impl Component for BrowserBody {
                             cluster_id,
                             &pkg,
                             &installed,
+                            ownership_ready,
                             cols,
                             cluster_modpacks,
                             ovr.clone(),
@@ -577,6 +593,7 @@ impl Component for BrowserBody {
                         cluster_id,
                         &pkg,
                         &installed,
+                        ownership_ready,
                         cluster_modpacks,
                         ovr.clone(),
                         compact,

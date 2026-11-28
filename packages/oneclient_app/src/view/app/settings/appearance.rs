@@ -378,11 +378,16 @@ fn delete_family(id: &str, dispatch: &Actions) {
         // the current selection if it actually became invalid.
         let affected = family_ids(&id);
         match delete_theme(&id).await {
-            Ok(()) => dispatch.edit_settings(|settings| {
-                if theme_needs_fallback(&settings.theme, &affected, is_known) {
-                    settings.theme = "dark".into();
+            Ok(()) => {
+                for id in &affected {
+                    super::theme_editor::clear_draft(id);
                 }
-            }),
+                dispatch.edit_settings(|settings| {
+                    if theme_needs_fallback(&settings.theme, &affected, is_known) {
+                        settings.theme = "dark".into();
+                    }
+                });
+            }
             Err(err) => notify_failure(
                 &dispatch,
                 t("oneclient.settings.appearance.theme.delete_failed"),

@@ -136,6 +136,7 @@ pub(super) struct InstanceBrowse {
     pub side_slot: bool,
     pub packages: Vec<ProjectSummary>,
     pub installed: InstalledMap,
+    pub ownership_ready: bool,
     pub add_to_cluster: bool,
     pub search_override: Option<SearchOverride>,
     pub pending: bool,
@@ -170,6 +171,7 @@ impl InstanceBrowse {
         let add_to_cluster = self.add_to_cluster;
         let search_override = self.search_override.clone();
         let installed = self.installed;
+        let ownership_ready = self.ownership_ready;
         let packages = self.packages;
 
         let list = ScrollArea::new()
@@ -184,6 +186,7 @@ impl InstanceBrowse {
                     cluster_id,
                     &package_type,
                     &installed,
+                    ownership_ready,
                     add_to_cluster,
                     search_override.clone(),
                     compact,

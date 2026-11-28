@@ -65,6 +65,7 @@ fn card_surface(rect: Rect, focused: bool, hovered: bool) -> Rect {
 struct CardInstalled {
     source: InstallSource,
     enable: Option<ClusterAction>,
+    claimed_only: bool,
 }
 
 fn installed_for(
@@ -74,19 +75,34 @@ fn installed_for(
 ) -> Option<CardInstalled> {
     installed
         .get(&(item.provider, item.id.clone()))
-        .map(|installed| CardInstalled {
-            source: installed.source,
-            enable: installed
-                .disabled_bundled()
-                .and_then(|version| version.enable_action(cluster_id)),
-        })
+        .map(|installed| card_installed(installed, cluster_id))
 }
 
+fn card_installed(installed: &Installed, cluster_id: i64) -> CardInstalled {
+    let enable = installed
+        .disabled_bundled()
+        .and_then(|version| version.enable_action(cluster_id));
+    let claimed_only = enable.is_none() && !installed.has_link();
+    let source = installed
+        .versions
+        .iter()
+        .find(|version| version.hash.is_some() && version.source == InstallSource::Bundled)
+        .map(|version| version.source)
+        .unwrap_or(InstallSource::Manual);
+    CardInstalled {
+        source,
+        enable,
+        claimed_only,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 pub(super) fn grid_row(
     row: Vec<ProjectSummary>,
     cluster_id: i64,
     package_type: &str,
     installed: &InstalledMap,
+    ownership_ready: bool,
     cols: usize,
     add_to_cluster: bool,
     search_override: Option<SearchOverride>,
@@ -113,6 +129,7 @@ pub(super) fn grid_row(
                         cluster_id,
                         package_type.clone(),
                         installed,
+                        ownership_ready,
                         add_to_cluster,
                         search_override.clone(),
                     )
@@ -158,6 +175,7 @@ struct PackageCard {
     cluster_id: i64,
     package_type: String,
     installed: Option<CardInstalled>,
+    ownership_ready: bool,
     add_to_cluster: bool,
     search_override: Option<SearchOverride>,
 }
@@ -168,6 +186,7 @@ impl PackageCard {
         cluster_id: i64,
         package_type: String,
         installed: Option<CardInstalled>,
+        ownership_ready: bool,
         add_to_cluster: bool,
         search_override: Option<SearchOverride>,
     ) -> Self {
@@ -176,6 +195,7 @@ impl PackageCard {
             cluster_id,
             package_type,
             installed,
+            ownership_ready,
             add_to_cluster,
             search_override,
         }
@@ -312,6 +332,7 @@ impl Component for PackageCard {
                         self.cluster_id,
                         &self.package_type,
                         self.installed.clone(),
+                        self.ownership_ready,
                         self.add_to_cluster,
                         self.search_override.clone(),
                     )),
@@ -319,17 +340,20 @@ impl Component for PackageCard {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn list_row(
     item: ProjectSummary,
     cluster_id: i64,
     package_type: &str,
     installed: &InstalledMap,
+    ownership_ready: bool,
     add_to_cluster: bool,
     search_override: Option<SearchOverride>,
     compact: bool,
 ) -> impl IntoElement {
     ListRow {
         installed: installed_for(installed, &item, cluster_id),
+        ownership_ready,
         item,
         cluster_id,
         package_type: package_type.to_string(),
@@ -345,6 +369,7 @@ struct ListRow {
     cluster_id: i64,
     package_type: String,
     installed: Option<CardInstalled>,
+    ownership_ready: bool,
     add_to_cluster: bool,
     search_override: Option<SearchOverride>,
     /// Too narrow for the author beside the name and a downloads column of its own
@@ -458,23 +483,27 @@ impl Component for ListRow {
                 self.cluster_id,
                 &self.package_type,
                 self.installed.clone(),
+                self.ownership_ready,
                 self.add_to_cluster,
                 self.search_override.clone(),
             ))
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn instance_row(
     item: ProjectSummary,
     cluster_id: i64,
     package_type: &str,
     installed: &InstalledMap,
+    ownership_ready: bool,
     add_to_cluster: bool,
     search_override: Option<SearchOverride>,
     compact: bool,
 ) -> impl IntoElement {
     InstanceRow {
         installed: installed_for(installed, &item, cluster_id),
+        ownership_ready,
         item,
         cluster_id,
         package_type: package_type.to_string(),
@@ -491,6 +520,7 @@ struct InstanceRow {
     cluster_id: i64,
     package_type: String,
     installed: Option<CardInstalled>,
+    ownership_ready: bool,
     add_to_cluster: bool,
     search_override: Option<SearchOverride>,
     /// Too narrow for the downloads count beside the install control
@@ -566,6 +596,7 @@ impl Component for InstanceRow {
                 self.cluster_id,
                 &self.package_type,
                 self.installed.clone(),
+                self.ownership_ready,
                 self.add_to_cluster,
                 self.search_override.clone(),
             ))
@@ -583,6 +614,7 @@ struct InstallButton {
     search_override: Option<SearchOverride>,
     /// Cluster already has this one, so the control becomes a static pill
     installed: Option<CardInstalled>,
+    ownership_ready: bool,
     add_to_cluster: bool,
 }
 
@@ -592,6 +624,7 @@ impl InstallButton {
         cluster_id: i64,
         package_type: &str,
         installed: Option<CardInstalled>,
+        ownership_ready: bool,
         add_to_cluster: bool,
         search_override: Option<SearchOverride>,
     ) -> Self {
@@ -605,6 +638,7 @@ impl InstallButton {
             package_type: package_type.to_string(),
             search_override,
             installed,
+            ownership_ready,
             add_to_cluster: add_to_cluster && content_type == ContentType::Modpack,
         }
     }
@@ -618,6 +652,7 @@ impl Component for InstallButton {
 
         let dispatch = use_dispatch();
         let cluster = use_cluster(cluster_id);
+        let ownership_ready = self.ownership_ready;
 
         // The same narrowing the package page does so both agree on what "latest" installs
         let is_modpack = self.content_type == ContentType::Modpack;
@@ -626,7 +661,10 @@ impl Component for InstallButton {
             use_version_filter(cluster_id, self.content_type, self.search_override.clone());
 
         let versions = version_list(&use_package_versions_when(
-            self.installed.is_none() && !choose_target,
+            self.installed
+                .as_ref()
+                .is_none_or(|entry| entry.claimed_only)
+                && !choose_target,
             provider,
             project_id.clone(),
             game_version,
@@ -634,6 +672,8 @@ impl Component for InstallButton {
             0,
             if is_modpack {
                 ALL_VERSIONS
+            } else if self.content_type == ContentType::DataPack {
+                super::super::DATAPACK_VERSION_LIMIT
             } else {
                 VERSIONS_PAGE_SIZE
             },
@@ -655,7 +695,10 @@ impl Component for InstallButton {
         let (installing, waiting) =
             use_installs_snapshot().package_busy(is_modpack, cluster_id, provider, &project_id);
 
-        if let Some(installed) = &self.installed {
+        if ownership_ready
+            && let Some(installed) = &self.installed
+            && !installed.claimed_only
+        {
             if let Some(action) = installed.enable.clone() {
                 return EnableButton {
                     action,
@@ -689,6 +732,11 @@ impl Component for InstallButton {
         }
 
         let incompatible = add_to_cluster && latest.is_none() && !versions.is_empty();
+        let claimed_only = self
+            .installed
+            .as_ref()
+            .is_some_and(|entry| entry.claimed_only);
+        let package_type = self.package_type.clone();
 
         rect()
             // The card behind is one big press target stop here so the package page doesn't open on top of the install
@@ -700,12 +748,27 @@ impl Component for InstallButton {
                     .height(Size::px(INSTALL_BUTTON_H))
                     .padding(Gaps::new_symmetric(0., 11.))
                     .corner_radius(control_radius(INSTALL_BUTTON_H, 6.))
-                    .enabled((choose_target || latest.is_some()) && !installing && !waiting)
+                    .enabled(
+                        ownership_ready
+                            && (choose_target || latest.is_some())
+                            && !installing
+                            && !waiting,
+                    )
                     .on_press({
                         let project_id = project_id.clone();
                         move |_| {
                             if choose_target {
                                 target_prompt.set(true);
+                                return;
+                            }
+                            if claimed_only {
+                                open_package(
+                                    cluster_id,
+                                    &package_type,
+                                    provider,
+                                    &project_id,
+                                    add_to_cluster,
+                                );
                                 return;
                             }
                             let Some(version_id) = latest.clone() else {
@@ -829,4 +892,36 @@ pub(super) fn empty_state() -> impl IntoElement {
                 .font_size(text_size(14.))
                 .color(colors::fg_secondary()),
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::view::app::browser::{BundlePin, InstalledVersion};
+
+    #[test]
+    fn unlinked_pin_is_a_claim_and_linked_copy_is_installed() {
+        let mut installed = Installed {
+            source: InstallSource::Bundled,
+            bundled_version: Some("v1".into()),
+            versions: vec![InstalledVersion {
+                version_id: "v1".into(),
+                display_version: None,
+                hash: None,
+                enabled: true,
+                source: InstallSource::Bundled,
+                bundle: Some(BundlePin {
+                    bundle_name: "bundle".into(),
+                    package_id: "p".into(),
+                    manifest_default: true,
+                    removed: false,
+                }),
+            }],
+            unversioned_enabled: None,
+        };
+        assert!(card_installed(&installed, 7).claimed_only);
+        installed.versions[0].hash = Some("hash".into());
+        assert!(!card_installed(&installed, 7).claimed_only);
+        assert_eq!(card_installed(&installed, 7).source, InstallSource::Bundled);
+    }
 }

@@ -35,6 +35,22 @@ fn escape_action(route: &Route) -> EscapeAction {
     }
 }
 
+fn mouse_history_allowed(
+    route: &Route,
+    has_claim: bool,
+    workspace_is_topmost: bool,
+    mounted_dialog_count: usize,
+) -> bool {
+    if WorkspaceDialog::for_route(route).is_none() {
+        return !has_claim;
+    }
+    // The log picker owns a claim without registering a dialog or overlay level.
+    if matches!(route, Route::ClusterLogs { .. } | Route::ProcessLogs { .. }) {
+        return false;
+    }
+    workspace_is_topmost && mounted_dialog_count == 1
+}
+
 fn enter_kind(from: &Route, to: &Route) -> Enter {
     if WorkspaceDialog::for_route(to).is_some()
         || (matches!(from, Route::Browser { .. }) && matches!(to, Route::Browser { .. }))
@@ -59,6 +75,7 @@ impl Component for AnimatedAppOutlet {
         let home_stack = crate::components::use_home_stack();
 
         let route = use_route::<Route>();
+        crate::view::app::settings::retain_pending_setting_focus_for(&route);
         let page = super::use_app_page();
         let dialog = WorkspaceDialog::for_route(&route);
         let at_home = matches!(&page, Route::Home {});
@@ -83,6 +100,7 @@ impl Component for AnimatedAppOutlet {
 
         let key_claims = use_overlay_claims();
         let pointer_claims = key_claims.clone();
+        let pointer_route = route.clone();
 
         let on_global_key = move |e: Event<KeyboardEventData>| {
             if e.code == Code::KeyO
@@ -116,7 +134,20 @@ impl Component for AnimatedAppOutlet {
         };
 
         let on_global_pointer = move |e: Event<PointerEventData>| {
-            if dialog.is_some() || pointer_claims.any() {
+            if !matches!(e.button(), Some(MouseButton::Back | MouseButton::Forward)) {
+                return;
+            }
+            let workspace = WorkspaceDialog::for_route(&pointer_route).is_some();
+            if !mouse_history_allowed(
+                &pointer_route,
+                pointer_claims.any(),
+                !workspace || crate::components::overlay_is_topmost(7),
+                if workspace {
+                    crate::components::mounted_dialogs(window.id).len()
+                } else {
+                    0
+                },
+            ) {
                 return;
             }
             match e.button() {
@@ -299,5 +330,26 @@ mod tests {
         );
         assert_eq!(escape_action(&Route::SettingsJava {}), EscapeAction::Ignore);
         assert_eq!(escape_action(&Route::Clusters {}), EscapeAction::Back);
+    }
+
+    #[test]
+    fn mouse_history_is_limited_to_the_uncovered_workspace() {
+        let browse = Route::Browser {
+            cluster_id: 42,
+            package_type: "mod".into(),
+            pick_cluster: false,
+            in_instance: true,
+        };
+        assert!(mouse_history_allowed(&browse, true, true, 1));
+        assert!(!mouse_history_allowed(&browse, true, false, 1));
+        assert!(!mouse_history_allowed(&browse, true, true, 2));
+        assert!(!mouse_history_allowed(&Route::Home {}, true, true, 0));
+        assert!(mouse_history_allowed(&Route::Home {}, false, true, 0));
+        assert!(!mouse_history_allowed(
+            &Route::ClusterLogs { cluster_id: 42 },
+            true,
+            true,
+            1
+        ));
     }
 }

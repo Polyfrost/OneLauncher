@@ -372,6 +372,18 @@ impl MutationCapability for ClusterMutation {
             }
         };
         let mut created = None;
+        // Taken before the package guard, like every install, migration and Undo
+        let _instance = match keys {
+            ClusterAction::RemoveArtifact { cluster_id, .. }
+            | ClusterAction::RemoveBundlePackageFromDisk { cluster_id, .. }
+            | ClusterAction::DeleteBundledArtifact { cluster_id, .. }
+            | ClusterAction::SetBundlePackageRemoved {
+                cluster_id,
+                removed: true,
+                ..
+            } => Some(oneclient_content::packages::instance_package_guard(*cluster_id).await),
+            _ => None,
+        };
         let _package_mutation = if matches!(
             keys,
             ClusterAction::SetArtifactEnabled { .. }
@@ -473,15 +485,18 @@ impl MutationCapability for ClusterMutation {
                 removed,
             } => {
                 async {
-                    let live = oneclient_core::set_bundle_package_removed(
-                        *cluster_id,
-                        bundle_name,
-                        package_id,
-                        hash.as_deref(),
-                        *removed,
-                        content,
-                    )
-                    .await?;
+                    let live = {
+                        let _mutation = oneclient_content::packages::package_mutation_guard().await;
+                        oneclient_core::set_bundle_package_removed(
+                            *cluster_id,
+                            bundle_name,
+                            package_id,
+                            hash.as_deref(),
+                            *removed,
+                            content,
+                        )
+                        .await?
+                    };
                     notify_deferred(live, *cluster_id);
                     // A deleted mod has no files left, so a restore downloads it again now
                     if !*removed {

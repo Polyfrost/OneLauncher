@@ -30,7 +30,7 @@ use super::{
     ModpackLoaderPrompt, ModpackVersionPrompt, PackageBanner, Thumbnail, WorldInstallPrompt,
     activity_badge, cluster_version, cluster_versions, installed_badge, installed_map,
     instance_choices, loader_options, minecraft_choices, preferred_version, use_saved_override,
-    use_version_filter,
+    DATAPACK_VERSION_LIMIT, ownership_ready, settled_page, use_version_filter,
 };
 use crate::utils::abbreviate_number;
 
@@ -54,6 +54,8 @@ struct Installer {
     provider: ProviderId,
     world_prompt: Option<State<Option<(String, IncompatibleMode)>>>,
     modpack: bool,
+    datapack: bool,
+    ownership_ready: bool,
     installed: Option<Installed>,
     project_name: String,
     bundled_warning: State<Option<PendingBundledInstall>>,
@@ -68,6 +70,9 @@ struct Installer {
 
 impl Installer {
     fn install_latest(&self, project_id: String, version_id: String, version_label: String) {
+        if !self.ownership_ready {
+            return;
+        }
         if let Some(mut request) = self.browse_request {
             request.set(Some(InstallRequest {
                 project_id,
@@ -91,6 +96,9 @@ impl Installer {
     }
 
     fn install(&self, project_id: String, version_id: String, version_label: String) {
+        if !self.ownership_ready {
+            return;
+        }
         if let Some(mut request) = self.browse_request {
             request.set(Some(InstallRequest {
                 project_id,
@@ -282,7 +290,7 @@ impl Component for BrowserPackage {
             game_version,
             loader,
             0,
-            VERSIONS_PAGE_SIZE,
+            if is_datapack { DATAPACK_VERSION_LIMIT } else { VERSIONS_PAGE_SIZE },
         );
         let all_versions_query = use_package_versions_when(
             is_modpack,
@@ -306,13 +314,23 @@ impl Component for BrowserPackage {
             &project_id,
         );
 
-        let installed = installed_map(
-            cluster_content_items(&use_cluster_content(cluster_id, content_type)),
-            &bundles_with_status_items(&use_bundles_with_status(cluster_id)),
-            &bundle_overrides_map(&use_bundle_overrides(cluster_id)),
-        )
-        .remove(&(provider, project_id.clone()))
-        .filter(|_| !is_datapack);
+        let content = use_cluster_content(cluster_id, content_type);
+        let bundles = use_bundles_with_status(cluster_id);
+        let overrides = use_bundle_overrides(cluster_id);
+        let needs_ownership = cluster_id != 0 && !is_datapack && !is_modpack;
+        let ownership_error = needs_ownership.then(|| {
+            query_error(&content).or_else(|| query_error(&bundles)).or_else(|| query_error(&overrides))
+        }).flatten();
+        let ownership_ready = ownership_ready(
+            needs_ownership,
+            query_is_loading(&content) || query_is_loading(&bundles) || query_is_loading(&overrides),
+            ownership_error.is_some(),
+        );
+        let installed = ownership_ready.then(|| installed_map(
+            cluster_content_items(&content),
+            &bundles_with_status_items(&bundles),
+            &bundle_overrides_map(&overrides),
+        ).remove(&(provider, project_id.clone()))).flatten().filter(|_| !is_datapack);
 
         let project = project_detail(&project_query);
 
@@ -322,6 +340,8 @@ impl Component for BrowserPackage {
             provider,
             world_prompt: is_datapack.then_some(world_prompt),
             modpack: content_type == ContentType::Modpack,
+            datapack: is_datapack,
+            ownership_ready,
             installed: installed.clone(),
             project_name: project.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
             bundled_warning,
@@ -363,6 +383,16 @@ impl Component for BrowserPackage {
                 versions_total(&versions_query),
             )
         };
+        let shown_query = if is_modpack { all_versions_query } else { versions_query };
+        let settled = !query_is_busy(&shown_query)
+            && query_error(&shown_query).is_none()
+            && settled_or_loading(&shown_query).is_some();
+        let clamped = settled_page(
+            *versions_page_state.peek(), total_versions, VERSIONS_PAGE_SIZE, settled,
+        );
+        if *versions_page_state.peek() != clamped {
+            versions_page_state.set(clamped);
+        }
         let dependency_ids: Vec<String> = versions
             .iter()
             .flat_map(|v| &v.dependencies)
@@ -410,6 +440,17 @@ impl Component for BrowserPackage {
                 "oneclient.browser.package.versions.load_failed",
                 move |()| latest_query.invalidate(),
             )),
+        };
+        let latest = if ownership_error.is_some() {
+            Err(super::load_failed(t("oneclient.browser.package.load_failed"), move |()| {
+                if query_error(&content).is_some() { content.invalidate(); }
+                if query_error(&bundles).is_some() { bundles.invalidate(); }
+                if query_error(&overrides).is_some() { overrides.invalidate(); }
+            }))
+        } else if !ownership_ready {
+            Err(loading_body().into_element())
+        } else {
+            latest
         };
         let loaders = if is_modpack && !add_to_cluster {
             loader_options(&all_versions)
@@ -465,7 +506,7 @@ impl Component for BrowserPackage {
                 installer.clone(),
                 on_remove,
                 installed.clone(),
-                installing || waiting,
+                installing || waiting || !ownership_ready,
                 versions_status,
                 move |()| shown_versions_query.invalidate(),
             )
@@ -622,6 +663,18 @@ mod tests {
             dependencies: Vec::new(),
             blocked: false,
         }
+    }
+
+    #[test]
+    fn datapack_latest_skips_mod_builds_and_never_falls_back_to_one() {
+        let mut releases: Vec<_> = (0..25).map(|i| version(&format!("mod-{i}"))).collect();
+        for release in &mut releases {
+            release.loaders.push(GameLoader::Fabric);
+        }
+        assert!(preferred_version(&releases, ContentType::DataPack).is_none());
+        releases.push(version("pack"));
+        assert_eq!(preferred_version(&releases, ContentType::DataPack).unwrap().version_id, "pack");
+        assert_eq!(preferred_version(&releases, ContentType::Mod).unwrap().version_id, "mod-0");
     }
 
     #[test]

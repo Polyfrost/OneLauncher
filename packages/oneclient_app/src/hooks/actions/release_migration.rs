@@ -49,6 +49,19 @@ async fn validate_and_consume_offer<T>(
     Ok(plan)
 }
 
+async fn inherit_after_migration<F>(
+    migrated: usize,
+    inherit: impl FnOnce() -> F,
+) -> oneclient_content::ContentResult<()>
+where
+    F: Future<Output = oneclient_content::ContentResult<()>>,
+{
+    if migrated == 0 {
+        return Ok(());
+    }
+    inherit().await
+}
+
 enum SourcePlan {
     Offer(ReleaseMigrationPlan),
     Nothing,
@@ -770,20 +783,19 @@ impl Actions {
         };
 
         let (source_id, target_id) = (source.id, target.id);
-        spawn_global(async move {
-            let Ok(state) = launcher::state() else { return };
-            if let Err(err) = oneclient_content::bundles::inherit_bundle_choices(
-                source_id,
-                target_id,
-                &state.services.content(),
-            )
-            .await
-            {
-                tracing::warn!(error = %err, "could not carry the bundle choices over to the target");
-            }
-        });
-
         if packages.is_empty() {
+            spawn_global(async move {
+                let Ok(state) = launcher::state() else { return };
+                if let Err(err) = oneclient_content::bundles::inherit_bundle_choices(
+                    source_id,
+                    target_id,
+                    &state.services.content(),
+                )
+                .await
+                {
+                    tracing::warn!(error = %err, "could not carry the bundle choices over to the target");
+                }
+            });
             self.remove_pending_release_migrations(pending);
             return;
         }
@@ -807,6 +819,7 @@ impl Actions {
             let content = state.services.content();
             let source = copy_configs_too.then_some(source);
             let target_title = crate::utils::instance_display_name(&target);
+            let instance = oneclient_content::packages::instance_package_guard(target.id).await;
             let mutation = oneclient_content::packages::package_mutation_guard().await;
             let (packages, dependencies) = match validate_and_consume_offer(
                 revalidate_release_migration(target.id, packages, state.bundles.as_ref(), &content),
@@ -901,6 +914,14 @@ impl Actions {
             }
 
             drop(mutation);
+            if let Err(err) = inherit_after_migration(migrated, || {
+                oneclient_content::bundles::inherit_bundle_choices(source_id, target_id, &content)
+            })
+            .await
+            {
+                tracing::warn!(error = %err, "could not carry the bundle choices over to the target");
+            }
+            drop(instance);
 
             if !waitlisted {
                 tracing::info!(
@@ -967,6 +988,26 @@ impl Actions {
 mod tests {
     use super::*;
     use std::future::ready;
+
+    #[tokio::test]
+    async fn failed_migration_does_not_copy_bundle_choices() {
+        use std::cell::Cell;
+        let copies = Cell::new(0);
+        inherit_after_migration(0, || {
+            copies.set(copies.get() + 1);
+            ready(Ok(()))
+        })
+        .await
+        .unwrap();
+        assert_eq!(copies.get(), 0);
+        inherit_after_migration(1, || {
+            copies.set(copies.get() + 1);
+            ready(Ok(()))
+        })
+        .await
+        .unwrap();
+        assert_eq!(copies.get(), 1);
+    }
 
     #[tokio::test]
     async fn failed_recheck_keeps_the_pending_offer_for_a_successful_retry() {

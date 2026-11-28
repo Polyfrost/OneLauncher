@@ -40,8 +40,10 @@ impl VersionCard {
         self
     }
 
-    pub fn selection_only(mut self) -> Self {
+    pub fn selection_only(mut self, cluster: &Cluster) -> Self {
         self.show_play = false;
+        self.title = cluster.name.clone();
+        self.caption = cluster.mc_loader.to_string();
         self
     }
 
@@ -345,6 +347,21 @@ mod tests {
             VersionCard::instance_caption(&cluster),
             t("oneclient.clusters.page.type.modpack")
         );
+    }
+
+    #[test]
+    fn picker_cards_keep_instance_names_and_show_the_loader() {
+        let first = crate::view::onboarding::test_support::cluster(1);
+        let mut second = first.clone();
+        second.id = 2;
+        second.name = "My second instance".into();
+        let first_card = VersionCard::for_instance(&first, false, |_| {}).selection_only(&first);
+        let second_card = VersionCard::for_instance(&second, false, |_| {}).selection_only(&second);
+        assert_eq!(first_card.title, first.name);
+        assert_eq!(second_card.title, second.name);
+        assert_ne!(first_card.title, second_card.title);
+        assert_eq!(first_card.caption, first.mc_loader.to_string());
+        assert_eq!(second_card.caption, second.mc_loader.to_string());
     }
 
     #[test]

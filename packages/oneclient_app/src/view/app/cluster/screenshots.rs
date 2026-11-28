@@ -24,9 +24,9 @@ use super::package_manager::instance_only_notice;
 
 use super::cluster_not_found;
 use super::folder_list::{
-    CONTROL_H, content_area, content_empty, content_loading, content_scroll, content_toolbar,
-    layout_toggle, matches_search, open_folder_action, open_folder_button, scope_chip,
-    toolbar_secondary, use_content_view,
+    CONTROL_H, SELECTION_COUNT_W, compact_selection, content_area, content_empty, content_loading,
+    content_scroll, content_toolbar, layout_toggle, matches_search, open_folder_action,
+    open_folder_button, scope_chip, selection_icon, toolbar_secondary, use_content_view,
 };
 use crate::hooks::use_cluster;
 
@@ -315,6 +315,55 @@ fn toolbar_actions(
     }
 
     let every = count > 0 && count == all_paths.len();
+    if compact_selection() {
+        return vec![
+            label()
+                .text(tf(
+                    "oneclient.cluster.package_manager.select.count",
+                    &[&count],
+                ))
+                .width(Size::px(SELECTION_COUNT_W))
+                .font_size(text_size(12.))
+                .max_lines(1)
+                .text_overflow(TextOverflow::Ellipsis)
+                .color(colors::fg_secondary())
+                .into_element(),
+            selection_icon(
+                if every {
+                    IconType::XClose
+                } else {
+                    IconType::Check
+                },
+                if every {
+                    t("oneclient.cluster.package_manager.select.unselect_all")
+                } else {
+                    t("oneclient.cluster.package_manager.select.select_all")
+                },
+            )
+            .on_press(move |_| selection.toggle_all(&all_paths))
+            .into_element(),
+            selection_icon(
+                IconType::Minus,
+                t("oneclient.cluster.screenshots.deselect_all"),
+            )
+            .ghost()
+            .enabled(count > 0 && !every)
+            .on_press(move |_| selection.clear())
+            .into_element(),
+            selection_icon(
+                IconType::Trash01,
+                tf("oneclient.cluster.package_manager.select.delete", &[&count]),
+            )
+            .danger()
+            .enabled(count > 0)
+            .on_press(move |_| confirm_delete.set(true))
+            .into_element(),
+            selection_icon(IconType::XClose, t("oneclient.common.cancel"))
+                .ghost()
+                .on_press(move |_| selection.exit())
+                .into_element(),
+        ];
+    }
     let ghost = |text: &'static str| {
         Button::new()
             .ghost()

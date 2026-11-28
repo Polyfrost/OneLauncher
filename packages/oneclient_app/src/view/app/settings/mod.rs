@@ -31,6 +31,7 @@ pub use theme_editor::SettingsThemeEditor;
 pub(crate) use launcher::take_terms_review_from_settings;
 
 use crate::{
+    Route,
     components::{Button, Icon, IconType, ScrollArea, ScrollAreaCtx},
     i18n::t,
     theme::{colors, rounded, rounded_px, text_size},
@@ -61,11 +62,12 @@ thread_local! {
 
 /// The setting a search result opened, matched by its translated title or description since a
 /// search entry's title can be worded differently from its row
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, PartialEq)]
 struct PendingFocus {
     id: &'static str,
     title: &'static str,
     description: &'static str,
+    route: Route,
 }
 
 impl PendingFocus {
@@ -79,34 +81,52 @@ pub(crate) fn set_pending_setting_focus(
     id: &'static str,
     title: &'static str,
     description: &'static str,
+    route: Route,
 ) {
-    let pending = store_pending_focus(id, title, description);
-
-    spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-        PENDING_SETTING_FOCUS.with(|cell| {
-            if cell
-                .borrow()
-                .is_some_and(|current| current.id == pending.id)
-            {
-                *cell.borrow_mut() = None;
-            }
-        });
-    });
+    store_pending_focus(id, title, description, route);
 }
 
 fn store_pending_focus(
     id: &'static str,
     title: &'static str,
     description: &'static str,
-) -> PendingFocus {
+    route: Route,
+) {
     let pending = PendingFocus {
         id,
         title,
         description,
+        route,
     };
     PENDING_SETTING_FOCUS.with(|cell| *cell.borrow_mut() = Some(pending));
-    pending
+}
+
+pub(crate) fn clear_pending_setting_focus() {
+    PENDING_SETTING_FOCUS.with(|cell| *cell.borrow_mut() = None);
+}
+
+pub(crate) fn retain_pending_setting_focus_for(route: &Route) {
+    PENDING_SETTING_FOCUS.with(|cell| {
+        if cell
+            .borrow()
+            .as_ref()
+            .is_some_and(|pending| &pending.route != route)
+        {
+            *cell.borrow_mut() = None;
+        }
+    });
+}
+
+fn clear_failed_setting_focus(route: &Route) {
+    PENDING_SETTING_FOCUS.with(|cell| {
+        if cell
+            .borrow()
+            .as_ref()
+            .is_some_and(|pending| &pending.route == route)
+        {
+            *cell.borrow_mut() = None;
+        }
+    });
 }
 
 /// Whether a search result just opened the settings row titled `title`. A match is consumed, so
@@ -115,6 +135,7 @@ fn take_pending_setting_focus(title: &str, description: &str) -> bool {
     PENDING_SETTING_FOCUS.with(|cell| {
         let hit = cell
             .borrow()
+            .as_ref()
             .is_some_and(|pending| pending.matches(title, description));
         if hit {
             *cell.borrow_mut() = None;
@@ -127,7 +148,7 @@ fn take_pending_setting_focus(title: &str, description: &str) -> bool {
 /// rather than a settings row). Consumed like `take_pending_setting_focus`.
 fn take_pending_focus_id(id: &str) -> bool {
     PENDING_SETTING_FOCUS.with(|cell| {
-        let hit = cell.borrow().is_some_and(|pending| pending.id == id);
+        let hit = cell.borrow().as_ref().is_some_and(|pending| pending.id == id);
         if hit {
             *cell.borrow_mut() = None;
         }
@@ -730,7 +751,12 @@ mod tests {
 
     #[test]
     fn a_search_result_focuses_its_row_once() {
-        store_pending_focus("x.row", "Search title", "The row's description.");
+        store_pending_focus(
+            "x.row",
+            "Search title",
+            "The row's description.",
+            Route::SettingsJava {},
+        );
         // Another row on the page doesn't take it
         assert!(!take_pending_setting_focus("Other", "Something else."));
         // The row's own title can be worded differently; its description still matches
@@ -744,20 +770,47 @@ mod tests {
             "The row's description."
         ));
 
-        store_pending_focus("y.row", "Discord RPC", "");
+        store_pending_focus("y.row", "Discord RPC", "", Route::SettingsJava {});
         assert!(!take_pending_setting_focus("Other", ""));
         assert!(take_pending_setting_focus("Discord RPC", "Enable it."));
     }
 
     #[test]
     fn a_section_or_action_target_takes_the_focus_by_id() {
-        store_pending_focus("storage.cleanup", "Free up space", "Remove unused files.");
+        store_pending_focus(
+            "storage.cleanup",
+            "Free up space",
+            "Remove unused files.",
+            Route::SettingsStorage {},
+        );
         assert!(!take_pending_focus_id("storage.usage"));
         assert!(take_pending_focus_id("storage.cleanup"));
         assert!(!take_pending_setting_focus(
             "Free up space",
             "Remove unused files."
         ));
+    }
+
+    #[test]
+    fn pending_focus_survives_loading_but_is_cleared_when_abandoned_or_failed() {
+        let storage = Route::SettingsStorage {};
+        store_pending_focus(
+            "storage.cleanup", "Free up space", "Remove unused files.", storage.clone(),
+        );
+        retain_pending_setting_focus_for(&storage);
+        assert!(take_pending_focus_id("storage.cleanup"));
+
+        store_pending_focus(
+            "storage.cleanup", "Free up space", "Remove unused files.", storage.clone(),
+        );
+        retain_pending_setting_focus_for(&Route::SettingsJava {});
+        assert!(!take_pending_focus_id("storage.cleanup"));
+
+        store_pending_focus(
+            "storage.cleanup", "Free up space", "Remove unused files.", storage.clone(),
+        );
+        clear_failed_setting_focus(&storage);
+        assert!(!take_pending_focus_id("storage.cleanup"));
     }
 
     #[test]

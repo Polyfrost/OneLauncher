@@ -192,24 +192,29 @@ impl PackageProvider for CurseForgeProvider {
                 params.append_pair("modLoaderType", &t.to_string());
             }
         }
-        let response: CfPaged<Vec<CfFile>> =
-            fetch_json(&ctx.net, Method::GET, url.as_str(), None).await?;
+        // CurseForge pages file lists on the server. Fetch in bounded chunks so
+        // both history pages and a wider latest-data-pack lookup reach older files.
+        let mut items = Vec::new();
+        let mut total = 0;
+        let mut index = offset;
+        while items.len() < limit {
+            let size = limit.saturating_sub(items.len()).min(50);
+            let mut page_url = url.clone();
+            page_url.query_pairs_mut()
+                .append_pair("index", &index.to_string())
+                .append_pair("pageSize", &size.to_string());
+            let response: CfPaged<Vec<CfFile>> =
+                fetch_json(&ctx.net, Method::GET, page_url.as_str(), None).await?;
+            total = response.pagination.total_count;
+            let received = response.data.len();
+            items.extend(response.data.into_iter().map(VersionSummary::from));
+            let Some(next) = next_file_page(index, received, total) else {
+                break;
+            };
+            index = next;
+        }
 
-        let total = response.data.len();
-        let items = response
-            .data
-            .into_iter()
-            .skip(offset)
-            .take(limit)
-            .map(VersionSummary::from)
-            .collect();
-
-        Ok(Page {
-            offset,
-            limit,
-            total,
-            items,
-        })
+        Ok(Page { offset, limit, total, items })
     }
 
     #[tracing::instrument(level = "debug", skip(self, ctx))]
@@ -433,6 +438,14 @@ fn pick_file_index(
 #[derive(Deserialize)]
 struct CfData<T> {
     data: T,
+}
+
+fn next_file_page(index: usize, received: usize, total: usize) -> Option<usize> {
+    if received == 0 {
+        return None;
+    }
+    let next = index.saturating_add(received);
+    (next < total && next < usize::MAX).then_some(next)
 }
 
 #[derive(Deserialize)]
@@ -901,6 +914,14 @@ fn cf_loader_type(loader: GameLoader) -> Option<u8> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn file_pages_advance_until_the_reported_end() {
+        assert_eq!(super::next_file_page(0, 50, 125), Some(50));
+        assert_eq!(super::next_file_page(50, 50, 125), Some(100));
+        assert_eq!(super::next_file_page(100, 25, 125), None);
+        assert_eq!(super::next_file_page(50, 0, 125), None);
+    }
+
     use super::*;
 
     #[test]

@@ -150,8 +150,36 @@ pub(super) fn use_reveal_active(
     viewport: f32,
 ) {
     let fade = fade_clearance();
+    let key = reveal_key(route, row, viewport, fade);
+    let mut controller = rail.controller;
+    let target = rail.target.clone();
+    // Only the route and the geometry re-run this: reading the controller here would subscribe
+    // the effect to scrolling and snap a rail the user scrolled back to the active row
+    use_side_effect_with_deps(&key, move |(_, row, viewport, fade)| {
+        let Some((section, top, height)) = *row else {
+            return;
+        };
+        if let Some(offset) = reveal_section_offset(
+            section as f32,
+            top as f32,
+            height as f32,
+            *viewport as f32,
+            *fade as f32,
+            target.get(),
+        ) {
+            controller.scroll_to_y(offset);
+        }
+    });
+}
+
+fn reveal_key(
+    route: &Route,
+    row: Option<(f32, f32, f32)>,
+    viewport: f32,
+    fade: f32,
+) -> (Route, Option<(i32, i32, i32)>, i32, i32) {
     // The effect keeps its first closure, so everything it needs travels in the deps
-    let key = (
+    (
         route.clone(),
         row.map(|(section, top, height)| {
             (
@@ -161,26 +189,8 @@ pub(super) fn use_reveal_active(
             )
         }),
         viewport.round() as i32,
-    );
-    let mut controller = rail.controller;
-    let target = rail.target.clone();
-    // Only the route and the geometry re-run this: reading the controller here would subscribe
-    // the effect to scrolling and snap a rail the user scrolled back to the active row
-    use_side_effect_with_deps(&key, move |(_, row, viewport)| {
-        let Some((section, top, height)) = *row else {
-            return;
-        };
-        if let Some(offset) = reveal_section_offset(
-            section as f32,
-            top as f32,
-            height as f32,
-            *viewport as f32,
-            fade,
-            target.get(),
-        ) {
-            controller.scroll_to_y(offset);
-        }
-    });
+        fade.round() as i32,
+    )
 }
 
 /// The height a group heading takes above its first row
@@ -287,6 +297,7 @@ pub(super) fn secondary_ink() -> Color {
 }
 
 pub(super) fn clear_search(mut search: State<String>) {
+    crate::view::app::settings::clear_pending_setting_focus();
     if !search.peek().is_empty() {
         search.set(String::new());
     }
@@ -456,6 +467,17 @@ mod tests {
         assert_eq!(reveal_offset(38., 32., 300., 24., -200.), Some(-38));
         // Nothing to do before the rail is measured
         assert_eq!(reveal_offset(416., 32., 0., 24., 0.), None);
+    }
+
+    #[test]
+    fn switching_the_fade_retriggers_the_active_row_reveal() {
+        let row = Some((0., 260., 32.));
+        assert_ne!(
+            reveal_key(&Route::SettingsAppearance {}, row, 300., 0.),
+            reveal_key(&Route::SettingsAppearance {}, row, 300., FADE_HEIGHT),
+        );
+        assert_eq!(reveal_offset(260., 32., 300., 0., 0.), None);
+        assert_eq!(reveal_offset(260., 32., 300., FADE_HEIGHT, 0.), Some(-16));
     }
 
     #[test]

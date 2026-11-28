@@ -1,3 +1,6 @@
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
+use std::rc::Rc;
 use std::time::Duration;
 
 use freya::prelude::*;
@@ -30,13 +33,78 @@ const CORNERS: [(&str, f32); 4] = [
 ];
 
 /// The family as the editor opened it
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct EditorSeed {
     dark: Theme,
     light: Theme,
     family: String,
     radius: f32,
     pixel_icons: bool,
+}
+
+#[derive(Clone, PartialEq)]
+struct EditorDraft {
+    seed: EditorSeed,
+    dark: Theme,
+    light: Theme,
+    name: String,
+    radius: f32,
+    pixel_icons: bool,
+    editing_light: bool,
+}
+
+impl EditorDraft {
+    fn dirty(&self) -> bool {
+        self.seed.differs(
+            &self.dark,
+            &self.light,
+            &family_name(&self.name),
+            self.radius,
+            self.pixel_icons,
+        )
+    }
+
+    fn same_changes(&self, other: &Self) -> bool {
+        self.seed == other.seed
+            && self.dark == other.dark
+            && self.light == other.light
+            && self.name == other.name
+            && self.radius == other.radius
+            && self.pixel_icons == other.pixel_icons
+    }
+}
+
+thread_local! {
+    static EDITOR_DRAFTS: RefCell<HashMap<String, EditorDraft>> = RefCell::new(HashMap::new());
+}
+
+fn store_draft(id: &str, draft: EditorDraft) {
+    EDITOR_DRAFTS.with_borrow_mut(|drafts| {
+        if draft.dirty() {
+            drafts.insert(id.to_string(), draft);
+        } else {
+            drafts.remove(id);
+        }
+    });
+}
+
+pub(super) fn clear_draft(id: &str) {
+    EDITOR_DRAFTS.with_borrow_mut(|drafts| {
+        drafts.remove(id);
+    });
+}
+
+fn clear_saved_draft(id: &str, saved: &EditorDraft) -> bool {
+    EDITOR_DRAFTS.with_borrow_mut(|drafts| {
+        if drafts
+            .get(id)
+            .is_some_and(|draft| !draft.same_changes(saved))
+        {
+            return false;
+        }
+        drafts.remove(id);
+        true
+    })
 }
 
 impl EditorSeed {
@@ -94,16 +162,94 @@ impl Component for SettingsThemeEditor {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
         let variants = use_hook(|| family_variants(&self.id));
+        let recovered =
+            use_hook(|| EDITOR_DRAFTS.with_borrow(|drafts| drafts.get(&self.id).cloned()));
         // What the drafts are seeded from, so Discard only asks when something really changed
-        let seed = use_hook(|| EditorSeed::from_variants(&variants));
-        let dark = use_state(|| seed.dark.clone());
-        let light = use_state(|| seed.light.clone());
+        let seed = use_hook(|| {
+            recovered.as_ref().map_or_else(
+                || EditorSeed::from_variants(&variants),
+                |draft| draft.seed.clone(),
+            )
+        });
+        let dark = use_state(|| {
+            recovered
+                .as_ref()
+                .map_or_else(|| seed.dark.clone(), |d| d.dark.clone())
+        });
+        let light = use_state(|| {
+            recovered
+                .as_ref()
+                .map_or_else(|| seed.light.clone(), |d| d.light.clone())
+        });
         let ids = [dark.peek().id.clone(), light.peek().id.clone()];
-        let editing_light = use_state(|| colors::active_theme().colors.light);
+        let editing_light = use_state(|| {
+            recovered
+                .as_ref()
+                .map_or_else(|| colors::active_theme().colors.light, |d| d.editing_light)
+        });
         let draft = if *editing_light.read() { light } else { dark };
-        let name = use_state(|| seed.family.clone());
-        let radius = use_state(|| seed.radius);
-        let pixel_icons = use_state(|| seed.pixel_icons);
+        let name = use_state(|| {
+            recovered
+                .as_ref()
+                .map_or_else(|| seed.family.clone(), |d| d.name.clone())
+        });
+        let radius = use_state(|| recovered.as_ref().map_or(seed.radius, |d| d.radius));
+        let pixel_icons = use_state(|| {
+            recovered
+                .as_ref()
+                .map_or(seed.pixel_icons, |d| d.pixel_icons)
+        });
+
+        let completed = use_hook(|| Rc::new(Cell::new(false)));
+        let snapshot = EditorDraft {
+            seed: seed.clone(),
+            dark: dark.read().clone(),
+            light: light.read().clone(),
+            name: name.read().clone(),
+            radius: *radius.read(),
+            pixel_icons: *pixel_icons.read(),
+            editing_light: *editing_light.read(),
+        };
+        if !completed.get() {
+            store_draft(&self.id, snapshot.clone());
+        }
+        let draft_id = self.id.clone();
+        let drop_seed = seed.clone();
+        let drop_completed = completed.clone();
+        use_drop(move || {
+            if drop_completed.get() {
+                clear_draft(&draft_id);
+                return;
+            }
+            if let (
+                Some(dark),
+                Some(light),
+                Some(name),
+                Some(radius),
+                Some(pixel_icons),
+                Some(editing_light),
+            ) = (
+                dark.try_peek(),
+                light.try_peek(),
+                name.try_peek(),
+                radius.try_peek(),
+                pixel_icons.try_peek(),
+                editing_light.try_peek(),
+            ) {
+                store_draft(
+                    &draft_id,
+                    EditorDraft {
+                        seed: drop_seed,
+                        dark: dark.clone(),
+                        light: light.clone(),
+                        name: name.clone(),
+                        radius: *radius,
+                        pixel_icons: *pixel_icons,
+                        editing_light: *editing_light,
+                    },
+                );
+            }
+        });
 
         // Dark and Light are added per variant, so they are dropped from the typed name
         let family = family_name(&name.read());
@@ -137,11 +283,19 @@ impl Component for SettingsThemeEditor {
         use_drop(|| colors::preview(None));
 
         let mut saving = use_state(|| false);
+        let discard_id = self.id.clone();
+        let confirm_id = self.id.clone();
+        let discard_completed = completed.clone();
         let save = {
+            let completed = completed.clone();
+            let draft_id = self.id.clone();
             move |_| {
                 let both = both.clone();
                 let family = ids[0].clone();
                 let dispatch = dispatch.clone();
+                let completed = completed.clone();
+                let draft_id = draft_id.clone();
+                let saved_draft = snapshot.clone();
                 saving.set(true);
                 spawn(async move {
                     let mut saved = Ok(String::new());
@@ -153,6 +307,7 @@ impl Component for SettingsThemeEditor {
                     }
                     match saved {
                         Ok(_) => {
+                            completed.set(clear_saved_draft(&draft_id, &saved_draft));
                             dispatch.edit_settings(|settings| {
                                 let (_, mode) = split_theme(&settings.theme);
                                 if let Some(id) = compose_theme(&family, mode) {
@@ -334,6 +489,8 @@ impl Component for SettingsThemeEditor {
                                 if dirty {
                                     confirming_discard.set(true);
                                 } else {
+                                    discard_completed.set(true);
+                                    clear_draft(&discard_id);
                                     leave_editor();
                                 }
                             })
@@ -359,6 +516,8 @@ impl Component for SettingsThemeEditor {
                     (move |()| confirming_discard.set(false)).into(),
                     (move |()| {
                         confirming_discard.set(false);
+                        completed.set(true);
+                        clear_draft(&confirm_id);
                         leave_editor();
                     })
                     .into(),
@@ -491,6 +650,34 @@ mod tests {
         let mut tinted = (*dark).clone();
         tinted.colors.card = Hex(Color::from_rgb(1, 2, 3));
         assert!(seed.differs(&tinted, &light, &family, seed.radius, seed.pixel_icons));
+    }
+
+    #[test]
+    fn drafts_survive_navigation_and_save_does_not_erase_newer_edits() {
+        let dark = crate::theme::resolve_theme("dark");
+        let light = crate::theme::resolve_theme("light");
+        let seed = EditorSeed::from_variants(&[dark.clone(), light.clone()]);
+        let mut draft = EditorDraft {
+            dark: (*dark).clone(),
+            light: (*light).clone(),
+            name: "Reef".into(),
+            radius: seed.radius,
+            pixel_icons: seed.pixel_icons,
+            editing_light: false,
+            seed,
+        };
+        store_draft("test-draft", draft.clone());
+        assert!(EDITOR_DRAFTS.with_borrow(|drafts| drafts.get("test-draft") == Some(&draft)));
+        let saved = draft.clone();
+        draft.name = "Reef Two".into();
+        store_draft("test-draft", draft.clone());
+        assert!(!clear_saved_draft("test-draft", &saved));
+        assert!(EDITOR_DRAFTS.with_borrow(|drafts| drafts.get("test-draft") == Some(&draft)));
+        assert!(clear_saved_draft("test-draft", &draft));
+        assert!(!EDITOR_DRAFTS.with_borrow(|drafts| drafts.contains_key("test-draft")));
+        draft.name = draft.seed.family.clone();
+        store_draft("test-draft", draft);
+        assert!(!EDITOR_DRAFTS.with_borrow(|drafts| drafts.contains_key("test-draft")));
     }
 
     #[test]

@@ -803,6 +803,7 @@
   "oneclient.cluster.overview.facts.last_played": "Last played",
   "oneclient.cluster.overview.facts.loader": "Loader",
   "oneclient.cluster.overview.facts.mods": "Mods enabled",
+  "oneclient.cluster.overview.facts.unavailable": "Unavailable",
   "oneclient.cluster.overview.facts.unknown": "Unknown",
   "oneclient.cluster.overview.facts.vanilla": "Vanilla",
   "oneclient.cluster.overview.facts.version": "Minecraft",

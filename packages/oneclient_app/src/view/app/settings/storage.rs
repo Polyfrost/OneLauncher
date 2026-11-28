@@ -26,6 +26,9 @@ impl Component for SettingsStorage {
         let scan = use_storage_scan_progress();
 
         let Some(report) = try_storage_report(&report_query) else {
+            if crate::hooks::query_error(&report_query).is_some() {
+                super::clear_failed_setting_focus(&Route::SettingsStorage {});
+            }
             return settings_page()
                 .child(scan_card(scan.as_ref()))
                 .into_element();

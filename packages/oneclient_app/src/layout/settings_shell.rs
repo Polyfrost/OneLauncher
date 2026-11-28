@@ -166,6 +166,9 @@ impl Component for SettingsShell {
         let mut search = use_state(String::new);
         let query = SearchQuery::new(&search.read());
         let searching = !query.is_empty();
+        if searching {
+            crate::view::app::settings::clear_pending_setting_focus();
+        }
         let scroll = use_scroll_controller(ScrollConfig::default);
         crate::view::app::settings::provide_settings_scroll(scroll);
 
@@ -375,6 +378,7 @@ fn search_results(query: &SearchQuery, mut search: State<String>) -> Vec<Element
                         focus.id,
                         focus.title,
                         focus.description,
+                        route.clone(),
                     );
                     search.set(String::new());
                     let _ = RouterContext::get().replace(route.clone());

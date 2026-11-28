@@ -1,6 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, PoisonError, Weak};
+use std::sync::Arc;
 
 use oneclient_core::LauncherState;
 
@@ -225,26 +225,6 @@ pub struct PackageInstall {
     pub undo: Option<InstallUndo>,
 }
 
-static INSTANCE_INSTALLS: std::sync::LazyLock<Mutex<HashMap<i64, Weak<tokio::sync::Mutex<()>>>>> =
-    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
-
-async fn instance_install_guard(cluster_id: i64) -> tokio::sync::OwnedMutexGuard<()> {
-    let instance = {
-        let mut locks = INSTANCE_INSTALLS
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
-        locks.retain(|_, lock| lock.strong_count() > 0);
-        if let Some(lock) = locks.get(&cluster_id).and_then(Weak::upgrade) {
-            lock
-        } else {
-            let lock = Arc::new(tokio::sync::Mutex::new(()));
-            locks.insert(cluster_id, Arc::downgrade(&lock));
-            lock
-        }
-    };
-    instance.lock_owned().await
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UndoPackage {
     pub provider: oneclient_content::packages::ProviderId,
@@ -453,7 +433,7 @@ async fn remove_install_group(
     }
 
     // Don't undo a dependency between resolution and linking in this instance.
-    let _instance = instance_install_guard(cluster_id).await;
+    let _instance = oneclient_content::packages::instance_package_guard(cluster_id).await;
     // Provider requests can be slow. Backfill before taking the global guard, then
     // verify that every currently linked remote package can be checked.
     packages::ensure_cluster_dependencies(cluster_id, content).await?;
@@ -683,7 +663,7 @@ pub async fn install_package_with(
     incompatible: IncompatibleMode,
     offer_undo: bool,
 ) -> Result<PackageInstall, InstallBlocked> {
-    let _instance = instance_install_guard(cluster_id).await;
+    let _instance = oneclient_content::packages::instance_package_guard(cluster_id).await;
     let lookup = async {
         let provider_impl = state.services.packages.get(provider)?;
         let project = provider_impl
@@ -831,7 +811,7 @@ pub async fn install_package_with(
             oneclient_events::TaskCategory::Packages,
         );
 
-        let result = PackageStore::install_to_cluster_recording_link(
+        let result = PackageStore::install_to_cluster_recording_undo(
             provider,
             &dependency.project,
             &dependency.version,
@@ -881,7 +861,7 @@ pub async fn install_package_with(
 
     // An explicit install switches a link the user had turned off back on
     let result = async {
-        let (artifact, _, added_at) = PackageStore::install_to_cluster_recording_link(
+        let (artifact, _, added_at) = PackageStore::install_to_cluster_recording_undo(
             provider,
             &project,
             &version,

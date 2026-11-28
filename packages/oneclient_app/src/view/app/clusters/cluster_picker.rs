@@ -303,7 +303,7 @@ impl Component for ClusterPickerModal {
                             Some(cluster.id) == selected,
                             move |_| on_pick.call(picked.clone()),
                         )
-                        .selection_only()
+                        .selection_only(cluster)
                         .height(card_height)
                         .into_element()
                     },

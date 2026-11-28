@@ -132,37 +132,79 @@ fn filename_candidates(theme: &Theme) -> Vec<String> {
     candidates
 }
 
-/// A family must share its display name and origin. Reserve valid filename pairs before
-/// matching the remaining variants by name, where exactly one dark and one light must remain.
-fn counterpart_in<'a>(themes: impl Iterator<Item = &'a Theme> + Clone, id: &str) -> Option<String> {
-    let theme = themes.clone().find(|theme| theme.id == id)?;
-    let family = family_name(&theme.name);
-    let family = themes.filter(|other| {
-        other.is_builtin() == theme.is_builtin() && family_name(&other.name) == family
-    });
-    let filename_pair = |variant: &Theme| {
-        filename_candidates(variant)
-            .into_iter()
-            .find_map(|candidate| {
-                family.clone().find(|other| {
-                    other.id == candidate && other.colors.light != variant.colors.light
-                })
-            })
-    };
-    if let Some(other) = filename_pair(theme) {
-        return Some(other.id.clone());
-    }
-
-    let mut remaining = family
-        .clone()
-        .filter(|other| filename_pair(other).is_none());
-    let first = remaining.next()?;
-    let second = remaining.next()?;
-    if first.colors.light == second.colors.light || remaining.next().is_some() {
+/// Generated ids retain their source so a saved derived variant can still find its original.
+fn derived_source(id: &str) -> Option<&str> {
+    let (source, suffix) = id.rsplit_once("--derived-")?;
+    let (side, number) = suffix
+        .split_once('-')
+        .map_or((suffix, None), |(side, n)| (side, Some(n)));
+    if !matches!(side, "dark" | "light")
+        || number.is_some_and(|n| !n.parse::<u32>().is_ok_and(|n| n >= 2))
+    {
         return None;
     }
-    let other = if first.id == id { second } else { first };
-    Some(other.id.clone())
+    Some(source)
+}
+
+/// Reserve generated and filename pairs before matching the remaining variants by name.
+/// Assign pairs once for the whole family so every lookup is reciprocal.
+fn counterpart_in<'a>(themes: impl Iterator<Item = &'a Theme> + Clone, id: &str) -> Option<String> {
+    let theme = themes.clone().find(|theme| theme.id == id)?;
+    let family_label = family_name(&theme.name);
+    let mut family: Vec<_> = themes
+        .filter(|other| {
+            other.is_builtin() == theme.is_builtin() && family_name(&other.name) == family_label
+        })
+        .collect();
+    family.sort_by(|a, b| a.id.cmp(&b.id));
+    let mut pairs = vec![None; family.len()];
+
+    for (i, derived) in family.iter().enumerate() {
+        let Some(source) = derived_source(&derived.id) else {
+            continue;
+        };
+        if let Some(j) = family.iter().position(|original| {
+            original.id == source && original.colors.light != derived.colors.light
+        }) && pairs[i].is_none() && pairs[j].is_none()
+        {
+            pairs[i] = Some(j);
+            pairs[j] = Some(i);
+        }
+    }
+
+    for (i, variant) in family.iter().enumerate() {
+        if pairs[i].is_some() {
+            continue;
+        }
+        let other = filename_candidates(variant)
+            .into_iter()
+            .find_map(|candidate| {
+                family.iter().enumerate().find_map(|(j, other)| {
+                    (pairs[j].is_none()
+                        && other.id == candidate
+                        && other.colors.light != variant.colors.light)
+                        .then_some(j)
+                })
+            });
+        if let Some(j) = other {
+            pairs[i] = Some(j);
+            pairs[j] = Some(i);
+        }
+    }
+
+    let remaining: Vec<_> = pairs
+        .iter()
+        .enumerate()
+        .filter_map(|(index, pair)| pair.is_none().then_some(index))
+        .collect();
+    if let [a, b] = remaining.as_slice()
+        && family[*a].colors.light != family[*b].colors.light
+    {
+        pairs[*a] = Some(*b);
+        pairs[*b] = Some(*a);
+    }
+    let index = family.iter().position(|variant| variant.id == id)?;
+    pairs[index].map(|other| family[other].id.clone())
 }
 
 pub fn light_variant(dark: &str) -> Option<String> {
@@ -472,7 +514,40 @@ fn fill_missing_variants(themes: &mut Vec<Theme>) {
         let paired = counterpart_in(themes.iter(), &theme.id).is_some();
         if !theme.is_builtin() && !paired {
             let base = builtin_colors(themes.iter(), !theme.colors.light);
-            let derived = derived_variant(theme, base, |id| themes.iter().any(|t| t.id == id));
+            let mut derived = derived_variant(theme, base, |id| themes.iter().any(|t| t.id == id));
+            let original_id = theme.id.clone();
+            let stem = ["-dark", "-light"]
+                .iter()
+                .find_map(|suffix| original_id.strip_suffix(suffix))
+                .unwrap_or(&original_id);
+            let side = if derived.colors.light { "light" } else { "dark" };
+            let legacy_id = format!("{stem}-{side}");
+            if !themes.iter().any(|theme| theme.id == legacy_id) {
+                let family = family_name(&theme.name);
+                let existing: Vec<_> = themes
+                    .iter()
+                    .filter(|other| {
+                        other.is_builtin() == theme.is_builtin()
+                            && family_name(&other.name) == family
+                    })
+                    .filter_map(|theme| {
+                        counterpart_in(themes.iter(), &theme.id)
+                            .map(|other| (theme.id.clone(), other))
+                    })
+                    .collect();
+                let mut candidate = derived.clone();
+                candidate.id = legacy_id.clone();
+                themes.push(candidate);
+                let safe = counterpart_in(themes.iter(), &original_id).as_deref()
+                    == Some(legacy_id.as_str())
+                    && existing.iter().all(|(id, other)| {
+                        counterpart_in(themes.iter(), id).as_deref() == Some(other.as_str())
+                    });
+                themes.pop();
+                if safe {
+                    derived.id = legacy_id;
+                }
+            }
             themes.push(derived);
         }
         index += 1;
@@ -490,13 +565,9 @@ fn builtin_colors<'a>(mut themes: impl Iterator<Item = &'a Theme>, light: bool) 
 /// The other variant of `theme`: its fonts and corners with the `base` colors
 fn derived_variant(theme: &Theme, base: Palette, taken: impl Fn(&str) -> bool) -> Theme {
     let light = base.light;
-    let stem = ["-dark", "-light"]
-        .iter()
-        .find_map(|suffix| theme.id.strip_suffix(suffix))
-        .unwrap_or(&theme.id);
     let suffix = if light { "light" } else { "dark" };
     Theme {
-        id: unique(&format!("{stem}-{suffix}"), '-', taken),
+        id: unique(&format!("{}--derived-{suffix}", theme.id), '-', taken),
         name: variant_name(&family_name(&theme.name), light),
         colors: base,
         ..theme.clone()
@@ -666,6 +737,49 @@ mod tests {
             counterpart_in(themes.iter(), "ocean-2-light").as_deref(),
             Some("ocean-2")
         );
+    }
+
+    #[test]
+    fn colliding_originals_keep_distinct_reciprocal_pairs_after_reload() {
+        let originals = [
+            custom("ocean", "Ocean Dark", "dark"),
+            custom("ocean-dark", "Ocean Dark", "dark"),
+            custom("ocean-light", "Amber Light", "light"),
+        ];
+        let mut themes = vec![builtin("dark"), builtin("light")];
+        themes.extend(originals.clone());
+        fill_missing_variants(&mut themes);
+        assert_eq!(themes.len(), 8);
+        let mut partners = std::collections::HashSet::new();
+        for original in &originals {
+            let partner = counterpart_in(themes.iter(), &original.id).unwrap();
+            assert!(partners.insert(partner.clone()));
+            assert_eq!(
+                counterpart_in(themes.iter(), &partner).as_deref(),
+                Some(original.id.as_str())
+            );
+        }
+        // Saving then loading variants restores their ids and names, not any in-memory links.
+        let mut reloaded: Vec<_> = themes
+            .iter()
+            .map(|theme| {
+                parse_theme(
+                    &theme.id,
+                    &serde_json::to_vec(theme).unwrap(),
+                    theme.dir.as_deref(),
+                )
+                .unwrap()
+            })
+            .collect();
+        fill_missing_variants(&mut reloaded);
+        assert_eq!(reloaded.len(), themes.len());
+        for original in &originals {
+            let partner = counterpart_in(reloaded.iter(), &original.id).unwrap();
+            assert_eq!(
+                counterpart_in(reloaded.iter(), &partner).as_deref(),
+                Some(original.id.as_str())
+            );
+        }
     }
 
     #[test]

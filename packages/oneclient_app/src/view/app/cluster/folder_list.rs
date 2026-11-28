@@ -20,6 +20,7 @@ use crate::hooks::{
     use_game_snapshot, use_settings_snapshot, use_view_state,
 };
 use crate::i18n::t;
+use crate::layout::ClusterShell;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::{ImageFallbackExt, border_all_color, columns_for};
 
@@ -27,6 +28,7 @@ use super::package_manager::{GRID_MAX_COLS, notice_bar};
 
 /// Height of every toolbar control on the instance content pages
 pub(super) const CONTROL_H: f32 = 34.;
+pub(super) const SELECTION_COUNT_W: f32 = 90.;
 const SEARCH_MIN_W: f32 = 160.;
 const SEARCH_MAX_W: f32 = 280.;
 /// Between controls of one toolbar group
@@ -405,6 +407,41 @@ pub(super) fn toolbar_action(icon: IconType, text: &str) -> Button {
         .font_size(text_size(12.))
         .child(Icon::new(icon).size(15.))
         .text(text.to_string())
+}
+
+/// The widest selection toolbar with its labels, in the widest theme font
+const LABELLED_SELECTION_W: f32 = 572.;
+
+/// Whether the pane is too narrow for labels on the selection actions. It depends on the window
+/// alone, so the actions never change form while a selection does.
+pub(super) fn compact_selection() -> bool {
+    ClusterShell::workspace_pane_size().0 < LABELLED_SELECTION_W
+}
+
+pub(super) fn selection_icon(icon: IconType, tooltip: impl Into<Box<str>>) -> Button {
+    Button::new()
+        .secondary()
+        .icon()
+        .width(Size::px(CONTROL_H))
+        .height(Size::px(CONTROL_H))
+        .tooltip(tooltip)
+        .child(Icon::new(icon).size(15.))
+}
+
+/// `width` holds the action's place while its label changes
+pub(super) fn selection_action(icon: IconType, text: String, width: Option<f32>) -> Button {
+    let button = Button::new().secondary().height(Size::px(CONTROL_H));
+    if compact_selection() {
+        return selection_icon(icon, text);
+    }
+    let button = match width {
+        Some(width) => button.width(Size::px(width)),
+        None => button,
+    };
+    button
+        .font_size(text_size(12.))
+        .child(Icon::new(icon).size(15.))
+        .text(text)
 }
 
 pub(super) fn toolbar_secondary(icon: IconType, text: &str) -> Button {
@@ -960,6 +997,16 @@ mod tests {
         assert_eq!(natural_width(290., 200., false), 290.);
         assert_eq!(natural_width(290., 320., false), 320.);
         assert_eq!(natural_width(290., 200., true), 200.);
+    }
+
+    #[test]
+    fn selection_actions_fit_the_narrow_workspace_without_moving() {
+        let package_width = SELECTION_COUNT_W + 5. * CONTROL_H + 5. * CONTROL_GAP;
+        let screenshot_width = SELECTION_COUNT_W + 4. * CONTROL_H + 4. * CONTROL_GAP;
+        assert_eq!(package_width, 300.);
+        assert_eq!(screenshot_width, 258.);
+        assert!(package_width <= 524.);
+        assert!(screenshot_width <= 524.);
     }
 
     #[test]

@@ -162,6 +162,7 @@ pub(super) fn versions_panel(
                 let tag = installed
                     .as_ref()
                     .and_then(|installed| installed.find_version(&v.version_id))
+                    .filter(|version| version.hash.is_some())
                     .cloned();
                 let duplicated = installed
                     .as_ref()
@@ -171,6 +172,18 @@ pub(super) fn versions_panel(
                     .and_then(Installed::disabled_bundled)
                     .filter(|disabled| disabled.version_id == v.version_id)
                     .and_then(|disabled| disabled.enable_action(installer.cluster_id));
+                let other_enabled = installed.as_ref().is_some_and(|installed| {
+                    installed
+                        .find_version(&v.version_id)
+                        .is_some_and(|pin| pin.bundle.is_some() && pin.hash.is_none())
+                        && (installed.unversioned_enabled == Some(true)
+                            || installed
+                                .versions
+                                .iter()
+                                .any(|entry| entry.hash.is_some() && entry.enabled))
+                });
+                let busy =
+                    installing || other_enabled || (installer.datapack && !v.loaders.is_empty());
                 version_row(
                     v,
                     &dependency_names,
@@ -179,7 +192,7 @@ pub(super) fn versions_panel(
                     on_remove.clone(),
                     tag,
                     duplicated,
-                    installing,
+                    busy,
                     enable,
                 )
                 .into_element()

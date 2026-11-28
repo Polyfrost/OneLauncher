@@ -139,6 +139,7 @@ impl PartialEq for ClusterCard {
             && self.cluster.mc_version == other.cluster.mc_version
             && self.cluster.kind == other.cluster.kind
             && self.cluster.user_created == other.cluster.user_created
+            && self.cluster.uses_bundles() == other.cluster.uses_bundles()
             && self.index == other.index
             && self.items == other.items
             && self.progress == other.progress
@@ -616,4 +617,26 @@ fn recent_card_slots_for_width(row_width_px: f32) -> usize {
     let available = row_width_px - MORE_TILE_WIDTH_PX;
     let slot = MIN_CARD_WIDTH_PX + CARD_GAP_PX;
     (available / slot).floor().max(1.0) as usize
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recent_card_changes_when_bundle_launch_guard_changes() {
+        let mut cluster = crate::view::onboarding::test_support::cluster(1);
+        cluster.kind = oneclient_db::models::ClusterKind::Modded;
+        let card = |cluster| ClusterCard {
+            cluster,
+            index: 0,
+            items: 1,
+            progress: 1.,
+            key: DiffKey::None,
+        };
+        let before = card(cluster.clone());
+        cluster.takes_bundles = true;
+        let after = card(cluster);
+        assert!(!before.eq(&after));
+    }
 }

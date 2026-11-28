@@ -4,9 +4,9 @@ use oneclient_core::clusters::Cluster;
 
 use crate::components::{Icon, IconType};
 use crate::hooks::{
-    bundle_overrides_map, bundles_with_status_items, cluster_content_items, query_is_loading,
-    try_cluster_analytics, use_bundle_overrides, use_bundles_with_status, use_cluster,
-    use_cluster_analytics, use_cluster_content,
+    bundle_overrides_map, bundles_with_status_items, cluster_content_items, query_error,
+    query_is_loading, try_cluster_analytics, use_bundle_overrides, use_bundles_with_status,
+    use_cluster, use_cluster_analytics, use_cluster_content, use_shadowed_mods,
 };
 use crate::i18n::t;
 use crate::layout::{ClusterShell, cluster_content};
@@ -14,7 +14,8 @@ use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, columns_for, last_played_label};
 
 use super::cluster_not_found;
-use super::package_manager::{PackageMetaMap, bundle_packages};
+use super::mods::fold_mod_copies;
+use super::package_manager::{bundle_packages, use_content_meta};
 
 const FACT_MIN_W: f32 = 160.;
 const FACT_MAX_COLS: usize = 3;
@@ -54,6 +55,10 @@ impl Component for ClusterOverview {
         let mods = use_cluster_content(self.cluster_id, ContentType::Mod);
         let bundles = use_bundles_with_status(self.cluster_id);
         let overrides = use_bundle_overrides(self.cluster_id);
+        let shadowed = use_shadowed_mods(self.cluster_id);
+        let content_items = cluster_content_items(&mods);
+        let bundle_items = bundles_with_status_items(&bundles);
+        let meta = use_content_meta(&content_items, &bundle_items, ContentType::Mod);
         let mut facts_width = use_state(|| 0f32);
         let (_, pane_height) = ClusterShell::workspace_pane_size();
         let padding = ClusterShell::workspace_padding();
@@ -63,6 +68,12 @@ impl Component for ClusterOverview {
         let analytics = try_cluster_analytics(&query);
         let activity = activity_height(pane_height);
         let body = match &analytics {
+            None if query_error(&query).is_some() => activity_notice(
+                IconType::BarChartSquare02,
+                t("oneclient.cluster.overview.facts.unavailable"),
+                None,
+                activity,
+            ),
             None => activity_notice(
                 IconType::ClockRewind,
                 t("oneclient.cluster.overview.loading"),
@@ -79,21 +90,28 @@ impl Component for ClusterOverview {
         };
 
         let mod_count = (!cluster.lacks_mod_loader()).then(|| {
-            if query_is_loading(&mods) || query_is_loading(&bundles) {
-                return "\u{2026}".to_string();
+            let failed = query_error(&mods).is_some()
+                || query_error(&bundles).is_some()
+                || query_error(&overrides).is_some();
+            let loading = query_is_loading(&mods)
+                || query_is_loading(&bundles)
+                || query_is_loading(&overrides);
+            match mod_count_state(failed, loading) {
+                ModCountState::Unavailable => {
+                    return t("oneclient.cluster.overview.facts.unavailable").to_string();
+                }
+                ModCountState::Loading => return "\u{2026}".to_string(),
+                ModCountState::Ready => {}
             }
             let rows = bundle_packages(
-                cluster_content_items(&mods),
-                &bundles_with_status_items(&bundles),
+                content_items,
+                &bundle_items,
                 &bundle_overrides_map(&overrides),
-                &PackageMetaMap::new(),
+                &meta,
                 &Default::default(),
                 ContentType::Mod,
             );
-            rows.iter()
-                .filter(|p| p.opted_in && !p.deleted && !p.hidden && p.enabled)
-                .count()
-                .to_string()
+            enabled_mod_count(&fold_mod_copies(rows, &shadowed)).to_string()
         });
         let facts: Vec<Element> = instance_facts(&cluster, mod_count)
             .into_iter()
@@ -139,6 +157,29 @@ impl Component for ClusterOverview {
             )
             .into_element()
     }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ModCountState {
+    Unavailable,
+    Loading,
+    Ready,
+}
+
+fn mod_count_state(failed: bool, loading: bool) -> ModCountState {
+    if failed {
+        ModCountState::Unavailable
+    } else if loading {
+        ModCountState::Loading
+    } else {
+        ModCountState::Ready
+    }
+}
+
+fn enabled_mod_count(rows: &[crate::components::PackageEntry]) -> usize {
+    rows.iter()
+        .filter(|p| p.opted_in && !p.deleted && !p.hidden && p.enabled)
+        .count()
 }
 
 /// What the instance already knows about itself, so the page is useful before any play history
@@ -259,6 +300,59 @@ fn activity_notice(icon: IconType, title: &str, hint: Option<&str>, height: f32)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mod_count_is_unavailable_on_failure_instead_of_zero() {
+        assert_eq!(mod_count_state(true, false), ModCountState::Unavailable);
+        assert_eq!(mod_count_state(true, true), ModCountState::Unavailable);
+        assert_eq!(mod_count_state(false, true), ModCountState::Loading);
+        assert_eq!(mod_count_state(false, false), ModCountState::Ready);
+    }
+
+    #[test]
+    fn mod_count_uses_the_same_folded_rows_as_mods() {
+        use oneclient_core::{LinkedArtifactInfo, SeenStatus, game::DuplicateMods};
+        let linked = |hash: &str| LinkedArtifactInfo {
+            hash: hash.into(),
+            cluster_file_name: format!("{hash}.jar"),
+            enabled: true,
+            content_type: ContentType::Mod,
+            file_name: format!("{hash}.jar"),
+            project_id: None,
+            version_id: None,
+            display_name: None,
+            display_version: None,
+            provider: None,
+            published_at: None,
+            added_at: None,
+            seen_status: SeenStatus::Seen,
+            size_bytes: None,
+        };
+        let mut rows = bundle_packages(
+            vec![linked("active"), linked("ignored"), linked("bundle")],
+            &[],
+            &Default::default(),
+            &Default::default(),
+            &Default::default(),
+            ContentType::Mod,
+        );
+        for row in &mut rows {
+            row.name = "Example".into();
+            row.author = "Author".into();
+        }
+        rows.iter_mut()
+            .find(|row| row.hash.as_deref() == Some("bundle"))
+            .unwrap()
+            .bundle_name = Some("Bundle".into());
+        assert_eq!(enabled_mod_count(&rows), 3);
+        let mut shadowed = DuplicateMods::default();
+        shadowed
+            .copies
+            .insert("active".into(), vec!["ignored".into()]);
+        let folded = fold_mod_copies(rows, &shadowed);
+        assert_eq!(enabled_mod_count(&folded), 1);
+        assert_eq!(folded[0].copies.len(), 2);
+    }
 
     #[test]
     fn the_activity_block_takes_28_percent_of_the_pane_between_160_and_240() {

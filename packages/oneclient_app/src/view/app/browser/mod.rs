@@ -23,12 +23,27 @@ fn preferred_version(
         versions
             .iter()
             .find(|v| v.loaders.is_empty())
-            .or_else(|| versions.first())
     } else {
         versions.first()
     }
 }
+// Limit a latest-data-pack lookup without restricting the version-history pager.
+const DATAPACK_VERSION_LIMIT: usize = 200;
+
 pub use package::BrowserPackage;
+
+fn ownership_ready(required: bool, busy: bool, failed: bool) -> bool {
+    !required || (!busy && !failed)
+}
+
+fn settled_page(page: usize, total: usize, page_size: usize, settled: bool) -> usize {
+    if settled {
+        page.min(total.div_ceil(page_size).saturating_sub(1))
+    } else {
+        page
+    }
+}
+
 
 pub(crate) fn use_saved_override(cluster_id: i64, package_type: &str) -> Option<SearchOverride> {
     use_browser_state_store()
@@ -178,6 +193,7 @@ pub(crate) struct BundlePin {
     pub bundle_name: String,
     pub package_id: String,
     pub manifest_default: bool,
+    pub removed: bool,
 }
 
 #[derive(Clone, PartialEq)]
@@ -195,6 +211,15 @@ pub(crate) struct InstalledVersion {
 impl InstalledVersion {
     pub fn enable_action(&self, cluster_id: i64) -> Option<ClusterAction> {
         let pin = self.bundle.as_ref()?;
+        if pin.removed || self.hash.is_none() {
+            return Some(ClusterAction::SetBundlePackageRemoved {
+                cluster_id,
+                bundle_name: pin.bundle_name.clone(),
+                package_id: pin.package_id.clone(),
+                hash: self.hash.clone(),
+                removed: false,
+            });
+        }
         set_enabled_action(
             cluster_id,
             self.hash.as_deref(),
@@ -322,6 +347,10 @@ pub(crate) fn installed_map(
                 bundle_name: bundle_name.clone(),
                 package_id: file.kind.package_id(),
                 manifest_default: file.enabled,
+                removed: overrides.iter().any(|((_, package_id), value)| {
+                    package_id == &file.kind.package_id()
+                        && OverrideType::parse(value) == Some(OverrideType::Removed)
+                }),
             };
             let installed = map
                 .entry((*provider, project_id.clone()))
@@ -349,7 +378,7 @@ pub(crate) fn installed_map(
                     version_id: bundle_version.clone(),
                     display_version: None,
                     hash: None,
-                    enabled: oneclient_core::effective_enabled(file, user_override),
+                    enabled: !pin.removed && oneclient_core::effective_enabled(file, user_override),
                     source: InstallSource::Bundled,
                     bundle: Some(pin),
                 });
@@ -658,6 +687,22 @@ mod tests {
     use oneclient_content::packages::ContentType;
     use oneclient_core::BundleFile;
 
+    #[test]
+    fn ownership_must_finish_successfully_before_installing() {
+        assert!(!ownership_ready(true, true, false));
+        assert!(!ownership_ready(true, false, true));
+        assert!(ownership_ready(true, false, false));
+        assert!(ownership_ready(false, true, true));
+    }
+
+    #[test]
+    fn settled_totals_clamp_the_requested_page_but_loading_does_not() {
+        assert_eq!(settled_page(4, 21, 20, false), 4);
+        assert_eq!(settled_page(4, 21, 20, true), 1);
+        assert_eq!(settled_page(4, 0, 20, true), 0);
+        assert_eq!(settled_page(1, 40, 20, true), 1);
+    }
+
     fn linked(project_id: &str, version_id: Option<&str>, hash: &str) -> LinkedArtifactInfo {
         disabled_linked(project_id, version_id, hash, true)
     }
@@ -950,10 +995,9 @@ mod tests {
         let disabled = sodium.disabled_bundled().expect("offers enable");
         assert!(matches!(
             disabled.enable_action(7),
-            Some(ClusterAction::SetBundlePackageEnabled {
+            Some(ClusterAction::SetBundlePackageRemoved {
                 cluster_id: 7,
-                enabled: true,
-                manifest_default: false,
+                removed: false,
                 ..
             })
         ));
@@ -977,8 +1021,8 @@ mod tests {
         let sodium = entry(&map, "sodium");
         assert!(matches!(
             sodium.disabled_bundled().and_then(|v| v.enable_action(7)),
-            Some(ClusterAction::SetBundlePackageEnabled {
-                manifest_default: true,
+            Some(ClusterAction::SetBundlePackageRemoved {
+                removed: false,
                 ..
             })
         ));

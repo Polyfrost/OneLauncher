@@ -22,9 +22,9 @@ use crate::ui::border_all_color;
 use crate::{Actions, utils};
 
 use super::super::folder_list::{
-    CONTROL_H, content_area, content_empty, content_grid, content_loading, content_scroll,
-    content_toolbar, layout_toggle, open_folder_action, open_folder_button, scope_chip,
-    toolbar_action, toolbar_secondary,
+    CONTROL_H, SELECTION_COUNT_W, content_area, content_empty, content_grid, content_loading,
+    content_scroll, content_toolbar, layout_toggle, open_folder_action, open_folder_button,
+    scope_chip, selection_action, toolbar_action, toolbar_secondary,
 };
 
 #[derive(Clone, Copy, PartialEq)]
@@ -217,61 +217,53 @@ impl Bulk {
         let disable = self.set_enabled.clone();
         let delete = self.delete.clone();
         let (toggle_icon, toggle_label) = self.toggle_all_label();
-        let button = |icon: IconType, text: String| {
-            Button::new()
-                .secondary()
-                .height(Size::px(34.))
-                .font_size(text_size(12.))
-                .child(Icon::new(icon).size(15.))
-                .text(text)
-        };
-
         vec![
             label()
                 .text(tf(
                     "oneclient.cluster.package_manager.select.count",
                     &[&self.count],
                 ))
-                .width(Size::px(90.))
+                .width(Size::px(SELECTION_COUNT_W))
                 .font_size(text_size(12.))
                 .max_lines(1)
                 .text_overflow(TextOverflow::Ellipsis)
                 .color(colors::fg_secondary())
                 .into_element(),
-            button(toggle_icon, toggle_label.to_string())
-                .width(Size::px(122.))
+            selection_action(toggle_icon, toggle_label.to_string(), Some(122.))
                 .on_press(move |_| selection.toggle_all(&order))
                 .into_element(),
-            button(
+            selection_action(
                 IconType::CheckCircle,
                 t("oneclient.cluster.package_manager.select.enable").to_string(),
+                None,
             )
             .enabled(self.count > 0)
             .on_press(move |_| enable.call(true))
             .into_element(),
-            button(
+            selection_action(
                 IconType::Minus,
                 t("oneclient.cluster.package_manager.select.disable").to_string(),
+                None,
             )
             .enabled(self.count > 0)
             .on_press(move |_| disable.call(false))
             .into_element(),
-            button(
+            selection_action(
                 IconType::Trash01,
                 tf(
                     "oneclient.cluster.package_manager.select.delete",
                     &[&self.deletable],
                 ),
+                Some(114.),
             )
             .danger()
-            .width(Size::px(114.))
             .enabled(self.deletable > 0)
             .on_press(move |_| delete.call(()))
             .into_element(),
             Button::new()
                 .ghost()
                 .icon()
-                .height(Size::px(34.))
+                .height(Size::px(CONTROL_H))
                 .tooltip(t("oneclient.cluster.package_manager.select.exit"))
                 .on_press(move |_| selection.exit())
                 .child(Icon::new(IconType::XClose).size(15.))

@@ -338,20 +338,6 @@ fn section_text(text: &str) -> Label {
         .color(readable_secondary())
 }
 
-/// A `section_header` (or the first one on a page) whose line ends with `action`, such as the
-/// New theme and Import buttons beside Style
-pub fn section_header_with_action(text: &str, first: bool, action: Element) -> impl IntoElement {
-    let top = if first { 0. } else { 24. - PAGE_GAP };
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .content(Content::Flex)
-        .cross_align(Alignment::Center)
-        .padding(Gaps::new(top, 0., 8. - PAGE_GAP, 0.))
-        .child(section_text(text).width(Size::flex(1.)))
-        .child(action)
-}
-
 /// The status card's padding: the icon, two lines of copy and the action come to about 275 px
 /// tall. An explicit min-height would stretch the card in Freya, so the padding carries it.
 const STATUS_PADDING: f32 = 40.;

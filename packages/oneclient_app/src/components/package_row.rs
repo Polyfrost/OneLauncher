@@ -470,7 +470,8 @@ impl Component for PackageRow {
                 package_type,
                 cluster_id,
                 icon,
-                GridToggle::Switch(on_toggle),
+                on_toggle,
+                GRID_TITLE_LINES,
                 true,
                 on_context.clone(),
                 on_copies,
@@ -876,7 +877,8 @@ pub(crate) fn grid_card(
         package_type,
         cluster_id,
         icon,
-        GridToggle::Body(on_toggle),
+        on_toggle,
+        1,
         navigable,
         on_context,
         on_copies,
@@ -884,10 +886,8 @@ pub(crate) fn grid_card(
     )
 }
 
-enum GridToggle {
-    Body(EventHandler<()>),
-    Switch(EventHandler<()>),
-}
+/// Instance grid cards give long names a second line before they trail off
+const GRID_TITLE_LINES: usize = 2;
 
 #[allow(clippy::too_many_arguments)]
 fn render_grid_card(
@@ -895,24 +895,14 @@ fn render_grid_card(
     package_type: &'static str,
     cluster_id: i64,
     icon: impl IntoElement,
-    toggle: GridToggle,
+    on_toggle: EventHandler<()>,
+    title_lines: usize,
     navigable: bool,
     on_context: Option<EventHandler<(f32, f32)>>,
     on_copies: Option<EventHandler<()>>,
     hovered: State<bool>,
 ) -> Element {
     let enabled = item.enabled;
-    let (body_press, switch) = match toggle {
-        GridToggle::Body(on_toggle) => (Some(on_toggle), None),
-        GridToggle::Switch(on_toggle) => (
-            None,
-            Some(PackageGridSwitch {
-                enabled,
-                locked: item.locked,
-                on_toggle,
-            }),
-        ),
-    };
 
     let alpha = if enabled && item.copy_status != Some(CopyStatus::Skipped) {
         255u8
@@ -924,20 +914,7 @@ fn render_grid_card(
     } else {
         CardTone::Disabled
     };
-    let title_lines = if switch.is_some() { 2 } else { 1 };
-    let meta = grid_meta(item, package_type, cluster_id, navigable, alpha);
-    let details = match switch {
-        Some(switch) => rect()
-            .horizontal()
-            .width(Size::fill())
-            .content(Content::Flex)
-            .cross_align(Alignment::Center)
-            .spacing(8.)
-            .child(rect().width(Size::flex(1.)).child(meta))
-            .child(switch)
-            .into_element(),
-        None => meta,
-    };
+    let details = grid_meta(item, package_type, cluster_id, navigable, alpha);
 
     let header = rect()
         .horizontal()
@@ -1000,14 +977,9 @@ fn render_grid_card(
     });
 
     card_surface(hovered, tone)
+        .cursor(CursorIcon::Pointer)
         .on_secondary_down(on_secondary(on_context))
-        .maybe(body_press.is_some(), move |surface| {
-            surface.cursor(CursorIcon::Pointer).on_press(move |_| {
-                if let Some(handler) = &body_press {
-                    handler.call(());
-                }
-            })
-        })
+        .on_press(move |_| on_toggle.call(()))
         .child(header)
         .maybe_child(description)
         .maybe_child(floating)
@@ -1037,37 +1009,6 @@ impl Component for GridDescription {
                 self.color,
                 lines(),
             ))
-    }
-}
-
-#[derive(PartialEq)]
-struct PackageGridSwitch {
-    enabled: bool,
-    locked: bool,
-    on_toggle: EventHandler<()>,
-}
-
-impl Component for PackageGridSwitch {
-    fn render(&self) -> impl IntoElement {
-        let tooltip = use_tooltip_anchor(
-            self.locked
-                .then(|| t("oneclient.components.package_row.locked").into()),
-            TooltipPlacement::Top,
-        );
-        tooltip.attach(
-            rect()
-                .horizontal()
-                .cross_align(Alignment::Center)
-                .spacing(4.)
-                .maybe_child(self.locked.then(|| {
-                    Icon::new(IconType::Lock01)
-                        .size(14.)
-                        .color(colors::fg_secondary())
-                }))
-                .child(
-                    toggle_controlled(self.enabled, self.on_toggle.clone()).disabled(self.locked),
-                ),
-        )
     }
 }
 
@@ -1134,7 +1075,7 @@ fn grid_meta(
     }
 
     // The source leads and always shows in full; the details follow and trail off with an
-    // ellipsis on a narrow card instead of being cut mid-word against the switch
+    // ellipsis on a narrow card instead of being cut mid-word
     let row = rect()
         .horizontal()
         .width(Size::fill())

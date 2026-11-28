@@ -200,7 +200,7 @@ fn cluster_settings_button(cluster_id: i64) -> impl IntoElement {
             let _ = RouterContext::get().push(Route::ClusterSettings { cluster_id });
         })
         .child(
-            Icon::new(IconType::Settings01)
+            Icon::new(IconType::Settings04)
                 .size(20.)
                 .color(colors::on_art()),
         )

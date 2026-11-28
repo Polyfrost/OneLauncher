@@ -14,10 +14,9 @@ use super::dynamic_art::use_art_bytes;
 use super::local_image::decode;
 use crate::components::{
     ART_PREVIEW_EDGE, ClusterContextMenu, ClusterMenuTarget, DynamicArt, Icon, IconType,
-    LocalImage, TooltipPlacement, use_home_stack, use_tooltip_anchor,
+    LocalImage, use_home_stack,
 };
 use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters};
-use crate::i18n::t;
 use crate::motion::use_animations_enabled;
 use crate::routes::Route;
 use crate::theme;
@@ -533,76 +532,76 @@ impl Component for OtherVersionsTile {
         let rise = (1.0 - eased) * CARD_RISE_PX;
         let theme = colors::active_theme();
         let hovered = *hovering.read();
-        let text = t("oneclient.components.recents_row.all_versions");
-        let tooltip = use_tooltip_anchor(Some(text.into()), TooltipPlacement::Top);
-        let tile = rect()
-            .background(Color::from_rgb(14, 17, 22).with_a(if hovered { 208 } else { 174 }))
-            .backdrop_blur(24.);
+        let tile = rect();
+        let tile = if theme.liquid_glass {
+            crate::theme::glass::navigation_panel(tile, &theme, crate::theme::rounded_px(12.))
+        } else if theme.colors.light {
+            tile.backdrop_blur(6.)
+                .background(colors::component_bg().with_a(if hovered { 208 } else { 166 }))
+        } else {
+            tile.background(if hovered {
+                colors::ghost_overlay_pressed()
+            } else {
+                colors::ghost_overlay_hover()
+            })
+            .backdrop_blur(32.)
+        };
 
-        tooltip.attach(
-            tile.width(Size::px(MORE_TILE_WIDTH_PX))
-                .height(Size::fill())
-                .offset_y(rise)
-                .opacity(eased)
-                .corner_radius(rounded(12.))
-                .border(
-                    if focused {
-                        border_all_color(2., colors::brand())
-                    } else {
-                        border_all_color(1., Color::WHITE.with_a(if hovered { 95 } else { 46 }))
-                    }
-                    .alignment(BorderAlignment::Outer),
-                )
-                .a11y_id(a11y_id)
-                .a11y_focusable(true)
-                .a11y_role(AccessibilityRole::Button)
-                .a11y_alt(text)
-                .cursor(CursorIcon::Pointer)
-                .on_pointer_over(move |_| {
-                    *hovering.write() = true;
-                })
-                .on_pointer_out(move |_| {
-                    *hovering.write() = false;
-                })
-                .shadow(
-                    Shadow::new()
-                        .blur(24.)
-                        .spread(12.)
-                        .x(0.)
-                        .y(0.)
-                        .color(Color::from_af32rgb(0.3, 0, 0, 0)),
-                )
-                .on_press(move |_| match stack {
-                    // Stacked home: slide down to the versions page instead of routing away
-                    Some(stack) => stack.set_open(true),
-                    None => {
-                        let _ = RouterContext::get().push(Route::Clusters {});
-                    }
-                })
-                .child(
-                    rect()
-                        .width(Size::fill())
-                        .height(Size::fill())
-                        .vertical()
-                        .center()
-                        .spacing(7.)
-                        .padding(Gaps::new_symmetric(0., 4.))
-                        .child(Icon::new(IconType::DotsGrid).size(32.).color(Color::WHITE))
-                        .child(
-                            label()
-                                .text(text)
-                                .width(Size::fill())
-                                .text_align(TextAlign::Center)
-                                .font_size(text_size(12.))
-                                .font_weight(if theme.pixel_icons {
-                                    FontWeight::NORMAL
-                                } else {
-                                    FontWeight::MEDIUM
-                                })
-                                .color(Color::WHITE),
-                        ),
-                ),
-        )
+        tile.width(Size::px(MORE_TILE_WIDTH_PX))
+            .height(Size::fill())
+            .offset_y(rise)
+            .opacity(eased)
+            .corner_radius(rounded(12.))
+            .border(
+                if focused {
+                    border_all_color(2., colors::brand())
+                } else if theme.liquid_glass && hovered {
+                    border_all_color(1., colors::fg_secondary())
+                } else {
+                    border_all(1.)
+                }
+                .alignment(BorderAlignment::Outer),
+            )
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::Button)
+            .a11y_alt(Route::Clusters {}.title())
+            .on_pointer_enter(move |_| {
+                *hovering.write() = true;
+            })
+            .on_pointer_leave(move |_| {
+                *hovering.write() = false;
+            })
+            .shadow(
+                Shadow::new()
+                    .blur(24.)
+                    .spread(12.)
+                    .x(0.)
+                    .y(0.)
+                    .color(Color::from_af32rgb(0.3, 0, 0, 0)),
+            )
+            .on_press(move |_| match stack {
+                // Stacked home: slide down to the versions page instead of routing away
+                Some(stack) => stack.set_open(true),
+                None => {
+                    let _ = RouterContext::get().push(Route::Clusters {});
+                }
+            })
+            .child(
+                rect()
+                    .width(Size::fill())
+                    .height(Size::fill())
+                    .center()
+                    .child(
+                        Icon::new(IconType::DotsGrid)
+                            .size(if theme.liquid_glass { 32. } else { 50. })
+                            .color(if theme.colors.light {
+                                colors::fg_primary()
+                            } else {
+                                colors::on_art()
+                            }),
+                    ),
+            )
     }
 }
 

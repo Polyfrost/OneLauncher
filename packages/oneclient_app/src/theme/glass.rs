@@ -116,9 +116,8 @@ pub fn frosted_panel(rect: Rect, theme: &Theme, radius: f32, tint: Color) -> Rec
     panel_with_blur(rect, theme, radius, tint, 3.)
 }
 
-/// Blur under the large workspace dialogs. Strong enough that the Home hero behind them (its
-/// title and the blue Launch button) can't be read as part of the dialog.
-const WORKSPACE_BLUR: f32 = 22.;
+/// Blur under the large workspace dialogs
+const WORKSPACE_BLUR: f32 = 8.;
 /// Blur under small dialogs and menus
 const POPUP_BLUR: f32 = 8.;
 

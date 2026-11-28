@@ -855,8 +855,6 @@ impl Component for Sidebar {
         } else {
             SIDEBAR_PADDING_PX
         };
-        let content_height =
-            sidebar_content_height(*sidebar_height.read(), art_height, top_padding);
 
         let menu_button = |surface| InstanceOverviewButton {
             position: menu,
@@ -867,7 +865,9 @@ impl Component for Sidebar {
         let panel = rect()
             .width(Size::px(self.width))
             .min_width(Size::px(self.width))
+            .height(Size::fill())
             .vertical()
+            .content(Content::Flex)
             .corner_radius(rounded(20.));
         let panel = if theme.liquid_glass {
             crate::theme::glass::panel(
@@ -906,6 +906,8 @@ impl Component for Sidebar {
                 rect()
                     .vertical()
                     .width(Size::fill())
+                    .height(Size::flex(1.0))
+                    .content(Content::Flex)
                     .padding(Gaps::new(
                         top_padding,
                         SIDEBAR_PADDING_PX,
@@ -916,8 +918,7 @@ impl Component for Sidebar {
                     .child(
                         ScrollArea::new()
                             .width(Size::fill())
-                            .height(Size::auto())
-                            .max_height(Size::px(content_height))
+                            .height(Size::flex(1.0))
                             .keyboard_paging()
                             .scrollbar_gutter(true)
                             .bottom_fade(colors::page_elevated())
@@ -1059,16 +1060,6 @@ fn meta_list(meta: &[(&'static str, String)]) -> Element {
         .into_element()
 }
 
-fn sidebar_content_height(height: f32, art: Option<f32>, top: f32) -> f32 {
-    (height
-        - art.unwrap_or_default()
-        - top
-        - SIDEBAR_PADDING_PX
-        - SIDEBAR_ACTION_GAP_PX
-        - SIDEBAR_ACTION_HEIGHT_PX)
-        .max(0.)
-}
-
 fn art_height_for(sidebar_height: f32) -> Option<f32> {
     if sidebar_height <= 0. {
         return Some(ART_MAX_HEIGHT_PX);
@@ -1180,14 +1171,6 @@ mod tests {
         let (columns, width) = card_metrics(main_width(2000., SIDEBAR_WIDTH_PX));
         assert_eq!(columns, 5);
         assert!((280.0..=MAX_CARD_WIDTH_PX).contains(&width), "{width}");
-    }
-
-    #[test]
-    fn sidebar_saves_room_for_content_and_actions_at_compact_height() {
-        let compact_height = 456.;
-        assert_eq!(art_height_for(compact_height), None);
-        assert_eq!(sidebar_content_height(compact_height, None, 22.), 358.);
-        assert_eq!(art_height_for(900.), Some(ART_MAX_HEIGHT_PX));
     }
 
     #[test]

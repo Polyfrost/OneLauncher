@@ -15,11 +15,10 @@ use crate::theme::{
     import_theme, is_known, system_theme_id, text_size,
 };
 use crate::view::app::settings::appearance_picker::{
-    compose_theme, split_theme, style_picker, theme_mode_picker,
+    compose_theme, section, section_with_action, split_theme, style_picker, theme_mode_picker,
 };
 use crate::view::app::settings::{
-    confirm_dialog, first_section_header, readable_secondary, resettable, section_header,
-    section_header_with_action, settings_row,
+    confirm_dialog, readable_secondary, resettable, section_header, settings_row,
 };
 
 #[derive(PartialEq)]
@@ -78,15 +77,21 @@ impl Component for SettingsAppearance {
         settings_page()
             .child(super::focus_anchor(
                 "appearance.theme",
-                first_section_header(t("oneclient.settings.appearance.mode")),
+                rect()
+                    .vertical()
+                    .width(Size::fill())
+                    .spacing(20.)
+                    .padding(Gaps::new(0., 0., 12., 0.))
+                    .child(section(
+                        t("oneclient.settings.appearance.mode"),
+                        theme_mode_picker(&settings.theme, &dispatch),
+                    ))
+                    .child(section_with_action(
+                        t("oneclient.settings.appearance.style"),
+                        Some(theme_actions(&dispatch)),
+                        style_picker(&settings.theme, dense, true),
+                    )),
             ))
-            .child(theme_mode_picker(&settings.theme, &dispatch))
-            .child(section_header_with_action(
-                t("oneclient.settings.appearance.style"),
-                false,
-                theme_actions(&dispatch),
-            ))
-            .child(style_picker(&settings.theme, dense, true))
             .child(section_header(t(
                 "oneclient.settings.appearance.section.effects",
             )))

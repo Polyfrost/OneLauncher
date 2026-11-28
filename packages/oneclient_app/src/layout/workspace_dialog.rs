@@ -245,9 +245,7 @@ impl Component for WorkspacePopup {
         };
         let theme = colors::active_theme();
         let face = if theme.liquid_glass {
-            // Dense enough that the Home hero's title and Launch button can't read through as
-            // part of the dialog
-            let tint = colors::page_elevated().with_a(if theme.colors.light { 230 } else { 225 });
+            let tint = colors::page_elevated().with_a(if theme.colors.light { 198 } else { 188 });
             glass::workspace_panel(rect(), &theme, rounded_px(16.), tint)
         } else {
             rect()

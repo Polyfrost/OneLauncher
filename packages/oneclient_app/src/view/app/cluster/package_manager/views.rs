@@ -1158,13 +1158,9 @@ impl Component for ContentBox {
                 noun_plural,
                 folder,
             ),
-            ContentKind::Other => empty_state(
-                cluster_id,
-                package_type,
-                content_type,
-                noun_plural,
-                dispatch.clone(),
-            ),
+            ContentKind::Other => {
+                empty_state(cluster_id, package_type, content_type, noun_plural, folder)
+            }
             ContentKind::Filtered(filters) => filtered_empty(noun_plural, *filters),
             ContentKind::NoMatches { scope } => search_empty(noun_plural, scope.as_deref()),
         });
@@ -1231,7 +1227,7 @@ fn empty_state(
     package_type: &'static str,
     content_type: ContentType,
     noun_plural: &'static str,
-    dispatch: Actions,
+    folder: Option<PathBuf>,
 ) -> Element {
     content_empty(
         content_icon(content_type),
@@ -1241,8 +1237,13 @@ fn empty_state(
         ),
         Some(t("oneclient.cluster.package_manager.empty.hint").to_string()),
         vec![
-            browse_button(cluster_id, package_type),
-            import_button(cluster_id, content_type, dispatch, false).into_element(),
+            toolbar_action(
+                IconType::Plus,
+                t("oneclient.cluster.package_manager.add_content"),
+            )
+            .on_press(move |_| open_browser(cluster_id, package_type))
+            .into_element(),
+            open_folder_button(folder),
         ],
     )
 }

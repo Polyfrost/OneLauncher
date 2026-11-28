@@ -4,37 +4,22 @@ use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_core::WorldInfo;
 
-use crate::components::{
-    CardLayout, ContextMenu, IconType, kebab_button, meta_size, meta_text, on_secondary,
-};
+use crate::components::{CardLayout, ContextMenu, IconType};
 use crate::hooks::{
     delete_world, query_is_loading, spawn_world_task, try_cluster_worlds, try_world_size,
     use_cluster, use_cluster_worlds, use_datapack_world, use_dispatch, use_saves_folder_watch,
-    use_view_state, use_world_size,
+    use_world_size,
 };
 use crate::i18n::{t, tf};
 use crate::layout::cluster_content;
 use crate::routes::Route;
-use crate::theme::{colors, rounded, text_size};
-use crate::ui::{border_all_color, fmt_date};
-use crate::utils::format_size;
+use crate::ui::fmt_date;
 
 use super::cluster_not_found;
 use super::folder_list::{
-    CardIcon, RowHeights, card_icon, confirm_dialog, content_box, folder_button, layout_toggle,
-    matches_search, notify_in_use, search_input, supports_datapacks, toolbar_panel,
-    use_game_folder_in_use,
-};
-use super::package_manager::{empty_hint, empty_shell, empty_title};
-
-const LIST_ICON: f32 = 44.;
-const GRID_ICON: f32 = 40.;
-const LIST_PAD: f32 = 10.;
-const GRID_PAD: f32 = 14.;
-
-const WORLD_ROWS: RowHeights = RowHeights {
-    list: LIST_ICON + 2. * LIST_PAD,
-    grid: GRID_ICON + 2. * GRID_PAD,
+    CardIcon, FolderCard, confirm_dialog, content_box, content_empty, content_loading,
+    content_toolbar, layout_toggle, matches_search, notify_in_use, open_folder_action,
+    open_folder_button, scope_chip, supports_datapacks, use_content_view, use_game_folder_in_use,
 };
 
 #[derive(PartialEq)]
@@ -62,7 +47,7 @@ impl Component for ClusterWorlds {
         let in_use = use_game_folder_in_use(cluster.as_ref());
         let remembered = use_datapack_world();
         let search = use_state(String::new);
-        let layout = use_view_state("cluster.worlds").layout;
+        let layout = use_content_view().layout;
         let mut menu = use_state(|| None::<(f32, f32, WorldInfo)>);
         let mut pending_delete = use_state(|| None::<String>);
 
@@ -102,30 +87,35 @@ impl Component for ClusterWorlds {
         };
 
         let empty = if query_is_loading(&query) {
-            None
+            content_loading()
         } else if all.is_empty() {
-            Some(
-                empty_shell(IconType::Globe01)
-                    .child(empty_title(t("oneclient.cluster.worlds.empty.title")))
-                    .child(empty_hint(t("oneclient.cluster.worlds.empty.hint")))
-                    .into_element(),
+            content_empty(
+                IconType::Globe01,
+                t("oneclient.cluster.worlds.empty.title"),
+                Some(t("oneclient.cluster.worlds.empty.hint").to_string()),
+                vec![open_folder_button(saves.clone())],
             )
         } else {
-            Some(
-                empty_shell(IconType::SearchMd)
-                    .child(empty_title(t(
-                        "oneclient.cluster.worlds.search_empty.title",
-                    )))
-                    .child(empty_hint(t(
-                        "oneclient.cluster.package_manager.search_empty.hint",
-                    )))
-                    .into_element(),
+            content_empty(
+                IconType::SearchMd,
+                t("oneclient.cluster.worlds.search_empty.title"),
+                Some(t("oneclient.cluster.package_manager.search_empty.hint").to_string()),
+                Vec::new(),
             )
         };
 
-        let mut controls = vec![search_input(search)];
-        controls.extend(saves.map(folder_button));
-        controls.push(layout_toggle(layout));
+        // A shared game folder is a standing fact, so it is a chip rather than a banner
+        let mut controls = Vec::new();
+        if shared {
+            controls.push(scope_chip(
+                true,
+                t("oneclient.cluster.worlds.shared_notice").to_string(),
+            ));
+        }
+        controls.push(open_folder_action(
+            saves,
+            t("oneclient.cluster.folder.tip.worlds").to_string(),
+        ));
 
         let menu_overlay = menu.read().clone().map(|(x, y, info)| {
             let open_world = info.folder_name.clone();
@@ -190,17 +180,18 @@ impl Component for ClusterWorlds {
         });
 
         cluster_content()
-            .child(toolbar_panel(None, controls))
+            .child(content_toolbar(
+                Some(search),
+                vec![layout_toggle(layout)],
+                controls,
+            ))
             .child(content_box(
                 worlds.len(),
                 card_layout,
-                WORLD_ROWS,
+                |_| false,
                 row,
-                empty,
-                shared
-                    .then(|| t("oneclient.cluster.worlds.shared_notice").to_string())
-                    .into_iter()
-                    .collect(),
+                Some(empty),
+                Vec::new(),
             ))
             .maybe_child(menu_overlay)
             .maybe_child(confirm_overlay)
@@ -217,123 +208,27 @@ struct WorldCard {
     on_context: EventHandler<(f32, f32)>,
 }
 
+/// A world in the shared content row and card, sized once its folder has been measured
 impl Component for WorldCard {
     fn render(&self) -> impl IntoElement {
-        let mut hovered = use_state(|| false);
         let info = &self.info;
-        let grid = self.layout == CardLayout::Grid;
         let size = try_world_size(&use_world_size(self.cluster_id, info.folder_name.clone()));
 
-        let icon = card_icon(
-            &info
+        FolderCard {
+            icon: info
                 .icon
                 .clone()
                 .map_or(CardIcon::Symbol(IconType::Globe01), CardIcon::Image),
-            if grid { GRID_ICON } else { LIST_ICON },
-        );
-        let last_played = tf(
-            "oneclient.cluster.worlds.last_played",
-            &[&fmt_date(info.last_played)],
-        );
-        let on_press = self.on_press.clone();
-        let pressable = on_press.is_some();
-
-        let text = if grid {
-            rect()
-                .vertical()
-                .width(Size::flex(1.0))
-                .spacing(3.)
-                .child(
-                    label()
-                        .text(info.folder_name.clone())
-                        .font_size(text_size(14.))
-                        .font_weight(FontWeight::SEMI_BOLD)
-                        .max_lines(1)
-                        .text_overflow(TextOverflow::Ellipsis)
-                        .width(Size::fill())
-                        .color(colors::fg_strong()),
-                )
-                .child(meta_text(
-                    match size {
-                        Some(size) => format!("{last_played} \u{b7} {}", format_size(size)),
-                        None => last_played.clone(),
-                    },
-                    colors::fg_primary().with_a(127),
-                ))
-        } else {
-            rect()
-                .vertical()
-                .width(Size::flex(1.0))
-                .spacing(3.)
-                .child(
-                    label()
-                        .text(info.folder_name.clone())
-                        .font_size(text_size(15.))
-                        .font_weight(FontWeight::MEDIUM)
-                        .max_lines(1)
-                        .text_overflow(TextOverflow::Ellipsis)
-                        .width(Size::fill())
-                        .color(colors::fg_primary()),
-                )
-                .child(
-                    label()
-                        .text(last_played)
-                        .font_size(text_size(11.))
-                        .max_lines(1)
-                        .text_overflow(TextOverflow::Ellipsis)
-                        .width(Size::fill())
-                        .color(colors::fg_secondary()),
-                )
-        };
-
-        let hovering = *hovered.read();
-        let card = rect()
-            .horizontal()
-            .width(Size::fill())
-            .cross_align(Alignment::Center)
-            .content(Content::Flex)
-            .maybe(pressable, |el| el.cursor(CursorIcon::Pointer))
-            .on_press(move |_| {
-                if let Some(handler) = &on_press {
-                    handler.call(());
-                }
-            })
-            .on_secondary_down(on_secondary(Some(self.on_context.clone())));
-
-        if grid {
-            card.height(Size::px(WORLD_ROWS.grid))
-                .spacing(11.)
-                .padding(Gaps::new_all(GRID_PAD))
-                .corner_radius(rounded(6.))
-                .background(if hovering {
-                    colors::component_bg_hover()
-                } else {
-                    colors::component_bg()
-                })
-                .border(border_all_color(
-                    1.,
-                    if hovering {
-                        colors::component_border_hover()
-                    } else {
-                        colors::component_border()
-                    },
-                ))
-                .overflow(Overflow::Clip)
-                .on_pointer_enter(move |_| hovered.set(true))
-                .on_pointer_leave(move |_| hovered.set(false))
-                .child(icon)
-                .child(text)
-                .child(kebab_button(self.on_context.clone()))
-        } else {
-            card.height(Size::px(WORLD_ROWS.list))
-                .spacing(12.)
-                .padding(Gaps::new_all(LIST_PAD))
-                .corner_radius(rounded(8.))
-                .background(colors::card())
-                .child(icon)
-                .child(text)
-                .child(meta_size(size.unwrap_or_default()))
-                .child(kebab_button(self.on_context.clone()))
+            title: info.folder_name.clone(),
+            meta: tf(
+                "oneclient.cluster.worlds.last_played",
+                &[&fmt_date(info.last_played)],
+            ),
+            description: None,
+            size: size.unwrap_or_default(),
+            layout: self.layout,
+            on_press: self.on_press.clone(),
+            on_context: self.on_context.clone(),
         }
     }
 }

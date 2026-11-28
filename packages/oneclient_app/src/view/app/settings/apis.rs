@@ -1,6 +1,6 @@
 use freya::prelude::*;
 
-use super::settings_page;
+use super::{first_section_header, settings_control_width, settings_page};
 use crate::Route;
 use crate::components::{IconType, TextInput};
 use crate::hooks::{use_dispatch, use_settings_snapshot};
@@ -67,7 +67,7 @@ impl Component for SettingsApis {
         });
 
         settings_page()
-            .child(section_header(t(
+            .child(first_section_header(t(
                 "oneclient.settings.apis.section.providers",
             )))
             .child(settings_row(
@@ -77,7 +77,7 @@ impl Component for SettingsApis {
                 resettable(
                     TextInput::new(modrinth_key)
                         .placeholder(t("oneclient.common.optional"))
-                        .width(Size::px(220.)),
+                        .width(settings_control_width()),
                     modrinth_key,
                     String::new(),
                 ),
@@ -88,8 +88,8 @@ impl Component for SettingsApis {
                 t("oneclient.settings.apis.curseforge_key.description"),
                 resettable(
                     TextInput::new(curseforge_key)
-                        .placeholder(t("oneclient.common.default"))
-                        .width(Size::px(220.)),
+                        .placeholder(t("oneclient.common.optional"))
+                        .width(settings_control_width()),
                     curseforge_key,
                     String::new(),
                 ),
@@ -104,7 +104,7 @@ impl Component for SettingsApis {
                 resettable(
                     TextInput::new(custom_api_endpoint)
                         .placeholder(t("oneclient.common.default"))
-                        .width(Size::px(220.)),
+                        .width(settings_control_width()),
                     custom_api_endpoint,
                     String::new(),
                 ),
@@ -116,7 +116,7 @@ impl Component for SettingsApis {
                 resettable(
                     TextInput::new(custom_meta_url_base)
                         .placeholder(t("oneclient.common.default"))
-                        .width(Size::px(220.)),
+                        .width(settings_control_width()),
                     custom_meta_url_base,
                     String::new(),
                 ),
@@ -128,7 +128,7 @@ impl Component for SettingsApis {
                 resettable(
                     TextInput::new(custom_plus_endpoint)
                         .placeholder(t("oneclient.common.default"))
-                        .width(Size::px(220.)),
+                        .width(settings_control_width()),
                     custom_plus_endpoint,
                     String::new(),
                 ),

@@ -2,7 +2,7 @@ use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_core::settings::LauncherSettings;
 
-use super::settings_page;
+use super::{first_section_header, settings_page};
 use crate::Route;
 use crate::components::{IconType, link_button, toggle};
 use crate::hooks::{
@@ -55,7 +55,7 @@ impl Component for SettingsDeveloper {
         let browser_compat = use_browser_compat();
 
         settings_page()
-            .child(section_header(t(
+            .child(first_section_header(t(
                 "oneclient.settings.developer.section.browser",
             )))
             .child(settings_row(
@@ -72,13 +72,13 @@ impl Component for SettingsDeveloper {
                 "oneclient.settings.developer.section.dev_tools",
             )))
             .child(settings_row(
-                IconType::Sliders04,
+                IconType::File02,
                 t("oneclient.settings.developer.log_debug.title"),
                 t("oneclient.settings.developer.log_debug.description"),
                 resettable(toggle(log_debug), log_debug, defaults.log_debug),
             ))
             .child(settings_row(
-                IconType::Sliders04,
+                IconType::Moon01,
                 t("oneclient.settings.developer.nightly_bundles.title"),
                 t("oneclient.settings.developer.nightly_bundles.description"),
                 resettable(
@@ -119,7 +119,7 @@ inventory::submit! {
 inventory::submit! {
     SearchItem {
         id: "developer.log_debug",
-        icon: IconType::Terminal,
+        icon: IconType::File02,
         title: "oneclient.settings.developer.log_debug.title",
         description: "oneclient.layout.search.developer.log_debug.description",
         keywords: &["debug", "logs", "logging"],
@@ -130,7 +130,7 @@ inventory::submit! {
 inventory::submit! {
     SearchItem {
         id: "developer.nightly_bundles",
-        icon: IconType::Sliders04,
+        icon: IconType::Moon01,
         title: "oneclient.settings.developer.nightly_bundles.title",
         description: "oneclient.layout.search.developer.nightly_bundles.description",
         keywords: &["nightly", "stable", "bundles", "channel", "datastorage"],

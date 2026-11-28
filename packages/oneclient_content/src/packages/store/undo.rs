@@ -1,10 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use oneclient_common::{
-    domain::{ContentType, ProviderId},
-    paths,
-};
+use oneclient_common::{domain::ContentType, paths};
 use oneclient_db::dao::artifact as artifacts;
 use oneclient_db::models::{ClusterArtifactRow, ClusterRow};
 
@@ -14,33 +11,19 @@ use crate::error::{ContentError, ContentResult};
 use crate::packages::JarDependencies;
 use crate::packages::local_manifest::verified_jar_dependencies;
 
-/// A manually installed or unsynced jar may declare requirements that have no
-/// provider records. Use the jar manifests if they can prove it is unrelated.
+/// A mod's jar may declare requirements absent from its provider records.
+/// Check surviving mods and keep the candidates if their safety is unverified.
 pub async fn local_mods_may_need(
     cluster_id: i64,
     candidate_mods: &HashSet<&str>,
     ctx: &ContentCtx,
 ) -> ContentResult<bool> {
-    let known: HashSet<_> = artifacts::list_cluster_release_identities(&ctx.db, cluster_id)
-        .await?
-        .into_iter()
-        .filter(|id| {
-            ProviderId::REMOTE_PROVIDERS
-                .iter()
-                .any(|provider| *provider as i64 == id.provider)
-        })
-        .map(|id| id.hash)
-        .collect();
-
     let mut check = LocalDependencyCheck {
         supplied: HashSet::new(),
         candidates_identified: true,
     };
     for hash in candidate_mods {
-        let metadata = match artifacts::get_artifact_by_hash(&ctx.db, hash).await? {
-            Some(row) => verified_jar_dependencies(&artifact_absolute_path(&row.path)?).await,
-            None => None,
-        };
+        let metadata = cached_jar_dependencies(hash, ctx).await?;
         if let Some(metadata) = metadata.filter(|metadata| !metadata.provides.is_empty()) {
             check
                 .supplied
@@ -49,25 +32,25 @@ pub async fn local_mods_may_need(
             check.candidates_identified = false;
         }
     }
-    for link in PackageStore::list_linked_artifacts(cluster_id, ctx).await? {
-        if link.content_type == ContentType::Mod && !known.contains(&link.hash) {
-            let Some(row) = artifacts::get_artifact_by_hash(&ctx.db, &link.hash).await? else {
-                return Ok(true);
-            };
-            let path = artifact_absolute_path(&row.path)?;
-            if verified_jar_dependencies(&path)
-                .await
+    let mut checked: HashSet<_> = candidate_mods
+        .iter()
+        .map(|hash| (*hash).to_owned())
+        .collect();
+    for link in artifacts::list_cluster_artifacts_detailed(&ctx.db, cluster_id).await? {
+        if link.content_type == ContentType::Mod as i64
+            && checked.insert(link.hash.clone())
+            && cached_jar_dependencies(&link.hash, ctx)
+                .await?
                 .is_none_or(|metadata| check.could_need(&metadata))
-            {
-                return Ok(true);
-            }
+        {
+            return Ok(true);
         }
     }
 
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
     let personal = paths::cluster_mods_dir(&cluster.folder_name)?;
     let game = paths::cluster_game_dir(&cluster.folder_name, cluster.is_isolated())?;
-    if has_unknown_jar(&personal, &known, &check, None).await? {
+    if has_unknown_jar(&personal, &checked, &check, None).await? {
         return Ok(true);
     }
     let shared = game.join(ContentType::Mod.folder_name());
@@ -78,7 +61,24 @@ pub async fn local_mods_may_need(
     let other_session = manifest::load(&game, manifest::MANIFEST_NAME)
         .await
         .filter(|session| session.cluster_id != cluster_id);
-    has_unknown_jar(&shared, &known, &check, other_session.as_ref()).await
+    has_unknown_jar(&shared, &checked, &check, other_session.as_ref()).await
+}
+
+async fn cached_jar_dependencies(
+    hash: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<Option<JarDependencies>> {
+    let Some(row) = artifacts::get_artifact_by_hash(&ctx.db, hash).await? else {
+        return Ok(None);
+    };
+    let path = artifact_absolute_path(&row.path)?;
+    if !polyio::sha1_file(&path)
+        .await
+        .is_ok_and(|actual| polyio::normalize_hash(&actual) == hash)
+    {
+        return Ok(None);
+    }
+    Ok(verified_jar_dependencies(&path).await)
 }
 
 struct LocalDependencyCheck {
@@ -88,9 +88,7 @@ struct LocalDependencyCheck {
 
 impl LocalDependencyCheck {
     fn could_need(&self, metadata: &JarDependencies) -> bool {
-        // Nested jars' requirements aren't all represented by the parent metadata.
         metadata.provides.is_empty()
-            || !metadata.bundled.is_empty()
             || metadata.requires.iter().any(|id| {
                 self.supplied.contains(id)
                     || (!self.candidates_identified
@@ -109,7 +107,7 @@ impl LocalDependencyCheck {
 
 async fn has_unknown_jar(
     root: &Path,
-    known: &HashSet<String>,
+    checked: &HashSet<String>,
     check: &LocalDependencyCheck,
     other_session: Option<&manifest::MaterializedManifest>,
 ) -> ContentResult<bool> {
@@ -137,7 +135,7 @@ async fn has_unknown_jar(
             }
 
             let hash = polyio::normalize_hash(&polyio::sha1_file(&path).await?);
-            if known.contains(&hash) {
+            if checked.contains(&hash) {
                 continue;
             }
             let relative = path.strip_prefix(root).ok().map(|path| {
@@ -522,6 +520,159 @@ mod tests {
         let hash = polyio::normalize_hash(&polyio::sha1_file(&jar).await.unwrap());
         assert!(
             !has_unknown_jar(dir.path(), &HashSet::from([hash]), &check, None)
+                .await
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn remote_mods_can_require_an_undo_candidate_in_their_jar() {
+        check_linked_mod_requirements(false, true).await;
+    }
+
+    #[tokio::test]
+    async fn unrelated_nested_library_allows_undo() {
+        check_linked_mod_requirements(true, false).await;
+    }
+
+    #[tokio::test]
+    async fn nested_library_requirement_blocks_undo() {
+        check_linked_mod_requirements(true, true).await;
+    }
+
+    async fn jar_bytes(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut zip = async_zip::base::write::ZipFileWriter::new(Vec::new());
+        for &(name, contents) in entries {
+            let entry =
+                async_zip::ZipEntryBuilder::new(name.into(), async_zip::Compression::Stored);
+            zip.write_entry_whole(entry, contents).await.unwrap();
+        }
+        zip.close().await.unwrap()
+    }
+
+    async fn check_linked_mod_requirements(nested: bool, requires_candidate: bool) {
+        use oneclient_common::domain::{GameLoader, ProviderId};
+        use oneclient_db::models::{ClusterKind, NewCluster};
+
+        let dir = polyio::tempdir().await.unwrap();
+        let db = oneclient_db::connect(dir.dir_path().join("test.db"))
+            .await
+            .unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let ctx = ContentCtx::new(
+            db,
+            oneclient_net::RequestClient::new(oneclient_net::NetConfig::default()).unwrap(),
+            oneclient_events::EventBus::new(tx),
+            crate::packages::PackageProviderRegistry::new(),
+            Default::default(),
+        );
+        let cluster = oneclient_db::dao::cluster::insert(
+            &ctx.db,
+            &NewCluster {
+                name: "Undo manifest test",
+                folder_name: dir.dir_path().file_name().unwrap().to_str().unwrap(),
+                mc_version: "1.21.1",
+                mc_loader: GameLoader::Fabric as i64,
+                mc_loader_version: None,
+                setting_profile_name: None,
+                stage: 0,
+                kind: ClusterKind::Modded as i64,
+                user_created: 1,
+                description: None,
+                tags: "[]",
+                cover_path: None,
+            },
+        )
+        .await
+        .unwrap();
+        let dependent_manifest: &[u8] = if requires_candidate {
+            br#"{"id":"dependent","depends":{"library":"*"}}"#
+        } else {
+            br#"{"id":"dependent","depends":{"minecraft":"*"}}"#
+        };
+        let dependent = jar_bytes(&[("fabric.mod.json", dependent_manifest)]).await;
+        let dependent = if nested {
+            let wrapper = jar_bytes(&[
+                (
+                    "fabric.mod.json",
+                    br#"{"id":"wrapper","jars":[{"file":"META-INF/jars/dependent.jar"}]}"#,
+                ),
+                ("META-INF/jars/dependent.jar", &dependent),
+            ])
+            .await;
+            jar_bytes(&[
+                (
+                    "fabric.mod.json",
+                    br#"{"id":"outer","jars":[{"file":"vendor/wrapper.jar"}]}"#,
+                ),
+                ("vendor/wrapper.jar", &wrapper),
+            ])
+            .await
+        } else {
+            dependent
+        };
+        let mut hashes = Vec::new();
+        for (id, bytes) in [
+            (
+                "library",
+                jar_bytes(&[("fabric.mod.json", br#"{"id":"library"}"#)]).await,
+            ),
+            ("dependent", dependent),
+        ] {
+            let file_name = format!("{id}.jar");
+            let path = dir.dir_path().join(&file_name);
+            tokio::fs::write(&path, bytes).await.unwrap();
+            let hash = polyio::normalize_hash(&polyio::sha1_file(&path).await.unwrap());
+            artifacts::insert_artifact(
+                &ctx.db,
+                &hash,
+                ContentType::Mod as i64,
+                path.to_str().unwrap(),
+                &file_name,
+                None,
+            )
+            .await
+            .unwrap();
+            artifacts::upsert_provider_release(
+                &ctx.db,
+                ProviderId::Modrinth as i64,
+                id,
+                "v1",
+                &hash,
+                "",
+                "",
+                None,
+                "[]",
+                "[]",
+            )
+            .await
+            .unwrap();
+            artifacts::link_cluster_artifact(&ctx.db, cluster.id, &hash, &file_name)
+                .await
+                .unwrap();
+            hashes.push(hash);
+        }
+
+        let candidates = HashSet::from([hashes[0].as_str()]);
+        assert!(
+            crate::packages::dependents::removal_blockers(cluster.id, &candidates, &ctx)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            local_mods_may_need(cluster.id, &candidates, &ctx)
+                .await
+                .unwrap(),
+            requires_candidate
+        );
+
+        // If the cached dependency manifest can't be read, Undo must also keep the library.
+        tokio::fs::remove_file(dir.dir_path().join("dependent.jar"))
+            .await
+            .unwrap();
+        assert!(
+            local_mods_may_need(cluster.id, &candidates, &ctx)
                 .await
                 .unwrap()
         );

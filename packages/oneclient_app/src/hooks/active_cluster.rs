@@ -83,15 +83,50 @@ pub fn use_datapack_world() -> State<HashMap<ClusterId, String>> {
     consume_root_context::<DataPackWorldState>().0
 }
 
-#[derive(Clone)]
-pub struct LinkConfirmState(pub State<Option<String>>);
+#[derive(Clone, Copy, PartialEq)]
+pub struct LinkConfirmState(State<Option<LinkConfirmRequest>>);
 
-pub fn use_provide_link_confirm(state: LinkConfirmState) {
-    use_provide_root_context(move || state.clone());
+#[derive(Clone)]
+pub(crate) struct LinkConfirmRequest {
+    pub(crate) url: String,
+    pub(crate) from_toast: bool,
+    pub(crate) generation: u64,
 }
 
-pub fn use_link_confirm() -> State<Option<String>> {
-    consume_root_context::<LinkConfirmState>().0
+impl LinkConfirmState {
+    pub fn set(&mut self, url: Option<String>) {
+        if let Some(url) = url {
+            self.open(url, false);
+        } else {
+            self.0.set(None);
+        }
+    }
+
+    pub(crate) fn open(&mut self, url: String, from_toast: bool) {
+        let generation = self
+            .0
+            .peek()
+            .as_ref()
+            .map_or(0, |request| request.generation.wrapping_add(1));
+        self.0.set(Some(LinkConfirmRequest {
+            url,
+            from_toast,
+            generation,
+        }));
+    }
+
+    pub(crate) fn request(self) -> Option<LinkConfirmRequest> {
+        self.0.read().clone()
+    }
+}
+
+pub fn use_provide_link_confirm() {
+    let state = use_state(|| None);
+    use_provide_root_context(move || LinkConfirmState(state));
+}
+
+pub fn use_link_confirm() -> LinkConfirmState {
+    consume_root_context::<LinkConfirmState>()
 }
 
 /// The disable the user is being asked about, if any.
@@ -152,6 +187,7 @@ pub struct BrowserUiState {
     pub query: String,
     pub provider: ProviderId,
     pub categories: Vec<String>,
+    pub parked_categories: HashMap<ProviderId, Vec<String>>,
     pub sort: SearchSort,
     pub loader: Option<GameLoader>,
     pub side: Option<SearchSide>,
@@ -165,6 +201,7 @@ impl Default for BrowserUiState {
             query: String::new(),
             provider: ProviderId::Modrinth,
             categories: Vec::new(),
+            parked_categories: HashMap::new(),
             sort: SearchSort::Relevance,
             loader: None,
             side: None,
@@ -215,6 +252,29 @@ mod tests {
     use freya_testing::TestingRunner;
 
     use super::*;
+
+    #[test]
+    fn toast_link_elevation_does_not_carry_over_to_the_next_request() {
+        let mut runner = freya_testing::launch_test(|| {
+            use_provide_link_confirm();
+            rect()
+        });
+        runner.sync_and_update();
+        runner.run_in(|| {
+            let mut link = use_link_confirm();
+            link.open("https://polyfrost.org".into(), true);
+            let elevated = link.request().unwrap();
+            assert!(elevated.from_toast);
+
+            link.set(Some(elevated.url));
+            let ordinary = link.request().unwrap();
+            assert!(!ordinary.from_toast);
+            assert_ne!(ordinary.generation, elevated.generation);
+
+            link.set(None);
+            assert!(link.request().is_none());
+        });
+    }
 
     /// Stands in for a route layout: it owns the state and publishes it as a root
     /// context, so unmounting it drops the value the context still points at

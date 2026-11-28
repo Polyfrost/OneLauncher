@@ -12,6 +12,7 @@ use crate::AppAssets;
 use colors::Palette;
 
 pub mod colors;
+pub mod glass;
 
 pub const NAVBAR_HEIGHT_PX: f32 = 80.;
 pub const HOME_PADDING_PX: f32 = 48.;
@@ -22,7 +23,14 @@ const PIXEL_BOOST_MAX: f32 = 2.5;
 const PIXEL_BOOST_END: f32 = 17.;
 const PIXEL_BOOST_RANGE: f32 = 8.;
 
-const BUILTIN_THEMES: [&str; 4] = ["dark", "light", "minecraft-dark", "minecraft-light"];
+const BUILTIN_THEMES: [&str; 6] = [
+    "dark",
+    "light",
+    "polyglass-dark",
+    "polyglass-light",
+    "minecraft-dark",
+    "minecraft-light",
+];
 
 thread_local! {
     static THEMES: RefCell<Vec<Rc<Theme>>> =
@@ -45,6 +53,8 @@ pub struct Theme {
     pub pixel_font_size: Option<f32>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pixel_icons: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub liquid_glass: bool,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub font_files: BTreeMap<String, Vec<PathBuf>>,
     pub colors: Palette,
@@ -88,16 +98,113 @@ pub fn family_name(name: &str) -> String {
 }
 
 pub fn counterpart(id: &str) -> Option<String> {
-    THEMES.with_borrow(|themes| {
-        let theme = themes.iter().find(|theme| theme.id == id)?;
-        let family = family_name(&theme.name);
-        themes
-            .iter()
-            .find(|other| {
-                other.colors.light != theme.colors.light && family_name(&other.name) == family
-            })
-            .map(|other| other.id.clone())
-    })
+    THEMES.with_borrow(|themes| counterpart_in(themes.iter().map(|theme| &**theme), id))
+}
+
+/// The id a theme's other variant would have: `x-dark` pairs with `x-light`, and the built-in
+/// `dark` with `light`
+fn sibling_id(id: &str) -> Option<String> {
+    match id {
+        "dark" => Some("light".into()),
+        "light" => Some("dark".into()),
+        id => id
+            .strip_suffix("-dark")
+            .map(|stem| format!("{stem}-light"))
+            .or_else(|| id.strip_suffix("-light").map(|stem| format!("{stem}-dark"))),
+    }
+}
+
+/// File names that would mark the other variant of `theme`, most specific first: the swapped
+/// `-dark`/`-light` suffix, then for a theme without one the derived `<id>-light`/`<id>-dark`, and
+/// for a suffixed theme its bare stem, which is how a single-file theme and its derived variant pair
+fn filename_candidates(theme: &Theme) -> Vec<String> {
+    let mut candidates: Vec<String> = sibling_id(&theme.id).into_iter().collect();
+    match ["-dark", "-light"]
+        .iter()
+        .find_map(|suffix| theme.id.strip_suffix(suffix))
+    {
+        Some(stem) => candidates.push(stem.to_string()),
+        None => {
+            let other = if theme.colors.light { "dark" } else { "light" };
+            candidates.push(format!("{}-{other}", theme.id));
+        }
+    }
+    candidates
+}
+
+/// Generated ids retain their source so a saved derived variant can still find its original.
+fn derived_source(id: &str) -> Option<&str> {
+    let (source, suffix) = id.rsplit_once("--derived-")?;
+    let (side, number) = suffix
+        .split_once('-')
+        .map_or((suffix, None), |(side, n)| (side, Some(n)));
+    if !matches!(side, "dark" | "light")
+        || number.is_some_and(|n| !n.parse::<u32>().is_ok_and(|n| n >= 2))
+    {
+        return None;
+    }
+    Some(source)
+}
+
+/// Reserve generated and filename pairs before matching the remaining variants by name.
+/// Assign pairs once for the whole family so every lookup is reciprocal.
+fn counterpart_in<'a>(themes: impl Iterator<Item = &'a Theme> + Clone, id: &str) -> Option<String> {
+    let theme = themes.clone().find(|theme| theme.id == id)?;
+    let family_label = family_name(&theme.name);
+    let mut family: Vec<_> = themes
+        .filter(|other| {
+            other.is_builtin() == theme.is_builtin() && family_name(&other.name) == family_label
+        })
+        .collect();
+    family.sort_by(|a, b| a.id.cmp(&b.id));
+    let mut pairs = vec![None; family.len()];
+
+    for (i, derived) in family.iter().enumerate() {
+        let Some(source) = derived_source(&derived.id) else {
+            continue;
+        };
+        if let Some(j) = family.iter().position(|original| {
+            original.id == source && original.colors.light != derived.colors.light
+        }) && pairs[i].is_none() && pairs[j].is_none()
+        {
+            pairs[i] = Some(j);
+            pairs[j] = Some(i);
+        }
+    }
+
+    for (i, variant) in family.iter().enumerate() {
+        if pairs[i].is_some() {
+            continue;
+        }
+        let other = filename_candidates(variant)
+            .into_iter()
+            .find_map(|candidate| {
+                family.iter().enumerate().find_map(|(j, other)| {
+                    (pairs[j].is_none()
+                        && other.id == candidate
+                        && other.colors.light != variant.colors.light)
+                        .then_some(j)
+                })
+            });
+        if let Some(j) = other {
+            pairs[i] = Some(j);
+            pairs[j] = Some(i);
+        }
+    }
+
+    let remaining: Vec<_> = pairs
+        .iter()
+        .enumerate()
+        .filter_map(|(index, pair)| pair.is_none().then_some(index))
+        .collect();
+    if let [a, b] = remaining.as_slice()
+        && family[*a].colors.light != family[*b].colors.light
+    {
+        pairs[*a] = Some(*b);
+        pairs[*b] = Some(*a);
+    }
+    let index = family.iter().position(|variant| variant.id == id)?;
+    pairs[index].map(|other| family[other].id.clone())
 }
 
 pub fn light_variant(dark: &str) -> Option<String> {
@@ -127,7 +234,8 @@ pub fn theme_display_name(id: &str) -> String {
     }
 }
 
-/// Whether an ID names an installed theme or a complete system pair.
+/// Whether `id` names an installed theme or a system pairing of one, so outside requests (the
+/// in-game client) can't leave the launcher on a theme it would silently swap for the default
 pub fn is_known(id: &str) -> bool {
     let id = system_pair(id).map_or_else(|| id.to_string(), |(dark, _)| dark);
     THEMES.with_borrow(|themes| themes.iter().any(|theme| theme.id == id))
@@ -299,10 +407,7 @@ pub async fn import_theme(path: &Path) -> anyhow::Result<String> {
 /// Removes every custom file of the family `id` belongs to
 pub async fn delete_theme(id: &str) -> anyhow::Result<()> {
     let dir = oneclient_common::paths::themes_dir()?;
-    for theme in family_variants(id)
-        .iter()
-        .filter(|theme| !theme.is_builtin())
-    {
+    for theme in deletable_family_variants(id) {
         let path = dir.join(format!("{}.json", theme.id));
         // A variant derived from a built-in has no file until it is saved
         if path.exists() {
@@ -311,6 +416,12 @@ pub async fn delete_theme(id: &str) -> anyhow::Result<()> {
     }
     reload();
     Ok(())
+}
+
+fn deletable_family_variants(id: &str) -> impl Iterator<Item = Rc<Theme>> + '_ {
+    family_variants(id).into_iter().filter(move |theme| {
+        !theme.is_builtin() && (theme.id == id || counterpart(&theme.id).as_deref() == Some(id))
+    })
 }
 
 fn reload() {
@@ -398,20 +509,52 @@ fn fill_missing_variants(themes: &mut Vec<Theme>) {
     let mut index = 0;
     while index < themes.len() {
         let theme = &themes[index];
-        let family = family_name(&theme.name);
-        let paired = themes.iter().any(|other| {
-            other.colors.light != theme.colors.light && family_name(&other.name) == family
-        });
+        // the same pairing rules the picker uses, so a theme that can't pair gets its own variant
+        // instead of disappearing from the picker
+        let paired = counterpart_in(themes.iter(), &theme.id).is_some();
         if !theme.is_builtin() && !paired {
             let base = builtin_colors(themes.iter(), !theme.colors.light);
-            let derived = derived_variant(theme, base, |id| themes.iter().any(|t| t.id == id));
+            let mut derived = derived_variant(theme, base, |id| themes.iter().any(|t| t.id == id));
+            let original_id = theme.id.clone();
+            let stem = ["-dark", "-light"]
+                .iter()
+                .find_map(|suffix| original_id.strip_suffix(suffix))
+                .unwrap_or(&original_id);
+            let side = if derived.colors.light { "light" } else { "dark" };
+            let legacy_id = format!("{stem}-{side}");
+            if !themes.iter().any(|theme| theme.id == legacy_id) {
+                let family = family_name(&theme.name);
+                let existing: Vec<_> = themes
+                    .iter()
+                    .filter(|other| {
+                        other.is_builtin() == theme.is_builtin()
+                            && family_name(&other.name) == family
+                    })
+                    .filter_map(|theme| {
+                        counterpart_in(themes.iter(), &theme.id)
+                            .map(|other| (theme.id.clone(), other))
+                    })
+                    .collect();
+                let mut candidate = derived.clone();
+                candidate.id = legacy_id.clone();
+                themes.push(candidate);
+                let safe = counterpart_in(themes.iter(), &original_id).as_deref()
+                    == Some(legacy_id.as_str())
+                    && existing.iter().all(|(id, other)| {
+                        counterpart_in(themes.iter(), id).as_deref() == Some(other.as_str())
+                    });
+                themes.pop();
+                if safe {
+                    derived.id = legacy_id;
+                }
+            }
             themes.push(derived);
         }
         index += 1;
     }
 }
 
-/// The first built-in palette for the light or dark side (PolyGlass)
+/// The first built-in palette for the light or dark side (Polyfrost)
 fn builtin_colors<'a>(mut themes: impl Iterator<Item = &'a Theme>, light: bool) -> Palette {
     themes
         .find(|theme| theme.is_builtin() && theme.colors.light == light)
@@ -422,13 +565,9 @@ fn builtin_colors<'a>(mut themes: impl Iterator<Item = &'a Theme>, light: bool) 
 /// The other variant of `theme`: its fonts and corners with the `base` colors
 fn derived_variant(theme: &Theme, base: Palette, taken: impl Fn(&str) -> bool) -> Theme {
     let light = base.light;
-    let stem = ["-dark", "-light"]
-        .iter()
-        .find_map(|suffix| theme.id.strip_suffix(suffix))
-        .unwrap_or(&theme.id);
     let suffix = if light { "light" } else { "dark" };
     Theme {
-        id: unique(&format!("{stem}-{suffix}"), '-', taken),
+        id: unique(&format!("{}--derived-{suffix}", theme.id), '-', taken),
         name: variant_name(&family_name(&theme.name), light),
         colors: base,
         ..theme.clone()
@@ -574,6 +713,76 @@ mod tests {
     }
 
     #[test]
+    fn a_copied_theme_with_a_taken_name_still_gets_a_pair() {
+        // Two hand-copied single files share the name "Ocean": neither can pair by name, so each
+        // gets its own derived variant and pairs with it by file name instead of vanishing
+        let mut themes = vec![
+            builtin("dark"),
+            builtin("light"),
+            custom("ocean", "Ocean", "dark"),
+            custom("ocean-2", "Ocean", "dark"),
+        ];
+        fill_missing_variants(&mut themes);
+        let ids: Vec<_> = themes[4..].iter().map(|t| t.id.as_str()).collect();
+        assert_eq!(ids, ["ocean-light", "ocean-2-light"]);
+        assert_eq!(
+            counterpart_in(themes.iter(), "ocean").as_deref(),
+            Some("ocean-light")
+        );
+        assert_eq!(
+            counterpart_in(themes.iter(), "ocean-2").as_deref(),
+            Some("ocean-2-light")
+        );
+        assert_eq!(
+            counterpart_in(themes.iter(), "ocean-2-light").as_deref(),
+            Some("ocean-2")
+        );
+    }
+
+    #[test]
+    fn colliding_originals_keep_distinct_reciprocal_pairs_after_reload() {
+        let originals = [
+            custom("ocean", "Ocean Dark", "dark"),
+            custom("ocean-dark", "Ocean Dark", "dark"),
+            custom("ocean-light", "Amber Light", "light"),
+        ];
+        let mut themes = vec![builtin("dark"), builtin("light")];
+        themes.extend(originals.clone());
+        fill_missing_variants(&mut themes);
+        assert_eq!(themes.len(), 8);
+        let mut partners = std::collections::HashSet::new();
+        for original in &originals {
+            let partner = counterpart_in(themes.iter(), &original.id).unwrap();
+            assert!(partners.insert(partner.clone()));
+            assert_eq!(
+                counterpart_in(themes.iter(), &partner).as_deref(),
+                Some(original.id.as_str())
+            );
+        }
+        // Saving then loading variants restores their ids and names, not any in-memory links.
+        let mut reloaded: Vec<_> = themes
+            .iter()
+            .map(|theme| {
+                parse_theme(
+                    &theme.id,
+                    &serde_json::to_vec(theme).unwrap(),
+                    theme.dir.as_deref(),
+                )
+                .unwrap()
+            })
+            .collect();
+        fill_missing_variants(&mut reloaded);
+        assert_eq!(reloaded.len(), themes.len());
+        for original in &originals {
+            let partner = counterpart_in(reloaded.iter(), &original.id).unwrap();
+            assert_eq!(
+                counterpart_in(reloaded.iter(), &partner).as_deref(),
+                Some(original.id.as_str())
+            );
+        }
+    }
+
+    #[test]
     fn single_variant_custom_theme_loads_as_a_family() {
         let mut themes = vec![
             builtin("dark"),
@@ -645,5 +854,106 @@ mod tests {
         assert!(parse_theme_file(b"{\"name\": \"Broken\"}").is_err());
         assert!(parse_theme_file(b"[]").is_err());
         assert!(parse_theme_file(&file(serde_json::json!([dark, dark]))).is_err());
+    }
+    #[test]
+    fn a_custom_family_named_like_a_built_in_pairs_with_its_own_variant() {
+        let mut themes = vec![builtin("dark"), builtin("light")];
+        themes.push(custom("polyfrost-dark", "Polyfrost Dark", "dark"));
+        themes.push(custom("polyfrost-light", "Polyfrost Light", "light"));
+        let pair = |id| counterpart_in(themes.iter(), id);
+        assert_eq!(pair("polyfrost-dark").as_deref(), Some("polyfrost-light"));
+        assert_eq!(pair("polyfrost-light").as_deref(), Some("polyfrost-dark"));
+        assert_eq!(pair("dark").as_deref(), Some("light"));
+        assert_eq!(pair("light").as_deref(), Some("dark"));
+
+        // An id without the usual suffix still pairs by name, never across built-in and custom
+        let mut themes = vec![builtin("dark"), builtin("light")];
+        themes.push(custom("polyfrost", "Polyfrost Dark", "dark"));
+        themes.push(custom("polyfrost-2", "Polyfrost Light", "light"));
+        let pair = |id| counterpart_in(themes.iter(), id);
+        assert_eq!(pair("polyfrost").as_deref(), Some("polyfrost-2"));
+        assert_eq!(pair("dark").as_deref(), Some("light"));
+    }
+
+    #[test]
+    fn matching_file_names_never_pair_two_families() {
+        // reef-dark.json holds family Reef, reef-light.json holds family Amber
+        THEMES.with_borrow_mut(|themes| {
+            themes.push(Rc::new(custom("test-cove-dark", "Reef Dark", "dark")));
+            themes.push(Rc::new(custom("test-cove-light", "Amber Light", "light")));
+        });
+        assert_eq!(counterpart("test-cove-dark"), None);
+        assert_eq!(counterpart("test-cove-light"), None);
+        // So deleting Reef removes only Reef's own file
+        let doomed: Vec<_> = deletable_family_variants("test-cove-dark")
+            .map(|theme| theme.id.clone())
+            .collect();
+        assert_eq!(doomed, ["test-cove-dark"]);
+    }
+
+    #[test]
+    fn a_filename_pair_is_reserved_before_matching_orphans_by_name() {
+        THEMES.with_borrow_mut(|themes| {
+            themes.extend(
+                [
+                    custom("test-a-dark", "Test Lagoon Dark", "dark"),
+                    custom("test-a-light", "Test Amber Light", "light"),
+                    custom("test-b-dark", "Test Lagoon Dark", "dark"),
+                    custom("test-b-light", "Test Lagoon Light", "light"),
+                ]
+                .map(Rc::new),
+            );
+        });
+        assert_eq!(counterpart("test-a-dark"), None);
+        assert_eq!(counterpart("test-a-light"), None);
+        assert_eq!(counterpart("test-b-dark").as_deref(), Some("test-b-light"));
+        assert_eq!(counterpart("test-b-light").as_deref(), Some("test-b-dark"));
+        let doomed: Vec<_> = deletable_family_variants("test-a-dark")
+            .map(|theme| theme.id.clone())
+            .collect();
+        assert_eq!(doomed, ["test-a-dark"]);
+    }
+
+    #[test]
+    fn name_fallback_pairs_only_a_single_remaining_dark_and_light() {
+        let mut themes = vec![
+            custom("one-dark", "Reef Dark", "dark"),
+            custom("one-light", "Reef Light", "light"),
+            custom("reef-night", "Reef Dark", "dark"),
+            custom("reef-day", "Reef Light", "light"),
+        ];
+        assert_eq!(
+            counterpart_in(themes.iter(), "reef-night").as_deref(),
+            Some("reef-day")
+        );
+        assert_eq!(
+            counterpart_in(themes.iter(), "reef-day").as_deref(),
+            Some("reef-night")
+        );
+        themes.push(custom("other-night", "Reef Dark", "dark"));
+        for id in ["reef-night", "reef-day", "other-night"] {
+            assert_eq!(counterpart_in(themes.iter(), id), None);
+        }
+    }
+
+    #[test]
+    fn built_in_styles_keep_their_palette_and_system_pair() {
+        for (dark, light, family, glass) in [
+            ("dark", "light", "Polyfrost", false),
+            ("polyglass-dark", "polyglass-light", "PolyGlass", true),
+            ("minecraft-dark", "minecraft-light", "Minecraft", false),
+        ] {
+            let system = system_theme_id(dark);
+            assert!(is_known(&system));
+            assert_eq!(system_aware(&system, true), dark);
+            assert_eq!(system_aware(&system, false), light);
+            for id in [dark, light] {
+                let theme = resolve_theme(id);
+                assert_eq!(family_name(&theme.name), family);
+                assert_eq!(theme.liquid_glass, glass);
+            }
+        }
+        assert_eq!(system_aware("system", false), "light");
+        assert_eq!(resolve_theme("amoled").id, "dark");
     }
 }

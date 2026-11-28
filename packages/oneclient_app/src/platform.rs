@@ -290,30 +290,49 @@ fn open_target(target: &str) {
     });
 }
 
-pub fn copy_image_to_clipboard(path: std::path::PathBuf) {
-    std::thread::spawn(move || {
-        let img = match image::open(&path) {
-            Ok(img) => img.into_rgba8(),
-            Err(err) => {
-                tracing::warn!("failed to decode {} for clipboard: {err}", path.display());
-                return;
-            }
+pub async fn copy_image_to_clipboard(path: std::path::PathBuf) -> Result<(), String> {
+    crate::launcher::off_ui_blocking(move || write_clipboard_image(&path)).await
+}
+
+fn write_clipboard_image(path: &std::path::Path) -> Result<(), String> {
+    let img = image::open(path)
+        .map_err(|err| format!("could not decode screenshot: {err}"))?
+        .into_rgba8();
+    let data = arboard::ImageData {
+        width: img.width() as usize,
+        height: img.height() as usize,
+        bytes: std::borrow::Cow::Owned(img.into_raw()),
+    };
+
+    #[cfg(target_os = "linux")]
+    {
+        // X11 and Wayland can stop serving the image when the clipboard handle is dropped.
+        static CLIPBOARD: std::sync::Mutex<Option<arboard::Clipboard>> =
+            std::sync::Mutex::new(None);
+        let mut stored = CLIPBOARD.lock().map_err(|err| err.to_string())?;
+        let clipboard = match stored.as_mut() {
+            Some(clipboard) => clipboard,
+            None => stored.insert(arboard::Clipboard::new().map_err(|err| err.to_string())?),
         };
-        let (width, height) = (img.width() as usize, img.height() as usize);
-        let data = arboard::ImageData {
-            width,
-            height,
-            bytes: std::borrow::Cow::Owned(img.into_raw()),
-        };
-        match arboard::Clipboard::new() {
-            Ok(mut clip) => {
-                if let Err(err) = clip.set_image(data) {
-                    tracing::warn!("failed to copy image to clipboard: {err}");
-                }
-            }
-            Err(err) => tracing::warn!("failed to open clipboard: {err}"),
-        }
-    });
+        clipboard.set_image(data).map_err(|err| err.to_string())
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        arboard::Clipboard::new()
+            .and_then(|mut clipboard| clipboard.set_image(data))
+            .map_err(|err| err.to_string())
+    }
+}
+
+#[cfg(test)]
+mod clipboard_tests {
+    #[test]
+    fn copying_a_missing_screenshot_returns_an_error() {
+        let path = std::env::temp_dir().join(format!("missing-{}.png", uuid::Uuid::new_v4()));
+        let error = super::write_clipboard_image(&path).unwrap_err();
+        assert!(error.starts_with("could not decode screenshot:"));
+    }
 }
 
 pub mod tray {

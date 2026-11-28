@@ -553,7 +553,7 @@ async fn evaluate_candidates(
 }
 
 /// Re-resolves the selected packages against current links. The caller holds
-/// the package mutation guard from this check through application of the plan.
+/// the instance and package mutation guards from this check through application of the plan.
 pub async fn revalidate_release_migration(
     cluster_id: i64,
     packages: Vec<ReleaseMigrationPackage>,
@@ -745,6 +745,7 @@ pub async fn process_waitlist(
             );
             continue;
         }
+        let _instance = crate::packages::instance_package_guard(cluster_id).await;
         let _mutation = crate::packages::package_mutation_guard().await;
         let target = match PackageStore::get_cluster(cluster_id, ctx).await {
             Ok(target) => target,
@@ -985,6 +986,16 @@ mod tests {
 
     use super::*;
     use crate::packages::types::VersionFile;
+
+    #[tokio::test]
+    async fn a_migration_keeps_removals_out_of_its_own_instance_only() {
+        let migration = crate::packages::instance_package_guard(-71).await;
+        let mut removal = std::pin::pin!(crate::packages::instance_package_guard(-71));
+        assert!(futures_util::poll!(&mut removal).is_pending());
+        let _elsewhere = crate::packages::instance_package_guard(-72).await;
+        drop(migration);
+        let _removal = removal.await;
+    }
 
     fn version(game_versions: &[&str], loaders: Vec<GameLoader>) -> VersionDetail {
         VersionDetail {

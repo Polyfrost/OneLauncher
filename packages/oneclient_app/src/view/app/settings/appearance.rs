@@ -5,19 +5,25 @@ use freya::router::RouterContext;
 use oneclient_core::settings::LauncherSettings;
 
 use super::settings_page;
-use crate::components::{Button, ColorPicker, ContextMenu, Icon, IconType, toggle};
+use crate::components::{
+    Button, ColorPicker, ContextMenu, Icon, IconType, TooltipPlacement, toggle, use_tooltip_anchor,
+};
 use crate::hooks::{Actions, use_debounced, use_dispatch, use_settings_snapshot};
 use crate::i18n::{t, tf};
 use crate::layout::SearchItem;
 use crate::routes::Route;
 use crate::theme::{
-    colors, copy_family, delete_theme, duplicate_theme, export_theme, family_variants,
-    import_theme, is_known, system_theme_id, text_size,
+    Theme, colors, copy_family, delete_theme, duplicate_theme, export_theme, family_variants,
+    glass, import_theme, is_known, system_theme_id, text_size,
 };
+use crate::ui::border_all_color;
 use crate::view::app::settings::appearance_picker::{
-    compose_theme, section, section_with_action, split_theme, style_picker, theme_mode_picker,
+    compose_theme, section, section_with_action, split_theme, style_picker, theme_icon,
+    theme_mode_picker,
 };
-use crate::view::app::settings::{resettable, settings_row};
+use crate::view::app::settings::{
+    confirm_dialog, readable_secondary, resettable, section_header, settings_row,
+};
 
 #[derive(PartialEq)]
 pub struct SettingsAppearance;
@@ -70,10 +76,11 @@ impl Component for SettingsAppearance {
             persist_accent.edit_settings(|settings| settings.accent_color = value);
         });
 
+        // Same pickers as the onboarding Appearance step. The style cards add columns as the page
+        // widens, so they keep their proportions
         settings_page()
-            .child(
-                // Same pickers as the onboarding Appearance step. The style cards add columns
-                // as the page widens, so they keep their proportions
+            .child(super::focus_anchor(
+                "appearance.theme",
                 rect()
                     .vertical()
                     .width(Size::fill())
@@ -88,28 +95,17 @@ impl Component for SettingsAppearance {
                         Some(theme_actions(&dispatch)),
                         style_picker(&settings.theme, dense, true),
                     )),
-            )
-            .child(
-                rect()
-                    .vertical()
-                    .width(Size::fill())
-                    .spacing(4.)
-                    .padding(Gaps::new(8., 0., 0., 0.))
-                    .child(accent_color_row(accent, defaults.accent_color.clone()))
-                    .child(dynamic_background_row(
-                        dynamic_bg,
-                        defaults.dynamic_background_enabled,
-                    ))
-                    .child(animations_row(animations_on, defaults.animations_enabled)),
-            )
-            .child(
-                rect().padding(Gaps::new(8., 0., 0., 0.)).child(
-                    label()
-                        .text(t("oneclient.settings.appearance.language_hint"))
-                        .font_size(text_size(12.))
-                        .color(colors::fg_primary()),
-                ),
-            )
+            ))
+            .child(section_header(t(
+                "oneclient.settings.appearance.section.effects",
+            )))
+            .child(accent_color_row(accent, defaults.accent_color.clone()))
+            .child(dynamic_background_row(
+                dynamic_bg,
+                defaults.dynamic_background_enabled,
+            ))
+            .child(animations_row(animations_on, defaults.animations_enabled))
+            .child(language_link())
             .into_element()
     }
 }
@@ -124,11 +120,54 @@ fn select_family(dispatch: &Actions, family: &str) {
     });
 }
 
+/// "Looking to change your language?" with a link to the Language page
+fn language_link() -> impl IntoElement {
+    let mut hovered = use_state(|| false);
+    let a11y_id = use_a11y();
+    let keyboard = use_focus(a11y_id)() == Focus::Keyboard;
+    let link = t("oneclient.settings.appearance.language_link");
+    rect()
+        .horizontal()
+        .cross_align(Alignment::Center)
+        .spacing(6.)
+        .padding(Gaps::new(12., 0., 0., 0.))
+        .child(
+            label()
+                .text(t("oneclient.settings.appearance.language_hint"))
+                .font_size(text_size(12.))
+                .color(readable_secondary()),
+        )
+        .child(
+            rect()
+                .a11y_id(a11y_id)
+                .a11y_role(AccessibilityRole::Link)
+                .a11y_focusable(true)
+                .a11y_alt(link)
+                .cursor(CursorIcon::Pointer)
+                .on_pointer_enter(move |_| hovered.set_if_modified(true))
+                .on_pointer_leave(move |_| hovered.set_if_modified(false))
+                .on_press(|_| {
+                    let _ = RouterContext::get().replace(Route::SettingsLanguage {});
+                })
+                .child(
+                    label()
+                        .text(link)
+                        .font_size(text_size(12.))
+                        .font_weight(FontWeight::MEDIUM)
+                        // The link color the Markdown pages use, readable on every surface
+                        .color(colors::code_info())
+                        .maybe(*hovered.read() || keyboard, |el| {
+                            el.text_decoration(TextDecoration::Underline)
+                        }),
+                ),
+        )
+}
+
 fn open_editor(id: String) {
     let _ = RouterContext::get().push(Route::SettingsThemeEditor { id });
 }
 
-/// New custom themes start as a copy of the built-in PolyGlass dark and light pair
+/// New custom themes start as a copy of the built-in Polyfrost dark and light pair
 fn create_theme(dispatch: &Actions) {
     let dispatch = dispatch.clone();
     // The window task below has no component context to find the router in
@@ -201,6 +240,58 @@ fn import_button(dispatch: &Actions) -> Element {
         .into_element()
 }
 
+pub(super) const KEBAB_SIZE: f32 = 22.;
+
+/// The kebab itself, in the previewed theme
+#[derive(PartialEq)]
+struct ThemeFileButton {
+    alt: String,
+    preview: Theme,
+    on_press: EventHandler<()>,
+}
+
+impl Component for ThemeFileButton {
+    fn render(&self) -> impl IntoElement {
+        let mut hovered = use_state(|| false);
+        let alt = self.alt.clone();
+        let on_press = self.on_press.clone();
+        let a11y_id = use_a11y();
+        let keyboard = use_focus(a11y_id)() == Focus::Keyboard;
+        let tooltip = use_tooltip_anchor(Some(alt.clone().into()), TooltipPlacement::Top);
+        let preview = &self.preview;
+        let palette = preview.colors;
+        let radius = 6. * preview.radius_scale;
+        let face = rect().corner_radius(CornerRadius::new_all(radius));
+        let face = if preview.liquid_glass {
+            glass::panel(face, preview, radius, palette.card.0)
+        } else {
+            face.background(palette.card.0)
+                .border(border_all_color(1., palette.border.0))
+        };
+        let face = face
+            .width(Size::px(KEBAB_SIZE))
+            .height(Size::px(KEBAB_SIZE))
+            .center()
+            .maybe(*hovered.read(), |el| {
+                el.background(palette.text.0.with_a(28))
+            })
+            .maybe(keyboard, |el| {
+                el.border(border_all_color(1.5, palette.text.0))
+            })
+            .a11y_id(a11y_id)
+            .a11y_role(AccessibilityRole::Button)
+            .a11y_focusable(true)
+            .a11y_alt(alt)
+            .cursor(CursorIcon::Pointer)
+            // The tooltip owns pointer-enter and pointer-leave on this rect
+            .on_pointer_over(move |_| hovered.set_if_modified(true))
+            .on_pointer_out(move |_| hovered.set_if_modified(false))
+            .on_press(move |_| on_press.call(()))
+            .child(theme_icon(preview, "dots-vertical", 14., palette.text.0));
+        tooltip.attach(face)
+    }
+}
+
 /// The kebab menu on a style card; custom families can also be edited and deleted
 #[derive(PartialEq)]
 pub(super) struct ThemeFileMenu {
@@ -209,32 +300,34 @@ pub(super) struct ThemeFileMenu {
     pub(super) custom: bool,
     /// Owned by the card so a right-click on it opens this menu too
     pub(super) menu_at: State<Option<(f32, f32)>>,
+    /// The theme the card previews; the button is drawn in it like the card's Play button,
+    /// so every card keeps its own look whichever style is applied
+    pub(super) preview: Theme,
+    /// From the card's edges to the preview's content, so the button lines up with its panel
+    pub(super) inset: f32,
 }
 
 impl Component for ThemeFileMenu {
     fn render(&self) -> impl IntoElement {
         let mut anchor = use_state(|| (0., 0.));
         let mut menu_at = self.menu_at;
+        let mut deleting = use_state(|| false);
         let dispatch = use_dispatch();
         let alt = tf("oneclient.settings.appearance.theme.actions", &[&self.name]);
+        let face = ThemeFileButton {
+            alt,
+            preview: self.preview.clone(),
+            on_press: (move |()| menu_at.set(Some(*anchor.peek()))).into(),
+        };
 
         rect()
-            .position(Position::new_absolute().top(8.).right(8.))
+            .position(Position::new_absolute().top(self.inset).right(self.inset))
             .layer(Layer::Relative(3))
             .on_sized(move |event: Event<SizedEventData>| {
                 let frame = event.data().area;
                 anchor.set_if_modified((frame.min_x(), frame.max_y()));
             })
-            .child(
-                Button::new()
-                    .icon()
-                    .width(Size::px(26.))
-                    .height(Size::px(26.))
-                    .alt(alt.clone())
-                    .tooltip(alt)
-                    .on_press(move |_| menu_at.set(Some(*anchor.peek())))
-                    .child(Icon::new(IconType::DotsVertical).size(14.)),
-            )
+            .child(face)
             .maybe_child((*menu_at.read()).map(|(x, y)| {
                 let mut menu = ContextMenu::new(x, y).title(self.name.clone());
                 if self.custom {
@@ -247,38 +340,61 @@ impl Component for ThemeFileMenu {
                 }
                 menu = theme_file_actions(menu, &self.id, &dispatch);
                 if self.custom {
-                    menu = theme_delete_action(menu, &self.id, &dispatch);
+                    menu = menu.separator().danger_action(
+                        IconType::Trash01,
+                        t("oneclient.common.delete"),
+                        move |()| deleting.set(true),
+                    );
                 }
                 menu.on_close(move |()| menu_at.set(None))
+            }))
+            .maybe_child((*deleting.read()).then(|| {
+                let id = self.id.clone();
+                let dispatch = dispatch.clone();
+                confirm_dialog(
+                    tf(
+                        "oneclient.settings.appearance.theme.delete_confirm.title",
+                        &[&self.name],
+                    ),
+                    t("oneclient.settings.appearance.theme.delete_confirm.body"),
+                    t("oneclient.common.delete"),
+                    true,
+                    (move |()| deleting.set(false)).into(),
+                    (move |()| {
+                        deleting.set(false);
+                        delete_family(&id, &dispatch);
+                    })
+                    .into(),
+                )
             }))
     }
 }
 
-fn theme_delete_action(menu: ContextMenu, id: &str, dispatch: &Actions) -> ContextMenu {
+fn delete_family(id: &str, dispatch: &Actions) {
     let id = id.to_owned();
     let dispatch = dispatch.clone();
-    menu.separator()
-        .danger_action(IconType::Trash01, t("oneclient.common.delete"), move |()| {
-            let id = id.clone();
-            let dispatch = dispatch.clone();
-            spawn_in_window(async move {
-                // Capture the ids that name this family before deletion, then repair only
-                // the current selection if it actually became invalid.
-                let affected = family_ids(&id);
-                match delete_theme(&id).await {
-                    Ok(()) => dispatch.edit_settings(|settings| {
-                        if theme_needs_fallback(&settings.theme, &affected, is_known) {
-                            settings.theme = "dark".into();
-                        }
-                    }),
-                    Err(err) => notify_failure(
-                        &dispatch,
-                        t("oneclient.settings.appearance.theme.delete_failed"),
-                        err,
-                    ),
+    spawn_in_window(async move {
+        // Capture the ids that name this family before deletion, then repair only
+        // the current selection if it actually became invalid.
+        let affected = family_ids(&id);
+        match delete_theme(&id).await {
+            Ok(()) => {
+                for id in &affected {
+                    super::theme_editor::clear_draft(id);
                 }
-            });
-        })
+                dispatch.edit_settings(|settings| {
+                    if theme_needs_fallback(&settings.theme, &affected, is_known) {
+                        settings.theme = "dark".into();
+                    }
+                });
+            }
+            Err(err) => notify_failure(
+                &dispatch,
+                t("oneclient.settings.appearance.theme.delete_failed"),
+                err,
+            ),
+        }
+    });
 }
 
 /// Every setting value that selects the family `id` belongs to
@@ -473,5 +589,89 @@ mod tests {
         assert!(theme_needs_fallback(system, &affected, |_| false));
         assert!(!theme_needs_fallback(system, &affected, |_| true));
         assert!(!theme_needs_fallback("system:other", &affected, |_| false));
+    }
+}
+
+#[cfg(test)]
+mod kebab_tests {
+    use super::*;
+    use freya_testing::TestingRunner;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn the_kebab_wears_its_cards_theme_tints_on_hover_and_opens_the_menu() {
+        type Fixture = (State<Option<(f32, f32)>>, State<bool>);
+
+        fn app() -> impl IntoElement {
+            crate::hooks::use_provide_station(|| {
+                let mut app = crate::state::AppState::default();
+                app.settings.settings.animations_enabled = false;
+                app
+            });
+            crate::components::use_provide_tooltips();
+            let (menu_at, minecraft) = use_consume::<Fixture>();
+            // The active theme changes; the previewed one doesn't
+            colors::apply(
+                if minecraft() {
+                    "minecraft-dark"
+                } else {
+                    "dark"
+                },
+                None,
+            );
+            rect()
+                .width(Size::px(200.))
+                .height(Size::px(200.))
+                .child(ThemeFileButton {
+                    alt: format!("Options {}", minecraft()),
+                    preview: (*crate::theme::resolve_theme("dark")).clone(),
+                    on_press: (move |()| {
+                        let mut menu_at = menu_at;
+                        menu_at.set(Some((0., 0.)));
+                    })
+                    .into(),
+                })
+        }
+        let (mut runner, (menu_at, mut minecraft)) = TestingRunner::new(
+            app,
+            (200., 200.).into(),
+            |runner| {
+                runner.provide_root_context(|| -> Fixture {
+                    (State::create(None), State::create(false))
+                })
+            },
+            1.,
+        );
+        let face = |runner: &TestingRunner| {
+            runner
+                .find(|node, element| {
+                    let a11y = element.accessibility();
+                    (a11y.builder.role() == AccessibilityRole::Button).then(|| {
+                        let style = element.style();
+                        (
+                            style.background.clone(),
+                            style.corner_radius,
+                            node.layout().area.center(),
+                        )
+                    })
+                })
+                .unwrap()
+        };
+        runner.poll_n(Duration::ZERO, 4);
+        let (idle, radius, center) = face(&runner);
+        runner.run_in(|| minecraft.set(true));
+        runner.poll_n(Duration::ZERO, 4);
+        assert_eq!((face(&runner).0, face(&runner).1), (idle.clone(), radius));
+
+        let at = (f64::from(center.x), f64::from(center.y));
+        runner.move_cursor(at);
+        runner.poll_n(Duration::ZERO, 4);
+        assert_ne!(face(&runner).0, idle);
+        runner.move_cursor((20., 180.));
+        runner.poll_n(Duration::ZERO, 4);
+        assert_eq!(face(&runner).0, idle);
+        runner.click_cursor(at);
+        runner.run_in(|| assert!(menu_at.peek().is_some()));
+        colors::apply("dark", None);
     }
 }

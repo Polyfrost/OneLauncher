@@ -209,18 +209,7 @@ impl Component for ScreenshotViewer {
                                         Button::new()
                                             .secondary()
                                             .on_press(move |_| {
-                                                crate::platform::copy_image_to_clipboard(
-                                                    copy_path.clone(),
-                                                );
-                                                copy_dispatch
-                                                    .notify(t("oneclient.components.button.copied"))
-                                                    .body(t(
-                                                        "oneclient.components.screenshot_viewer.copied",
-                                                    ))
-                                                    .info()
-                                                    .icon(IconType::ClipboardCheck)
-                                                    .toast_only()
-                                                    .send();
+                                                copy_screenshot(copy_path.clone(), copy_dispatch.clone());
                                             })
                                             .child(Icon::new(IconType::Copy01).size(14.))
                                             .text(t("oneclient.common.copy")),
@@ -282,14 +271,7 @@ pub fn screenshot_context_menu(
             },
         )
         .action(IconType::Copy01, t("oneclient.common.copy"), move |()| {
-            crate::platform::copy_image_to_clipboard(copy_path.clone());
-            dispatch
-                .notify(t("oneclient.components.button.copied"))
-                .body(t("oneclient.components.screenshot_viewer.copied"))
-                .info()
-                .icon(IconType::ClipboardCheck)
-                .toast_only()
-                .send();
+            copy_screenshot(copy_path.clone(), dispatch.clone());
         })
         .separator()
         .danger_action(IconType::Trash01, t("oneclient.common.delete"), move |()| {
@@ -300,24 +282,33 @@ pub fn screenshot_context_menu(
         })
 }
 
+fn copy_screenshot(path: PathBuf, dispatch: Actions) {
+    spawn_global(async move {
+        match crate::platform::copy_image_to_clipboard(path).await {
+            Ok(()) => dispatch
+                .notify(t("oneclient.components.button.copied"))
+                .body(t("oneclient.components.screenshot_viewer.copied"))
+                .info()
+                .icon(IconType::ClipboardCheck)
+                .toast_only()
+                .send(),
+            Err(error) => {
+                tracing::warn!(%error, "could not copy screenshot to the clipboard");
+                dispatch
+                    .notify(t("oneclient.components.screenshot_viewer.copy_failed"))
+                    .error()
+                    .send()
+            }
+        }
+    });
+}
+
 fn fitted_size((w, h): (f32, f32), (iw, ih): (u32, u32)) -> (f32, f32) {
     if iw == 0 || ih == 0 {
         return (w, h);
     }
     let scale = (w / iw as f32).min(h / ih as f32);
     (iw as f32 * scale, ih as f32 * scale)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::fitted_size;
-
-    #[test]
-    fn fitted_size_keeps_aspect() {
-        assert_eq!(fitted_size((200., 100.), (100, 100)), (100., 100.));
-        assert_eq!(fitted_size((100., 200.), (100, 50)), (100., 50.));
-        assert_eq!(fitted_size((100., 200.), (0, 50)), (100., 200.));
-    }
 }
 
 fn chevron_btn(
@@ -376,6 +367,7 @@ fn header_row(
     rect()
         .horizontal()
         .width(Size::fill())
+        .height(Size::px(42.))
         .content(Content::Flex)
         .cross_align(Alignment::Center)
         .child(
@@ -386,6 +378,9 @@ fn header_row(
                 .child(
                     label()
                         .text(info.name.clone())
+                        .width(Size::fill())
+                        .max_lines(1)
+                        .text_overflow(TextOverflow::Ellipsis)
                         .font_size(text_size(15.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
@@ -393,6 +388,9 @@ fn header_row(
                 .child(
                     label()
                         .text(meta)
+                        .width(Size::fill())
+                        .max_lines(1)
+                        .text_overflow(TextOverflow::Ellipsis)
                         .font_size(text_size(11.))
                         .color(colors::fg_secondary()),
                 ),
@@ -406,4 +404,16 @@ fn header_row(
                 .child(Icon::new(IconType::XClose).size(18.)),
         )
         .into_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fitted_size;
+
+    #[test]
+    fn fitted_size_keeps_aspect() {
+        assert_eq!(fitted_size((200., 100.), (100, 100)), (100., 100.));
+        assert_eq!(fitted_size((100., 200.), (100, 50)), (100., 50.));
+        assert_eq!(fitted_size((100., 200.), (0, 50)), (100., 200.));
+    }
 }

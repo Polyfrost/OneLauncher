@@ -158,15 +158,6 @@ impl PackageUpdateMode {
     /// Display order defaulting variant first
     pub const ALL: &[Self] = &[Self::Prompt, Self::Automatic, Self::Skip];
 
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Automatic => "Automatically update",
-            Self::Skip => "Always skip auto updates",
-            Self::Prompt => "Show the modal",
-        }
-    }
-
     /// The value stored in the `setting_profiles.browser_update_mode` column
     #[must_use]
     pub const fn as_str(self) -> &'static str {

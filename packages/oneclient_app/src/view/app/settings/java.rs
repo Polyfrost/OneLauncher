@@ -3,7 +3,7 @@ use std::path::Path;
 use freya::prelude::*;
 use oneclient_java::{JavaRuntime, JavaVendor, is_launcher_managed};
 
-use super::settings_page;
+use super::{first_section_header, settings_page};
 use crate::Route;
 use crate::components::{Button, Icon, IconType, JavaInstallManager, OverlayPopup, ScrollArea};
 use crate::hooks::{Actions, java_runtimes, use_dispatch, use_java_runtimes};
@@ -11,7 +11,7 @@ use crate::i18n::t;
 use crate::invalidate_java_queries;
 use crate::layout::SearchItem;
 use crate::theme::{colors, rounded, text_size};
-use crate::ui::border_all_color;
+use crate::ui::{border_all_color, underlined};
 use crate::view::app::settings::section_header;
 
 #[derive(PartialEq)]
@@ -27,7 +27,7 @@ impl Component for SettingsJava {
         let pending_remove = use_state(|| None::<PendingRemove>);
 
         let mut shell = settings_page()
-            .child(section_header(t(
+            .child(first_section_header(t(
                 "oneclient.settings.java.section.add_runtime",
             )))
             .child(AddRow { show_manager }.into_element())
@@ -103,20 +103,22 @@ impl Component for AddRow {
             .horizontal()
             .width(Size::fill())
             .spacing(10.)
-            .child(
+            .child(super::inline_focus_anchor(
+                "java.install",
                 Button::new()
                     .primary()
                     .on_press(move |_| show_manager.set(true))
                     .child(Icon::new(IconType::Download01).size(14.))
                     .text(t("oneclient.settings.java.install_manager")),
-            )
-            .child(
+            ))
+            .child(super::inline_focus_anchor(
+                "java.add_folder",
                 Button::new()
                     .secondary()
                     .on_press(pick)
                     .child(Icon::new(IconType::Folder).size(14.))
                     .text(t("oneclient.settings.java.add_from_folder")),
-            )
+            ))
             .child(
                 Button::new()
                     .secondary()
@@ -136,7 +138,7 @@ fn runtimes_table(
             .width(Size::fill())
             .padding(Gaps::new_symmetric(16., 16.))
             .corner_radius(rounded(12.))
-            .background(colors::page_elevated())
+            .background(colors::card())
             .child(
                 label()
                     .text(t("oneclient.settings.java.empty"))
@@ -150,7 +152,7 @@ fn runtimes_table(
         .vertical()
         .width(Size::fill())
         .corner_radius(rounded(12.))
-        .background(colors::page_elevated())
+        .background(colors::card())
         .border(border_all_color(1., colors::component_border()))
         .overflow(Overflow::Clip)
         .child(table_header());
@@ -244,23 +246,13 @@ impl Component for RuntimeRow {
                 .into_element()
         }
 
-        rect()
+        let row = rect()
             .horizontal()
             .width(Size::fill())
             .content(Content::Flex)
             .cross_align(Alignment::Center)
             .spacing(12.)
             .padding(Gaps::new_symmetric(8., 14.))
-            .maybe(!self.last, |el| {
-                el.border(
-                    Border::new()
-                        .width(BorderWidth {
-                            bottom: 1.,
-                            ..Default::default()
-                        })
-                        .fill(colors::component_border()),
-                )
-            })
             .child(cell(
                 format!("{} {}", runtime.vendor, runtime.major),
                 Size::px(130.),
@@ -293,7 +285,16 @@ impl Component for RuntimeRow {
                             ),
                     ),
             )
-            .child(remove_button(self.pending_remove, path))
+            .child(remove_button(self.pending_remove, path));
+
+        underlined(
+            row,
+            if self.last {
+                Color::TRANSPARENT
+            } else {
+                colors::component_border()
+            },
+        )
     }
 }
 

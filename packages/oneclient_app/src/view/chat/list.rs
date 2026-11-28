@@ -18,12 +18,12 @@ use crate::hooks::{
 };
 use crate::i18n::{t, tf};
 use crate::theme::{colors, rounded, text_size};
-use crate::ui::relative_since;
+use crate::ui::{Edge, edge_line, relative_since, underlined};
 
 use super::common::{
     CARD_RADIUS_PX, CHIP_RADIUS_PX, EscapeGuard, HeaderButton, ROW_RADIUS_PX, area_contains,
-    chip_button, count_badge, edge_border, group_heads, head_with_dot, hint, inset_border,
-    popup_shadow, presence_color, row_time, section_heading, use_player_name,
+    chip_button, count_badge, group_heads, head_with_dot, hint, inset_border, popup_shadow,
+    presence_color, row_time, section_heading, use_player_name,
 };
 use super::panel::{PanelMode, PanelTab, PanelView};
 use super::people::NewGroupDialog;
@@ -32,6 +32,9 @@ const CHAT_ROW_HEIGHT_PX: f32 = 59.;
 pub(super) const FRIEND_ROW_HEIGHT_PX: f32 = 55.;
 const SECTION_HEADING_HEIGHT_PX: f32 = 35.;
 const LIST_ROW_GAP_PX: f32 = 2.;
+const INVITE_ROW_PADDING: Gaps = Gaps::new(10., 10., 10., 14.);
+const INVITE_NOTE_PADDING: Gaps = Gaps::new(9., 14., 10., 14.);
+const BLOCKED_LINK_PADDING: Gaps = Gaps::new_symmetric(10., 8.);
 const LIST_PADDING: Gaps = Gaps::new(4., 8., 16., 8.);
 const PINNED_PADDING: Gaps = Gaps::new(4., 16., 6., 16.);
 const BELOW_PINNED_PADDING: Gaps = Gaps::new(0., 8., 16., 8.);
@@ -112,9 +115,16 @@ impl Component for ListPane {
             })
             .height(Size::fill())
             .content(Content::Flex)
-            .maybe(self.expanded, |el| {
-                el.border(edge_border(colors::component_border(), 0., 1., 0.))
-            })
+            // Always present, so switching layouts doesn't shift the children after it
+            .child(edge_line(
+                Edge::Right,
+                if self.expanded {
+                    colors::component_border()
+                } else {
+                    Color::TRANSPARENT
+                },
+                Gaps::default(),
+            ))
             .child(
                 rect()
                     .width(Size::fill())
@@ -540,8 +550,12 @@ impl Component for InvitesCard {
                         .child(
                             rect()
                                 .width(Size::fill())
-                                .padding(Gaps::new(9., 14., 10., 14.))
-                                .border(edge_border(colors::component_border(), 1., 0., 0.))
+                                .padding(INVITE_NOTE_PADDING)
+                                .child(edge_line(
+                                    Edge::Top,
+                                    colors::component_border(),
+                                    INVITE_NOTE_PADDING,
+                                ))
                                 .child(
                                     label()
                                         .text(t("oneclient.chat.invites.in_game_only"))
@@ -576,13 +590,17 @@ impl Component for InviteRow {
         rect()
             .horizontal()
             .width(Size::fill())
-            .padding(Gaps::new(10., 10., 10., 14.))
+            .padding(INVITE_ROW_PADDING)
             .spacing(10.)
             .content(Content::Flex)
             .cross_align(Alignment::Center)
-            .border(edge_border(colors::component_border(), 1., 0., 0.))
             .cursor(CursorIcon::Pointer)
             .on_press(move |_| open_chat(&open, view, group_id))
+            .child(edge_line(
+                Edge::Top,
+                colors::component_border(),
+                INVITE_ROW_PADDING,
+            ))
             .child(
                 Avatar::new(self.invite.from.to_string())
                     .size(28.)
@@ -1502,15 +1520,19 @@ impl Component for BlockedLink {
             .horizontal()
             .width(Size::fill())
             .margin(Gaps::new(10., 0., 0., 0.))
-            .padding(Gaps::new_symmetric(10., 8.))
+            .padding(BLOCKED_LINK_PADDING)
             .spacing(10.)
             .content(Content::Flex)
             .cross_align(Alignment::Center)
-            .border(edge_border(colors::component_border(), 1., 0., 0.))
             .cursor(CursorIcon::Pointer)
             .on_pointer_over(move |_| hovered.set(true))
             .on_pointer_out(move |_| hovered.set(false))
             .on_press(move |_| view.set(PanelView::Blocked))
+            .child(edge_line(
+                Edge::Top,
+                colors::component_border(),
+                BLOCKED_LINK_PADDING,
+            ))
             .child(
                 label()
                     .text(t("oneclient.chat.blocked.title"))
@@ -1757,32 +1779,31 @@ impl Component for BlockedPane {
         let players: Vec<Uuid> = self.blocked.iter().map(|entry| entry.player).collect();
         let mut view = self.view;
 
+        let header = rect()
+            .horizontal()
+            .width(Size::fill())
+            .padding(Gaps::new(12., 10., 12., 8.))
+            .spacing(8.)
+            .cross_align(Alignment::Center)
+            .child(HeaderButton {
+                icon: IconType::ArrowLeft,
+                tooltip: t("oneclient.chat.common.back"),
+                on_press: EventHandler::new(move |_| view.set(PanelView::List)),
+            })
+            .child(
+                label()
+                    .text(t("oneclient.chat.blocked.title"))
+                    .font_size(text_size(14.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .color(colors::fg_primary()),
+            );
+
         rect()
             .vertical()
             .width(Size::flex(1.0))
             .height(Size::fill())
             .content(Content::Flex)
-            .child(
-                rect()
-                    .horizontal()
-                    .width(Size::fill())
-                    .padding(Gaps::new(12., 10., 12., 8.))
-                    .spacing(8.)
-                    .cross_align(Alignment::Center)
-                    .border(edge_border(colors::component_border(), 0., 0., 1.))
-                    .child(HeaderButton {
-                        icon: IconType::ArrowLeft,
-                        tooltip: t("oneclient.chat.common.back"),
-                        on_press: EventHandler::new(move |_| view.set(PanelView::List)),
-                    })
-                    .child(
-                        label()
-                            .text(t("oneclient.chat.blocked.title"))
-                            .font_size(text_size(14.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .color(colors::fg_primary()),
-                    ),
-            )
+            .child(underlined(header, colors::component_border()))
             .child(
                 rect()
                     .width(Size::fill())

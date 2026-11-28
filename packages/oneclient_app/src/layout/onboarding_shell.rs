@@ -74,10 +74,10 @@ impl Component for OnboardingShell {
         let chrome = *chrome_opacity.read();
 
         rect()
+            .background(colors::page())
             .vertical()
             .width(Size::fill())
             .height(Size::fill())
-            .background(colors::page())
             .color(colors::fg_primary())
             .overflow(Overflow::Clip)
             .child(

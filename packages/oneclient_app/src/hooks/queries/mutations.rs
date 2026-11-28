@@ -221,7 +221,10 @@ async fn set_up_bundles(
 
     let session = oneclient_events::GroupedProgressSession::start(
         &state.services.events,
-        tf("oneclient.mutations.setting_up", &[&cluster.name]),
+        tf(
+            "oneclient.mutations.setting_up",
+            &[&crate::utils::instance_display_name(cluster)],
+        ),
     );
     let mut failure = None;
     if let Err(err) = oneclient_content::bundles::install_cluster_bundles(
@@ -369,6 +372,33 @@ impl MutationCapability for ClusterMutation {
             }
         };
         let mut created = None;
+        // Taken before the package guard, like every install, migration and Undo
+        let _instance = match keys {
+            ClusterAction::RemoveArtifact { cluster_id, .. }
+            | ClusterAction::RemoveBundlePackageFromDisk { cluster_id, .. }
+            | ClusterAction::DeleteBundledArtifact { cluster_id, .. }
+            | ClusterAction::SetBundlePackageRemoved {
+                cluster_id,
+                removed: true,
+                ..
+            } => Some(oneclient_content::packages::instance_package_guard(*cluster_id).await),
+            _ => None,
+        };
+        let _package_mutation = if matches!(
+            keys,
+            ClusterAction::SetArtifactEnabled { .. }
+                | ClusterAction::RemoveArtifact { .. }
+                | ClusterAction::RemoveBundlePackageFromDisk { .. }
+                | ClusterAction::DeleteBundledArtifact { .. }
+                | ClusterAction::SetBundlePackageEnabled { .. }
+                | ClusterAction::SetDirTarget { .. }
+                | ClusterAction::DeleteSharedGroup { .. }
+                | ClusterAction::DeleteInstance { .. }
+        ) {
+            Some(oneclient_content::packages::package_mutation_guard().await)
+        } else {
+            None
+        };
         let result = match keys {
             ClusterAction::SetArtifactEnabled { cluster_id, .. }
             | ClusterAction::RemoveArtifact { cluster_id, .. }
@@ -455,15 +485,18 @@ impl MutationCapability for ClusterMutation {
                 removed,
             } => {
                 async {
-                    let live = oneclient_core::set_bundle_package_removed(
-                        *cluster_id,
-                        bundle_name,
-                        package_id,
-                        hash.as_deref(),
-                        *removed,
-                        content,
-                    )
-                    .await?;
+                    let live = {
+                        let _mutation = oneclient_content::packages::package_mutation_guard().await;
+                        oneclient_core::set_bundle_package_removed(
+                            *cluster_id,
+                            bundle_name,
+                            package_id,
+                            hash.as_deref(),
+                            *removed,
+                            content,
+                        )
+                        .await?
+                    };
                     notify_deferred(live, *cluster_id);
                     // A deleted mod has no files left, so a restore downloads it again now
                     if !*removed {
@@ -795,7 +828,13 @@ impl MutationCapability for ClusterMutation {
                         .map_err(|err| oneclient_content::ContentError::InvalidData {
                             reason: err.to_string(),
                         });
-                    if outcome.is_ok() {
+                    if outcome.is_ok()
+                        || matches!(
+                            oneclient_db::dao::cluster::get_by_id(&services.db, *cluster_id).await,
+                            Ok(None)
+                        )
+                    {
+                        crate::hooks::use_dispatch().consume_cluster_undos(*cluster_id);
                         crate::hooks::forget_deleted_cluster(&state, *cluster_id).await;
                         services
                             .events
@@ -831,7 +870,7 @@ impl MutationCapability for ClusterMutation {
                             .clusters
                             .get(cluster_id)
                             .await
-                            .map(|cluster| cluster.name)
+                            .map(|cluster| crate::utils::instance_display_name(&cluster))
                             .unwrap_or_default();
                         let session = oneclient_events::GroupedProgressSession::start(
                             &state.services.events,

@@ -1,7 +1,6 @@
-use chrono::{Duration, Local};
 use freya::prelude::*;
 
-use oneclient_core::game::{Analytics, DayPlaytime, PlaytimeStats};
+use oneclient_core::game::Analytics;
 
 use crate::components::{Icon, IconType};
 use crate::theme::{colors, rounded, text_size};
@@ -46,73 +45,36 @@ fn analytics_body_inner(analytics: &Analytics, force_all: bool) -> Element {
     root.into_element()
 }
 
-pub fn analytics_placeholder(note: &str) -> Element {
-    rect()
-        .vertical()
-        .width(Size::fill())
-        .spacing(24.)
-        .child(
-            rect()
-                .width(Size::fill())
-                .padding(Gaps::new_symmetric(16., 24.))
-                .corner_radius(rounded(12.))
-                .background(colors::page_elevated())
-                .border(border_all_color(1., colors::component_border()))
-                .center()
-                .child(
-                    label()
-                        .text(note.to_string())
-                        .width(Size::fill())
-                        .font_size(text_size(14.))
-                        .text_align(TextAlign::Center)
-                        .color(colors::fg_secondary()),
-                ),
-        )
-        .child(
-            rect()
-                .width(Size::fill())
-                .opacity(0.4)
-                .interactive(false)
-                .child(analytics_body_inner(&empty_analytics(), true)),
-        )
-        .into_element()
+/// What Statistics shows before any playtime is recorded: one readable message and the next step
+///
+/// It replaces a dimmed dashboard of zeros, which read as disabled rather than empty. The card
+/// sits in the middle of the pane rather than filling it.
+pub fn analytics_empty(title: &str, hint: &str, action: Element) -> Element {
+    analytics_message(
+        IconType::BarChartSquare02,
+        colors::brand(),
+        title,
+        hint,
+        action,
+    )
 }
 
-/// A run of zero-second days ending today so the timeline still renders columns for each range
-fn empty_analytics() -> Analytics {
-    const EMPTY_DAYS: i64 = 90;
-
-    let today = Local::now().date_naive();
-    let daily: Vec<DayPlaytime> = (0..EMPTY_DAYS)
-        .rev()
-        .map(|i| DayPlaytime {
-            date: (today - Duration::days(i)).format("%Y-%m-%d").to_string(),
-            secs: 0,
-        })
-        .collect();
-
-    let playtime = PlaytimeStats {
-        total_secs: 0,
-        session_count: 0,
-        per_weekday: [0; 7],
-        per_hour: [0; 24],
-        daily,
-        session_secs: Vec::new(),
-        longest_session_secs: 0,
-        active_days: 0,
-        current_streak: 0,
-        longest_streak: 0,
-        avg_secs_per_active_day: 0.0,
-        peak_hour: None,
-        peak_weekday: None,
-        night_share: 0.0,
-    };
-
-    Analytics {
-        playtime,
-        servers: Vec::new(),
-        personas: Vec::new(),
-    }
+/// The empty card's layout for any centered message, such as a failed load with Retry
+pub(super) fn analytics_message(
+    icon: IconType,
+    tint: Color,
+    title: &str,
+    hint: &str,
+    action: Element,
+) -> Element {
+    rect()
+        .width(Size::fill())
+        .height(Size::fill())
+        .center()
+        .child(crate::view::app::settings::status_card(
+            icon, tint, title, hint, action,
+        ))
+        .into_element()
 }
 
 const CHART_GAP: f32 = 16.;

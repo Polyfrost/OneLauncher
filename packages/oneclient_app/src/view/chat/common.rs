@@ -20,18 +20,6 @@ pub(super) fn popup_shadow() -> Shadow {
     Shadow::from((0., 8., 24., 0., Color::from_argb(89, 0, 0, 0)))
 }
 
-pub(super) fn edge_border(color: Color, top: f32, right: f32, bottom: f32) -> Border {
-    Border::new()
-        .fill(color)
-        .width(BorderWidth {
-            top,
-            right,
-            bottom,
-            left: 0.,
-        })
-        .alignment(BorderAlignment::Inner)
-}
-
 const ESCAPE_LEVEL: u8 = 4;
 
 #[derive(PartialEq)]

@@ -9,6 +9,9 @@ pub mod browser;
 pub mod cluster;
 pub mod settings;
 
+use freya::prelude::ChildrenExt;
+
+use crate::components::{Button, Icon, IconType};
 use crate::hooks::{settled_or_loading, use_clusters, use_game_snapshot};
 use crate::i18n::t;
 use crate::state::{GameState as GameSnapshot, LauncherInit};
@@ -42,6 +45,15 @@ pub fn launch_button_state(
     state
 }
 
+pub(crate) fn launch_button_label(button: Button, label: &'static str) -> Button {
+    let button = if label == t("oneclient.app.launch.launch") {
+        button.child(Icon::new(IconType::Play).size(16.))
+    } else {
+        button
+    };
+    button.text(label)
+}
+
 /// Whether another shared cluster is starting or running in the shared game dir
 /// dedicated clusters never collide so any number of them may run alongside
 pub fn shared_dir_taken(game: &GameSnapshot, clusters: &[Cluster], cluster_id: i64) -> bool {
@@ -68,7 +80,7 @@ pub fn launch_syncing(launcher: &LauncherInit, uses_bundles: bool) -> bool {
     launcher.fetching || (uses_bundles && launcher.syncing_bundles)
 }
 
-pub(crate) use analytics::{analytics_body, analytics_placeholder};
+pub(crate) use analytics::{analytics_body, analytics_empty};
 pub use clusters::{Clusters, ExportInstanceModal};
 pub(crate) use clusters::{
     BUNDLE_CARD_H, BUNDLE_COLUMNS, CellCard, ClusterPickerButton, ClusterPickerModal,

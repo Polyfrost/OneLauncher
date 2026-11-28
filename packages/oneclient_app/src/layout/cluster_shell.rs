@@ -1,25 +1,29 @@
 use freya::animation::*;
 use freya::prelude::*;
 use freya::router::*;
-use oneclient_common::parse_mc_version;
 
-use crate::components::{Button, Icon, IconType, TabBar, TabItem};
-use crate::hooks::{
-    use_bisect, use_cluster, use_dispatch, use_game_snapshot, use_launcher, use_version_metadata,
+use crate::components::{
+    ART_PREVIEW_EDGE, Button, DynamicArt, Icon, IconType, TooltipPlacement, use_tooltip_anchor,
 };
+use crate::hooks::{use_bisect, use_cluster, use_dispatch, use_game_snapshot, use_launcher};
 use crate::i18n::t;
 use crate::routes::Route;
-use crate::theme::{colors, text_size};
+use crate::theme::{colors, glass, rounded, text_size};
+
+use super::workspace_dialog::{CONTENT_TOP, WorkspaceLayout, close_button, header_divider};
+use super::workspace_rail;
 use crate::ui::entrance_motion_layer;
 use crate::view::app::ExportInstanceModal;
-use crate::view::app::{launch_button_state, launch_syncing, use_shared_dir_taken};
+use crate::view::app::{
+    launch_button_label, launch_button_state, launch_syncing, use_shared_dir_taken,
+};
 
-const HEADER_HEIGHT: f32 = 64.;
-const TABS_HEIGHT: f32 = 38.;
-const BAR_SPACING: f32 = 16.;
 /// Launch button height; the icon buttons beside it are squares of the same size
-const ACTION_HEIGHT: f32 = 40.;
+const ACTION_HEIGHT: f32 = 36.;
 const ACTION_ICON_SIZE: f32 = 20.;
+/// Fits the longest launch stage ("Downloading") in every theme's font. A minimum width won't do:
+/// Freya adds the button's content on top of it.
+const LAUNCH_WIDTH: f32 = 124.;
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum ClusterViewShellTab {
@@ -51,38 +55,36 @@ impl ClusterViewShellTab {
         }
     }
 
-    fn route(&self, cluster_id: i64) -> Option<Route> {
+    fn route(&self, cluster_id: i64) -> Route {
         match self {
-            Self::Overview => Some(Route::ClusterOverview { cluster_id }),
-            Self::Logs => Some(Route::ClusterLogs { cluster_id }),
-            Self::GameLog => Some(Route::ProcessLogs { cluster_id }),
-            Self::Screenshots => Some(Route::ClusterScreenshots { cluster_id }),
-            Self::Mods => Some(Route::ClusterMods { cluster_id }),
-            Self::Shaders => Some(Route::ClusterShaders { cluster_id }),
-            Self::Textures => Some(Route::ClusterTextures { cluster_id }),
-            Self::Worlds => Some(Route::ClusterWorlds { cluster_id }),
-            Self::DataPacks => Some(Route::ClusterDataPacks { cluster_id }),
-            Self::Settings => Some(Route::ClusterSettings { cluster_id }),
+            Self::Overview => Route::ClusterOverview { cluster_id },
+            Self::Logs => Route::ClusterLogs { cluster_id },
+            Self::GameLog => Route::ProcessLogs { cluster_id },
+            Self::Screenshots => Route::ClusterScreenshots { cluster_id },
+            Self::Mods => Route::ClusterMods { cluster_id },
+            Self::Shaders => Route::ClusterShaders { cluster_id },
+            Self::Textures => Route::ClusterTextures { cluster_id },
+            Self::Worlds => Route::ClusterWorlds { cluster_id },
+            Self::DataPacks => Route::ClusterDataPacks { cluster_id },
+            Self::Settings => Route::ClusterSettings { cluster_id },
         }
     }
 
-    fn index(self) -> i32 {
+    fn icon(self) -> IconType {
         match self {
-            Self::Overview => 0,
-            Self::Logs => 1,
-            Self::Screenshots => 2,
-            Self::Mods => 3,
-            Self::Shaders => 4,
-            Self::Textures => 5,
-            Self::Worlds => 6,
-            Self::DataPacks => 7,
-            Self::Settings => 8,
-            Self::GameLog => 9,
+            Self::Overview => IconType::LayoutTop,
+            Self::Mods => IconType::Cube01,
+            Self::Shaders => IconType::PaintPour,
+            Self::Textures => IconType::LayersThree01,
+            Self::DataPacks => IconType::Database01,
+            Self::Worlds => IconType::Globe01,
+            Self::Screenshots => IconType::Eye,
+            Self::Logs => IconType::File02,
+            Self::GameLog => IconType::Terminal,
+            Self::Settings => IconType::Settings01,
         }
     }
 }
-
-const SIDE_PADDING: f32 = 40.;
 
 pub fn cluster_content() -> Rect {
     rect().vertical().width(Size::fill()).height(Size::fill())
@@ -107,28 +109,60 @@ fn route_cluster(route: &Route) -> Option<(i64, ClusterViewShellTab)> {
 #[derive(PartialEq)]
 pub struct ClusterShell;
 
+impl ClusterShell {
+    pub(crate) fn workspace_padding() -> f32 {
+        WorkspaceLayout::current().padding
+    }
+
+    /// The rail's width, for page columns that line up with it
+    pub(crate) fn workspace_rail_width() -> f32 {
+        WorkspaceLayout::current().rail_width
+    }
+
+    /// The rail's row height and gap, for page columns that read as part of the rail
+    pub(crate) fn workspace_rail_rows() -> (f32, f32) {
+        let layout = WorkspaceLayout::current();
+        (layout.row_height, layout.row_gap)
+    }
+
+    /// The ink of an unselected rail row and of a rail heading
+    pub(crate) fn workspace_rail_ink() -> Color {
+        workspace_rail::secondary_ink()
+    }
+
+    /// The page area's width and height before measuring it, for size rules that follow the pane
+    pub(crate) fn workspace_pane_size() -> (f32, f32) {
+        let layout = WorkspaceLayout::current();
+        (layout.pane_width(), layout.pane_height())
+    }
+}
+
 impl Component for ClusterShell {
     fn render(&self) -> impl IntoElement {
         let route = use_route::<Route>();
+        let layout = WorkspaceLayout::current();
         let (cluster_id, active_tab) =
             route_cluster(&route).unwrap_or((0, ClusterViewShellTab::Overview));
+        // Settings and Overview put their scrollbar in this inset from inside their viewport.
+        let pane_right = if matches!(
+            active_tab,
+            ClusterViewShellTab::Settings | ClusterViewShellTab::Overview
+        ) {
+            0.
+        } else {
+            layout.padding
+        };
 
-        let dispatch = use_dispatch();
         let game = use_game_snapshot();
-        let launcher = use_launcher();
         let cluster = use_cluster(cluster_id);
-        let syncing = launch_syncing(&launcher, cluster.as_ref().is_none_or(|c| c.uses_bundles()));
-        let shared_dir_taken = use_shared_dir_taken(cluster_id);
 
         let show_game_log = game.is_active(cluster_id);
         let show_datapacks = cluster
             .as_ref()
             .is_none_or(|c| crate::view::app::cluster::supports_datapacks(&c.mc_version));
         let show_mod_tabs = cluster.as_ref().is_none_or(|c| !c.lacks_mod_loader());
-        let launch_state = launch_button_state(&game, cluster_id, syncing, shared_dir_taken);
         let bisecting = use_bisect(cluster_id).is_some();
         let mut question_hidden = use_state(|| false);
-        let mut sharing = use_state(|| false);
         let open_game_output = use_state(|| false);
         use_hook(move || {
             provide_root_context(crate::view::app::cluster::OpenGameOutput(open_game_output))
@@ -137,11 +171,11 @@ impl Component for ClusterShell {
             question_hidden.set(false)
         });
 
-        let hidden_tab = !show_mod_tabs
-            && matches!(
-                active_tab,
-                ClusterViewShellTab::Mods | ClusterViewShellTab::Shaders
-            );
+        let hidden_tab = match active_tab {
+            ClusterViewShellTab::Mods | ClusterViewShellTab::Shaders => !show_mod_tabs,
+            ClusterViewShellTab::DataPacks => !show_datapacks,
+            _ => false,
+        };
         use_side_effect_with_deps(
             &hidden_tab.then_some(cluster_id),
             move |redirect: &Option<i64>| {
@@ -151,84 +185,73 @@ impl Component for ClusterShell {
             },
         );
 
-        // Queried unconditionally the shell can mount before the cluster list settles
-        // and a conditional hook would change this component's hook count mid-life
-        let parsed = cluster
-            .as_ref()
-            .and_then(|c| parse_mc_version(&c.mc_version));
-        let metadata = use_version_metadata(
-            parsed.as_ref().map(|p| p.major),
-            parsed.and_then(|p| p.key()),
-            cluster.as_ref().map(|c| c.mc_loader),
-        );
-
-        let header = cluster.as_ref().map(|cluster| {
-            let loader_version = format!("{} {}", cluster.mc_loader, cluster.mc_version);
-            let (title, subtitle) = if cluster.user_created {
-                let subtitle = cluster
-                    .description
-                    .clone()
-                    .filter(|d| !d.trim().is_empty())
-                    .unwrap_or(loader_version);
-                (cluster.name.clone(), subtitle)
-            } else {
-                let subtitle = metadata
-                    .and_then(|m| m.long_description)
-                    .unwrap_or_else(|| cluster.name.clone());
-                (loader_version, subtitle)
-            };
-            cluster_header(
-                title,
-                subtitle,
-                cluster_id,
-                dispatch,
-                launch_state,
-                game.is_running(cluster_id),
-                cluster.game_dir().ok(),
-                sharing,
-            )
-            .into_element()
+        // Scoped to the whole instance, unlike the per-tab folder actions in each toolbar
+        let game_folder = cluster.as_ref().and_then(|cluster| {
+            Some(GameFolder {
+                path: cluster.game_dir().ok()?,
+                shared: !cluster.uses_dedicated_dir(),
+            })
         });
 
         rect()
             .vertical()
+            .content(Content::Flex)
             .width(Size::fill())
             .height(Size::fill())
             .overflow(Overflow::Clip)
+            .child(InstanceHeader {
+                cluster_id,
+                show_back: false,
+            })
+            .child(header_divider())
             .child(
                 rect()
-                    .vertical()
+                    .horizontal()
+                    .content(Content::Flex)
                     .width(Size::fill())
+                    .height(Size::flex(1.))
+                    // the rail column includes the gap to the page
                     .padding(Gaps::new(
-                        BAR_SPACING,
-                        SIDE_PADDING,
-                        BAR_SPACING,
-                        SIDE_PADDING,
+                        CONTENT_TOP,
+                        pane_right,
+                        layout.padding,
+                        layout.padding,
                     ))
-                    .spacing(BAR_SPACING)
-                    .maybe_child(header)
-                    .maybe_child(bisecting.then(|| {
-                        crate::view::app::cluster::BisectBanner {
-                            cluster_id,
-                            question_hidden,
-                        }
-                        .into_element()
-                    }))
                     .child(cluster_tabs(
+                        &route,
                         active_tab,
                         cluster_id,
-                        show_game_log,
-                        show_datapacks,
-                        show_mod_tabs,
-                    )),
-            )
-            .child(
-                rect()
-                    .width(Size::fill())
-                    .height(Size::flex(1.0))
-                    .overflow(Overflow::Clip)
-                    .padding(Gaps::new(0., SIDE_PADDING, SIDE_PADDING, SIDE_PADDING))
-                    .child(AnimatedRouter::<Route>::new(ClusterContentOutlet)),
+                        TabVisibility {
+                            game_log: show_game_log,
+                            datapacks: show_datapacks,
+                            mod_tabs: show_mod_tabs,
+                        },
+                        game_folder,
+                        layout,
+                    ))
+                    .child(
+                        rect()
+                            .vertical()
+                            .content(Content::Flex)
+                            .width(Size::flex(1.))
+                            .height(Size::fill())
+                            .overflow(Overflow::Clip)
+                            .maybe_child(bisecting.then(|| {
+                                crate::view::app::cluster::BisectBanner {
+                                    cluster_id,
+                                    question_hidden,
+                                }
+                                .into_element()
+                            }))
+                            .child(
+                                rect()
+                                    .width(Size::fill())
+                                    .height(Size::flex(1.))
+                                    .corner_radius(rounded(12.))
+                                    .overflow(Overflow::Clip)
+                                    .child(AnimatedRouter::<Route>::new(ClusterContentOutlet)),
+                            ),
+                    ),
             )
             .maybe_child(bisecting.then(|| {
                 crate::view::app::cluster::BisectQuestion {
@@ -237,19 +260,6 @@ impl Component for ClusterShell {
                 }
                 .into_element()
             }))
-            .maybe_child(cluster.as_ref().filter(|_| *sharing.read()).map(|cluster| {
-                ExportInstanceModal::new(cluster_id, cluster.name.clone(), move |()| {
-                    sharing.set(false)
-                })
-                .into_element()
-            }))
-    }
-}
-
-fn tab_dir(from: &Route, to: &Route) -> f32 {
-    match (route_cluster(from), route_cluster(to)) {
-        (Some((_, a)), Some((_, b))) => (b.index() - a.index()).signum() as f32,
-        _ => 0.,
     }
 }
 
@@ -262,16 +272,17 @@ impl Component for ClusterContentOutlet {
 
         let anim = use_animation(|_conf| {
             AnimNum::new(0., 1.)
-                .time(300)
+                .time(160)
                 .ease(Ease::Out)
                 .function(Function::Cubic)
         });
         let mut last_to = use_state(|| None::<Route>);
 
-        let (dir, to, is_transition) = match &*router.read() {
-            AnimatedRouterContext::FromTo(from, to) => (tab_dir(from, to), to.clone(), true),
-            AnimatedRouterContext::In(to) => (0., to.clone(), false),
+        let (to, is_transition) = match &*router.read() {
+            AnimatedRouterContext::FromTo(_, to) => (to.clone(), true),
+            AnimatedRouterContext::In(to) => (to.clone(), false),
         };
+        let motion = crate::motion::use_animations_enabled();
 
         if last_to.peek().as_ref() != Some(&to) {
             last_to.set(Some(to.clone()));
@@ -292,167 +303,635 @@ impl Component for ClusterContentOutlet {
             router.write().settle();
         }
 
-        const CONTENT_DX: f32 = 44.;
-        let p = if anim_finished {
-            1.0
+        let opacity = if anim_finished || !is_transition || !motion {
+            1.
         } else {
-            anim.get().value()
+            0.82 + anim.get().value() * 0.18
         };
-        let slide_x = if anim_finished || dir == 0. {
-            0.
-        } else {
-            dir * (1.0 - p) * CONTENT_DX
-        };
-        let opacity = if anim_finished || dir == 0. { 1. } else { p };
-
-        entrance_motion_layer(slide_x, 0., opacity, Outlet::<Route>::new())
+        entrance_motion_layer(0., 0., opacity, Outlet::<Route>::new())
     }
 }
 
-#[expect(clippy::too_many_arguments)]
-fn cluster_header(
-    title: String,
-    subtitle: String,
-    cluster_id: i64,
-    dispatch: crate::Actions,
-    launch_state: (&'static str, bool),
-    running: bool,
-    folder: Option<std::path::PathBuf>,
-    mut sharing: State<bool>,
-) -> impl IntoElement {
-    let (launch_label, launch_enabled) = launch_state;
-    let kill_dispatch = dispatch.clone();
-    rect()
-        .horizontal()
-        .content(Content::Flex)
-        .width(Size::fill())
-        .min_height(Size::px(HEADER_HEIGHT))
-        .cross_align(Alignment::Center)
-        .spacing(12.)
-        .child(
-            rect()
-                .vertical()
-                .width(Size::flex(1.0))
-                .main_align(Alignment::Center)
-                .spacing(6.)
+#[derive(PartialEq)]
+pub(super) struct InstanceHeader {
+    pub cluster_id: i64,
+    pub show_back: bool,
+}
+
+impl Component for InstanceHeader {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let layout = WorkspaceLayout::current();
+        let dispatch = use_dispatch();
+        let game = use_game_snapshot();
+        let launcher = use_launcher();
+        let cluster = use_cluster(cluster_id);
+        let syncing = launch_syncing(&launcher, cluster.as_ref().is_none_or(|c| c.uses_bundles()));
+        let shared_dir_taken = use_shared_dir_taken(cluster_id);
+        let (launch_label, launch_enabled) =
+            launch_button_state(&game, cluster_id, syncing, shared_dir_taken);
+        let kill_dispatch = dispatch.clone();
+        let mut sharing = use_state(|| false);
+        let close = close_button();
+
+        let header = layout
+            .header()
+            .spacing(10.)
+            .maybe_child(self.show_back.then(|| {
+                Button::new()
+                    .ghost()
+                    .icon()
+                    .width(Size::px(32.))
+                    .height(Size::px(32.))
+                    .tooltip(t("oneclient.common.back"))
+                    .alt(t("oneclient.common.back"))
+                    .child(Icon::new(IconType::ArrowLeft).size(16.))
+                    .on_press(move |_| RouterContext::get().go_back())
+            }));
+
+        let Some(cluster) = cluster.as_ref() else {
+            return header
                 .child(
                     label()
-                        .text(title)
-                        .font_size(text_size(28.))
+                        .text(t("oneclient.layout.workspace.instance"))
+                        .width(Size::flex(1.))
+                        .font_size(text_size(18.))
                         .font_weight(FontWeight::BOLD)
                         .color(colors::fg_primary()),
                 )
-                .child(
-                    label()
-                        .text(subtitle)
-                        .font_size(text_size(12.))
-                        .font_weight(FontWeight::MEDIUM)
-                        .color(colors::fg_secondary()),
-                ),
-        )
-        .child(
-            rect()
-                .horizontal()
-                .cross_align(Alignment::Center)
-                .spacing(10.)
-                .maybe_child(folder.map(|folder| {
-                    crate::components::sized_open_folder_button(folder, ACTION_ICON_SIZE)
-                        .width(Size::px(ACTION_HEIGHT))
-                        .height(Size::px(ACTION_HEIGHT))
-                }))
-                .child(
+                .child(close);
+        };
+        let branded = crate::utils::builtin_oneclient_title(cluster);
+        let subtitle = if branded.is_some() {
+            cluster.mc_loader.to_string()
+        } else {
+            format!("{} · {}", cluster.mc_version, cluster.mc_loader)
+        };
+        let title = branded.unwrap_or_else(|| crate::utils::instance_display_name(cluster));
+
+        header
+            .child(
+                rect()
+                    .width(Size::px(40.))
+                    .height(Size::px(40.))
+                    .corner_radius(rounded(8.))
+                    .overflow(Overflow::Clip)
+                    .child(DynamicArt::for_cluster(cluster).max_edge(ART_PREVIEW_EDGE)),
+            )
+            .child(
+                rect()
+                    .vertical()
+                    .width(Size::flex(1.))
+                    .spacing(2.)
+                    .child(
+                        label()
+                            .text(title)
+                            .font_size(text_size(18.))
+                            .max_lines(1)
+                            .text_overflow(TextOverflow::Ellipsis)
+                            .font_weight(FontWeight::BOLD)
+                            .color(colors::fg_primary()),
+                    )
+                    .child(
+                        label()
+                            .text(subtitle)
+                            .font_size(text_size(12.))
+                            .max_lines(1)
+                            .text_overflow(TextOverflow::Ellipsis)
+                            .color(colors::fg_secondary()),
+                    ),
+            )
+            .child(
+                Button::new()
+                    .secondary()
+                    .icon()
+                    .width(Size::px(ACTION_HEIGHT))
+                    .height(Size::px(ACTION_HEIGHT))
+                    .tooltip(t("oneclient.layout.cluster.share"))
+                    .on_press(move |_| sharing.set(true))
+                    .child(Icon::new(IconType::Share01).size(ACTION_ICON_SIZE)),
+            )
+            .maybe(game.is_running(cluster_id), |el| {
+                el.child(
                     Button::new()
-                        .secondary()
+                        .danger()
                         .icon()
                         .width(Size::px(ACTION_HEIGHT))
                         .height(Size::px(ACTION_HEIGHT))
-                        .tooltip(t("oneclient.layout.cluster.share"))
-                        .on_press(move |_| sharing.set(true))
-                        .child(Icon::new(IconType::Share01).size(ACTION_ICON_SIZE)),
+                        .tooltip(t("oneclient.layout.cluster.stop_game"))
+                        .on_press(move |_| kill_dispatch.kill_cluster(cluster_id))
+                        .child(Icon::new(IconType::Square).size(ACTION_ICON_SIZE)),
                 )
-                .maybe(running, |el| {
-                    el.child(
-                        Button::new()
-                            .danger()
-                            .icon()
-                            .width(Size::px(ACTION_HEIGHT))
-                            .height(Size::px(ACTION_HEIGHT))
-                            .tooltip(t("oneclient.layout.cluster.stop_game"))
-                            .on_press(move |_| kill_dispatch.kill_cluster(cluster_id))
-                            .child(Icon::new(IconType::Square).size(ACTION_ICON_SIZE)),
-                    )
+            })
+            .child(launch_button_label(
+                Button::new()
+                    .primary()
+                    .medium()
+                    .height(Size::px(ACTION_HEIGHT))
+                    // Wide enough for every launch stage, so Share doesn't shift as it changes
+                    .width(Size::px(LAUNCH_WIDTH))
+                    .enabled(launch_enabled)
+                    .on_press(move |_| {
+                        if launch_enabled {
+                            dispatch.launch_cluster(cluster_id);
+                        }
+                    }),
+                launch_label,
+            ))
+            .child(
+                rect()
+                    .width(Size::px(1.))
+                    .height(Size::px(20.))
+                    .background(colors::component_border()),
+            )
+            .child(close)
+            .maybe_child((*sharing.read()).then(|| {
+                ExportInstanceModal::new(
+                    cluster_id,
+                    crate::utils::instance_display_name(cluster),
+                    move |()| sharing.set(false),
+                )
+                .into_element()
+            }))
+    }
+}
+
+/// Which optional tabs an instance's rail shows
+#[derive(Clone, Copy)]
+struct TabVisibility {
+    game_log: bool,
+    datapacks: bool,
+    mod_tabs: bool,
+}
+
+fn cluster_tabs(
+    route: &Route,
+    active: ClusterViewShellTab,
+    cluster_id: i64,
+    visible: TabVisibility,
+    game_folder: Option<GameFolder>,
+    layout: WorkspaceLayout,
+) -> impl IntoElement {
+    let TabVisibility {
+        game_log: show_game_log,
+        datapacks: show_datapacks,
+        mod_tabs: show_mod_tabs,
+    } = visible;
+    use ClusterViewShellTab::*;
+
+    let groups = [
+        [Some(Overview), show_mod_tabs.then_some(Mods), None, None],
+        [
+            show_mod_tabs.then_some(Shaders),
+            Some(Textures),
+            show_datapacks.then_some(DataPacks),
+            Some(Worlds),
+        ],
+        [
+            Some(Screenshots),
+            Some(Logs),
+            (show_game_log || active == GameLog).then_some(GameLog),
+            None,
+        ],
+    ];
+
+    // The scrolling rows and the pinned Settings row each get their own glass track. One track
+    // across both would measure overflowed rows below the pinned one, and its release check
+    // would reject presses outside the scroll viewport, so pinned Settings could not be picked.
+    let tabs: Vec<_> = groups.iter().flatten().copied().flatten().collect();
+    let liquid = colors::active_theme().liquid_glass;
+    let track = glass::use_vertical_pill_track(tabs.len());
+    let pinned_track = glass::use_vertical_pill_track(1);
+    let lens = liquid.then_some(track);
+    let pinned_lens = liquid.then_some(pinned_track);
+    let selected = tabs.iter().position(|tab| *tab == active);
+    let settings_selected = (active == Settings).then_some(0);
+    let make_tab = move |tab: ClusterViewShellTab, lens: Option<glass::PillTrack>, index| {
+        workspace_rail::Tab {
+            label: tab.label(),
+            icon: tab.icon(),
+            route: tab.route(cluster_id),
+            active: tab == active,
+            has_dot: false,
+            height: layout.row_height,
+            lens: lens.map(|track| (track, index)),
+            search: None,
+        }
+        .into_element()
+    };
+
+    // Scroll the rail to the active row. Settings is pinned below the scrolling part.
+    let shown: Vec<usize> = groups
+        .iter()
+        .map(|group| group.iter().flatten().count())
+        .filter(|count| *count > 0)
+        .collect();
+    let active_row = groups
+        .iter()
+        .filter(|group| group.iter().any(Option::is_some))
+        .enumerate()
+        .find_map(|(group, tabs)| {
+            let index = tabs.iter().flatten().position(|tab| *tab == active)?;
+            Some(workspace_rail::divided_row_top(
+                &shown,
+                group,
+                index,
+                layout.row_height,
+                layout.row_gap,
+            ))
+        });
+    let rail_scroll = workspace_rail::use_rail_scroll();
+    let mut viewport = use_state(|| 0f32);
+    workspace_rail::use_reveal_active(
+        &rail_scroll,
+        route,
+        active_row.map(|top| (top, top, layout.row_height)),
+        *viewport.read(),
+    );
+
+    workspace_rail::column(layout)
+        .map(lens, |el, track| {
+            track.events(el, move |index| {
+                if Some(index) != selected {
+                    workspace_rail::select(&tabs[index].route(cluster_id));
+                }
+            })
+        })
+        // Measured on a wrapper: the glass track's viewport needs the scroll rect's own on_sized
+        .child(
+            rect()
+                .width(Size::fill())
+                .height(Size::flex(1.))
+                .on_sized(move |event: Event<SizedEventData>| {
+                    let height = event.area.height();
+                    if (*viewport.peek() - height).abs() > 0.5 {
+                        viewport.set(height);
+                    }
                 })
-                .child(
-                    Button::new()
-                        .primary()
-                        .large()
-                        .height(Size::px(ACTION_HEIGHT))
-                        .enabled(launch_enabled)
-                        .on_press(move |_| {
-                            if launch_enabled {
-                                dispatch.launch_cluster(cluster_id);
+                .child(workspace_rail::scroll(lens).height(Size::fill()).child(
+                    workspace_rail::navigation(layout, &rail_scroll).content(move |_| {
+                        let mut index = 0;
+                        let mut content = rect()
+                            .vertical()
+                            .width(Size::fill())
+                            .maybe_child(lens.map(|track| track.indicator(selected)));
+                        for group in groups
+                            .iter()
+                            .filter(|group| group.iter().any(Option::is_some))
+                        {
+                            if index != 0 {
+                                content = content.child(workspace_rail::divider());
                             }
-                        })
-                        .text(launch_label),
+                            let rows = group.iter().flatten().map(|tab| {
+                                let row = make_tab(*tab, lens, index);
+                                index += 1;
+                                row
+                            });
+                            content = content.child(
+                                rect()
+                                    .vertical()
+                                    .width(Size::fill())
+                                    .spacing(layout.row_gap)
+                                    .children(rows),
+                            );
+                        }
+                        content.into_element()
+                    }),
+                )),
+        )
+        // The instance-wide folder and Settings stay reachable however short the window is
+        .child(
+            workspace_rail::footer(layout)
+                .map(pinned_lens, |el, track| {
+                    track.events(el, move |_| {
+                        if active != Settings {
+                            workspace_rail::select(&Settings.route(cluster_id));
+                        }
+                    })
+                })
+                .maybe_child(pinned_lens.map(|track| track.indicator(settings_selected)))
+                .child(workspace_rail::divider())
+                .child(
+                    rect()
+                        .vertical()
+                        .width(Size::fill())
+                        .spacing(layout.row_gap)
+                        .maybe_child(game_folder.map(|folder| ClusterFolderRow {
+                            folder,
+                            height: layout.row_height,
+                        }))
+                        .child(make_tab(Settings, pinned_lens, 0)),
                 ),
         )
 }
 
-fn cluster_tabs(
-    active: ClusterViewShellTab,
-    cluster_id: i64,
-    show_game_log: bool,
-    show_datapacks: bool,
-    show_mod_tabs: bool,
-) -> impl IntoElement {
-    let tabs = [
-        Some(ClusterViewShellTab::Overview),
-        Some(ClusterViewShellTab::Logs),
-        Some(ClusterViewShellTab::Screenshots),
-        show_mod_tabs.then_some(ClusterViewShellTab::Mods),
-        show_mod_tabs.then_some(ClusterViewShellTab::Shaders),
-        Some(ClusterViewShellTab::Textures),
-        Some(ClusterViewShellTab::Worlds),
-        show_datapacks.then_some(ClusterViewShellTab::DataPacks),
-        Some(ClusterViewShellTab::Settings),
-        show_game_log.then_some(ClusterViewShellTab::GameLog),
-    ];
+/// The instance's whole game folder, shown above Settings so it is not mistaken for a tab's own folder
+#[derive(Clone, PartialEq)]
+struct GameFolder {
+    path: std::path::PathBuf,
+    shared: bool,
+}
 
-    let tab_items = tabs.into_iter().flatten().map(|tab| {
-        let route = tab.route(cluster_id);
-        let mut item = TabItem::new(tab.label(), tab == active);
-        if tab == ClusterViewShellTab::GameLog {
-            item = item.accent(colors::brand());
-        }
-        if let Some(route) = route {
-            item = item.on_press(move |_| {
-                let _ = RouterContext::get().push(route.clone());
-            });
-        }
-        item
-    });
+#[derive(PartialEq)]
+struct ClusterFolderRow {
+    folder: GameFolder,
+    height: f32,
+}
 
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .height(Size::px(TABS_HEIGHT))
-        .cross_align(Alignment::Center)
-        .border(
-            Border::new()
-                .fill(colors::component_border())
-                .width(BorderWidth {
-                    top: 0.,
-                    right: 0.,
-                    bottom: 1.,
-                    left: 0.,
-                }),
-        )
-        .child(
-            TabBar::new()
-                .width(Size::auto())
-                .height(Size::fill())
-                .spacing(22.)
-                .font_size(text_size(13.))
-                .tabs(tab_items),
-        )
+impl Component for ClusterFolderRow {
+    fn render(&self) -> impl IntoElement {
+        let mut hover = use_state(|| false);
+        let id = use_a11y();
+        let focus = use_focus(id);
+        let keyboard = focus() == Focus::Keyboard;
+        let name = t("oneclient.layout.cluster.game_folder");
+        let tip = if self.folder.shared {
+            format!(
+                "{} {}",
+                t("oneclient.layout.cluster.game_folder.tooltip"),
+                t("oneclient.layout.cluster.game_folder.shared")
+            )
+        } else {
+            t("oneclient.layout.cluster.game_folder.tooltip").to_string()
+        };
+        let tooltip = use_tooltip_anchor(Some(tip.into()), TooltipPlacement::Right);
+        let path = self.folder.path.clone();
+        let ink = if hover() || keyboard {
+            colors::fg_primary()
+        } else {
+            workspace_rail::secondary_ink()
+        };
+
+        tooltip
+            .attach(workspace_rail::row(self.height))
+            .background(if hover() {
+                colors::ghost_overlay_hover()
+            } else {
+                Color::TRANSPARENT
+            })
+            .maybe(keyboard, |el| {
+                el.border(crate::ui::border_all_color(1., colors::fg_primary()))
+            })
+            .a11y_id(id)
+            .a11y_role(AccessibilityRole::Button)
+            .a11y_focusable(true)
+            .a11y_alt(name)
+            .cursor(CursorIcon::Pointer)
+            // The tooltip owns pointer-enter and pointer-leave on this rect
+            .on_pointer_over(move |_| hover.set_if_modified(true))
+            .on_pointer_out(move |_| hover.set_if_modified(false))
+            .on_press(move |_| {
+                std::fs::create_dir_all(&path).ok();
+                crate::platform::open_path(&path.to_string_lossy());
+            })
+            .child(Icon::new(IconType::Folder).size(16.).color(ink))
+            .child(
+                label()
+                    .text(name)
+                    .width(Size::flex(1.))
+                    .max_lines(1)
+                    .text_overflow(TextOverflow::Ellipsis)
+                    .font_size(text_size(13.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .color(ink),
+            )
+            .child(
+                Icon::new(IconType::LinkExternal01)
+                    .size(13.)
+                    .color(colors::fg_secondary().with_a(150)),
+            )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use freya_testing::prelude::{PlatformEvent, TestingRunner, WheelEventName};
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn short_instance_rail_pins_settings_and_scrolls_the_tabs_above_it() {
+        let (mut runner, ()) = TestingRunner::new(
+            || {
+                cluster_tabs(
+                    &Route::ClusterTextures { cluster_id: 1 },
+                    ClusterViewShellTab::Textures,
+                    1,
+                    TabVisibility {
+                        game_log: true,
+                        datapacks: true,
+                        mod_tabs: true,
+                    },
+                    Some(GameFolder {
+                        path: std::path::PathBuf::new(),
+                        shared: true,
+                    }),
+                    WorkspaceLayout::for_size(800., 600.),
+                )
+            },
+            (800., 390.).into(),
+            |_| (),
+            1.,
+        );
+        runner.poll_n(Duration::ZERO, 5);
+
+        let bottom = |runner: &TestingRunner, name| {
+            runner
+                .find(|node, element| {
+                    let mut access = element.accessibility().builder.clone();
+                    element.finish_accessibility(&mut access);
+                    (access.label() == Some(name)).then(|| node.layout().area.max_y())
+                })
+                .unwrap()
+        };
+        // Settings and the game folder are pinned at the bottom of the rail, always visible
+        let settings = bottom(&runner, ClusterViewShellTab::Settings.label());
+        let folder = bottom(&runner, t("oneclient.layout.cluster.game_folder"));
+        assert!(
+            settings <= 390.,
+            "settings ended below the rail: {settings}"
+        );
+        assert!(folder < settings);
+        // The tabs above scroll, so Live log starts hidden below the pinned rows
+        let game_log = bottom(&runner, ClusterViewShellTab::GameLog.label());
+        assert!(game_log > folder - 32.);
+
+        runner.send_event(PlatformEvent::Wheel {
+            name: WheelEventName::Wheel,
+            source: WheelSource::Pixel,
+            phase: TouchPhase::Moved,
+            scroll: (0., -150.).into(),
+            cursor: (60., 160.).into(),
+        });
+        runner.poll_n(Duration::ZERO, 5);
+
+        // The pinned rows stay put while the rest scrolls
+        assert_eq!(
+            bottom(&runner, ClusterViewShellTab::Settings.label()),
+            settings
+        );
+        assert!(bottom(&runner, ClusterViewShellTab::GameLog.label()) < game_log);
+    }
+
+    /// In the glass themes rail rows are picked through the pill track. The pinned Settings row
+    /// sits outside the scroll viewport, so it needs a track of its own to be clickable.
+    #[tokio::test]
+    async fn pinned_settings_can_be_picked_in_a_short_glass_rail() {
+        crate::theme::colors::apply("polyglass-dark", None);
+        workspace_rail::SELECTED.with(|cell| *cell.borrow_mut() = None);
+        let (mut runner, ()) = TestingRunner::new(
+            || {
+                crate::hooks::use_provide_station(|| {
+                    let mut app = crate::state::AppState::default();
+                    app.settings.settings.animations_enabled = false;
+                    app
+                });
+                cluster_tabs(
+                    &Route::ClusterOverview { cluster_id: 1 },
+                    ClusterViewShellTab::Overview,
+                    1,
+                    TabVisibility {
+                        game_log: true,
+                        datapacks: true,
+                        mod_tabs: true,
+                    },
+                    Some(GameFolder {
+                        path: std::path::PathBuf::new(),
+                        shared: true,
+                    }),
+                    WorkspaceLayout::for_size(800., 600.),
+                )
+            },
+            (800., 300.).into(),
+            |_| (),
+            1.,
+        );
+        runner.poll_n(Duration::ZERO, 8);
+
+        let area = |runner: &TestingRunner, name| {
+            runner
+                .find(|node, element| {
+                    let mut access = element.accessibility().builder.clone();
+                    element.finish_accessibility(&mut access);
+                    (access.label() == Some(name)).then(|| node.layout().area)
+                })
+                .unwrap()
+        };
+        let settings = area(&runner, ClusterViewShellTab::Settings.label());
+        assert!(settings.max_y() <= 300.);
+        runner.click_cursor((
+            f64::from(settings.min_x() + 40.),
+            f64::from(settings.center().y),
+        ));
+        runner.poll_n(Duration::ZERO, 4);
+        let picked = workspace_rail::SELECTED.with(|cell| cell.borrow_mut().take());
+
+        // A scrolling row is still picked through the main track
+        let textures = area(&runner, ClusterViewShellTab::Textures.label());
+        runner.click_cursor((
+            f64::from(textures.min_x() + 40.),
+            f64::from(textures.center().y),
+        ));
+        runner.poll_n(Duration::ZERO, 4);
+        let scrolled_pick = workspace_rail::SELECTED.with(|cell| cell.borrow_mut().take());
+        crate::theme::colors::apply("dark", None);
+
+        assert_eq!(picked, Some(Route::ClusterSettings { cluster_id: 1 }));
+        assert_eq!(
+            scrolled_pick,
+            Some(Route::ClusterTextures { cluster_id: 1 })
+        );
+    }
+
+    #[tokio::test]
+    async fn short_instance_rail_opens_scrolled_to_the_active_tab() {
+        let (mut runner, ()) = TestingRunner::new(
+            || {
+                cluster_tabs(
+                    &Route::ProcessLogs { cluster_id: 1 },
+                    ClusterViewShellTab::GameLog,
+                    1,
+                    TabVisibility {
+                        game_log: true,
+                        datapacks: true,
+                        mod_tabs: true,
+                    },
+                    None,
+                    WorkspaceLayout::for_size(800., 600.),
+                )
+            },
+            (800., 300.).into(),
+            |_| (),
+            1.,
+        );
+        runner.poll_n(Duration::ZERO, 8);
+
+        let area = |runner: &TestingRunner, name| {
+            runner
+                .find(|node, element| {
+                    let mut access = element.accessibility().builder.clone();
+                    element.finish_accessibility(&mut access);
+                    (access.label() == Some(name)).then(|| node.layout().area)
+                })
+                .unwrap()
+        };
+        let live_log = area(&runner, ClusterViewShellTab::GameLog.label());
+        let settings = area(&runner, ClusterViewShellTab::Settings.label());
+        // Clear of the pinned divider and Settings below it
+        assert!(
+            live_log.max_y() <= settings.min_y() - 17.,
+            "live log {live_log:?} is hidden behind the pinned rows {settings:?}"
+        );
+        assert!(live_log.min_y() >= 0.);
+    }
+}
+
+#[cfg(test)]
+mod folder_row_tests {
+    use super::*;
+    use freya_testing::TestingRunner;
+    use std::time::Duration;
+
+    fn shows(runner: &TestingRunner, text: &str) -> bool {
+        runner
+            .find(|_, element| {
+                Label::try_downcast(element).filter(|label| label.text.as_ref() == text)
+            })
+            .is_some()
+    }
+
+    fn station() {
+        crate::hooks::use_provide_station(|| {
+            let mut app = crate::state::AppState::default();
+            app.settings.settings.animations_enabled = false;
+            app
+        });
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_game_folder_explains_itself_on_hover() {
+        fn app() -> impl IntoElement {
+            station();
+            crate::components::use_provide_tooltips();
+            rect()
+                .width(Size::px(200.))
+                .child(ClusterFolderRow {
+                    folder: GameFolder {
+                        path: std::path::PathBuf::new(),
+                        shared: false,
+                    },
+                    height: 32.,
+                })
+                .child(crate::components::TooltipHost)
+        }
+        let (mut runner, ()) = TestingRunner::new(app, (600., 300.).into(), |_| (), 1.);
+        let tip = t("oneclient.layout.cluster.game_folder.tooltip");
+        runner.poll_n(Duration::ZERO, 4);
+        runner.move_cursor((80., 16.));
+        runner.poll(Duration::from_millis(20), Duration::from_millis(900));
+        assert!(shows(&runner, tip));
+        runner.move_cursor((80., 200.));
+        runner.poll_n(Duration::ZERO, 4);
+        assert!(!shows(&runner, tip));
+    }
 }

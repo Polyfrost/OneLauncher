@@ -7,6 +7,9 @@ use freya::prelude::*;
 pub struct HomeStack {
     /// `true` = settled on (or heading to) the versions page
     pub open: State<bool>,
+    /// Changes on every explicit navigation, even when the destination is already selected.
+    pub navigation: State<u64>,
+    wheel_pending: State<bool>,
     /// 0 = home page in view, 1 = versions page in view; updated every frame of a slide
     pub progress: State<f32>,
     /// `progress` past the halfway mark; changes rarely, so cheap for the navbar to watch
@@ -14,11 +17,37 @@ pub struct HomeStack {
 }
 
 impl HomeStack {
+    pub(crate) fn handle_page_key(self, event: &Event<KeyboardEventData>, blocked: bool) {
+        if !blocked && let Some(down) = page_key_is_down(event.data()) {
+            event.stop_propagation();
+            self.set_open(down);
+        }
+    }
+
     pub fn set_open(self, open: bool) {
         let mut state = self.open;
-        if *state.peek() != open {
-            state.set(open);
+        let mut navigation = self.navigation;
+        self.set_wheel_pending(false);
+        state.set_if_modified(open);
+        let next = navigation.peek().wrapping_add(1);
+        navigation.set(next);
+    }
+
+    /// Return from Versions or cancel a partial gesture without walking the route history.
+    pub fn back_to_home(self) -> bool {
+        let can_go_back =
+            *self.open.peek() || *self.wheel_pending.peek() || *self.progress.peek() > 0.;
+        if can_go_back {
+            self.set_open(false);
+            true
+        } else {
+            false
         }
+    }
+
+    pub fn set_wheel_pending(self, pending: bool) {
+        let mut state = self.wheel_pending;
+        state.set_if_modified(pending);
     }
 
     pub fn publish_progress(self, value: f32) {
@@ -34,17 +63,36 @@ impl HomeStack {
     }
 }
 
-pub fn use_provide_home_stack() {
+/// Reject modified paging shortcuts and keep editing keys in the focused field.
+pub(super) fn page_key_is_down(event: &KeyboardEventData) -> Option<bool> {
+    let down = match event.key {
+        Key::Named(NamedKey::PageUp) => false,
+        Key::Named(NamedKey::PageDown) => true,
+        _ => return None,
+    };
+    let window = Platform::get().current_window();
+    (event.modifiers.is_empty()
+        && !crate::ui::is_text_entry(window.focused_accessibility_node.peek().role()))
+    .then_some(down)
+}
+
+pub fn use_provide_home_stack() -> HomeStack {
     let open = use_state(|| false);
+    let navigation = use_state(|| 0);
+    let wheel_pending = use_state(|| false);
     let progress = use_state(|| 0f32);
     let on_versions = use_state(|| false);
     use_hook(|| {
-        provide_context(HomeStack {
+        let stack = HomeStack {
             open,
+            navigation,
+            wheel_pending,
             progress,
             on_versions,
-        })
-    });
+        };
+        provide_context(stack);
+        stack
+    })
 }
 
 pub fn use_home_stack() -> Option<HomeStack> {

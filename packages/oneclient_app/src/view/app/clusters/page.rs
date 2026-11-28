@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use crate::components::{ClusterContextMenu, InstanceOverviewButton, InstanceOverviewSurface};
 use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_common::domain::GameLoader;
@@ -21,23 +22,29 @@ use crate::i18n::{t, tf};
 use crate::routes::Route;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::{
-    border_all_color, fixed_grid, grid_columns_for_width, last_played_label, window_logical_size,
+    Edge, border_all_color, columns_for, edge_line, fixed_grid, grid_columns_for_width,
+    last_played_label, window_logical_size,
 };
 use crate::utils::{
     ClusterGroups, GridSelection, ReleaseLine, default_line, default_loader, default_version_key,
     format_duration, line_title, resolve_cluster, sort_clusters_for_home, split_clusters,
 };
 use crate::view::app::clusters::CreateInstanceModal;
-use crate::view::app::{launch_button_state, launch_syncing, use_shared_dir_taken};
+use crate::view::app::{
+    launch_button_label, launch_button_state, launch_syncing, use_shared_dir_taken,
+};
 
-const PAGE_PADDING: Gaps = Gaps::new(12., 28., 28., 28.);
+/// Same side gutter as Browse and Wardrobe, so the page lines up under the shared "Back to" button
+const PAGE_GUTTER_PX: f32 = 40.;
+const PAGE_PADDING: Gaps = Gaps::new(12., PAGE_GUTTER_PX, 28., PAGE_GUTTER_PX);
 const COLUMN_GAP_PX: f32 = 24.;
-const CARD_GAP_PX: f32 = 10.;
+const CARD_GAP_PX: f32 = 16.;
 const ROW_GAP_PX: f32 = 8.;
-const CARD_HEIGHT_PX: f32 = 150.;
 const ROW_HEIGHT_PX: f32 = 56.;
-const MAX_CARD_WIDTH_PX: f32 = 300.;
-const MAX_ROW_WIDTH_PX: f32 = 480.;
+const MAX_CARD_WIDTH_PX: f32 = 340.;
+const SCROLLBAR_GUTTER_PX: f32 = 14.;
+const MIN_ROW_WIDTH_PX: f32 = 344.;
+const MAX_ROW_COLUMNS: usize = 4;
 const SIDEBAR_WIDTH_PX: f32 = 360.;
 const COMPACT_SIDEBAR_WIDTH_PX: f32 = 300.;
 const COMPACT_BELOW_PX: f32 = 1000.;
@@ -45,7 +52,10 @@ const INLINE_SEARCH_MIN_PX: f32 = 700.;
 const SEARCH_WIDTH_PX: f32 = 220.;
 const TOOLBAR_HEIGHT_PX: f32 = 44.;
 const ART_MAX_HEIGHT_PX: f32 = 200.;
-const ART_MIN_SIDEBAR_PX: f32 = 420.;
+const ART_MIN_SIDEBAR_PX: f32 = 480.;
+const SIDEBAR_PADDING_PX: f32 = 22.;
+const SIDEBAR_ACTION_GAP_PX: f32 = 18.;
+const SIDEBAR_ACTION_HEIGHT_PX: f32 = 36.;
 
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum Filter {
@@ -173,7 +183,10 @@ impl Component for Clusters {
                 .overflow(Overflow::Clip)
                 .padding(PAGE_PADDING)
                 .spacing(24.)
-                .child(page_header(show_create))
+                .child(page_header(
+                    show_create,
+                    *body_width.read() >= COMPACT_BELOW_PX,
+                ))
                 .child(
                     rect()
                         .vertical()
@@ -258,17 +271,15 @@ impl Component for Clusters {
         let main_w = body_w - sidebar_w - COLUMN_GAP_PX;
         let grid = *layout.read() == ViewLayout::Grid;
         let (columns, item_height, gap) = if grid {
+            let grid_w = main_w - SCROLLBAR_GUTTER_PX;
+            let columns = grid_columns_for_width(grid_w, MAX_CARD_WIDTH_PX, CARD_GAP_PX);
             (
-                grid_columns_for_width(main_w, MAX_CARD_WIDTH_PX, CARD_GAP_PX),
-                CARD_HEIGHT_PX,
+                columns,
+                VersionCard::height_for_width(card_width_for(grid_w, columns, CARD_GAP_PX)),
                 CARD_GAP_PX,
             )
         } else {
-            (
-                grid_columns_for_width(main_w, MAX_ROW_WIDTH_PX, ROW_GAP_PX),
-                ROW_HEIGHT_PX,
-                ROW_GAP_PX,
-            )
+            (version_list_columns(main_w), ROW_HEIGHT_PX, ROW_GAP_PX)
         };
         let inline_search = main_w >= INLINE_SEARCH_MIN_PX;
 
@@ -314,38 +325,34 @@ impl Component for Clusters {
             .cloned();
         let line_cards: Vec<Element> = shown_lines
             .iter()
-            .map(|&line| {
+            .filter_map(|&line| {
                 let list = &groups[&line];
                 let item = GridSelection::Line(line);
                 let is_selected = current == Some(item);
                 let picked = cluster
                     .as_ref()
                     .filter(|c| is_selected && list.iter().any(|listed| listed.id == c.id));
-                let line_menu = match list.as_slice() {
-                    [only] => Some(ClusterMenuTarget::for_cluster(only, true)),
-                    _ => picked
-                        .map(|c| c.id)
-                        .or_else(|| default_line_cluster(list, active_cluster.as_ref()))
-                        .and_then(|id| list.iter().find(|c| c.id == id))
-                        .map(|c| ClusterMenuTarget::for_cluster(c, false)),
-                };
-                let caption = match (is_selected, &cluster, list.as_slice()) {
-                    (true, Some(c), _) | (_, _, [c]) => cluster_caption(c),
-                    _ => tf("oneclient.clusters.page.instance_count", &[&list.len()]),
-                };
+                let target = picked
+                    .or_else(|| {
+                        let id = default_line_cluster(list, active_cluster.as_ref())?;
+                        list.iter().find(|cluster| cluster.id == id)
+                    })
+                    .or_else(|| list.first())?;
+                let line_menu = Some(ClusterMenuTarget::for_cluster(target, list.len() == 1));
                 let on_press = move |_| {
                     selected.set(Some(item));
                     selected_cluster.set(None);
                 };
-                if grid {
-                    VersionCard::new(line, list, caption, is_selected, on_press)
+                Some(if grid {
+                    VersionCard::new(line, list, target, is_selected, on_press)
+                        .height(item_height)
                         .menu(line_menu)
                         .into_element()
                 } else {
-                    InstanceRow::for_line(line, list, caption, is_selected, on_press)
+                    InstanceRow::for_line(line, list, target, is_selected, on_press)
                         .menu(line_menu)
                         .into_element()
-                }
+                })
             })
             .collect();
 
@@ -358,6 +365,7 @@ impl Component for Clusters {
                     let menu = Some(ClusterMenuTarget::for_cluster(c, true));
                     if grid {
                         VersionCard::for_instance(c, is_selected, on_press)
+                            .height(item_height)
                             .menu(menu)
                             .into_element()
                     } else {
@@ -415,8 +423,7 @@ impl Component for Clusters {
                             .height(Size::fill())
                             .content(Content::Flex)
                             .spacing(18.)
-                            .child(page_header(show_create))
-                            .child(toolbar(tabs, query, inline_search.then(|| filters.clone())))
+                            .child(page_header(show_create, body_w >= COMPACT_BELOW_PX))
                             .maybe_child((!inline_search).then(|| {
                                 rect()
                                     .horizontal()
@@ -424,13 +431,15 @@ impl Component for Clusters {
                                     .content(Content::Flex)
                                     .spacing(8.)
                                     .child(search_input(query, Size::flex(1.)))
-                                    .child(filters)
+                                    .child(filters.clone())
                                     .into_element()
                             }))
+                            .child(toolbar(tabs, query, inline_search.then_some(filters)))
                             .child(
                                 ScrollArea::new()
                                     .width(Size::fill())
                                     .height(Size::flex(1.0))
+                                    .keyboard_paging()
                                     .scrollbar_gutter(true)
                                     .spacing(22.)
                                     .append_children((!shown_lines.is_empty()).then(|| {
@@ -510,11 +519,17 @@ fn cluster_caption(cluster: &Cluster) -> String {
     format!("{} \u{b7} {}", cluster.mc_version, cluster.mc_loader)
 }
 
+/// Width of one grid cell once the gaps between `columns` cells are taken out
+pub(super) fn card_width_for(width: f32, columns: usize, gap: f32) -> f32 {
+    let columns = columns.max(1) as f32;
+    ((width - gap * (columns - 1.)) / columns).max(0.)
+}
+
 fn picker_caption(cluster: &Cluster) -> String {
     if cluster.user_created {
         format!("{} \u{b7} {}", cluster.name, cluster_caption(cluster))
     } else {
-        cluster_caption(cluster)
+        crate::utils::builtin_oneclient_title(cluster).unwrap_or_else(|| cluster_caption(cluster))
     }
 }
 
@@ -531,17 +546,6 @@ fn default_line_cluster(clusters: &[Cluster], active: Option<&Cluster>) -> Optio
         default_loader(clusters, active.map(|c| c.mc_loader)),
     )
     .map(|c| c.id)
-}
-
-fn bottom_border() -> Border {
-    Border::new()
-        .fill(colors::component_border())
-        .width(BorderWidth {
-            top: 0.,
-            right: 0.,
-            bottom: 1.,
-            left: 0.,
-        })
 }
 
 fn section(title: &str, caption: &str, grid: Element) -> Element {
@@ -586,7 +590,17 @@ pub(crate) fn toolbar(
         .height(Size::px(TOOLBAR_HEIGHT_PX))
         .cross_align(Alignment::Center)
         .content(Content::Flex)
-        .border(bottom_border())
+        .spacing(12.)
+        .child(edge_line(
+            Edge::Bottom,
+            colors::component_border(),
+            Gaps::default(),
+        ))
+        .maybe_child(
+            inline_filters
+                .as_ref()
+                .map(|_| search_input(query, Size::px(SEARCH_WIDTH_PX))),
+        )
         .child(
             TabBar::new()
                 .width(Size::auto())
@@ -596,14 +610,7 @@ pub(crate) fn toolbar(
                 .tabs(tabs),
         )
         .child(rect().width(Size::flex(1.0)))
-        .maybe_child(inline_filters.map(|filters| {
-            rect()
-                .horizontal()
-                .spacing(8.)
-                .child(search_input(query, Size::px(SEARCH_WIDTH_PX)))
-                .child(filters)
-                .into_element()
-        }))
+        .maybe_child(inline_filters)
 }
 
 pub(crate) fn filter_menu(
@@ -641,13 +648,31 @@ pub(crate) fn filter_menu(
         .into_element()
 }
 
+fn version_list_columns(width: f32) -> usize {
+    let available = (width - SCROLLBAR_GUTTER_PX).max(1.);
+    columns_for(available, MIN_ROW_WIDTH_PX, MAX_ROW_COLUMNS, ROW_GAP_PX)
+}
+
 fn layout_toggle(layout: State<ViewLayout>) -> Element {
     SegmentedControl::new(layout)
+        .static_indicator()
         .height(34.)
-        .icon_size(15.)
+        .icon_size(if colors::active_theme().pixel_icons {
+            24.
+        } else {
+            15.
+        })
         .equal_width(34.)
-        .segment(Segment::new(ViewLayout::List).icon(IconType::ParagraphWrap))
-        .segment(Segment::new(ViewLayout::Grid).icon(IconType::DotsGrid))
+        .segment(
+            Segment::new(ViewLayout::List)
+                .icon(IconType::ParagraphWrap)
+                .tooltip(t("oneclient.clusters.page.layout.list")),
+        )
+        .segment(
+            Segment::new(ViewLayout::Grid)
+                .icon(IconType::DotsGrid)
+                .tooltip(t("oneclient.clusters.page.layout.grid")),
+        )
         .into_element()
 }
 
@@ -658,7 +683,11 @@ pub(crate) fn search_input(query: State<String>, width: Size) -> Element {
         .placeholder(t("oneclient.clusters.page.search"))
         .leading(
             Icon::new(IconType::SearchMd)
-                .size(14.)
+                .size(if colors::active_theme().pixel_icons {
+                    24.
+                } else {
+                    14.
+                })
                 .color(colors::fg_secondary())
                 .into_element(),
         )
@@ -718,6 +747,7 @@ struct Sidebar {
     width: f32,
     cluster_id: i64,
     uses_bundles: bool,
+    menu: ClusterMenuTarget,
     art: DynamicArt,
     type_label: &'static str,
     title: String,
@@ -734,10 +764,15 @@ impl Sidebar {
             width,
             cluster_id: cluster.id,
             uses_bundles: cluster.uses_bundles(),
+            menu: ClusterMenuTarget::for_cluster(cluster, true),
             art: DynamicArt::for_cluster(cluster).max_edge(ART_PREVIEW_EDGE),
             type_label: "OneClient",
-            title: cluster.name.clone(),
-            subtitle: cluster_caption(cluster),
+            title: crate::utils::instance_display_name(cluster),
+            subtitle: if !cluster.is_isolated() && !cluster.user_created {
+                format!("OneClient {}", cluster.mc_loader)
+            } else {
+                cluster_caption(cluster)
+            },
             description: None,
             meta: vec![
                 ("Minecraft", cluster.mc_version.clone()),
@@ -798,6 +833,7 @@ impl Component for LineSidebar {
 impl Component for Sidebar {
     fn render(&self) -> impl IntoElement {
         let mut sidebar_height = use_state(|| 0f32);
+        let mut menu = use_state(|| None);
         let mut active_id = use_active_cluster_id();
         let dispatch = use_dispatch();
         let game = use_game_snapshot();
@@ -807,40 +843,79 @@ impl Component for Sidebar {
         let syncing = launch_syncing(&launcher, self.uses_bundles);
         let shared_dir_taken = use_shared_dir_taken(cluster_id);
         let art_height = art_height_for(*sidebar_height.read());
-        let top_padding = if art_height.is_some() { 4. } else { 22. };
+        let top_padding = if art_height.is_some() {
+            16.
+        } else {
+            SIDEBAR_PADDING_PX
+        };
 
-        rect()
+        let menu_button = |surface| InstanceOverviewButton {
+            position: menu,
+            surface,
+            name: self.title.clone(),
+        };
+        let theme = colors::active_theme();
+        let panel = rect()
             .width(Size::px(self.width))
             .min_width(Size::px(self.width))
             .height(Size::fill())
             .vertical()
             .content(Content::Flex)
-            .corner_radius(rounded(20.))
-            .background(colors::page_elevated())
-            .border(border_all_color(1., colors::component_border()))
+            .corner_radius(rounded(20.));
+        let panel = if theme.liquid_glass {
+            crate::theme::glass::panel(
+                panel,
+                &theme,
+                crate::theme::rounded_px(16.),
+                colors::page_elevated().with_a(154),
+            )
+        } else {
+            panel
+                .background(colors::page_elevated())
+                .border(border_all_color(1., colors::component_border()))
+        };
+        let panel = panel
             .overflow(Overflow::Clip)
-            .on_sized(move |event: Event<SizedEventData>| {
-                let height = event.data().area.height();
-                if (*sidebar_height.peek() - height).abs() > 0.5 {
-                    *sidebar_height.write() = height;
+            .on_secondary_down(move |event: Event<PressEventData>| {
+                if let PressEventData::Mouse(mouse) = event.data() {
+                    menu.set(Some((
+                        mouse.global_location.x as f32,
+                        mouse.global_location.y as f32,
+                    )));
                 }
             })
             .maybe_child(
                 art_height.map(|height| sidebar_art(self.art.clone(), self.type_label, height)),
             )
+            .maybe_child(art_height.is_some().then(|| {
+                rect()
+                    .position(Position::new_absolute().top(14.).right(14.))
+                    .layer(Layer::Relative(7))
+                    .child(menu_button(InstanceOverviewSurface::Artwork {
+                        reveal: true,
+                    }))
+            }))
             .child(
                 rect()
                     .vertical()
                     .width(Size::fill())
                     .height(Size::flex(1.0))
                     .content(Content::Flex)
-                    .padding(Gaps::new(top_padding, 22., 22., 22.))
-                    .spacing(18.)
+                    .padding(Gaps::new(
+                        top_padding,
+                        SIDEBAR_PADDING_PX,
+                        SIDEBAR_PADDING_PX,
+                        SIDEBAR_PADDING_PX,
+                    ))
+                    .spacing(SIDEBAR_ACTION_GAP_PX)
                     .child(
                         ScrollArea::new()
                             .width(Size::fill())
                             .height(Size::flex(1.0))
+                            .keyboard_paging()
                             .scrollbar_gutter(true)
+                            .bottom_fade(colors::page_elevated())
+                            .bottom_fade_height(18.)
                             .spacing(18.)
                             .child(
                                 rect()
@@ -876,6 +951,8 @@ impl Component for Sidebar {
                             .horizontal()
                             .width(Size::fill())
                             .content(Content::Flex)
+                            .height(Size::px(SIDEBAR_ACTION_HEIGHT_PX))
+                            .cross_align(Alignment::Center)
                             .spacing(8.)
                             .child(play_button(
                                 cluster_id,
@@ -894,9 +971,28 @@ impl Component for Sidebar {
                                     })
                                     .child(Icon::new(IconType::Settings01).size(16.)),
                             )
-                            .maybe_child(self.folder.clone().map(open_folder_button)),
+                            .maybe_child(self.folder.clone().map(open_folder_button))
+                            .maybe_child(
+                                art_height
+                                    .is_none()
+                                    .then(|| menu_button(InstanceOverviewSurface::List)),
+                            ),
                     ),
-            )
+            );
+
+        rect()
+            .width(Size::px(self.width))
+            .min_width(Size::px(self.width))
+            .height(Size::fill())
+            .on_sized(move |event: Event<SizedEventData>| {
+                sidebar_height.set_if_modified(event.area.height());
+            })
+            .child(panel)
+            .child(ClusterContextMenu {
+                target: self.menu.clone(),
+                position: menu,
+                upwards: false,
+            })
     }
 }
 
@@ -910,19 +1006,6 @@ fn sidebar_art(art: DynamicArt, type_label: &str, height: f32) -> Element {
                 .height(Size::fill())
                 .position(Position::new_absolute())
                 .child(art),
-        )
-        .child(
-            rect()
-                .width(Size::fill())
-                .height(Size::fill())
-                .position(Position::new_absolute())
-                .layer(Layer::Relative(3))
-                .background(
-                    LinearGradient::new()
-                        .angle(0.)
-                        .stop((colors::page_elevated().with_a(0), 40.))
-                        .stop((colors::page_elevated().with_a(242), 100.)),
-                ),
         )
         .child(
             rect()
@@ -952,7 +1035,6 @@ fn meta_list(meta: &[(&'static str, String)]) -> Element {
                 .width(Size::fill())
                 .main_align(Alignment::SpaceBetween)
                 .padding(Gaps::new_symmetric(9., 0.))
-                .border(bottom_border())
                 .child(
                     label()
                         .text(key.to_string())
@@ -987,7 +1069,7 @@ fn play_button(
     state: (&'static str, bool),
 ) -> impl IntoElement {
     let (label, enabled) = state;
-    Button::new()
+    let button = Button::new()
         .primary()
         .width(Size::flex(1.))
         .enabled(enabled)
@@ -995,11 +1077,11 @@ fn play_button(
             if enabled {
                 dispatch.launch_cluster(cluster_id);
             }
-        })
-        .text(label)
+        });
+    launch_button_label(button, label)
 }
 
-fn page_header(mut show_create: State<bool>) -> impl IntoElement {
+fn page_header(mut show_create: State<bool>, show_description: bool) -> impl IntoElement {
     rect()
         .horizontal()
         .width(Size::fill())
@@ -1018,12 +1100,13 @@ fn page_header(mut show_create: State<bool>) -> impl IntoElement {
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_strong()),
                 )
-                .child(
+                .maybe_child(show_description.then(|| {
                     label()
                         .text(t("oneclient.clusters.page.description"))
                         .font_size(text_size(13.))
-                        .color(colors::fg_secondary()),
-                ),
+                        .color(colors::fg_secondary())
+                        .into_element()
+                })),
         )
         .child(
             Button::new()
@@ -1057,4 +1140,74 @@ fn sidebar_error(width: f32) -> Element {
                 .color(colors::fg_secondary()),
         )
         .into_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn card_metrics(main_w: f32) -> (usize, f32) {
+        let grid_w = main_w - SCROLLBAR_GUTTER_PX;
+        let columns = grid_columns_for_width(grid_w, MAX_CARD_WIDTH_PX, CARD_GAP_PX);
+        (columns, card_width_for(grid_w, columns, CARD_GAP_PX))
+    }
+
+    #[test]
+    fn card_grid_fits_compact_and_wide_windows() {
+        let main_width = |window, sidebar| {
+            window - PAGE_PADDING.left() - PAGE_PADDING.right() - sidebar - COLUMN_GAP_PX
+        };
+        let (columns, width) = card_metrics(main_width(800., COMPACT_SIDEBAR_WIDTH_PX));
+        assert_eq!(columns, 2);
+        assert!((175.0..=MAX_CARD_WIDTH_PX).contains(&width), "{width}");
+
+        let (columns, width) = card_metrics(main_width(2000., SIDEBAR_WIDTH_PX));
+        assert_eq!(columns, 5);
+        assert!((280.0..=MAX_CARD_WIDTH_PX).contains(&width), "{width}");
+    }
+
+    #[test]
+    fn list_adds_columns_only_when_each_row_has_room() {
+        assert_eq!(version_list_columns(420.), 1);
+        assert_eq!(version_list_columns(709.), 1);
+        assert_eq!(version_list_columns(710.), 2);
+        assert_eq!(version_list_columns(920.), 2);
+        assert_eq!(version_list_columns(1560.), 4);
+    }
+
+    #[test]
+    fn layout_switch_changes_both_ways_with_pointer_clicks() {
+        use std::{cell::Cell, rc::Rc};
+
+        fn app() -> impl IntoElement {
+            let current = use_consume::<Rc<Cell<ViewLayout>>>();
+            let layout = use_state(|| ViewLayout::Grid);
+            current.set(*layout.read());
+            layout_toggle(layout)
+        }
+
+        let (mut runner, current) = freya_testing::TestingRunner::new(
+            app,
+            Size2D::new(200., 80.),
+            |runner| runner.provide_root_context(|| Rc::new(Cell::new(ViewLayout::Grid))),
+            1.,
+        );
+        runner.poll_n(std::time::Duration::ZERO, 3);
+        runner.move_cursor((20., 18.));
+        runner.click_cursor((20., 18.));
+        runner.poll_n(std::time::Duration::ZERO, 3);
+        assert_eq!(current.get(), ViewLayout::List);
+
+        runner.move_cursor((54., 18.));
+        runner.click_cursor((54., 18.));
+        runner.poll_n(std::time::Duration::ZERO, 3);
+        assert_eq!(current.get(), ViewLayout::Grid);
+    }
+
+    #[test]
+    fn card_width_accounts_for_gaps() {
+        assert!((card_width_for(316., 2, 16.) - 150.).abs() < 1e-4);
+        assert!((card_width_for(300., 1, 16.) - 300.).abs() < 1e-4);
+        assert!(card_width_for(0., 3, 16.).abs() < 1e-4);
+    }
 }

@@ -13,11 +13,12 @@ use crate::hooks::{
 };
 use crate::i18n::{t, tf};
 use crate::theme::{colors, rounded, text_size};
+use crate::ui::underlined;
 
 use super::common::{
     CARD_RADIUS_PX, CHIP_RADIUS_PX, EscapeGuard, HeaderButton, ROW_RADIUS_PX, area_contains, clock,
-    day_label, day_of, edge_border, group_heads, head_with_dot, inset_border, popup_shadow,
-    presence_color, use_player_name,
+    day_label, day_of, group_heads, head_with_dot, inset_border, popup_shadow, presence_color,
+    use_player_name,
 };
 use super::list::{accent_button, conversation_title};
 use super::people::{AddMembersDialog, RenameGroupDialog};
@@ -407,7 +408,7 @@ impl Component for ThreadHeader {
             _ => String::new(),
         };
 
-        rect()
+        let row = rect()
             .horizontal()
             .width(Size::fill())
             .padding(Gaps::new(
@@ -419,7 +420,6 @@ impl Component for ThreadHeader {
             .spacing(10.)
             .content(Content::Flex)
             .cross_align(Alignment::Center)
-            .border(edge_border(colors::component_border(), 0., 0., 1.))
             .maybe_child(self.show_back.then(|| HeaderButton {
                 icon: IconType::ArrowLeft,
                 tooltip: t("oneclient.chat.common.back"),
@@ -468,7 +468,9 @@ impl Component for ThreadHeader {
                         on_press: EventHandler::new(|_| {}),
                     })
             }))
-            .maybe_child(context)
+            .maybe_child(context);
+
+        underlined(row, colors::component_border())
     }
 }
 

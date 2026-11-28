@@ -1,7 +1,7 @@
 use freya::prelude::*;
 use oneclient_core::storage::{ReclaimableEntry, StorageEntry, StorageReport, format_bytes};
 
-use super::{section_header, settings_page};
+use super::{PAGE_GAP, first_section_header, section_header, settings_page, settings_row_surface};
 use crate::Route;
 use crate::components::{Button, Icon, IconType, open_folder_button};
 use crate::hooks::{
@@ -26,6 +26,9 @@ impl Component for SettingsStorage {
         let scan = use_storage_scan_progress();
 
         let Some(report) = try_storage_report(&report_query) else {
+            if crate::hooks::query_error(&report_query).is_some() {
+                super::clear_failed_setting_focus(&Route::SettingsStorage {});
+            }
             return settings_page()
                 .child(scan_card(scan.as_ref()))
                 .into_element();
@@ -39,82 +42,89 @@ impl Component for SettingsStorage {
             })
             .child(label().text(t("oneclient.common.refresh")));
 
-        let mut page = settings_page().child(hero(&report, refresh.into_element()));
-
-        if scan.is_some() {
-            page = page.child(scan_card(scan.as_ref()));
-        }
-
-        page.child(section_header(t(
-            "oneclient.settings.storage.section.free_up_space",
-        )))
-        .child(
-            ReclaimRow {
-                icon: IconType::FileX02,
-                title: t("oneclient.settings.storage.unused_cache.title"),
-                description: unused_cache_description(&report.unreferenced_cache),
-                action: StorageAction::CleanUnreferencedCache,
-                empty: report.unreferenced_cache.is_empty(),
-            }
-            .into_element(),
-        )
-        .child(
-            ReclaimRow {
-                icon: IconType::Trash01,
-                title: t("oneclient.settings.storage.legacy.title"),
-                description: legacy_content_description(
-                    &report.legacy_cluster_content,
-                    &report.unused_natives,
-                ),
-                action: StorageAction::CleanLegacyClusterContent,
-                empty: report.legacy_cluster_content.is_empty() && report.unused_natives.is_empty(),
-            }
-            .into_element(),
-        )
-        .child(section_header(t(
-            "oneclient.settings.storage.section.usage",
-        )))
-        .child(usage_list(
-            &report.categories,
-            colors::brand(),
-            t("oneclient.settings.storage.usage_empty"),
-        ))
-        .child(section_header(t(
-            "oneclient.settings.storage.section.clusters",
-        )))
-        .child(usage_list(
-            &report.clusters,
-            colors::fg_secondary(),
-            t("oneclient.settings.storage.clusters_empty"),
-        ))
-        .child(footnote())
-        .into_element()
+        settings_page()
+            .child(super::focus_anchor(
+                "storage.usage",
+                hero(&report, refresh.into_element(), scan.as_ref()),
+            ))
+            .child(super::focus_anchor(
+                "storage.cleanup",
+                first_section_header(t("oneclient.settings.storage.section.free_up_space")),
+            ))
+            .child(
+                ReclaimRow {
+                    icon: IconType::FileX02,
+                    title: t("oneclient.settings.storage.unused_cache.title"),
+                    description: unused_cache_description(&report.unreferenced_cache),
+                    action: StorageAction::CleanUnreferencedCache,
+                    empty: report.unreferenced_cache.is_empty(),
+                }
+                .into_element(),
+            )
+            .child(
+                ReclaimRow {
+                    icon: IconType::Trash01,
+                    title: t("oneclient.settings.storage.legacy.title"),
+                    description: legacy_content_description(
+                        &report.legacy_cluster_content,
+                        &report.unused_natives,
+                    ),
+                    action: StorageAction::CleanLegacyClusterContent,
+                    empty: report.legacy_cluster_content.is_empty()
+                        && report.unused_natives.is_empty(),
+                }
+                .into_element(),
+            )
+            .child(section_header(t(
+                "oneclient.settings.storage.section.usage",
+            )))
+            .child(usage_list(
+                &report.categories,
+                colors::brand(),
+                t("oneclient.settings.storage.usage_empty"),
+            ))
+            .child(section_header(t(
+                "oneclient.settings.storage.section.clusters",
+            )))
+            .child(usage_list(
+                &report.clusters,
+                colors::fg_secondary(),
+                t("oneclient.settings.storage.clusters_empty"),
+            ))
+            .child(footnote())
+            .into_element()
     }
 }
 
-fn hero(report: &StorageReport, refresh: Element) -> impl IntoElement {
+fn hero(
+    report: &StorageReport,
+    refresh: Element,
+    scan: Option<&StorageScanProgress>,
+) -> impl IntoElement {
     let reclaimable = report.unreferenced_cache.bytes
         + report.legacy_cluster_content.bytes
         + report.unused_natives.bytes;
 
-    let subtitle = if reclaimable > 0 {
-        tf(
+    // Progress replaces the subtitle and runs along the card's foot, so a refresh moves nothing
+    let subtitle = match scan {
+        Some(scan) if scan.total > 0 => {
+            format!("{}… {} / {}", scan.label, scan.current, scan.total)
+        }
+        Some(scan) => format!("{}…", scan.label),
+        None if reclaimable > 0 => tf(
             "oneclient.settings.storage.reclaimable",
             &[&format_bytes(reclaimable)],
-        )
-    } else {
-        t("oneclient.settings.storage.nothing_to_free").to_string()
+        ),
+        None => t("oneclient.settings.storage.nothing_to_free").to_string(),
     };
 
-    rect()
+    let summary = rect()
         .horizontal()
         .width(Size::fill())
         .content(Content::Flex)
         .cross_align(Alignment::Center)
         .spacing(16.)
         .padding(Gaps::new_symmetric(20., 16.))
-        .corner_radius(rounded(12.))
-        .background(colors::page_elevated())
         .child(
             rect()
                 .vertical()
@@ -123,24 +133,56 @@ fn hero(report: &StorageReport, refresh: Element) -> impl IntoElement {
                 .child(
                     label()
                         .text(format_bytes(report.total_bytes))
+                        .max_lines(1)
+                        .text_overflow(TextOverflow::Ellipsis)
                         .font_size(text_size(28.))
                         .font_weight(FontWeight::BOLD)
                         .color(colors::fg_primary()),
                 )
-                .child(label().text(subtitle).font_size(text_size(12.)).color(
-                    if reclaimable > 0 {
-                        colors::brand()
-                    } else {
-                        colors::fg_secondary()
-                    },
-                )),
+                .child(
+                    label()
+                        .text(subtitle)
+                        .font_size(text_size(12.))
+                        .max_lines(1)
+                        .text_overflow(TextOverflow::Ellipsis)
+                        .color(if scan.is_none() && reclaimable > 0 {
+                            colors::brand()
+                        } else {
+                            colors::fg_secondary()
+                        }),
+                ),
         )
-        .child(refresh)
+        .child(refresh);
+
+    rect()
+        .width(Size::fill())
+        .corner_radius(rounded(12.))
+        .background(colors::card())
+        .child(summary)
+        .maybe_child(scan.map(|scan| {
+            let fraction = if scan.total > 0 {
+                scan.current as f32 / scan.total as f32
+            } else {
+                0.
+            };
+            rect()
+                .position(Position::new_absolute().left(16.).right(16.).bottom(8.))
+                .child(proportion_bar(fraction, colors::brand()))
+        }))
         .into_element()
 }
 
-// the first-load placeholder and the strip shown while a refresh rescans
 fn scan_card(scan: Option<&StorageScanProgress>) -> impl IntoElement {
+    rect()
+        .width(Size::fill())
+        .padding(Gaps::new_all(16.))
+        .corner_radius(rounded(12.))
+        .background(colors::card())
+        .child(scan_details(scan))
+        .into_element()
+}
+
+fn scan_details(scan: Option<&StorageScanProgress>) -> impl IntoElement {
     let counting = scan.filter(|scan| scan.total > 0);
     let fraction = counting.map_or(0.0, |scan| scan.current as f32 / scan.total as f32);
 
@@ -157,7 +199,10 @@ fn scan_card(scan: Option<&StorageScanProgress>) -> impl IntoElement {
                         || t("oneclient.settings.storage.measuring").to_string(),
                         |scan| format!("{}…", scan.label),
                     ))
+                    .width(Size::fill())
                     .font_size(text_size(14.))
+                    .max_lines(1)
+                    .text_overflow(TextOverflow::Ellipsis)
                     .color(colors::fg_secondary()),
             ),
         );
@@ -174,10 +219,7 @@ fn scan_card(scan: Option<&StorageScanProgress>) -> impl IntoElement {
     rect()
         .vertical()
         .width(Size::fill())
-        .spacing(10.)
-        .padding(Gaps::new_symmetric(16., 16.))
-        .corner_radius(rounded(12.))
-        .background(colors::page_elevated())
+        .spacing(6.)
         .child(header)
         .child(proportion_bar(fraction, colors::brand()))
         .into_element()
@@ -211,16 +253,7 @@ impl Component for ReclaimRow {
                 t("oneclient.settings.storage.clean_up")
             }));
 
-        rect()
-            .horizontal()
-            .width(Size::fill())
-            .content(Content::Flex)
-            .cross_align(Alignment::Center)
-            .spacing(16.)
-            .padding(Gaps::new_symmetric(12., 16.))
-            .corner_radius(rounded(12.))
-            .background(colors::page_elevated())
-            .maybe(self.empty, |el| el.opacity(colors::disabled_opacity()))
+        settings_row_surface(false)
             .child(Icon::new(self.icon))
             .child(
                 rect()
@@ -253,15 +286,7 @@ fn usage_row(entry: &StorageEntry, largest: u64, bar: Color) -> impl IntoElement
         (entry.bytes as f32 / largest as f32).max(MIN_BAR_FRACTION)
     };
 
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .content(Content::Flex)
-        .cross_align(Alignment::Center)
-        .spacing(16.)
-        .padding(Gaps::new_symmetric(12., 16.))
-        .corner_radius(rounded(12.))
-        .background(colors::page_elevated())
+    settings_row_surface(false)
         .child(
             rect()
                 .vertical()
@@ -308,7 +333,7 @@ fn usage_list(entries: &[StorageEntry], bar: Color, empty: &'static str) -> Elem
         return empty_note(empty).into_element();
     };
 
-    let mut list = rect().vertical().width(Size::fill()).spacing(4.);
+    let mut list = rect().vertical().width(Size::fill()).spacing(PAGE_GAP);
     for entry in entries.iter().filter(|entry| entry.bytes > 0) {
         list = list.child(usage_row(entry, largest, bar));
     }
@@ -395,7 +420,7 @@ fn empty_note(text: &'static str) -> impl IntoElement {
         .width(Size::fill())
         .padding(Gaps::new_symmetric(14., 16.))
         .corner_radius(rounded(12.))
-        .background(colors::page_elevated())
+        .background(colors::card())
         .child(
             label()
                 .text(text)
@@ -439,5 +464,68 @@ inventory::submit! {
             "leftover",
         ],
         route: Route::SettingsStorage {},
+    }
+}
+
+#[cfg(test)]
+mod hero_tests {
+    use super::*;
+
+    #[test]
+    fn a_refresh_keeps_the_cards_height() {
+        use freya_testing::TestingRunner;
+        use std::time::Duration;
+
+        fn app() -> impl IntoElement {
+            let scan = use_consume::<State<bool>>();
+            let progress = StorageScanProgress {
+                label: "Measuring".into(),
+                current: 1,
+                total: 4,
+            };
+            let report = StorageReport {
+                total_bytes: 44_000_000,
+                categories: Vec::new(),
+                clusters: Vec::new(),
+                unreferenced_cache: Default::default(),
+                legacy_cluster_content: Default::default(),
+                unused_natives: Default::default(),
+            };
+            let refresh = rect().width(Size::px(60.)).height(Size::px(32.));
+            rect()
+                .width(Size::px(400.))
+                .child(hero(
+                    &report,
+                    refresh.into_element(),
+                    scan().then_some(&progress),
+                ))
+                .child(
+                    rect()
+                        .width(Size::px(10.))
+                        .height(Size::px(10.))
+                        .a11y_alt("below"),
+                )
+        }
+        let (mut runner, mut scan) = TestingRunner::new(
+            app,
+            (400., 300.).into(),
+            |runner| runner.provide_root_context(|| State::create(false)),
+            1.,
+        );
+        let below = |runner: &TestingRunner| {
+            runner
+                .find(|node, element| {
+                    (element.accessibility().builder.label() == Some("below"))
+                        .then(|| node.layout().area.min_y())
+                })
+                .unwrap()
+        };
+        runner.poll_n(Duration::ZERO, 3);
+        let idle = below(&runner);
+        runner.run_in(|| scan.set(true));
+        runner.poll_n(Duration::ZERO, 3);
+        assert_eq!(below(&runner), idle);
+        // A slot kept for the progress used to leave a gap here
+        assert!(idle < 110., "{idle}");
     }
 }

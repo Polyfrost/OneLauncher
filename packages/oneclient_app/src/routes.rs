@@ -91,14 +91,15 @@ pub enum Route {
                 ClusterSettings { cluster_id: i64 },
             #[end_layout]
 
-            #[route("/app/browser/:cluster_id/:package_type?:pick_cluster")]
-            Browser { cluster_id: i64, package_type: String, pick_cluster: bool },
-            #[route("/app/browser/:cluster_id/:package_type/package/:package_id?:add_to_cluster")]
+            #[route("/app/browser/:cluster_id/:package_type?:pick_cluster&:in_instance")]
+            Browser { cluster_id: i64, package_type: String, pick_cluster: bool, in_instance: bool },
+            #[route("/app/browser/:cluster_id/:package_type/package/:package_id?:add_to_cluster&:in_instance")]
             BrowserPackage {
                 cluster_id: i64,
                 package_type: String,
                 package_id: String,
                 add_to_cluster: bool,
+                in_instance: bool,
             },
             #[route("/app/wardrobe")]
             Wardrobe {},

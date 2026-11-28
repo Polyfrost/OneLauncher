@@ -7,11 +7,14 @@ use oneclient_core::clusters::Cluster;
 
 use freya::elements::image::{AspectRatio, ImageCover, ImageHandle, image};
 
-use super::cluster_menu::cluster_menu_entries;
+use super::cluster_menu::{
+    InstanceOverviewButton, InstanceOverviewSurface, cluster_title, use_instance_menu_trigger,
+};
 use super::dynamic_art::use_art_bytes;
 use super::local_image::decode;
 use crate::components::{
-    ART_PREVIEW_EDGE, ContextMenu, DynamicArt, Icon, IconType, LocalImage, use_home_stack,
+    ART_PREVIEW_EDGE, ClusterContextMenu, ClusterMenuTarget, DynamicArt, Icon, IconType,
+    LocalImage, use_home_stack,
 };
 use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters};
 use crate::motion::use_animations_enabled;
@@ -19,7 +22,7 @@ use crate::routes::Route;
 use crate::theme;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all, border_all_color};
-use crate::utils::sort_clusters_for_home;
+use crate::utils::{builtin_oneclient_title, sort_clusters_for_home};
 
 const ROW_HEIGHT_PX: f32 = 208.0;
 const CARD_GAP_PX: f32 = 24.0;
@@ -34,7 +37,6 @@ const MODPACK_ICON_PX: f32 = 72.0;
 const MODPACK_ICON_EDGE: u32 = 192;
 const MODPACK_BLUR: f32 = 4.0;
 const MODPACK_TINT: Color = Color::from_argb(40, 21, 28, 34);
-const MODPACK_TITLE_INSET: f32 = 8.0;
 const MODPACK_TITLE_LEFT: f32 = 10.5;
 const MARQUEE_DELAY: Duration = Duration::from_millis(200);
 const MARQUEE_HOLD: Duration = Duration::from_millis(700);
@@ -134,6 +136,10 @@ impl PartialEq for ClusterCard {
             && self.cluster.cover_path == other.cluster.cover_path
             && self.cluster.linked_modpack_hash == other.cluster.linked_modpack_hash
             && self.cluster.mc_loader == other.cluster.mc_loader
+            && self.cluster.mc_version == other.cluster.mc_version
+            && self.cluster.kind == other.cluster.kind
+            && self.cluster.user_created == other.cluster.user_created
+            && self.cluster.uses_bundles() == other.cluster.uses_bundles()
             && self.index == other.index
             && self.items == other.items
             && self.progress == other.progress
@@ -145,7 +151,7 @@ impl Component for ClusterCard {
         let mut active_id = use_active_cluster_id();
         let active = *active_id.read() == Some(self.cluster.id);
         let mut hovering = use_state(|| false);
-        let mut menu = use_state(|| None::<(f32, f32)>);
+        let menu = use_state(|| None);
 
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
@@ -154,14 +160,15 @@ impl Component for ClusterCard {
         let eased = stagger_eased(self.progress, self.index, self.items);
         let rise = (1.0 - eased) * CARD_RISE_PX;
 
-        let title = if self.cluster.user_created {
-            self.cluster.name.clone()
-        } else {
-            format!("{} {}", self.cluster.mc_version, self.cluster.mc_loader)
-        };
+        let art_scale =
+            super::art_zoom::use_art_scale(*hovering.read() || focus() == Focus::Keyboard);
+        let branded_title = builtin_oneclient_title(&self.cluster);
+        let branded = branded_title.is_some();
+        let title = branded_title.unwrap_or_else(|| cluster_title(&self.cluster));
 
         let cluster_id = self.cluster.id;
-        let mod_tabs = !self.cluster.lacks_mod_loader();
+        let mut target = ClusterMenuTarget::for_cluster(&self.cluster, true);
+        target.title.clone_from(&title);
         let modpack = self.cluster.linked_modpack_hash.is_some();
         let modpack_icon = self
             .cluster
@@ -171,29 +178,6 @@ impl Component for ClusterCard {
             *active_id.write() = Some(cluster_id);
         };
 
-        let menu_overlay = (*menu.read()).map(|(x, y)| {
-            let mut context = ContextMenu::new(x, y)
-                .open_upwards()
-                .title(title.clone())
-                .on_close(move |_| menu.set(None));
-            for (icon, label, route) in
-                cluster_menu_entries(cluster_id)
-                    .into_iter()
-                    .filter(|(_, _, route)| {
-                        mod_tabs
-                            || !matches!(
-                                route,
-                                Route::ClusterMods { .. } | Route::ClusterShaders { .. }
-                            )
-                    })
-            {
-                context = context.action(icon, label, move |()| {
-                    let _ = RouterContext::get().push(route.clone());
-                });
-            }
-            context.into_element()
-        });
-
         rect()
             .key(self.cluster.id)
             .width(Size::flex(1.0))
@@ -202,7 +186,7 @@ impl Component for ClusterCard {
             .offset_y(rise)
             .opacity(eased)
             .child(
-                rect()
+                use_instance_menu_trigger(menu, true, on_press)
                     .width(Size::fill())
                     .height(Size::fill())
                     .position(Position::new_absolute())
@@ -221,6 +205,7 @@ impl Component for ClusterCard {
                     .a11y_id(a11y_id)
                     .a11y_focusable(true)
                     .a11y_role(AccessibilityRole::Button)
+                    .a11y_alt(title.clone())
                     .on_pointer_over(move |_| {
                         if !*hovering.peek() {
                             *hovering.write() = true;
@@ -237,15 +222,6 @@ impl Component for ClusterCard {
                             .y(0.)
                             .color(Color::from_af32rgb(0.3, 0, 0, 0)),
                     )
-                    .on_press(on_press)
-                    .on_secondary_down(move |e: Event<PressEventData>| {
-                        if let PressEventData::Mouse(m) = e.data() {
-                            menu.set(Some((
-                                m.global_location.x as f32,
-                                m.global_location.y as f32,
-                            )));
-                        }
-                    })
                     .child(
                         rect()
                             .width(Size::fill())
@@ -262,6 +238,7 @@ impl Component for ClusterCard {
                                     .height(Size::fill())
                                     .position(Position::new_absolute())
                                     .layer(Layer::Relative(1))
+                                    .scale(art_scale)
                                     .child(
                                         DynamicArt::for_cluster(&self.cluster)
                                             .max_edge(ART_PREVIEW_EDGE),
@@ -278,55 +255,93 @@ impl Component for ClusterCard {
                                     .child(modpack_badge(icon))
                                     .into_element()
                             }))
+                            .child(recent_card_title(
+                                title.clone(),
+                                modpack,
+                                *hovering.read(),
+                                branded,
+                            ))
                             .child(
                                 rect()
-                                    .width(Size::fill())
-                                    .height(Size::fill())
-                                    .position(Position::new_absolute())
-                                    .padding(if modpack {
-                                        Gaps::new(12., MODPACK_TITLE_INSET, 12., MODPACK_TITLE_LEFT)
-                                    } else {
-                                        Gaps::new_symmetric(12., 24.)
-                                    })
-                                    .main_align(Alignment::End)
-                                    .cross_align(Alignment::Start)
-                                    .layer(Layer::Relative(4))
-                                    .background(
-                                        LinearGradient::new()
-                                            .angle(0.0)
-                                            .stop((Color::from_argb(0, 25, 25, 25), 24.519))
-                                            .stop((Color::from_af32rgb(0.75, 17, 17, 21), 65.)),
-                                    )
-                                    .child(if modpack {
-                                        MarqueeTitle {
-                                            text: title,
-                                            hovered: *hovering.read(),
-                                        }
-                                        .into_element()
-                                    } else {
-                                        title_label(title).into_element()
+                                    .position(Position::new_absolute().right(8.).top(7.))
+                                    .layer(Layer::Relative(7))
+                                    .child(InstanceOverviewButton {
+                                        position: menu,
+                                        surface: InstanceOverviewSurface::Artwork {
+                                            reveal: *hovering.read() || focus() == Focus::Keyboard,
+                                        },
+                                        name: title.clone(),
                                     }),
                             )
                             .child(
                                 rect()
-                                    .width(Size::fill())
-                                    .height(Size::fill())
-                                    .position(Position::new_absolute())
+                                    .position(Position::new_absolute().right(8.).bottom(7.))
                                     .layer(Layer::Relative(7))
-                                    .background(if *hovering.read() {
-                                        Color::from_af32rgb(0.2, 0, 0, 0)
-                                    } else {
-                                        Color::TRANSPARENT
+                                    .child(super::InstancePlay {
+                                        cluster_id,
+                                        uses_bundles: self.cluster.uses_bundles(),
+                                        name: title,
+                                        list: false,
                                     }),
                             ),
                     ),
             )
-            .maybe_child(menu_overlay)
+            .child(ClusterContextMenu {
+                target,
+                position: menu,
+                upwards: true,
+            })
     }
 
     fn render_key(&self) -> DiffKey {
         self.key.clone().or(self.default_key())
     }
+}
+
+fn recent_card_title(title: String, modpack: bool, hovered: bool, branded: bool) -> Rect {
+    rect()
+        .width(Size::fill())
+        .height(Size::fill())
+        .position(Position::new_absolute().left(0.).top(0.))
+        .padding(if modpack {
+            Gaps::new(12., 48., 12., MODPACK_TITLE_LEFT)
+        } else {
+            Gaps::new(12., 48., 12., 24.)
+        })
+        .main_align(Alignment::End)
+        .cross_align(Alignment::Start)
+        .layer(Layer::Relative(4))
+        .background(
+            LinearGradient::new()
+                .angle(0.0)
+                .stop((Color::from_argb(0, 25, 25, 25), 24.519))
+                .stop((
+                    Color::from_af32rgb(0.75, 17, 17, 21),
+                    if colors::is_light() { 85. } else { 65. },
+                )),
+        )
+        .child(if modpack {
+            MarqueeTitle {
+                text: title,
+                hovered,
+            }
+            .into_element()
+        } else {
+            title_label(title)
+                .width(Size::fill())
+                .text_overflow(TextOverflow::Ellipsis)
+                .maybe(branded, |label| {
+                    label
+                        .font_size(text_size(if colors::active_theme().pixel_icons {
+                            23.
+                        } else {
+                            27.
+                        }))
+                        .max_lines(2)
+                        .text_overflow(TextOverflow::Ellipsis)
+                })
+                .into_element()
+        })
 }
 
 fn title_label(text: String) -> Label {
@@ -516,9 +531,24 @@ impl Component for OtherVersionsTile {
 
         let eased = stagger_eased(self.progress, self.index, self.items);
         let rise = (1.0 - eased) * CARD_RISE_PX;
+        let theme = colors::active_theme();
+        let hovered = *hovering.read();
+        let tile = rect();
+        let tile = if theme.liquid_glass {
+            crate::theme::glass::navigation_panel(tile, &theme, crate::theme::rounded_px(12.))
+        } else if theme.colors.light {
+            tile.backdrop_blur(6.)
+                .background(colors::component_bg().with_a(if hovered { 208 } else { 166 }))
+        } else {
+            tile.background(if hovered {
+                colors::ghost_overlay_pressed()
+            } else {
+                colors::ghost_overlay_hover()
+            })
+            .backdrop_blur(32.)
+        };
 
-        rect()
-            .width(Size::px(MORE_TILE_WIDTH_PX))
+        tile.width(Size::px(MORE_TILE_WIDTH_PX))
             .height(Size::fill())
             .offset_y(rise)
             .opacity(eased)
@@ -526,17 +556,13 @@ impl Component for OtherVersionsTile {
             .border(
                 if focused {
                     border_all_color(2., colors::brand())
+                } else if theme.liquid_glass && hovered {
+                    border_all_color(1., colors::fg_secondary())
                 } else {
                     border_all(1.)
                 }
                 .alignment(BorderAlignment::Outer),
             )
-            .background(if *hovering.read() {
-                colors::ghost_overlay_pressed()
-            } else {
-                colors::ghost_overlay_hover()
-            })
-            .backdrop_blur(32.)
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
@@ -569,8 +595,12 @@ impl Component for OtherVersionsTile {
                     .center()
                     .child(
                         Icon::new(IconType::DotsGrid)
-                            .size(50.)
-                            .color(colors::on_art()),
+                            .size(if theme.liquid_glass { 32. } else { 50. })
+                            .color(if theme.colors.light {
+                                colors::fg_primary()
+                            } else {
+                                colors::on_art()
+                            }),
                     ),
             )
     }
@@ -587,4 +617,26 @@ fn recent_card_slots_for_width(row_width_px: f32) -> usize {
     let available = row_width_px - MORE_TILE_WIDTH_PX;
     let slot = MIN_CARD_WIDTH_PX + CARD_GAP_PX;
     (available / slot).floor().max(1.0) as usize
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recent_card_changes_when_bundle_launch_guard_changes() {
+        let mut cluster = crate::view::onboarding::test_support::cluster(1);
+        cluster.kind = oneclient_db::models::ClusterKind::Modded;
+        let card = |cluster| ClusterCard {
+            cluster,
+            index: 0,
+            items: 1,
+            progress: 1.,
+            key: DiffKey::None,
+        };
+        let before = card(cluster.clone());
+        cluster.takes_bundles = true;
+        let after = card(cluster);
+        assert!(!before.eq(&after));
+    }
 }

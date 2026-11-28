@@ -15,19 +15,22 @@ use crate::hooks::{
     use_installs_snapshot, use_link_confirm, use_package_meta_batch, use_package_project,
     use_package_versions_when, version_list, versions_total,
 };
-use crate::hooks::{settled_or_loading, use_cluster, use_clusters};
-use crate::i18n::tf;
+use crate::hooks::{
+    query_error, query_is_busy, query_is_loading, settled_or_loading, use_cluster, use_clusters,
+};
+use crate::i18n::{t, tf};
 use crate::install::IncompatibleMode;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 use super::index::override_summary;
+use super::install_target::{BrowseInstallPicker, InstallRequest};
 use super::{
-    EnableButton, EnableVariant, Installed, InstalledVersion, ModpackInstancePrompt,
+    EnableButton, EnableVariant, Installed, InstalledVersion, ListStatus, ModpackInstancePrompt,
     ModpackLoaderPrompt, ModpackVersionPrompt, PackageBanner, Thumbnail, WorldInstallPrompt,
     activity_badge, cluster_version, cluster_versions, installed_badge, installed_map,
     instance_choices, loader_options, minecraft_choices, preferred_version, use_saved_override,
-    use_version_filter,
+    DATAPACK_VERSION_LIMIT, ownership_ready, settled_page, use_version_filter,
 };
 use crate::utils::abbreviate_number;
 
@@ -35,19 +38,24 @@ mod gallery;
 mod panels;
 mod sidebar;
 use gallery::gallery_panel;
-use panels::{about_panel, loading_body, tabs, versions_panel};
+use panels::{about_panel, failed_body, loading_body, tabs, versions_panel};
 use sidebar::sidebar;
 
 const SIDEBAR_W: f32 = 280.;
 const SCROLLBAR_GUTTER: f32 = 18.;
+/// The sidebar scrolls on its own, its thumb in the gap to the tabs
+const SIDEBAR_GUTTER: f32 = 12.;
+const COLUMN_GAP: f32 = 24.;
 
 #[derive(Clone)]
 struct Installer {
     dispatch: crate::Actions,
     cluster_id: i64,
     provider: ProviderId,
-    world_prompt: Option<State<Option<String>>>,
+    world_prompt: Option<State<Option<(String, IncompatibleMode)>>>,
     modpack: bool,
+    datapack: bool,
+    ownership_ready: bool,
     installed: Option<Installed>,
     project_name: String,
     bundled_warning: State<Option<PendingBundledInstall>>,
@@ -57,10 +65,26 @@ struct Installer {
     add_to_cluster: bool,
     cluster_name: Option<String>,
     incompatible: IncompatibleMode,
+    browse_request: Option<State<Option<InstallRequest>>>,
 }
 
 impl Installer {
     fn install_latest(&self, project_id: String, version_id: String, version_label: String) {
+        if !self.ownership_ready {
+            return;
+        }
+        if let Some(mut request) = self.browse_request {
+            request.set(Some(InstallRequest {
+                project_id,
+                project_name: self.project_name.clone(),
+                version: None,
+            }));
+            return;
+        }
+        if let Some(mut prompt) = self.world_prompt {
+            prompt.set(Some((version_id, IncompatibleMode::Ask)));
+            return;
+        }
         if let Some(mut prompt) = self.loader_prompt {
             prompt.set(true);
             return;
@@ -72,6 +96,17 @@ impl Installer {
     }
 
     fn install(&self, project_id: String, version_id: String, version_label: String) {
+        if !self.ownership_ready {
+            return;
+        }
+        if let Some(mut request) = self.browse_request {
+            request.set(Some(InstallRequest {
+                project_id,
+                project_name: self.project_name.clone(),
+                version: Some((version_id, version_label)),
+            }));
+            return;
+        }
         if let Some(installed) = self
             .installed
             .as_ref()
@@ -112,7 +147,7 @@ impl Installer {
         }
 
         match self.world_prompt {
-            Some(mut prompt) => prompt.set(Some(version_id)),
+            Some(mut prompt) => prompt.set(Some((version_id, IncompatibleMode::Ask))),
             None => self.dispatch.install_package(
                 self.cluster_id,
                 self.provider,
@@ -194,6 +229,7 @@ pub struct BrowserPackage {
     pub package_type: String,
     pub package_id: String,
     pub add_to_cluster: bool,
+    pub in_instance: bool,
 }
 
 impl Component for BrowserPackage {
@@ -207,12 +243,13 @@ impl Component for BrowserPackage {
         let versions_page = use_state(|| 0usize);
         let dispatch = use_dispatch();
         let confirm = use_link_confirm();
-        let world_prompt = use_state(|| None::<String>);
+        let world_prompt = use_state(|| None::<(String, IncompatibleMode)>);
         let bundled_warning = use_state(|| None::<PendingBundledInstall>);
         let modpack_prompt = use_state(|| false);
         let loader_prompt = use_state(|| false);
         let chosen_loader = use_state(|| None::<GameLoader>);
         let import_prompt = use_state(|| false);
+        let mut browse_request = use_state(|| None::<InstallRequest>);
         let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
         let is_datapack = content_type == ContentType::DataPack;
         let add_to_cluster = self.add_to_cluster && content_type == ContentType::Modpack;
@@ -239,12 +276,23 @@ impl Component for BrowserPackage {
             !is_modpack,
             provider,
             project_id.clone(),
-            game_version,
+            game_version.clone(),
             loader,
             *versions_page.read(),
             VERSIONS_PAGE_SIZE,
         );
-        let all_versions = version_list(&use_package_versions_when(
+        // "Install latest" and its badge read the newest page whichever page of history is open; on
+        // the first page this is the same cached query
+        let newest_query = use_package_versions_when(
+            !is_modpack,
+            provider,
+            project_id.clone(),
+            game_version,
+            loader,
+            0,
+            if is_datapack { DATAPACK_VERSION_LIMIT } else { VERSIONS_PAGE_SIZE },
+        );
+        let all_versions_query = use_package_versions_when(
             is_modpack,
             provider,
             project_id.clone(),
@@ -252,7 +300,8 @@ impl Component for BrowserPackage {
             None,
             0,
             ALL_VERSIONS,
-        ));
+        );
+        let all_versions = version_list(&all_versions_query);
         let all_versions = match (add_to_cluster, &cluster) {
             (true, Some(c)) => cluster_versions(&all_versions, c),
             _ => all_versions,
@@ -265,13 +314,23 @@ impl Component for BrowserPackage {
             &project_id,
         );
 
-        let installed = installed_map(
-            cluster_content_items(&use_cluster_content(cluster_id, content_type)),
-            &bundles_with_status_items(&use_bundles_with_status(cluster_id)),
-            &bundle_overrides_map(&use_bundle_overrides(cluster_id)),
-        )
-        .remove(&(provider, project_id.clone()))
-        .filter(|_| !is_datapack);
+        let content = use_cluster_content(cluster_id, content_type);
+        let bundles = use_bundles_with_status(cluster_id);
+        let overrides = use_bundle_overrides(cluster_id);
+        let needs_ownership = cluster_id != 0 && !is_datapack && !is_modpack;
+        let ownership_error = needs_ownership.then(|| {
+            query_error(&content).or_else(|| query_error(&bundles)).or_else(|| query_error(&overrides))
+        }).flatten();
+        let ownership_ready = ownership_ready(
+            needs_ownership,
+            query_is_loading(&content) || query_is_loading(&bundles) || query_is_loading(&overrides),
+            ownership_error.is_some(),
+        );
+        let installed = ownership_ready.then(|| installed_map(
+            cluster_content_items(&content),
+            &bundles_with_status_items(&bundles),
+            &bundle_overrides_map(&overrides),
+        ).remove(&(provider, project_id.clone()))).flatten().filter(|_| !is_datapack);
 
         let project = project_detail(&project_query);
 
@@ -281,6 +340,8 @@ impl Component for BrowserPackage {
             provider,
             world_prompt: is_datapack.then_some(world_prompt),
             modpack: content_type == ContentType::Modpack,
+            datapack: is_datapack,
+            ownership_ready,
             installed: installed.clone(),
             project_name: project.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
             bundled_warning,
@@ -291,6 +352,7 @@ impl Component for BrowserPackage {
             add_to_cluster,
             cluster_name: cluster.as_ref().map(|c| c.name.clone()),
             incompatible,
+            browse_request: (cluster_id == 0 && !is_modpack_type).then_some(browse_request),
         };
 
         let remove_id = project.as_ref().map(|p| p.id.clone());
@@ -321,6 +383,16 @@ impl Component for BrowserPackage {
                 versions_total(&versions_query),
             )
         };
+        let shown_query = if is_modpack { all_versions_query } else { versions_query };
+        let settled = !query_is_busy(&shown_query)
+            && query_error(&shown_query).is_none()
+            && settled_or_loading(&shown_query).is_some();
+        let clamped = settled_page(
+            *versions_page_state.peek(), total_versions, VERSIONS_PAGE_SIZE, settled,
+        );
+        if *versions_page_state.peek() != clamped {
+            versions_page_state.set(clamped);
+        }
         let dependency_ids: Vec<String> = versions
             .iter()
             .flat_map(|v| &v.dependencies)
@@ -332,7 +404,8 @@ impl Component for BrowserPackage {
                 .into_iter()
                 .map(|(id, meta)| (id, meta.name))
                 .collect();
-        let latest_source = if is_modpack { &all_versions } else { &versions };
+        let newest = version_list(&newest_query);
+        let latest_source = latest_candidates(is_modpack, &all_versions, &newest);
         let latest_version = if add_to_cluster {
             cluster
                 .as_ref()
@@ -341,6 +414,44 @@ impl Component for BrowserPackage {
             preferred_version(latest_source, content_type)
         }
         .cloned();
+        let latest_query = if is_modpack {
+            all_versions_query
+        } else {
+            newest_query
+        };
+        let latest = match ListStatus::of(
+            latest_version.is_some(),
+            query_is_busy(&latest_query),
+            query_error(&latest_query).is_some(),
+        ) {
+            ListStatus::Ready => Ok(latest_version),
+            ListStatus::Loading => Err(rect()
+                .width(Size::fill())
+                .center()
+                .padding(Gaps::new_all(12.))
+                .child(
+                    label()
+                        .text(t("oneclient.browser.package.versions.loading"))
+                        .font_size(text_size(13.))
+                        .color(colors::fg_secondary()),
+                )
+                .into_element()),
+            ListStatus::Failed => Err(failed_body(
+                "oneclient.browser.package.versions.load_failed",
+                move |()| latest_query.invalidate(),
+            )),
+        };
+        let latest = if ownership_error.is_some() {
+            Err(super::load_failed(t("oneclient.browser.package.load_failed"), move |()| {
+                if query_error(&content).is_some() { content.invalidate(); }
+                if query_error(&bundles).is_some() { bundles.invalidate(); }
+                if query_error(&overrides).is_some() { overrides.invalidate(); }
+            }))
+        } else if !ownership_ready {
+            Err(loading_body().into_element())
+        } else {
+            latest
+        };
         let loaders = if is_modpack && !add_to_cluster {
             loader_options(&all_versions)
         } else {
@@ -366,7 +477,24 @@ impl Component for BrowserPackage {
         let max_tab = if has_gallery { 2 } else { 1 };
         let current = (*active_tab.read()).min(max_tab);
 
+        let shown_versions_query = if is_modpack {
+            all_versions_query
+        } else {
+            versions_query
+        };
+        let versions_status = ListStatus::of(
+            !versions.is_empty(),
+            query_is_loading(&shown_versions_query),
+            query_error(&shown_versions_query).is_some(),
+        );
+        let project_failed = project.is_none() && query_error(&project_query).is_some();
+
         let body = match (&project, current) {
+            (None, _) if project_failed => {
+                failed_body("oneclient.browser.package.load_failed", move |()| {
+                    project_query.invalidate()
+                })
+            }
             (None, _) => loading_body().into_element(),
             (Some(project), 0) => about_panel(project).into_element(),
             (Some(project), 1) => versions_panel(
@@ -378,43 +506,73 @@ impl Component for BrowserPackage {
                 installer.clone(),
                 on_remove,
                 installed.clone(),
-                installing || waiting,
+                installing || waiting || !ownership_ready,
+                versions_status,
+                move |()| shown_versions_query.invalidate(),
             )
             .into_element(),
             (Some(_), _) => gallery_panel(gallery).into_element(),
         };
 
+        // Both columns end in the surface's fade rather than a hard cut; glass has no solid surface
+        let fade = if self.in_instance {
+            (!colors::active_theme().liquid_glass).then(colors::page_elevated)
+        } else {
+            Some(colors::page())
+        };
+        let faded = move |area: ScrollArea| match fade {
+            Some(surface) => area.bottom_fade(surface),
+            None => area,
+        };
+
+        // The sidebar (with Install) and the tabs stay put; only the tab's content scrolls under them
         let row = rect()
             .horizontal()
             .width(Size::fill())
-            .cross_align(Alignment::Start)
-            .spacing(24.)
+            .height(Size::fill())
+            .spacing(COLUMN_GAP - SIDEBAR_GUTTER)
             .content(Content::Flex)
-            .child(sidebar(
-                project,
-                latest_version,
-                installer,
-                confirm,
-                installed,
-                installing,
-                waiting,
-            ))
+            .child(
+                faded(ScrollArea::new())
+                    .width(Size::px(SIDEBAR_W + SIDEBAR_GUTTER))
+                    .height(Size::fill())
+                    .auto_hide_scrollbar()
+                    .padding(Gaps::new(0., SIDEBAR_GUTTER, 0., 0.))
+                    .children([sidebar(
+                        project, latest, installer, confirm, installed, installing, waiting,
+                    )
+                    .into_element()]),
+            )
             .child(
                 rect()
                     .vertical()
                     .width(Size::flex(1.0))
+                    .height(Size::fill())
                     .spacing(12.)
+                    .content(Content::Flex)
                     .child(tabs(active_tab, has_gallery))
                     .maybe_child(search_override.map(|o| {
                         label()
                             .text(tf(
-                                "oneclient.browser.package.override_active",
+                                // With no instance yet, Install latest resolves for the one picked then
+                                if cluster_id == 0 {
+                                    "oneclient.browser.package.override_active_global"
+                                } else {
+                                    "oneclient.browser.package.override_active"
+                                },
                                 &[&override_summary(&o, content_type == ContentType::Mod)],
                             ))
                             .font_size(text_size(12.))
                             .color(colors::fg_secondary())
                     }))
-                    .child(body),
+                    .child(
+                        faded(ScrollArea::new())
+                            .width(Size::fill())
+                            .height(Size::flex(1.))
+                            .reset_key(current as u64)
+                            .padding(Gaps::new(0., SCROLLBAR_GUTTER, 0., 0.))
+                            .children([body]),
+                    ),
             )
             .into_element();
 
@@ -422,22 +580,30 @@ impl Component for BrowserPackage {
             .width(Size::fill())
             .height(Size::fill())
             .overflow(Overflow::Clip)
-            .padding(Gaps::new(0., 40., 40., 40.))
-            .child(
-                ScrollArea::new()
-                    .width(Size::fill())
-                    .height(Size::fill())
-                    .reset_key(current as u64)
-                    .padding(Gaps::new(0., SCROLLBAR_GUTTER, 0., 0.))
-                    .children([row]),
-            )
+            .padding(if self.in_instance {
+                Gaps::new(16., 18., 14., 18.)
+            } else {
+                Gaps::new(0., 40., 40., 40.)
+            })
+            .child(row)
             .maybe_child(remove_dialog)
+            .maybe_child(
+                browse_request
+                    .read()
+                    .clone()
+                    .map(|install| BrowseInstallPicker {
+                        provider,
+                        content_type,
+                        package_type: self.package_type.clone(),
+                        install,
+                        on_close: (move |()| browse_request.set(None)).into(),
+                    }),
+            )
             .maybe_child(world_prompt.read().is_some().then(|| WorldInstallPrompt {
                 cluster_id,
                 provider,
                 project_id: project_id.clone(),
                 pending: world_prompt,
-                incompatible,
             }))
             .maybe_child(loader_prompt.read().then(|| ModpackLoaderPrompt {
                 options: loaders.clone(),
@@ -461,5 +627,69 @@ impl Component for BrowserPackage {
                 open: import_prompt,
             }))
             .into_element()
+    }
+}
+
+/// "Install latest" never reads the page of history that happens to be open
+fn latest_candidates<'a>(
+    is_modpack: bool,
+    all_versions: &'a [oneclient_content::packages::types::VersionSummary],
+    newest_page: &'a [oneclient_content::packages::types::VersionSummary],
+) -> &'a [oneclient_content::packages::types::VersionSummary] {
+    if is_modpack {
+        all_versions
+    } else {
+        newest_page
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use oneclient_content::packages::types::VersionSummary;
+
+    fn version(id: &str) -> VersionSummary {
+        VersionSummary {
+            version_id: id.into(),
+            project_id: "p".into(),
+            name: id.into(),
+            version_number: id.into(),
+            published: chrono::Utc::now(),
+            release_type: Default::default(),
+            game_versions: Vec::new(),
+            loaders: Vec::new(),
+            downloads: 0,
+            file_size: 0,
+            dependencies: Vec::new(),
+            blocked: false,
+        }
+    }
+
+    #[test]
+    fn datapack_latest_skips_mod_builds_and_never_falls_back_to_one() {
+        let mut releases: Vec<_> = (0..25).map(|i| version(&format!("mod-{i}"))).collect();
+        for release in &mut releases {
+            release.loaders.push(GameLoader::Fabric);
+        }
+        assert!(preferred_version(&releases, ContentType::DataPack).is_none());
+        releases.push(version("pack"));
+        assert_eq!(preferred_version(&releases, ContentType::DataPack).unwrap().version_id, "pack");
+        assert_eq!(preferred_version(&releases, ContentType::Mod).unwrap().version_id, "mod-0");
+    }
+
+    #[test]
+    fn install_latest_ignores_the_open_page_of_history() {
+        let newest = [version("3.0"), version("2.9")];
+        let all = [version("pack-1")];
+        let latest = latest_candidates(false, &all, &newest);
+        assert_eq!(
+            preferred_version(latest, ContentType::Mod).map(|v| v.version_id.as_str()),
+            Some("3.0")
+        );
+        // Modpacks list every version at once and pick from all of them
+        assert_eq!(
+            latest_candidates(true, &all, &newest)[0].version_id,
+            "pack-1"
+        );
     }
 }

@@ -46,7 +46,7 @@ async fn reinstalling_a_disabled_mod_switches_it_on() {
         }],
         dependencies: Vec::new(),
     };
-    PackageStore::install_to_cluster(
+    let (_, _, added_at) = PackageStore::install_to_cluster_recording_link(
         ProviderId::Modrinth,
         &project,
         &version,
@@ -58,6 +58,11 @@ async fn reinstalling_a_disabled_mod_switches_it_on() {
     )
     .await
     .unwrap();
+    assert!(
+        added_at.is_none(),
+        "Undo must not claim a pre-existing link"
+    );
+
     oneclient_content::bundles::set_artifact_enabled_to(cluster.id, &hash, true, &ctx)
         .await
         .unwrap();

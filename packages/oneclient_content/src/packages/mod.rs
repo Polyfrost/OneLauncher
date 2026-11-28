@@ -61,6 +61,30 @@ pub async fn package_mutation_guard() -> tokio::sync::RwLockReadGuard<'static, (
     PACKAGE_MUTATIONS.read().await
 }
 
+static INSTANCES: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<i64, std::sync::Weak<tokio::sync::Mutex<()>>>>,
+> = std::sync::LazyLock::new(Default::default);
+
+/// Serializes whatever resolves packages against an instance and then links or removes
+/// them, so nothing is planned around a package that is gone by the time it is applied.
+/// Always taken before a package mutation guard, never while holding one.
+pub async fn instance_package_guard(cluster_id: i64) -> tokio::sync::OwnedMutexGuard<()> {
+    let instance = {
+        let mut locks = INSTANCES
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        locks.retain(|_, lock| lock.strong_count() > 0);
+        if let Some(lock) = locks.get(&cluster_id).and_then(std::sync::Weak::upgrade) {
+            lock
+        } else {
+            let lock = std::sync::Arc::new(tokio::sync::Mutex::new(()));
+            locks.insert(cluster_id, std::sync::Arc::downgrade(&lock));
+            lock
+        }
+    };
+    instance.lock_owned().await
+}
+
 pub async fn exclusive_package_mutation_guard() -> tokio::sync::RwLockWriteGuard<'static, ()> {
     PACKAGE_MUTATIONS.write().await
 }

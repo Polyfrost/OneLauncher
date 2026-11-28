@@ -3,7 +3,7 @@ use freya::animation::{
 };
 use freya::prelude::*;
 
-use super::settings_page;
+use super::{retry_button, settings_page, status_card};
 use crate::Route;
 use crate::components::{Icon, IconType, Markdown, MarkdownStyle};
 use crate::hooks::{
@@ -47,18 +47,39 @@ impl Component for SettingsChangelog {
                 .into_element();
         }
 
-        if let Some(error) = changelog_error(&query) {
-            return settings_page()
-                .child(
-                    label()
-                        .text(tf("oneclient.settings.changelog.load_failed", &[&error]))
-                        .font_size(text_size(14.))
-                        .color(colors::fg_secondary()),
+        let entries = changelog_entries(&query);
+        // A failure with nothing loaded before, or a release list with nothing in it
+        let failed = entries.is_none() && changelog_error(&query).is_some();
+        if let Some(error) = changelog_error(&query).filter(|_| failed) {
+            tracing::warn!("changelog failed to load: {error}");
+        }
+        let entries = entries.unwrap_or_default();
+        if failed || entries.is_empty() {
+            let (icon, tint, title, hint) = if failed {
+                (
+                    IconType::AlertTriangle,
+                    colors::code_warn(),
+                    t("oneclient.settings.changelog.error.title"),
+                    t("oneclient.settings.changelog.error.hint"),
                 )
+            } else {
+                (
+                    IconType::RefreshCcw02,
+                    colors::brand(),
+                    t("oneclient.settings.changelog.none.title"),
+                    t("oneclient.settings.changelog.none.hint"),
+                )
+            };
+            return settings_page()
+                .child(rect().width(Size::fill()).center().child(status_card(
+                    icon,
+                    tint,
+                    title,
+                    hint,
+                    retry_button((move |()| query.invalidate()).into()),
+                )))
                 .into_element();
         }
-
-        let entries = changelog_entries(&query).unwrap_or_default();
 
         settings_page()
             .children(entries.into_iter().enumerate().map(|(i, entry)| {
@@ -119,7 +140,7 @@ impl Component for ReleaseCard {
             .spacing(8.)
             .padding(Gaps::new_symmetric(12., 16.))
             .corner_radius(rounded(12.))
-            .background(colors::page_elevated())
+            .background(colors::card())
             .child(
                 rect()
                     .horizontal()

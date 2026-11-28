@@ -4,6 +4,7 @@ use oneclient_content::packages::ProviderId;
 use oneclient_content::packages::types::{ProjectDetail, ProjectMember, VersionSummary};
 
 use crate::components::{Button, Icon, IconType};
+use crate::hooks::LinkConfirmState;
 use crate::i18n::{t, tf};
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
@@ -13,9 +14,9 @@ const BUTTON_NAME_CHARS: usize = 22;
 
 pub(super) fn sidebar(
     project: Option<ProjectDetail>,
-    latest_version: Option<VersionSummary>,
+    latest: Result<Option<VersionSummary>, Element>,
     installer: Installer,
-    confirm: State<Option<String>>,
+    confirm: LinkConfirmState,
     installed: Option<Installed>,
     installing: bool,
     waiting: bool,
@@ -28,17 +29,12 @@ pub(super) fn sidebar(
     };
 
     let project_id = project.id.clone();
-    // Nothing to do when this version is already there or while an install is running
-    let have_latest = match (&installed, &latest_version) {
-        (Some(installed), Some(latest)) => installed.is_version(&latest.version_id),
-        _ => false,
-    };
-    let can_install = latest_version.is_some() && !have_latest && !installing && !waiting;
     let import_prompt = installer.import_prompt;
     let enable = installed
         .as_ref()
         .and_then(Installed::disabled_bundled)
         .and_then(|version| version.enable_action(installer.cluster_id));
+    let can_enable = enable.is_some();
 
     rect()
         .vertical()
@@ -113,49 +109,65 @@ pub(super) fn sidebar(
                         ),
                 ),
         )
-        .child(match enable {
-            Some(action) => EnableButton {
+        .maybe_child(enable.map(|action| {
+            EnableButton {
                 action,
                 variant: EnableVariant::Sidebar,
             }
-            .into_element(),
-            None => Button::new()
-                .primary()
-                .width(Size::fill())
-                .enabled(can_install)
-                .on_press({
-                    let installer = installer.clone();
-                    move |_| {
-                        if let Some(latest) = latest_version.clone() {
-                            installer.install_latest(
-                                project_id.clone(),
-                                latest.version_id,
-                                latest.version_number,
-                            );
-                        }
-                    }
-                })
-                .child(Icon::new(IconType::Download01).size(14.))
-                .text(if installing && installer.add_to_cluster {
-                    t("oneclient.browser.package.sidebar.adding").to_string()
-                } else if installing {
-                    t("oneclient.browser.package.sidebar.installing").to_string()
-                } else if installer.add_to_cluster {
-                    match &installer.cluster_name {
-                        Some(name) => tf(
-                            "oneclient.browser.package.sidebar.add_to",
-                            &[&shorten(name, BUTTON_NAME_CHARS, "\u{2026}")],
-                        ),
-                        None => t("oneclient.browser.package.sidebar.add_to_this").to_string(),
-                    }
-                } else if installer.modpack {
-                    t("oneclient.browser.package.sidebar.install_ellipsis").to_string()
-                } else if have_latest {
-                    t("oneclient.browser.package.sidebar.latest_installed").to_string()
-                } else {
-                    t("oneclient.browser.package.sidebar.install_latest").to_string()
-                })
-                .into_element(),
+            .into_element()
+        }))
+        .maybe_child(match latest {
+            Err(status) => Some(status),
+            Ok(_) if can_enable => None,
+            Ok(latest_version) => {
+                let have_latest = match (&installed, &latest_version) {
+                    (Some(installed), Some(latest)) => installed.is_version(&latest.version_id),
+                    _ => false,
+                };
+                let can_install =
+                    latest_version.is_some() && !have_latest && !installing && !waiting;
+                Some(
+                    Button::new()
+                        .primary()
+                        .width(Size::fill())
+                        .enabled(can_install)
+                        .on_press({
+                            let installer = installer.clone();
+                            move |_| {
+                                if let Some(latest) = latest_version.clone() {
+                                    installer.install_latest(
+                                        project_id.clone(),
+                                        latest.version_id,
+                                        latest.version_number,
+                                    );
+                                }
+                            }
+                        })
+                        .child(Icon::new(IconType::Download01).size(14.))
+                        .text(if installing && installer.add_to_cluster {
+                            t("oneclient.browser.package.sidebar.adding").to_string()
+                        } else if installing {
+                            t("oneclient.browser.package.sidebar.installing").to_string()
+                        } else if installer.add_to_cluster {
+                            match &installer.cluster_name {
+                                Some(name) => tf(
+                                    "oneclient.browser.package.sidebar.add_to",
+                                    &[&shorten(name, BUTTON_NAME_CHARS, "\u{2026}")],
+                                ),
+                                None => {
+                                    t("oneclient.browser.package.sidebar.add_to_this").to_string()
+                                }
+                            }
+                        } else if installer.modpack {
+                            t("oneclient.browser.package.sidebar.install_ellipsis").to_string()
+                        } else if have_latest {
+                            t("oneclient.browser.package.sidebar.latest_installed").to_string()
+                        } else {
+                            t("oneclient.browser.package.sidebar.install_latest").to_string()
+                        })
+                        .into_element(),
+                )
+            }
         })
         .maybe_child(import_prompt.map(|mut prompt| {
             Button::new()
@@ -184,7 +196,7 @@ struct ProviderTag {
     text: String,
     provider: ProviderId,
     url: Option<String>,
-    confirm: State<Option<String>>,
+    confirm: LinkConfirmState,
 }
 
 impl Component for ProviderTag {
@@ -252,7 +264,7 @@ fn card_spaced(title: &str, rows: Vec<Element>, spacing: f32) -> impl IntoElemen
         .into_element()
 }
 
-fn authors_card(project: &ProjectDetail, confirm: State<Option<String>>) -> impl IntoElement {
+fn authors_card(project: &ProjectDetail, confirm: LinkConfirmState) -> impl IntoElement {
     let rows: Vec<Element> = if project.members.is_empty() {
         vec![author_row(
             &ProjectMember {
@@ -273,7 +285,7 @@ fn authors_card(project: &ProjectDetail, confirm: State<Option<String>>) -> impl
     card(t("oneclient.browser.package.sidebar.authors"), rows)
 }
 
-fn author_row(member: &ProjectMember, confirm: State<Option<String>>) -> Element {
+fn author_row(member: &ProjectMember, confirm: LinkConfirmState) -> Element {
     AuthorRow {
         name: member.name.clone(),
         role: member.role.clone(),
@@ -290,7 +302,7 @@ struct AuthorRow {
     role: String,
     url: Option<String>,
     avatar_url: Option<String>,
-    confirm: State<Option<String>>,
+    confirm: LinkConfirmState,
 }
 
 impl Component for AuthorRow {
@@ -416,7 +428,7 @@ fn detail_row(icon: IconType, key: &str, value: &str) -> Element {
         .into_element()
 }
 
-fn links_card(links: &[(String, String)], confirm: State<Option<String>>) -> impl IntoElement {
+fn links_card(links: &[(String, String)], confirm: LinkConfirmState) -> impl IntoElement {
     let rows: Vec<Element> = links
         .iter()
         .map(|(lbl, url)| link_row(lbl.clone(), url.clone(), confirm))
@@ -424,7 +436,7 @@ fn links_card(links: &[(String, String)], confirm: State<Option<String>>) -> imp
     card_spaced(t("oneclient.browser.package.sidebar.links"), rows, 2.)
 }
 
-fn link_row(label_text: String, url: String, confirm: State<Option<String>>) -> Element {
+fn link_row(label_text: String, url: String, confirm: LinkConfirmState) -> Element {
     LinkRow {
         label_text,
         url,
@@ -437,7 +449,7 @@ fn link_row(label_text: String, url: String, confirm: State<Option<String>>) -> 
 struct LinkRow {
     label_text: String,
     url: String,
-    confirm: State<Option<String>>,
+    confirm: LinkConfirmState,
 }
 
 impl Component for LinkRow {

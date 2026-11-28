@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 
 use freya::prelude::*;
 use oneclient_common::search::{MatchScore, SearchQuery};
@@ -10,8 +11,8 @@ use oneclient_core::{
 use oneclient_db::models::OverrideType;
 
 use crate::components::{
-    CARD_GRID_H, CardLayout, GRID_GAP, GRID_MIN_W, PackageEntry, bundled_delete_action,
-    disable_request, guard_disable, run_guarded, toggle_action,
+    CARD_H, CardLayout, PackageEntry, bundled_delete_action, disable_request, guard_disable,
+    run_guarded, toggle_action,
 };
 use crate::hooks::{
     ClusterAction, EssentialGuardKind, PackageCheck, disable_warnings, package_meta_batch,
@@ -20,17 +21,18 @@ use crate::hooks::{
 };
 use crate::i18n::{t, tf};
 
-use super::folder_list::confirm_dialog;
+use super::folder_list::{confirm_dialog, use_content_view};
 
 mod views;
 use views::{
-    AdvancedSection, Bulk, ContentBox, ContentKind, EnabledFilter, HiddenFilter, SortMode,
+    AdvancedSection, Bulk, ContentBox, ContentKind, EnabledFilter, HiddenFilter, Scope, SortMode,
     toolbar_bar,
 };
-pub(super) use views::{copy_list_button, empty_hint, empty_shell, empty_title, notice_bar};
+pub(super) use views::{
+    copy_list_button, empty_hint, empty_shell, empty_title, instance_only_notice, notice_bar,
+};
 
-const CARD_H: f32 = 84.;
-pub(super) const CARD_SPACING: f32 = 8.;
+const CARD_SPACING: f32 = 8.;
 pub(super) const GRID_MAX_COLS: usize = 5;
 
 pub type PackageMetaMap = HashMap<(ProviderId, String), CachedPackageMeta>;
@@ -409,6 +411,19 @@ pub(crate) fn make_row(
     }
 }
 
+/// The folder the toolbar's "Open folder" opens for this content type
+///
+/// Mods live in the instance's own mods folder; shader and resource packs are read from the game folder.
+fn content_folder(cluster: &Cluster, content_type: ContentType) -> Option<PathBuf> {
+    match content_type {
+        ContentType::Mod => oneclient_common::paths::cluster_mods_dir(&cluster.folder_name).ok(),
+        _ => cluster
+            .game_dir()
+            .ok()
+            .map(|dir| dir.join(content_type.folder_name())),
+    }
+}
+
 pub(super) fn noun_one(content_type: ContentType) -> &'static str {
     match content_type {
         ContentType::Shader => t("oneclient.cluster.package_manager.noun.shader.one"),
@@ -513,7 +528,7 @@ fn package_list_text(
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum Tab {
     All,
     Category(String),
@@ -551,18 +566,26 @@ fn query_score(p: &PackageEntry, query: &SearchQuery) -> Option<MatchScore> {
     query.best_score([p.name.as_str(), p.file_name.as_str()])
 }
 
+fn search_hidden_filter(saved: HiddenFilter, query: &SearchQuery) -> HiddenFilter {
+    if query.is_empty() {
+        saved
+    } else {
+        HiddenFilter::Show
+    }
+}
+
 /// Search is scoped to the active tab a package must match the tab *and* the query
 /// `Tab::All` searches the whole cluster
 fn visible_packages(
     items: &[PackageEntry],
-    tab: Option<&Tab>,
+    tab: &Tab,
     query: &SearchQuery,
     show: EnabledFilter,
     hidden: HiddenFilter,
 ) -> Vec<PackageEntry> {
     items
         .iter()
-        .filter(|p| tab.is_none_or(|t| t.matches(p)) && query_score(p, query).is_some())
+        .filter(|p| tab.matches(p) && query_score(p, query).is_some())
         .filter(|p| show.keep(p) && hidden.keep(p))
         .cloned()
         .collect()
@@ -584,8 +607,14 @@ pub fn bundle_categories(bundles: &[BundleWithUpdateStatus]) -> Vec<String> {
     cats
 }
 
-/// `hidden` applies here too so a category of only hidden dependencies offers no tab
-fn build_tabs(categories: &[String], items: &[PackageEntry], hidden: HiddenFilter) -> Vec<Tab> {
+/// A category of only hidden dependencies is available whenever search reveals those rows.
+fn build_tabs(
+    categories: &[String],
+    items: &[PackageEntry],
+    saved_hidden: HiddenFilter,
+    query: &SearchQuery,
+) -> Vec<Tab> {
+    let hidden = search_hidden_filter(saved_hidden, query);
     let mut cats: Vec<String> = categories.to_vec();
     for item in items.iter().filter(|p| hidden.keep(p)) {
         for c in &item.categories {
@@ -609,6 +638,12 @@ fn build_tabs(categories: &[String], items: &[PackageEntry], hidden: HiddenFilte
         tabs.push(Tab::Deleted);
     }
     tabs
+}
+
+fn active_tab<'a>(tabs: &'a [Tab], selected: &Tab) -> &'a Tab {
+    tabs.iter()
+        .find(|tab| *tab == selected)
+        .unwrap_or(&Tab::All)
 }
 
 /// Records the dependency lists of anything installed before the launcher kept
@@ -644,6 +679,7 @@ pub struct PackageManager {
     items: Vec<PackageEntry>,
     categories: Vec<String>,
     bisecting: bool,
+    loading: bool,
 }
 
 impl PackageManager {
@@ -665,12 +701,27 @@ impl PackageManager {
             items,
             categories,
             bisecting: false,
+            loading: false,
         }
     }
 
     pub fn bisecting(mut self, active: bool) -> Self {
         self.bisecting = active;
         self
+    }
+
+    /// The installed content is still being read, so an empty list shows the loading state
+    pub fn loading(mut self, loading: bool) -> Self {
+        self.loading = loading;
+        self
+    }
+}
+
+fn package_preferences_key(content_type: ContentType) -> &'static str {
+    match content_type {
+        ContentType::Shader => "cluster.shaders",
+        ContentType::ResourcePack => "cluster.textures",
+        _ => "cluster.packages",
     }
 }
 
@@ -712,11 +763,10 @@ impl Component for PackageManager {
         let shares_content = cluster
             .as_ref()
             .map(|cluster| cluster.shares_content(content_type));
-        let active = use_state(|| 0usize);
+        let active = use_state(|| Tab::All);
 
         let search = use_state(String::new);
         let advanced_open = use_state(|| false);
-        let toolbar_width = use_state(|| 0f32);
         let selection = use_selection::<String>();
         let mutation = use_cluster_mutation();
         let dispatch = use_dispatch();
@@ -724,30 +774,12 @@ impl Component for PackageManager {
         let warnings_query = use_disable_warnings();
         let pending_disable = use_disable_confirm();
         let mut confirm_delete = use_state(|| false);
-        let view = use_view_state("cluster.packages");
+        let view = use_view_state(package_preferences_key(content_type));
         let sort = view.sort;
-        let layout = view.layout;
+        let filters = view.filters;
+        let layout = use_content_view().layout;
         let query = SearchQuery::new(&search.read());
 
-        let searching = !query.is_empty();
-        let filters = view.filters;
-        use_side_effect_with_deps(&searching, move |&searching| {
-            let mut filters = filters;
-            let next = if searching {
-                HiddenFilter::Show
-            } else {
-                HiddenFilter::Hide
-            };
-            let current = filters
-                .peek()
-                .get(HiddenFilter::STORAGE_KEY)
-                .and_then(|key| HiddenFilter::from_key(key));
-            if current != Some(next) {
-                filters
-                    .write()
-                    .insert(HiddenFilter::STORAGE_KEY.into(), next.key().into());
-            }
-        });
         let sort_mode = sort
             .read()
             .as_deref()
@@ -759,11 +791,12 @@ impl Component for PackageManager {
             .get(EnabledFilter::STORAGE_KEY)
             .and_then(|key| EnabledFilter::from_key(key))
             .unwrap_or(EnabledFilter::All);
-        let hidden = filters
+        let saved_hidden = filters
             .read()
             .get(HiddenFilter::STORAGE_KEY)
             .and_then(|key| HiddenFilter::from_key(key))
             .unwrap_or(HiddenFilter::Hide);
+        let hidden = search_hidden_filter(saved_hidden, &query);
         let card_layout = CardLayout::from(*layout.read());
 
         let bisecting = self.bisecting;
@@ -774,9 +807,8 @@ impl Component for PackageManager {
             .filter_map(|package| package.essential.map(|essential| essential.name))
             .collect();
 
-        let tabs = build_tabs(&self.categories, &items, hidden);
-        let active_idx = (*active.read()).min(tabs.len().saturating_sub(1));
-        let tab_filter = tabs.get(active_idx);
+        let tabs = build_tabs(&self.categories, &items, saved_hidden, &query);
+        let tab_filter = active_tab(&tabs, &active.read());
 
         let mut filtered = visible_packages(&items, tab_filter, &query, show, hidden);
         sort_mode.sort(&mut filtered);
@@ -785,32 +817,39 @@ impl Component for PackageManager {
             rank_by_query(&mut filtered, &query);
         }
 
-        // Coming up empty during a search is about the query not the tab so it gets its own empty state
-        let content_kind = if filtered.is_empty() && !query.is_empty() {
+        let content_kind = if !query.is_empty() {
             ContentKind::NoMatches {
                 scope: match tab_filter {
-                    Some(Tab::All) | None => None,
-                    Some(tab) => Some(tab.label()),
+                    Tab::All => None,
+                    tab => Some(tab.label()),
                 },
             }
+        } else if show != EnabledFilter::All {
+            ContentKind::Filtered(filters)
         } else {
             match tab_filter {
-                Some(Tab::Browser) => ContentKind::Browser,
-                Some(Tab::Local) => ContentKind::Local,
+                Tab::Browser => ContentKind::Browser,
+                Tab::Local => ContentKind::Local,
                 _ => ContentKind::Other,
             }
         };
 
-        let mut notices = Vec::new();
-        if content_type.is_global()
-            && let Some(shares_content) = shares_content
-        {
-            notices.push(if shares_content {
-                views::global_notice(noun_plural)
-            } else {
-                views::instance_only_notice(noun_plural)
+        // Shared or instance-only is a standing fact, so it is a chip in the toolbar rather than a banner
+        let scope = shares_content
+            .filter(|_| content_type.is_global())
+            .map(|shared| Scope {
+                shared,
+                tip: if shared {
+                    views::global_notice(noun_plural)
+                } else {
+                    views::instance_only_notice(noun_plural)
+                },
             });
-        }
+        let folder = cluster
+            .as_ref()
+            .and_then(|cluster| content_folder(cluster, content_type));
+
+        let mut notices = Vec::new();
         if session_live {
             notices.push(views::running_notice(noun_plural, content_type));
         }
@@ -1016,24 +1055,25 @@ impl Component for PackageManager {
             .height(Size::fill())
             .child(toolbar_bar(
                 &tabs,
-                active_idx,
+                tab_filter,
                 active,
                 search,
                 sort,
                 sort_mode,
                 filters,
                 show,
-                hidden,
+                saved_hidden,
                 layout,
                 cluster_id,
                 package_type,
                 content_type,
                 dispatch,
-                toolbar_width,
                 &bulk,
                 noun_plural,
                 export_rows(&items, hidden),
                 cluster.as_ref().map(list_header),
+                folder.clone(),
+                scope,
             ))
             .child(
                 ContentBox::new(
@@ -1048,7 +1088,9 @@ impl Component for PackageManager {
                     card_layout,
                     bulk,
                 )
-                .notices(notices),
+                .notices(notices)
+                .loading(self.loading && self.items.is_empty())
+                .folder(folder),
             )
             .maybe_child(delete_dialog)
     }
@@ -1057,6 +1099,23 @@ impl Component for PackageManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn package_preferences_keep_mods_storage_and_are_isolated_from_layout() {
+        assert_eq!(
+            package_preferences_key(ContentType::Mod),
+            "cluster.packages"
+        );
+        assert_eq!(
+            package_preferences_key(ContentType::Shader),
+            "cluster.shaders"
+        );
+        assert_eq!(
+            package_preferences_key(ContentType::ResourcePack),
+            "cluster.textures"
+        );
+    }
+
     use crate::view::onboarding::test_support::{archive, file};
     use oneclient_core::{BundleFile, FileUpdateStatus};
 
@@ -1076,6 +1135,104 @@ mod tests {
             },
             taken: true,
         }
+    }
+
+    #[test]
+    fn search_shows_matching_hidden_mods_with_hide_saved() {
+        let bundles = [bundle(
+            "Taken",
+            true,
+            vec![file("hidden-library", true, true)],
+        )];
+        let rows = bundle_packages(
+            Vec::new(),
+            &bundles,
+            &HashMap::new(),
+            &PackageMetaMap::new(),
+            &HashSet::new(),
+            ContentType::Mod,
+        );
+
+        for (search, count) in [("", 0), ("hidden-library", 1), ("unrelated", 0)] {
+            let query = SearchQuery::new(search);
+            assert_eq!(
+                visible_packages(
+                    &rows,
+                    &Tab::All,
+                    &query,
+                    EnabledFilter::All,
+                    search_hidden_filter(HiddenFilter::Hide, &query),
+                )
+                .len(),
+                count,
+            );
+        }
+    }
+
+    #[test]
+    fn search_keeps_the_online_scope_with_a_hidden_only_category() {
+        let rows = bundle_packages(
+            Vec::new(),
+            &[bundle(
+                "Hidden",
+                true,
+                vec![file("hidden-library", true, true)],
+            )],
+            &HashMap::new(),
+            &PackageMetaMap::new(),
+            &HashSet::new(),
+            ContentType::Mod,
+        );
+        let saved_hidden = HiddenFilter::Hide;
+        let selected = Tab::Browser;
+        let tabs = build_tabs(&[], &rows, saved_hidden, &SearchQuery::new(""));
+        assert_eq!(tabs, [Tab::All, Tab::Browser, Tab::Local]);
+
+        let query = SearchQuery::new("hidden-library");
+        let hidden = search_hidden_filter(saved_hidden, &query);
+        assert!(hidden.keep(&rows[0]));
+        let tabs_with_category = build_tabs(&[], &rows, saved_hidden, &query);
+        let scope = active_tab(&tabs_with_category, &selected);
+        assert_eq!(scope, &Tab::Browser);
+        assert!(visible_packages(&rows, scope, &query, EnabledFilter::All, hidden).is_empty());
+
+        assert_eq!(tabs_with_category[1], Tab::Category("Hidden".into()));
+        assert_eq!(active_tab(&tabs_with_category, &selected), &Tab::Browser);
+        assert_eq!(
+            active_tab(&tabs, &Tab::Category("Hidden".into())),
+            &Tab::All
+        );
+    }
+
+    #[test]
+    fn search_can_open_the_category_for_a_hidden_mod_from_a_declined_bundle() {
+        let bundles = [bundle(
+            "Declined",
+            false,
+            vec![file("hidden-library", true, true)],
+        )];
+        let categories = bundle_categories(&bundles);
+        let rows = bundle_packages(
+            Vec::new(),
+            &bundles,
+            &HashMap::new(),
+            &PackageMetaMap::new(),
+            &HashSet::new(),
+            ContentType::Mod,
+        );
+        let saved = HiddenFilter::Hide;
+        let category = Tab::Category("Declined".into());
+        assert!(!build_tabs(&categories, &rows, saved, &SearchQuery::new("")).contains(&category));
+
+        let query = SearchQuery::new("hidden-library");
+        let tabs = build_tabs(&categories, &rows, saved, &query);
+        let scope = active_tab(&tabs, &category);
+        assert_eq!(scope, &category);
+        let hidden = search_hidden_filter(saved, &query);
+        assert!(visible_packages(&rows, &Tab::All, &query, EnabledFilter::All, hidden).is_empty());
+        let matches = visible_packages(&rows, scope, &query, EnabledFilter::All, hidden);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].package_id, "hidden-library");
     }
 
     #[test]
@@ -1214,7 +1371,10 @@ mod tests {
             ),
             ((name(&declined), "held".to_string()), "removed".to_string()),
             ((name(&taken), "masked".to_string()), "enabled".to_string()),
-            (("Old".to_string(), "masked".to_string()), "removed".to_string()),
+            (
+                ("Old".to_string(), "masked".to_string()),
+                "removed".to_string(),
+            ),
         ]);
         let rows = bundle_packages(
             vec![

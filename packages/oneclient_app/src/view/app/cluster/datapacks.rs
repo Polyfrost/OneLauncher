@@ -5,11 +5,11 @@ use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_core::{DataPackInfo, PackIcon};
 
-use crate::components::{Button, CardLayout, ContextMenu, Dropdown, Icon, IconType};
+use crate::components::{CardLayout, ContextMenu, Dropdown, Icon, IconType};
 use crate::hooks::{
     add_world_datapacks, delete_world_datapack, query_is_loading, spawn_world_task,
     try_cluster_worlds, try_world_datapacks, use_cluster, use_cluster_worlds, use_datapack_world,
-    use_dispatch, use_view_state, use_world_datapacks,
+    use_dispatch, use_world_datapacks,
 };
 use crate::i18n::{t, tf};
 use crate::layout::cluster_content;
@@ -18,13 +18,31 @@ use crate::{Actions, Route};
 
 use super::cluster_not_found;
 use super::folder_list::{
-    CardIcon, FolderCard, PACKAGE_ROWS, confirm_dialog, content_box, folder_button, layout_toggle,
-    matches_search, notify_in_use, search_input, toolbar_action, toolbar_panel,
+    CONTROL_H, CardIcon, FolderCard, confirm_dialog, content_box, content_empty, content_loading,
+    content_toolbar, layout_toggle, matches_search, notify_in_use, open_folder_action,
+    open_folder_button, toolbar_action, toolbar_secondary, use_content_view,
     use_game_folder_in_use,
 };
-use super::package_manager::{copy_list_button, empty_hint, empty_shell, empty_title};
+use super::package_manager::copy_list_button;
 
-const WORLD_PICKER_W: f32 = 220.;
+fn copy_datapack_list(dispatch: crate::Actions, mut names: Vec<String>) -> Element {
+    names.sort_by_key(|name| name.to_lowercase());
+    copy_list_button(
+        dispatch,
+        names.len(),
+        t("oneclient.cluster.datapacks.noun.one"),
+        t("oneclient.cluster.datapacks.noun.other"),
+        move || {
+            names
+                .iter()
+                .map(|name| format!("- {name}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        },
+    )
+}
+
+const WORLD_PICKER_W: f32 = 180.;
 
 #[derive(PartialEq)]
 pub struct ClusterDataPacks {
@@ -56,6 +74,7 @@ fn browse(cluster_id: i64, world: String, mut remembered: State<HashMap<i64, Str
         cluster_id,
         package_type: "datapack".to_string(),
         pick_cluster: false,
+        in_instance: true,
     });
 }
 
@@ -80,7 +99,7 @@ impl Component for ClusterDataPacks {
         let dispatch = use_dispatch();
         let in_use = use_game_folder_in_use(cluster.as_ref());
         let search = use_state(String::new);
-        let layout = use_view_state("cluster.datapacks").layout;
+        let layout = use_content_view().layout;
         let mut menu = use_state(|| None::<(f32, f32, DataPackInfo)>);
         let mut pending_delete = use_state(|| None::<String>);
 
@@ -90,22 +109,33 @@ impl Component for ClusterDataPacks {
         let card_layout = CardLayout::from(*layout.read());
 
         let Some(world) = current else {
-            let empty = (!query_is_loading(&worlds_query)).then(|| {
-                empty_shell(IconType::Globe01)
-                    .child(empty_title(t(
-                        "oneclient.cluster.datapacks.no_worlds.title",
-                    )))
-                    .child(empty_hint(t("oneclient.cluster.datapacks.no_worlds.hint")))
-                    .into_element()
-            });
+            let empty = if query_is_loading(&worlds_query) {
+                content_loading()
+            } else {
+                content_empty(
+                    IconType::Database01,
+                    t("oneclient.cluster.datapacks.no_worlds.title"),
+                    Some(t("oneclient.cluster.datapacks.no_worlds.hint").to_string()),
+                    vec![
+                        toolbar_secondary(
+                            IconType::Globe01,
+                            t("oneclient.cluster.datapacks.no_worlds.worlds"),
+                        )
+                        .on_press(move |_| {
+                            let _ =
+                                RouterContext::get().replace(Route::ClusterWorlds { cluster_id });
+                        })
+                        .into_element(),
+                    ],
+                )
+            };
             return cluster_content()
-                .child(toolbar_panel(None, vec![layout_toggle(layout)]))
                 .child(content_box(
                     0,
                     card_layout,
-                    PACKAGE_ROWS,
+                    |_| false,
                     |_| rect().into_element(),
-                    empty,
+                    Some(empty),
                     Vec::new(),
                 ))
                 .into_element();
@@ -141,20 +171,16 @@ impl Component for ClusterDataPacks {
                         None => CardIcon::Symbol(IconType::Database01),
                     },
                     title: info.file_name.clone(),
-                    badge: if info.is_dir {
-                        (
-                            IconType::Folder,
-                            t("oneclient.cluster.datapacks.badge.folder").to_string(),
-                        )
+                    meta: if info.is_dir {
+                        t("oneclient.cluster.datapacks.badge.folder")
                     } else {
-                        (
-                            IconType::File02,
-                            t("oneclient.cluster.datapacks.badge.zip").to_string(),
-                        )
-                    },
+                        t("oneclient.cluster.datapacks.badge.zip")
+                    }
+                    .to_string(),
                     description: info.description.clone(),
                     size: info.size_bytes,
                     layout: card_layout,
+                    on_press: None,
                     on_context: (move |(x, y)| menu.set(Some((x, y, menu_info.clone())))).into(),
                 }
                 .into_element()
@@ -162,62 +188,48 @@ impl Component for ClusterDataPacks {
         };
 
         let empty = if query_is_loading(&packs_query) {
-            None
+            content_loading()
         } else if all.is_empty() {
             let add_world = world.clone();
             let add_dispatch = dispatch.clone();
-            Some(
-                empty_shell(IconType::FilePlus02)
-                    .child(empty_title(t("oneclient.cluster.datapacks.empty.title")))
-                    .child(empty_hint(t("oneclient.cluster.datapacks.empty.hint")))
-                    .child(rect().height(Size::px(6.)))
-                    .child(
-                        rect()
-                            .horizontal()
-                            .spacing(8.)
-                            .child({
-                                let browse_world = add_world.clone();
-                                Button::new()
-                                    .primary()
-                                    .on_press(move |_| {
-                                        browse(cluster_id, browse_world.clone(), remembered)
-                                    })
-                                    .child(Icon::new(IconType::SearchMd).size(14.))
-                                    .text(t("oneclient.cluster.package_manager.browse_content"))
-                            })
-                            .child(
-                                Button::new()
-                                    .secondary()
-                                    .on_press(move |_| {
-                                        pick_and_add(
-                                            cluster_id,
-                                            add_world.clone(),
-                                            add_dispatch.clone(),
-                                        )
-                                    })
-                                    .child(Icon::new(IconType::FilePlus02).size(14.))
-                                    .text(t("oneclient.cluster.package_manager.add_from_file")),
-                            ),
+            let browse_world = add_world.clone();
+            content_empty(
+                IconType::Database01,
+                t("oneclient.cluster.datapacks.empty.title"),
+                Some(t("oneclient.cluster.datapacks.empty.hint").to_string()),
+                vec![
+                    toolbar_action(
+                        IconType::SearchMd,
+                        t("oneclient.cluster.package_manager.browse_content"),
                     )
+                    .on_press(move |_| browse(cluster_id, browse_world.clone(), remembered))
                     .into_element(),
+                    toolbar_secondary(
+                        IconType::FilePlus02,
+                        t("oneclient.cluster.package_manager.add_from_file"),
+                    )
+                    .on_press(move |_| {
+                        pick_and_add(cluster_id, add_world.clone(), add_dispatch.clone())
+                    })
+                    .into_element(),
+                    open_folder_button(folder.clone()),
+                ],
             )
         } else {
-            Some(
-                empty_shell(IconType::SearchMd)
-                    .child(empty_title(t(
-                        "oneclient.cluster.datapacks.search_empty.title",
-                    )))
-                    .child(empty_hint(t(
-                        "oneclient.cluster.package_manager.search_empty.hint",
-                    )))
-                    .into_element(),
+            content_empty(
+                IconType::SearchMd,
+                t("oneclient.cluster.datapacks.search_empty.title"),
+                Some(t("oneclient.cluster.package_manager.search_empty.hint").to_string()),
+                Vec::new(),
             )
         };
 
         let picker_names = names.clone();
         let picker = Dropdown::new(world.clone(), names)
+            .outlined()
+            .solid_menu()
             .width(Size::px(WORLD_PICKER_W))
-            .height(Size::px(34.))
+            .height(Size::px(CONTROL_H))
             .leading(
                 Icon::new(IconType::Globe01)
                     .size(14.)
@@ -232,29 +244,17 @@ impl Component for ClusterDataPacks {
 
         let add_world = world.clone();
         let add_dispatch = dispatch.clone();
-        let mut controls = vec![search_input(search)];
-        controls.extend(folder.clone().map(folder_button));
-        controls.push(layout_toggle(layout));
-        if !all.is_empty() {
-            let mut names: Vec<String> = all.iter().map(|p| p.file_name.clone()).collect();
-            names.sort_by_key(|name| name.to_lowercase());
-            controls.push(copy_list_button(
-                dispatch.clone(),
-                names.len(),
-                t("oneclient.cluster.datapacks.noun.one"),
-                t("oneclient.cluster.datapacks.noun.other"),
-                move || {
-                    names
-                        .iter()
-                        .map(|name| format!("- {name}"))
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                },
-            ));
-        }
+        let mut controls = vec![copy_datapack_list(
+            dispatch.clone(),
+            all.iter().map(|p| p.file_name.clone()).collect(),
+        )];
+        controls.push(open_folder_action(
+            folder.clone(),
+            tf("oneclient.cluster.folder.tip.datapacks", &[&world]),
+        ));
         let browse_world = world.clone();
         controls.push(
-            toolbar_action(IconType::SearchMd, t("oneclient.common.browse"))
+            toolbar_secondary(IconType::SearchMd, t("oneclient.common.browse"))
                 .on_press(move |_| browse(cluster_id, browse_world.clone(), remembered))
                 .into_element(),
         );
@@ -324,13 +324,22 @@ impl Component for ClusterDataPacks {
         });
 
         cluster_content()
-            .child(toolbar_panel(Some(picker), controls))
+            .child(content_toolbar(
+                Some(search),
+                vec![picker, layout_toggle(layout)],
+                controls,
+            ))
             .child(content_box(
                 packs.len(),
                 card_layout,
-                PACKAGE_ROWS,
+                |i| {
+                    packs[i]
+                        .description
+                        .as_deref()
+                        .is_some_and(|d| !d.trim().is_empty())
+                },
                 row,
-                empty,
+                Some(empty),
                 Vec::new(),
             ))
             .maybe_child(menu_overlay)

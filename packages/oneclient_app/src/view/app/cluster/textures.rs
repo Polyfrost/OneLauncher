@@ -13,7 +13,7 @@ use super::cluster_not_found;
 use super::package_manager::{
     PackageManager, bundle_categories, bundle_packages, folder_pack_rows, use_content_meta,
 };
-use crate::hooks::use_cluster;
+use crate::hooks::{query_is_loading, use_cluster};
 
 #[derive(PartialEq)]
 pub struct ClusterTextures {
@@ -29,6 +29,7 @@ impl Component for ClusterTextures {
         let folder_packs = use_folder_packs(self.cluster_id);
         let bundle_items = bundles_with_status_items(&bundles);
         let content_items = cluster_content_items(&content);
+        let loading = query_is_loading(&content);
         let meta = use_content_meta(&content_items, &bundle_items, ContentType::ResourcePack);
 
         let Some(_cluster) = use_cluster(self.cluster_id) else {
@@ -57,6 +58,7 @@ impl Component for ClusterTextures {
                     items,
                     all_categories,
                 )
+                .loading(loading)
                 .into_element(),
             )
             .into_element()

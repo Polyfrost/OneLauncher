@@ -14,6 +14,23 @@ fn page_window(current: usize, total: usize, window: usize) -> (usize, usize) {
     (start, end)
 }
 
+const BUTTON: f32 = 32.;
+
+/// Wide enough for the digits, a four digit page used to be cut off by the square button
+fn number_width(page: usize) -> f32 {
+    let digits = (page + 1).to_string().len() as f32;
+    (18. + digits * text_size(12.) * 0.62).max(BUTTON)
+}
+
+/// Round under the glass theme so the pager matches the capsule controls around it
+fn button_radius() -> CornerRadius {
+    if colors::active_theme().liquid_glass {
+        CornerRadius::new_all(BUTTON / 2.)
+    } else {
+        rounded(8.)
+    }
+}
+
 #[derive(PartialEq)]
 pub struct Pagination {
     page: State<usize>,
@@ -50,8 +67,9 @@ impl Component for Pagination {
         let page = self.page;
         let total_pages = self.total_pages;
         let interactive = self.enabled;
-        let current = *page.read();
         let last = total_pages.saturating_sub(1);
+        // A stale page past the end would otherwise highlight nothing and leave Next enabled
+        let current = (*page.read()).min(last);
 
         let icon_btn =
             move |target: usize, available: bool, icon: IconType, tooltip: &'static str| {
@@ -60,6 +78,7 @@ impl Component for Pagination {
                 Button::new()
                     .secondary()
                     .icon()
+                    .corner_radius(button_radius())
                     .enabled(enabled)
                     .tooltip(tooltip)
                     .tooltip_placement(TooltipPlacement::Top)
@@ -76,12 +95,14 @@ impl Component for Pagination {
             let mut page = page;
             let is_current = target == current;
 
+            let width = number_width(target);
+
             if is_current {
                 return rect()
                     .center()
-                    .width(Size::px(32.))
-                    .height(Size::px(32.))
-                    .corner_radius(rounded(8.))
+                    .width(Size::px(width))
+                    .height(Size::px(BUTTON))
+                    .corner_radius(button_radius())
                     .background(colors::component_bg_pressed())
                     .border(border_all_color(1., colors::brand()))
                     .child(
@@ -89,6 +110,7 @@ impl Component for Pagination {
                             .text(format!("{}", target + 1))
                             .font_size(text_size(12.))
                             .font_weight(FontWeight::SEMI_BOLD)
+                            .max_lines(1)
                             .color(colors::fg_primary()),
                     )
                     .into_element();
@@ -96,9 +118,10 @@ impl Component for Pagination {
 
             Button::new()
                 .secondary()
-                .width(Size::px(32.))
-                .height(Size::px(32.))
-                .padding(Gaps::new_symmetric(6., 0.))
+                .width(Size::px(width))
+                .height(Size::px(BUTTON))
+                .padding(Gaps::new_all(0.))
+                .corner_radius(button_radius())
                 .enabled(interactive)
                 .on_press(move |_| page.set(target))
                 .child(
@@ -116,7 +139,7 @@ impl Component for Pagination {
             rect()
                 .center()
                 .width(Size::px(20.))
-                .height(Size::px(32.))
+                .height(Size::px(BUTTON))
                 .child(
                     label()
                         .text("...")
@@ -131,6 +154,7 @@ impl Component for Pagination {
         let mut row = rect()
             .horizontal()
             .width(Size::fill())
+            .height(Size::px(BUTTON))
             .main_align(Alignment::Center)
             .cross_align(Alignment::Center)
             .spacing(6.)

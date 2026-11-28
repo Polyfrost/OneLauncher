@@ -42,6 +42,7 @@ pub use assets::AppAssets;
 pub use components::{ConfirmLinkOverlay, DisableDependentsOverlay, EssentialConfirmOverlay};
 pub use events::EventPump;
 pub use hooks::*;
+pub use layout::DialogFocusPlugin;
 pub use routes::{Route, router};
 pub use state::{AppChannel, AppState};
 pub use view::chat::close_chat_window;

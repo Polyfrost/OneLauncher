@@ -41,28 +41,35 @@ impl Component for SkeletonCard {
             .border(border_all_color(1., colors::component_border()))
             .overflow(Overflow::Clip)
             .opacity(pulse)
-            .child(skeleton_block(Size::fill(), BANNER_H))
             .child(
                 rect()
-                    .position(
-                        Position::new_absolute()
-                            .top(BANNER_H - CARD_ICON + CARD_ICON_OVERHANG)
-                            .left(14.),
-                    )
-                    .layer(Layer::Relative(7))
-                    .child(skeleton_block(Size::px(CARD_ICON), CARD_ICON)),
+                    .horizontal()
+                    .width(Size::fill())
+                    .height(Size::px(BANNER_H))
+                    .cross_align(Alignment::Center)
+                    .content(Content::Flex)
+                    .spacing(10.)
+                    .padding(Gaps::new_symmetric(0., 14.))
+                    .child(skeleton_block(Size::px(CARD_ICON + 4.), CARD_ICON + 4.))
+                    .child(
+                        rect()
+                            .vertical()
+                            .width(Size::flex(1.0))
+                            .spacing(6.)
+                            .child(skeleton_block(Size::percent(65.), 14.))
+                            .child(skeleton_block(Size::percent(45.), 10.)),
+                    ),
             )
             .child(
                 rect()
                     .vertical()
                     .width(Size::fill())
                     .height(Size::flex(1.0))
-                    .padding(Gaps::new(CARD_ICON_OVERHANG + 6., 14., 12., 14.))
+                    .padding(Gaps::new(10., 14., 12., 14.))
                     .spacing(6.)
-                    .child(skeleton_block(Size::percent(60.), 14.))
-                    .child(skeleton_block(Size::percent(85.), 10.))
                     .child(skeleton_block(Size::fill(), 10.))
-                    .child(skeleton_block(Size::percent(70.), 10.))
+                    .child(skeleton_block(Size::percent(90.), 10.))
+                    .child(skeleton_block(Size::percent(65.), 10.))
                     .child(rect().width(Size::fill()).height(Size::flex(1.0)))
                     .child(skeleton_block(Size::px(76.), 28.)),
             )
@@ -107,4 +114,41 @@ pub(super) fn skeleton_grid_row(cols: usize) -> impl IntoElement {
         .content(Content::Flex)
         .children((0..cols).map(|_| SkeletonCard.into_element()))
         .into_element()
+}
+
+/// A placeholder result inside the instance pop-up, the size and surface of its rows
+#[derive(PartialEq)]
+pub(super) struct InstanceSkeletonRow;
+
+impl Component for InstanceSkeletonRow {
+    fn render(&self) -> impl IntoElement {
+        let pulse = use_skeleton_pulse();
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .height(Size::px(crate::components::CARD_H))
+            .cross_align(Alignment::Center)
+            .content(Content::Flex)
+            .spacing(12.)
+            .padding(Gaps::new_all(12.))
+            .corner_radius(rounded(crate::components::ROW_RADIUS))
+            .background(colors::card())
+            .border(
+                border_all_color(1., colors::component_border()).alignment(BorderAlignment::Inner),
+            )
+            .opacity(pulse)
+            .child(skeleton_block(
+                Size::px(crate::components::ROW_ICON),
+                crate::components::ROW_ICON,
+            ))
+            .child(
+                rect()
+                    .vertical()
+                    .width(Size::flex(1.0))
+                    .spacing(8.)
+                    .child(skeleton_block(Size::percent(30.), 12.))
+                    .child(skeleton_block(Size::percent(60.), 10.)),
+            )
+            .child(skeleton_block(Size::px(64.), 28.))
+    }
 }

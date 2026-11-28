@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::cell::RefCell;
 
 use freya::animation::*;
 use freya::prelude::*;
@@ -11,39 +10,17 @@ use sysinfo::MemoryRefreshKind;
 use sysinfo::RefreshKind;
 use sysinfo::System;
 
-use crate::components::{
-    Icon, IconType, ScrollArea, ScrollAreaCtx, TextInput, TooltipPlacement, use_tooltip_anchor,
-};
+use crate::components::{Button, Icon, IconType, TextInput, TooltipPlacement};
 use crate::hooks::{latest_changelog_version, use_changelog, use_settings_snapshot};
 use crate::i18n::{t, tf};
 use crate::routes::Route;
-use crate::theme::{colors, rounded, text_size};
+use crate::theme::{colors, glass, rounded, text_size};
+
+use super::workspace_dialog::{CONTENT_TOP, WorkspaceLayout, close_button, header_divider};
+use super::workspace_rail;
 use crate::use_dispatch;
 
-const SIDEBAR_WIDTH_PX: f32 = 225.;
-const ITEM_HEIGHT_PX: f32 = 33.;
-const SEARCH_WIDTH_PX: f32 = 256.;
-const SEARCH_MIN_WIDTH_PX: f32 = 120.;
 const SEARCH_RESULTS_MAX: usize = 12;
-
-thread_local! {
-    static SETTINGS_SCROLL_CTX: RefCell<Option<ScrollAreaCtx>> = const { RefCell::new(None) };
-    static SETTINGS_SCROLL_CONTROLLER: RefCell<Option<ScrollController>> = const { RefCell::new(None) };
-    static PENDING_SETTING_FOCUS: RefCell<Option<&'static str>> = const { RefCell::new(None) };
-}
-
-pub(crate) fn set_pending_setting_focus(id: &'static str) {
-    PENDING_SETTING_FOCUS.with(|cell| *cell.borrow_mut() = Some(id));
-
-    spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-        PENDING_SETTING_FOCUS.with(|cell| {
-            if *cell.borrow() == Some(id) {
-                *cell.borrow_mut() = None;
-            }
-        });
-    });
-}
 
 #[derive(Clone)]
 pub(crate) struct SearchItem {
@@ -110,7 +87,7 @@ impl SettingsTab {
             Self::Appearance => IconType::Brush01,
             Self::Apis => IconType::Key01,
             Self::Language => IconType::Globe01,
-            Self::DeveloperOptions => IconType::CodeSnippet02,
+            Self::DeveloperOptions => IconType::Terminal,
             Self::Changelog => IconType::RefreshCcw02,
         }
     }
@@ -182,35 +159,50 @@ impl Component for SettingsShell {
     fn render(&self) -> impl IntoElement {
         let route = use_route::<Route>();
         let active = route_tab(&route);
+        let layout = WorkspaceLayout::current();
 
         let changelog_unread = has_unread_changelog();
 
-        let search = use_state(String::new);
-        let header_width = use_state(|| 0f32);
+        let mut search = use_state(String::new);
         let query = SearchQuery::new(&search.read());
+        let searching = !query.is_empty();
+        if searching {
+            crate::view::app::settings::clear_pending_setting_focus();
+        }
         let scroll = use_scroll_controller(ScrollConfig::default);
-        SETTINGS_SCROLL_CONTROLLER.with(|cell| *cell.borrow_mut() = Some(scroll));
+        crate::view::app::settings::provide_settings_scroll(scroll);
 
-        let anim = use_animation(|conf| {
-            conf.on_creation(OnCreation::Run);
+        let animate = crate::motion::use_animations_enabled();
+        let anim = use_animation(|_| {
             AnimNum::new(0., 1.)
-                .time(340)
+                .time(220)
                 .ease(Ease::Out)
                 .function(Function::Cubic)
         });
         let mut last_route = use_state(|| route.clone());
         if *last_route.peek() != route {
             last_route.set(route.clone());
-            anim.run(AnimDirection::Forward);
+            // A rail tab picked while searching should show its page, not the old results
+            if !search.peek().is_empty() {
+                search.set(String::new());
+            }
+            if animate {
+                anim.run(AnimDirection::Forward);
+            }
         }
-        let p = anim.get().value();
+        // The dialog moves as one piece on open. Only subsequent category changes move the content.
+        let p = if animate && *anim.has_run_yet().read() {
+            anim.get().value()
+        } else {
+            1.
+        };
 
-        let children: Vec<Element> = if query.is_empty() {
-            const SHIFT_PX: f32 = 46.;
+        let children: Vec<Element> = if !searching {
+            const SHIFT_PX: f32 = 16.;
             vec![
                 rect()
                     .width(Size::fill())
-                    .offset_x(-(1.0 - p) * SHIFT_PX)
+                    .offset_y((1.0 - p) * SHIFT_PX)
                     .opacity(p)
                     .child(Outlet::<Route>::new())
                     .into_element(),
@@ -219,82 +211,77 @@ impl Component for SettingsShell {
             search_results(&query, search)
         };
 
+        let title = if searching {
+            t("oneclient.layout.settings.search.results")
+        } else if matches!(route, Route::SettingsThemeEditor { .. }) {
+            t("oneclient.routes.settings_theme_editor")
+        } else {
+            active.label()
+        };
         rect()
-            .horizontal()
+            .vertical()
+            .content(Content::Flex)
             .width(Size::fill())
             .height(Size::fill())
             .overflow(Overflow::Clip)
-            .padding(Gaps::new(0., 40., 40., 32.))
-            .spacing(40.)
-            .child(sidebar(active, changelog_unread))
+            .child(
+                layout
+                    .header()
+                    .spacing(layout.padding)
+                    .child(
+                        rect()
+                            .width(Size::px(layout.rail_width))
+                            .child(search_box(search)),
+                    )
+                    .child(
+                        label()
+                            .text(title)
+                            .font_size(text_size(18.))
+                            .font_weight(FontWeight::SEMI_BOLD)
+                            .max_lines(1)
+                            .text_overflow(TextOverflow::Ellipsis)
+                            .width(Size::flex(1.))
+                            .color(colors::fg_primary()),
+                    )
+                    .child(close_button()),
+            )
+            .child(header_divider())
             .child(
                 rect()
-                    .vertical()
-                    .width(Size::flex(1.0))
-                    .height(Size::fill())
-                    .overflow(Overflow::Clip)
-                    .spacing(24.)
-                    .child(content_header(
-                        active.label().to_string(),
-                        search,
-                        header_width,
-                    ))
+                    .horizontal()
+                    .content(Content::Flex)
+                    .width(Size::fill())
+                    .height(Size::flex(1.))
+                    .padding(Gaps::new(0., 0., 0., layout.padding))
+                    .child(sidebar(&route, active, changelog_unread, layout, search))
                     .child(
-                        ScrollArea::new()
-                            .width(Size::fill())
-                            .height(Size::flex(1.0))
-                            .show_scrollbar(true)
-                            .scrollbar_gutter(true)
-                            .spacing(4.)
-                            .scroll_controller(scroll)
-                            .on_ctx(|ctx| {
-                                SETTINGS_SCROLL_CTX.with(|cell| *cell.borrow_mut() = Some(ctx));
-                            })
-                            .children(children),
+                        rect()
+                            .width(Size::flex(1.))
+                            .height(Size::fill())
+                            .padding(Gaps::new(0., 0., layout.padding, 0.))
+                            .child(
+                                crate::view::app::settings::settings_pane()
+                                    .padding(Gaps::new(CONTENT_TOP, layout.padding, 0., 0.))
+                                    .spacing(6.)
+                                    .reset_key(u64::from(searching))
+                                    .scroll_controller(scroll)
+                                    .on_ctx(crate::view::app::settings::provide_settings_scroll_ctx)
+                                    .children(children),
+                            ),
                     ),
             )
     }
 }
 
-fn content_header(title: String, search: State<String>, mut width: State<f32>) -> impl IntoElement {
-    let search_width = search_width_for(*width.read());
+/// The same height and text size as the inputs on the settings rows
+const SEARCH_HEIGHT: f32 = 34.;
 
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .content(Content::Flex)
-        .cross_align(Alignment::Center)
-        .spacing(12.)
-        .on_sized(move |event: Event<SizedEventData>| {
-            let next = event.data().area.width();
-            if (*width.peek() - next).abs() > 0.5 {
-                width.set(next);
-            }
-        })
-        .child(
-            label()
-                .text(title)
-                .font_size(text_size(30.))
-                .font_weight(FontWeight::SEMI_BOLD)
-                .max_lines(1)
-                .width(Size::flex(1.0))
-                .color(colors::fg_primary()),
-        )
-        .child(search_box(search, search_width))
-}
-
-fn search_width_for(header_width: f32) -> f32 {
-    if header_width <= 0. {
-        return SEARCH_WIDTH_PX;
-    }
-    (header_width * 0.45).clamp(SEARCH_MIN_WIDTH_PX, SEARCH_WIDTH_PX)
-}
-
-fn search_box(mut search: State<String>, width: f32) -> impl IntoElement {
+fn search_box(mut search: State<String>) -> impl IntoElement {
     let has_query = !search.read().trim().is_empty();
     let base = TextInput::new(search)
         .placeholder(t("oneclient.layout.settings.search.placeholder"))
-        .width(Size::px(width))
+        .width(Size::fill())
+        .height(Size::px(SEARCH_HEIGHT))
         .leading(
             Icon::new(IconType::SearchMd)
                 .size(16.)
@@ -356,7 +343,7 @@ fn search_results(query: &SearchQuery, mut search: State<String>) -> Vec<Element
                 .width(Size::fill())
                 .padding(Gaps::new_symmetric(10., 14.))
                 .corner_radius(rounded(12.))
-                .background(colors::page_elevated())
+                .background(colors::card())
                 .child(
                     label()
                         .text(t("oneclient.layout.settings.search.empty"))
@@ -367,23 +354,11 @@ fn search_results(query: &SearchQuery, mut search: State<String>) -> Vec<Element
         ];
     }
 
-    let mut out: Vec<Element> = Vec::with_capacity(matches.len() + 1);
-    out.push(
-        rect()
-            .padding(Gaps::new(16., 0., 8., 2.))
-            .child(
-                label()
-                    .text(t("oneclient.layout.settings.search.results"))
-                    .font_size(text_size(11.))
-                    .font_weight(FontWeight::MEDIUM)
-                    .color(colors::fg_secondary()),
-            )
-            .into_element(),
-    );
+    let mut out = Vec::with_capacity(matches.len());
 
     for item in matches {
-        let route = item.route;
-        let id = item.id;
+        let route = item.route.clone();
+        let focus = item.clone();
         let title = item.title;
         let desc = item.description;
         out.push(
@@ -393,12 +368,18 @@ fn search_results(query: &SearchQuery, mut search: State<String>) -> Vec<Element
                 .content(Content::Flex)
                 .cross_align(Alignment::Center)
                 .spacing(12.)
-                .padding(Gaps::new_symmetric(12., 16.))
+                .min_height(Size::px(64.))
+                .padding(Gaps::new_symmetric(14., 16.))
                 .corner_radius(rounded(12.))
-                .background(colors::page_elevated())
+                .background(colors::card())
                 .cursor(CursorIcon::Pointer)
                 .on_press(move |_| {
-                    set_pending_setting_focus(id);
+                    crate::view::app::settings::set_pending_setting_focus(
+                        focus.id,
+                        focus.title,
+                        focus.description,
+                        route.clone(),
+                    );
                     search.set(String::new());
                     let _ = RouterContext::get().replace(route.clone());
                 })
@@ -445,57 +426,134 @@ fn has_unread_changelog() -> bool {
     }
 }
 
-fn sidebar(active: SettingsTab, changelog_unread: bool) -> impl IntoElement {
-    rect()
+fn sidebar(
+    route: &Route,
+    active: SettingsTab,
+    changelog_unread: bool,
+    layout: WorkspaceLayout,
+    search: State<String>,
+) -> impl IntoElement {
+    let groups = groups();
+    let tabs: Vec<_> = groups
+        .iter()
+        .flat_map(|group| group.tabs.iter().copied())
+        .collect();
+    let track = glass::use_vertical_pill_track(tabs.len());
+    let lens = colors::active_theme().liquid_glass.then_some(track);
+    let selected = tabs.iter().position(|tab| *tab == active);
+    let mut available = use_state(|| 0f32);
+    let sections: Vec<_> = groups.iter().map(|group| group.tabs.len()).collect();
+    let measured = *available.read();
+    let shown = (measured > 0.).then(|| {
+        workspace_rail::viewport_height(measured, &sections, layout.row_height, layout.row_gap)
+    });
+    let viewport = shown.map_or_else(Size::fill, Size::px);
+
+    // Scroll the rail to the active row, which can start under the fade or below it
+    let rail_scroll = workspace_rail::use_rail_scroll();
+    let active_row = groups.iter().enumerate().find_map(|(group, entry)| {
+        let index = entry.tabs.iter().position(|tab| *tab == active)?;
+        let top = workspace_rail::headed_row_top(
+            &sections,
+            group,
+            index,
+            layout.row_height,
+            layout.row_gap,
+        );
+        // The section starts at its heading, one heading above its first row
+        let first =
+            workspace_rail::headed_row_top(&sections, group, 0, layout.row_height, layout.row_gap);
+        Some((first - workspace_rail::heading_height(), top))
+    });
+    workspace_rail::use_reveal_active(
+        &rail_scroll,
+        route,
+        active_row.map(|(section, top)| (section, top, layout.row_height)),
+        shown.unwrap_or(0.),
+    );
+
+    let nav = rect()
         .vertical()
-        .width(Size::px(SIDEBAR_WIDTH_PX))
-        .min_width(Size::px(SIDEBAR_WIDTH_PX))
-        .height(Size::fill())
-        .overflow(Overflow::Clip)
-        .padding(Gaps::new(16., 0., 0., 0.))
-        .content(Content::Flex)
+        .width(Size::fill())
+        .maybe_child(lens.map(|track| track.indicator(selected)))
+        .children(groups.into_iter().scan(0, move |index, group| {
+            let rows = group.tabs.iter().filter_map(|tab| {
+                let route = tab.route()?;
+                let tab_row = workspace_rail::Tab {
+                    label: tab.label(),
+                    icon: tab.icon(),
+                    route,
+                    active: *tab == active,
+                    has_dot: *tab == SettingsTab::Changelog && changelog_unread,
+                    height: layout.row_height,
+                    lens: lens.map(|track| (track, *index)),
+                    search: Some(search),
+                };
+                *index += 1;
+                Some(tab_row.into_element())
+            });
+            Some(
+                rect()
+                    .vertical()
+                    .width(Size::fill())
+                    .child(workspace_rail::heading(group.label))
+                    .child(
+                        rect()
+                            .vertical()
+                            .width(Size::fill())
+                            .spacing(layout.row_gap)
+                            .children(rows),
+                    )
+                    .into_element(),
+            )
+        }));
+
+    workspace_rail::column(layout)
+        // The footer's ghost button carries its own inset, so the rail ends half a gutter lower
+        .padding(Gaps::new(0., 0., layout.padding / 2., 0.))
+        .map(lens, |el, track| {
+            track.events(el, move |index| {
+                workspace_rail::clear_search(search);
+                if Some(index) != selected
+                    && let Some(route) = tabs[index].route()
+                {
+                    workspace_rail::select(&route);
+                }
+            })
+        })
         .child(
-            ScrollArea::new()
+            rect()
                 .width(Size::fill())
-                .height(Size::flex(1.0))
-                .spacing(16.)
-                .children(groups().into_iter().map(|group| {
-                    rect()
-                        .vertical()
-                        .width(Size::fill())
-                        .spacing(6.)
-                        .child(
-                            rect().padding(Gaps::new(0., 0., 2., 6.)).child(
-                                label()
-                                    .text(group.label)
-                                    .font_size(text_size(11.))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .color(colors::fg_secondary()),
-                            ),
-                        )
-                        .children(group.tabs.iter().map(|tab| {
-                            SidebarItem {
-                                tab: *tab,
-                                active: *tab == active,
-                                has_dot: matches!(tab, SettingsTab::Changelog) && changelog_unread,
-                            }
-                            .into_element()
-                        }))
-                        .into_element()
-                })),
+                .height(Size::flex(1.))
+                .on_sized(move |event: Event<SizedEventData>| {
+                    let height = event.area.height();
+                    if (*available.peek() - height).abs() > 0.5 {
+                        available.set(height);
+                    }
+                })
+                .child(
+                    workspace_rail::scroll(lens)
+                        .height(viewport)
+                        .child(workspace_rail::navigation(layout, &rail_scroll).child(nav)),
+                ),
         )
-        .child(SidebarInfo::new())
+        .child(
+            workspace_rail::footer(layout)
+                .child(workspace_rail::divider())
+                .child(SidebarInfo::new(layout.row_height)),
+        )
 }
 
 #[derive(PartialEq)]
 struct SidebarInfo {
+    height: f32,
     kernel_version: String,
     ram_mb: u64,
     cpu_kind: String,
 }
 
 impl SidebarInfo {
-    pub fn new() -> Self {
+    fn new(height: f32) -> Self {
         let system = System::new_with_specifics(
             RefreshKind::nothing()
                 .with_memory(MemoryRefreshKind::nothing().with_ram())
@@ -511,6 +569,7 @@ impl SidebarInfo {
             .unwrap_or_default();
 
         Self {
+            height,
             kernel_version,
             ram_mb,
             cpu_kind: cpu_kind.to_string(),
@@ -521,11 +580,7 @@ impl SidebarInfo {
 impl Component for SidebarInfo {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
-        let tooltip = use_tooltip_anchor(
-            Some(t("oneclient.layout.settings.info.copy_tooltip").into()),
-            TooltipPlacement::Top,
-        );
-
+        let copy_label = t("oneclient.layout.settings.info.copy_tooltip");
         let items: [Cow<'static, str>; 4] = [
             Cow::Borrowed(oneclient_common::constants::LAUNCHER_LABEL),
             Cow::Owned(self.kernel_version.clone()),
@@ -559,108 +614,26 @@ impl Component for SidebarInfo {
             }
         };
 
-        tooltip.attach(
-            rect()
-                .vertical()
-                .width(Size::fill())
-                .spacing(4.)
-                .font_size(text_size(12.))
-                .padding(Gaps::new(15., 0., 0., 0.))
-                .color(colors::fg_secondary())
-                .children(
-                    items
-                        .into_iter()
-                        .map(|item| label().text(item).into_element()),
-                )
-                .cursor(CursorIcon::Pointer)
-                .on_press(copy_to_clipboard),
-        )
-    }
-}
-
-#[derive(PartialEq)]
-struct SidebarItem {
-    tab: SettingsTab,
-    active: bool,
-    has_dot: bool,
-}
-
-impl Component for SidebarItem {
-    fn render(&self) -> impl IntoElement {
-        let mut hovering = use_state(|| false);
-
-        let a11y_id = use_a11y();
-        let focus = use_focus(a11y_id);
-
-        let tab = self.tab;
-        let active = self.active;
-        let route = tab.route();
-
-        let background = if active {
-            colors::page_elevated()
-        } else if *hovering.read() {
-            colors::ghost_overlay()
-        } else {
-            Color::TRANSPARENT
-        };
-
-        let has_dot = self.has_dot;
-
-        let mut el = rect()
-            .horizontal()
-            .content(Content::Flex)
+        Button::new()
+            .small()
+            .ghost()
+            .height(Size::px(self.height))
             .width(Size::fill())
-            .height(Size::px(ITEM_HEIGHT_PX))
-            .cross_align(Alignment::Center)
-            .spacing(10.)
-            .padding(Gaps::new_symmetric(0., 12.))
-            .corner_radius(rounded(7.))
-            .background(background)
-            .a11y_id(a11y_id)
-            .a11y_focusable(true)
-            .a11y_role(AccessibilityRole::Button)
-            .cursor(CursorIcon::Pointer)
-            .on_pointer_enter(move |_| *hovering.write() = true)
-            .on_pointer_leave(move |_| *hovering.write() = false)
-            .map(route, |el, route| {
-                el.on_press(move |_| {
-                    let _ = RouterContext::get().replace(route.clone());
-                })
-            });
-
-        if focus().is_focused() {
-            el = el.border(
-                Border::new()
-                    .fill(colors::brand())
-                    .width(1.)
-                    .alignment(BorderAlignment::Inner),
-            );
-        }
-
-        el.child(Icon::new(tab.icon()).size(18.).color(colors::fg_primary()))
+            .foreground(crate::view::app::settings::readable_secondary())
+            .alt(copy_label)
+            .tooltip(copy_label)
+            .tooltip_placement(TooltipPlacement::Top)
             .child(
-                rect()
-                    .horizontal()
-                    .width(Size::flex(1.0))
-                    .cross_align(Alignment::Center)
-                    .spacing(6.)
-                    .child(
-                        label()
-                            .text(tab.label())
-                            .font_size(text_size(14.))
-                            .color(colors::fg_primary()),
-                    )
-                    .maybe_child(has_dot.then(notification_dot)),
+                label()
+                    .text(oneclient_common::constants::LAUNCHER_LABEL)
+                    .width(Size::flex(1.))
+                    .font_size(text_size(11.))
+                    .max_lines(1)
+                    .text_overflow(TextOverflow::Ellipsis),
             )
+            .child(Icon::new(IconType::Copy01).size(13.))
+            .on_press(copy_to_clipboard)
     }
-}
-
-fn notification_dot() -> impl IntoElement {
-    rect()
-        .width(Size::px(4.))
-        .height(Size::px(4.))
-        .corner_radius(rounded(2.))
-        .background(colors::brand())
 }
 
 #[cfg(test)]

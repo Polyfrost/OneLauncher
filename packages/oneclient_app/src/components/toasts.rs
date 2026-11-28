@@ -10,10 +10,12 @@ use freya::{
 use oneclient_events::Level;
 
 use crate::{
-    components::{Button, ButtonSize, Icon, IconType, TooltipPlacement, progress_track},
+    components::{
+        Button, ButtonSize, Icon, IconType, OVERLAY_MAX_LEVEL, TooltipPlacement, progress_track,
+    },
     hooks::{
-        use_chat_allowed, use_dispatch, use_link_confirm, use_notifications_snapshot,
-        use_social_open,
+        LinkConfirmState, use_chat_allowed, use_dispatch, use_link_confirm,
+        use_notifications_snapshot, use_social_open,
     },
     i18n::t,
     motion::use_animations_enabled,
@@ -30,7 +32,6 @@ const TTL_STEP: std::time::Duration = std::time::Duration::from_millis(100);
 const TOP_PX: f32 = crate::theme::NAVBAR_HEIGHT_PX + 12.;
 const RIGHT_PX: f32 = 24.;
 const DOCKED_GAP_PX: f32 = 12.;
-const LAYER_LEVEL: u8 = 2;
 
 #[derive(Clone, Copy, PartialEq)]
 enum Variant {
@@ -88,11 +89,7 @@ impl Component for Toasts {
         } else {
             RIGHT_PX
         };
-        let mut stack = rect()
-            .vertical()
-            .spacing(12.)
-            .position(Position::new_global().top(TOP_PX).right(right))
-            .layer(Layer::OverlayLevel(LAYER_LEVEL));
+        let mut stack = toast_stack(right);
 
         for entry in entries {
             let id = entry.id;
@@ -108,6 +105,15 @@ impl Component for Toasts {
 
         stack.into_element()
     }
+}
+
+fn toast_stack(right: f32) -> Rect {
+    rect()
+        .vertical()
+        .spacing(12.)
+        .position(Position::new_global().top(TOP_PX).right(right))
+        // Toasts must stay readable and clickable over dialog scrims.
+        .layer(Layer::OverlayLevel(OVERLAY_MAX_LEVEL))
 }
 
 #[derive(PartialEq)]
@@ -374,7 +380,7 @@ fn message_card(entry: &InboxEntry, dispatch: crate::Actions, id: u64, ttl_pct: 
 fn action_card(
     entry: &InboxEntry,
     dispatch: crate::Actions,
-    confirm_link: State<Option<String>>,
+    confirm_link: LinkConfirmState,
     id: u64,
     ttl_pct: f32,
 ) -> Rect {
@@ -406,7 +412,7 @@ fn action_card(
 fn action_row(
     action: Option<crate::notifications::NotificationAction>,
     dispatch: crate::Actions,
-    confirm_link: State<Option<String>>,
+    confirm_link: LinkConfirmState,
     id: u64,
 ) -> impl IntoElement {
     let dismiss = dispatch.clone();
@@ -418,9 +424,9 @@ fn action_row(
     let review_icon = match review_kind {
         Some(NotificationActionKind::OpenUrl(_)) => IconType::LinkExternal01,
         Some(NotificationActionKind::OpenChat(_)) => IconType::MessageTextSquare01,
+        Some(NotificationActionKind::UndoInstall(_)) => IconType::RefreshCcw02,
         _ => IconType::Eye,
     };
-
     rect()
         .horizontal()
         .width(Size::fill())
@@ -442,7 +448,12 @@ fn action_row(
                 .primary()
                 .width(Size::flex(1.0))
                 .on_press(move |_| match &review_kind {
-                    Some(kind) => super::notifications::run_action(&dispatch, confirm_link, kind),
+                    Some(NotificationActionKind::UndoInstall(undo)) => {
+                        dispatch.undo_install(undo.clone(), Some(id));
+                    }
+                    Some(kind) => {
+                        super::notifications::run_action(&dispatch, confirm_link, kind, true)
+                    }
                     None => dispatch.mark_notification_read(id),
                 })
                 .child(Icon::new(review_icon).size(16.))
@@ -495,4 +506,58 @@ fn progress_card(entry: &InboxEntry) -> Rect {
                     ),
             ),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::components::OverlayPopup;
+    use crate::hooks::use_provide_overlay_claims;
+    use freya_testing::TestingRunner;
+
+    #[test]
+    fn toast_stack_paints_and_receives_presses_above_a_dialog() {
+        let (mut app, presses) = TestingRunner::new(
+            || {
+                use_provide_overlay_claims();
+                let mut presses = use_consume::<State<(bool, bool)>>();
+                rect()
+                    .expanded()
+                    .child(
+                        OverlayPopup::new()
+                            .overlay_level(OVERLAY_MAX_LEVEL)
+                            .position(Position::new_global().top(56.).left(70.))
+                            .on_close(move |()| presses.write().0 = true)
+                            .child(
+                                rect()
+                                    .width(Size::px(320.))
+                                    .height(Size::px(130.))
+                                    .background(Color::RED),
+                            ),
+                    )
+                    .child(
+                        toast_stack(RIGHT_PX).child(
+                            rect()
+                                .width(Size::px(TOAST_W))
+                                .height(Size::px(40.))
+                                .background(Color::BLUE)
+                                .on_press(move |_| presses.write().1 = true),
+                        ),
+                    )
+            },
+            (420., 230.).into(),
+            |app| app.provide_root_context(|| State::create((false, false))),
+            1.,
+        );
+        app.sync_and_update();
+        let image = skia_safe::Image::from_encoded(app.render()).unwrap();
+        let raster = image.make_raster_image(None, None).unwrap();
+        assert_eq!(
+            raster.peek_pixels().unwrap().get_color((140, 110)),
+            skia_safe::Color::BLUE
+        );
+
+        app.click_cursor((140., 110.));
+        assert_eq!(*presses.read(), (false, true));
+    }
 }

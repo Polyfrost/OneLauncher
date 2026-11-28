@@ -28,6 +28,11 @@ pub(super) fn loading_body() -> impl IntoElement {
         .into_element()
 }
 
+/// A detail page or version list that could not be fetched, with Retry
+pub(super) fn failed_body(message: &'static str, on_retry: impl FnMut(()) + 'static) -> Element {
+    super::super::load_failed(t(message), on_retry)
+}
+
 pub(super) fn tabs(active_tab: State<usize>, has_gallery: bool) -> impl IntoElement {
     let mut control = SegmentedControl::new(active_tab)
         .height(36.)
@@ -116,11 +121,27 @@ pub(super) fn versions_panel(
     on_remove: EventHandler<(String, String)>,
     installed: Option<Installed>,
     installing: bool,
+    status: ListStatus,
+    on_retry: impl FnMut(()) + 'static,
 ) -> impl IntoElement {
     let current = *versions_page.read();
     let total_pages = total_versions.div_ceil(VERSIONS_PAGE_SIZE).max(1);
 
-    let rows: Element = if versions.is_empty() {
+    let rows: Element = if status == ListStatus::Failed {
+        failed_body("oneclient.browser.package.versions.load_failed", on_retry)
+    } else if status == ListStatus::Loading {
+        rect()
+            .width(Size::fill())
+            .center()
+            .padding(Gaps::new_all(32.))
+            .child(
+                label()
+                    .text(t("oneclient.browser.package.versions.loading"))
+                    .font_size(text_size(13.))
+                    .color(colors::fg_secondary()),
+            )
+            .into_element()
+    } else if versions.is_empty() {
         rect()
             .width(Size::fill())
             .center()
@@ -150,6 +171,8 @@ pub(super) fn versions_panel(
                     .and_then(Installed::disabled_bundled)
                     .filter(|disabled| disabled.version_id == v.version_id)
                     .and_then(|disabled| disabled.enable_action(installer.cluster_id));
+                // A data pack can't be installed from one of its project's mod builds
+                let busy = installing || (installer.datapack && !v.loaders.is_empty());
                 version_row(
                     v,
                     &dependency_names,
@@ -158,7 +181,7 @@ pub(super) fn versions_panel(
                     on_remove.clone(),
                     tag,
                     duplicated,
-                    installing,
+                    busy,
                     enable,
                 )
                 .into_element()
@@ -309,35 +332,49 @@ fn version_row(
                         .color(colors::fg_secondary()),
                 ),
         )
-        .maybe_child(
-            installed
-                .as_ref()
-                .map(|installed| installed_badge(installed.source, 11.).into_element()),
+        .child(
+            rect()
+                .vertical()
+                .width(Size::px(94.))
+                .min_height(Size::px(44.))
+                .center()
+                .spacing(4.)
+                .maybe_child(
+                    installed
+                        .as_ref()
+                        .map(|installed| installed_badge(installed.source, 11.)),
+                )
+                .maybe_child(
+                    installed
+                        .as_ref()
+                        .filter(|_| duplicated)
+                        .map(|installed| activity_badge(installed.enabled)),
+                ),
         )
-        .maybe_child(
-            installed
-                .as_ref()
-                .filter(|_| duplicated)
-                .map(|installed| activity_badge(installed.enabled).into_element()),
+        .child(
+            rect()
+                .horizontal()
+                .width(Size::px(78.))
+                .main_align(Alignment::End)
+                .child(match enable {
+                    Some(action) => EnableButton {
+                        action,
+                        variant: EnableVariant::VersionRow,
+                    }
+                    .into_element(),
+                    None => version_button(
+                        installed,
+                        v.name,
+                        project_id,
+                        version_id,
+                        version_label,
+                        installer,
+                        on_remove,
+                        installing,
+                    )
+                    .into_element(),
+                }),
         )
-        .child(match enable {
-            Some(action) => EnableButton {
-                action,
-                variant: EnableVariant::VersionRow,
-            }
-            .into_element(),
-            None => version_button(
-                installed,
-                v.name,
-                project_id,
-                version_id,
-                version_label,
-                installer,
-                on_remove,
-                installing,
-            )
-            .into_element(),
-        })
 }
 
 /// A bundle pin with nothing linked leaves nothing to press no artifact to remove and installing by hand would duplicate it

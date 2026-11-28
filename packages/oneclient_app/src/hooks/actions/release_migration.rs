@@ -8,6 +8,7 @@ use oneclient_content::packages::release_migration::{
     ReleaseMigrationDependency, ReleaseMigrationPackage, ReleaseMigrationPlan,
     ReleaseMigrationSkip, SkipReason, add_to_waitlist, apply_release_migration_dependency,
     apply_release_migration_package, plan_release_migrations, process_waitlist,
+    revalidate_release_migration,
 };
 use oneclient_content::packages::{
     ContentType, GameLoader, PackageBody, ProjectDetail, ProviderId, VersionDetail, VersionFile,
@@ -36,6 +37,29 @@ fn release_key(cluster: &Cluster) -> String {
         loader: cluster.mc_loader,
     }
     .key()
+}
+
+// A validation failure leaves the offer available on the next startup.
+async fn validate_and_consume_offer<T>(
+    validation: impl Future<Output = oneclient_content::ContentResult<T>>,
+    consume: impl FnOnce(),
+) -> oneclient_content::ContentResult<T> {
+    let plan = validation.await?;
+    consume();
+    Ok(plan)
+}
+
+async fn inherit_after_migration<F>(
+    migrated: usize,
+    inherit: impl FnOnce() -> F,
+) -> oneclient_content::ContentResult<()>
+where
+    F: Future<Output = oneclient_content::ContentResult<()>>,
+{
+    if migrated == 0 {
+        return Ok(());
+    }
+    inherit().await
 }
 
 enum SourcePlan {
@@ -747,55 +771,43 @@ impl Actions {
         if self.refuse_during_update_check(target.id) {
             return;
         }
-        match prompt.origin {
+        let pending = match prompt.origin {
             PromptOrigin::Fake => {
                 self.notify(t("oneclient.actions.release_migration.fake.title"))
                     .body(t("oneclient.actions.release_migration.fake.body"))
                     .send();
                 return;
             }
-            PromptOrigin::Simulated => {}
-            PromptOrigin::NewRelease | PromptOrigin::Manual => {
-                self.remove_pending_release_migrations(vec![release_key(&target)]);
-            }
-        }
+            PromptOrigin::Simulated => Vec::new(),
+            PromptOrigin::NewRelease | PromptOrigin::Manual => vec![release_key(&target)],
+        };
 
         let (source_id, target_id) = (source.id, target.id);
-        spawn_global(async move {
-            let Ok(state) = launcher::state() else { return };
-            if let Err(err) = oneclient_content::bundles::inherit_bundle_choices(
-                source_id,
-                target_id,
-                &state.services.content(),
-            )
-            .await
-            {
-                tracing::warn!(error = %err, "could not carry the bundle choices over to the target");
-            }
-        });
-
         if packages.is_empty() {
+            spawn_global(async move {
+                let Ok(state) = launcher::state() else { return };
+                if let Err(err) = oneclient_content::bundles::inherit_bundle_choices(
+                    source_id,
+                    target_id,
+                    &state.services.content(),
+                )
+                .await
+                {
+                    tracing::warn!(error = %err, "could not carry the bundle choices over to the target");
+                }
+            });
+            self.remove_pending_release_migrations(pending);
             return;
         }
 
-        let chosen: HashSet<String> = packages
-            .iter()
-            .map(|package| package.source_hash.clone())
-            .collect();
-        let (dependencies, unavailable): (Vec<_>, Vec<_>) = match prompt.plan() {
-            Some(ReleasePlanState::Ready(plan)) => (
-                plan.dependencies
-                    .iter()
-                    .filter(|dependency| dependency.is_needed_by(&chosen))
-                    .map(|dependency| (dependency.clone(), dependency.enabled_for(&packages)))
-                    .collect(),
-                plan.unavailable
-                    .iter()
-                    .filter(|skip| skip.reason == SkipReason::NoCompatibleVersion)
-                    .cloned()
-                    .collect(),
-            ),
-            _ => (Vec::new(), Vec::new()),
+        let unavailable: Vec<_> = match prompt.plan() {
+            Some(ReleasePlanState::Ready(plan)) => plan
+                .unavailable
+                .iter()
+                .filter(|skip| skip.reason == SkipReason::NoCompatibleVersion)
+                .cloned()
+                .collect(),
+            _ => Vec::new(),
         };
         let waitlisted = !prompt.is_cross_loader();
 
@@ -806,13 +818,35 @@ impl Actions {
             let Ok(state) = launcher::state() else { return };
             let content = state.services.content();
             let source = copy_configs_too.then_some(source);
+            let target_title = crate::utils::instance_display_name(&target);
+            let instance = oneclient_content::packages::instance_package_guard(target.id).await;
+            let mutation = oneclient_content::packages::package_mutation_guard().await;
+            let (packages, dependencies) = match validate_and_consume_offer(
+                revalidate_release_migration(target.id, packages, state.bundles.as_ref(), &content),
+                || actions.remove_pending_release_migrations(pending),
+            )
+            .await
+            {
+                Ok(plan) => plan,
+                Err(err) => {
+                    tracing::warn!(target_cluster_id = target.id, %err, "could not revalidate migration dependencies");
+                    actions
+                        .notify(t("oneclient.actions.release_migration.check_failed.title"))
+                        .body(t(
+                            "oneclient.actions.release_migration.dependencies_changed",
+                        ))
+                        .error()
+                        .send();
+                    return;
+                }
+            };
             let total = packages.len() + dependencies.len();
 
             let session = oneclient_events::GroupedProgressSession::start(
                 &state.services.events,
                 tf(
                     "oneclient.actions.release_migration.migrating",
-                    &[&target.name],
+                    &[&target_title],
                 ),
             );
             session.expect(
@@ -823,7 +857,8 @@ impl Actions {
 
             let mut migrated = 0usize;
             let mut blocked: HashSet<String> = HashSet::new();
-            for (dependency, enabled) in &dependencies {
+            for dependency in &dependencies {
+                let enabled = dependency.enabled_for(&packages);
                 let child = session.child(
                     dependency.project.name.clone(),
                     1,
@@ -832,7 +867,7 @@ impl Actions {
                 match apply_release_migration_dependency(
                     target.id,
                     dependency,
-                    *enabled,
+                    enabled,
                     Some(&child),
                     &content,
                 )
@@ -878,6 +913,16 @@ impl Actions {
                 child.finish();
             }
 
+            drop(mutation);
+            if let Err(err) = inherit_after_migration(migrated, || {
+                oneclient_content::bundles::inherit_bundle_choices(source_id, target_id, &content)
+            })
+            .await
+            {
+                tracing::warn!(error = %err, "could not carry the bundle choices over to the target");
+            }
+            drop(instance);
+
             if !waitlisted {
                 tracing::info!(
                     target_cluster_id = target.id,
@@ -900,17 +945,17 @@ impl Actions {
             let spec = Some(NotificationSpec {
                 title: tf(
                     "oneclient.actions.release_migration.migrated.title",
-                    &[&target.name],
+                    &[&target_title],
                 ),
                 body: if failed == 0 && migrated == 1 {
                     tf(
                         "oneclient.actions.release_migration.migrated.body.one",
-                        &[&migrated, &target.name],
+                        &[&migrated, &target_title],
                     )
                 } else if failed == 0 {
                     tf(
                         "oneclient.actions.release_migration.migrated.body.other",
-                        &[&migrated, &target.name],
+                        &[&migrated, &target_title],
                     )
                 } else {
                     tf(
@@ -936,5 +981,50 @@ impl Actions {
 
             super::super::invalidate_cluster_queries().await;
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::future::ready;
+
+    #[tokio::test]
+    async fn failed_migration_does_not_copy_bundle_choices() {
+        use std::cell::Cell;
+        let copies = Cell::new(0);
+        inherit_after_migration(0, || {
+            copies.set(copies.get() + 1);
+            ready(Ok(()))
+        })
+        .await
+        .unwrap();
+        assert_eq!(copies.get(), 0);
+        inherit_after_migration(1, || {
+            copies.set(copies.get() + 1);
+            ready(Ok(()))
+        })
+        .await
+        .unwrap();
+        assert_eq!(copies.get(), 1);
+    }
+
+    #[tokio::test]
+    async fn failed_recheck_keeps_the_pending_offer_for_a_successful_retry() {
+        let mut pending = vec!["release-offer".to_owned()];
+        let failed = ready(Err::<(), _>(oneclient_content::ContentError::InvalidData {
+            reason: "a required build disappeared".into(),
+        }));
+        assert!(
+            validate_and_consume_offer(failed, || pending.clear())
+                .await
+                .is_err()
+        );
+        assert_eq!(pending, ["release-offer"]);
+
+        validate_and_consume_offer(ready(Ok(())), || pending.clear())
+            .await
+            .unwrap();
+        assert!(pending.is_empty());
     }
 }

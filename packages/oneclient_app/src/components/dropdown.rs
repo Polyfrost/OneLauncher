@@ -2,12 +2,14 @@ use freya::prelude::*;
 
 use crate::components::{Icon, IconType, ScrollArea, TooltipPlacement, use_tooltip_anchor};
 use crate::hooks::use_overlay_claim_when;
-use crate::theme::{colors, rounded, text_size};
+use crate::theme::{colors, glass, rounded, rounded_px, text_size};
 use crate::ui::{border_all_color, window_logical_size};
 
 const OPTION_HEIGHT: f32 = 28.;
 const OPTION_SPACING: f32 = 2.;
 const MAX_VISIBLE_OPTIONS: usize = 8;
+/// Triggers shorter than this (inline pickers in dense rows) get a tighter inset and smaller text
+const COMPACT_BELOW: f32 = 30.;
 
 #[derive(Clone, PartialEq)]
 pub struct Dropdown {
@@ -17,7 +19,7 @@ pub struct Dropdown {
     leading: Option<Element>,
     width: Size,
     height: Size,
-    outlined: bool,
+    solid_menu: bool,
     checked: Option<Vec<bool>>,
     tooltip: Option<Box<str>>,
     key: DiffKey,
@@ -32,7 +34,7 @@ impl Dropdown {
             leading: None,
             width: Size::px(72.),
             height: Size::px(24.),
-            outlined: false,
+            solid_menu: false,
             checked: None,
             tooltip: None,
             key: DiffKey::None,
@@ -51,8 +53,13 @@ impl Dropdown {
         self
     }
 
-    pub fn outlined(mut self) -> Self {
-        self.outlined = true;
+    /// Every dropdown is outlined now; kept so existing call sites read the same
+    pub fn outlined(self) -> Self {
+        self
+    }
+
+    pub(crate) fn solid_menu(mut self) -> Self {
+        self.solid_menu = true;
         self
     }
 
@@ -99,21 +106,34 @@ impl Component for Dropdown {
         let leading = self.leading.clone();
         let options = self.options.clone();
         let on_select = self.on_select.clone();
-        let outlined = self.outlined;
+        let compact = matches!(&self.height, Size::Pixels(height) if height.get() < COMPACT_BELOW);
         let checked = self.checked.clone();
         let multi = checked.is_some();
-        let is_open = open();
+        let requested_open = open();
+        let (is_open, escape) =
+            super::overlay_popup::use_transient_escape(super::OVERLAY_MAX_LEVEL, requested_open);
 
         use_overlay_claim_when(is_open);
+        if requested_open && !is_open {
+            open.set(false);
+        }
 
         if !is_open && list_area().is_some() {
             let _ = list_area.take();
         }
 
+        // One style everywhere: an outlined control on the component fill, label on the left
         let trigger_bg = if hovering() {
-            colors::ghost_overlay_hover()
+            colors::component_bg_hover()
         } else {
-            colors::ghost_overlay()
+            colors::component_bg()
+        };
+        let trigger_border = if focus().is_focused() {
+            colors::brand()
+        } else if hovering() {
+            colors::component_border_hover()
+        } else {
+            colors::component_border()
         };
 
         let visible = options.len().min(MAX_VISIBLE_OPTIONS);
@@ -152,53 +172,60 @@ impl Component for Dropdown {
         rect()
             .width(self.width.clone())
             .on_global_key_down(move |e: Event<KeyboardEventData>| {
-                if e.key == Key::Named(NamedKey::Escape) {
-                    open.set_if_modified(false);
+                if e.key == Key::Named(NamedKey::Escape) && *open.peek() && escape.is_topmost() {
+                    open.set(false);
+                    a11y_id.request_focus();
                 }
             })
+            // Measured on a wrapper: the tooltip needs the trigger's own on_sized for its anchor
             .child(
-                tooltip
-                    .attach(rect())
+                rect()
                     .width(Size::fill())
-                    .height(self.height.clone())
-                    .horizontal()
-                    .center()
-                    .spacing(4.)
-                    .padding(Gaps::new_symmetric(0., if outlined { 12. } else { 8. }))
-                    .corner_radius(rounded(if outlined { 8. } else { 6. }))
-                    .background(trigger_bg)
-                    .maybe(outlined, |el| {
-                        el.main_align(Alignment::SpaceBetween)
-                            .border(border_all_color(1., colors::component_border()))
-                    })
-                    .a11y_id(a11y_id)
-                    .a11y_focusable(true)
-                    .a11y_role(AccessibilityRole::Button)
-                    .maybe(focus().is_focused(), |el| {
-                        el.border(border_all_color(1., colors::brand()))
-                    })
-                    .on_pointer_over(move |_| hovering.set(true))
-                    .on_pointer_out(move |_| hovering.set(false))
-                    .on_global_pointer_up(on_global_pointer_up)
                     .on_sized(move |e: Event<SizedEventData>| {
                         button_area.set_if_modified(Some(e.area));
                     })
-                    .on_press(move |e: Event<PressEventData>| {
-                        e.prevent_default();
-                        e.stop_propagation();
-                        open.toggle();
-                    })
-                    .maybe_child(leading)
                     .child(
-                        label()
-                            .text(selected)
-                            .font_size(text_size(if outlined { 13. } else { 12. }))
-                            .color(colors::fg_primary()),
-                    )
-                    .child(
-                        Icon::new(IconType::ChevronDown)
-                            .size(14.)
-                            .color(colors::fg_secondary()),
+                        tooltip
+                            .attach(rect())
+                            .width(Size::fill())
+                            .height(self.height.clone())
+                            .horizontal()
+                            .content(Content::Flex)
+                            .cross_align(Alignment::Center)
+                            .spacing(6.)
+                            .padding(Gaps::new_symmetric(0., if compact { 8. } else { 12. }))
+                            .corner_radius(glass::control_radius(if compact { 6. } else { 8. }))
+                            .background(trigger_bg)
+                            .border(
+                                border_all_color(1., trigger_border)
+                                    .alignment(BorderAlignment::Inner),
+                            )
+                            .a11y_id(a11y_id)
+                            .a11y_focusable(true)
+                            .a11y_role(AccessibilityRole::Button)
+                            .on_pointer_over(move |_| hovering.set(true))
+                            .on_pointer_out(move |_| hovering.set(false))
+                            .on_global_pointer_up(on_global_pointer_up)
+                            .on_press(move |e: Event<PressEventData>| {
+                                e.prevent_default();
+                                e.stop_propagation();
+                                open.toggle();
+                            })
+                            .maybe_child(leading)
+                            .child(
+                                label()
+                                    .text(selected)
+                                    .width(Size::flex(1.))
+                                    .max_lines(1)
+                                    .text_overflow(TextOverflow::Ellipsis)
+                                    .font_size(text_size(if compact { 12. } else { 13. }))
+                                    .color(colors::fg_primary()),
+                            )
+                            .child(
+                                Icon::new(IconType::ChevronDown)
+                                    .size(14.)
+                                    .color(colors::fg_secondary()),
+                            ),
                     ),
             )
             .maybe_child(is_open.then(|| {
@@ -213,12 +240,9 @@ impl Component for Dropdown {
                             list_area.set_if_modified(Some(e.area));
                         })
                         .child(
-                            rect()
+                            menu_surface(self.solid_menu)
                                 .width(Size::fill())
                                 .padding(4.)
-                                .corner_radius(rounded(8.))
-                                .border(border_all_color(1., colors::component_border()))
-                                .background(colors::page_elevated())
                                 .overflow(Overflow::Clip)
                                 .child(
                                     ScrollArea::new()
@@ -249,6 +273,21 @@ impl Component for Dropdown {
 
     fn render_key(&self) -> DiffKey {
         self.key.clone().or(self.default_key())
+    }
+}
+
+/// The open list. PolyGlass floats it as real glass over the page, tinted densely enough
+/// that 12px option text stays readable on any backdrop; other themes keep the solid card.
+fn menu_surface(solid: bool) -> Rect {
+    let theme = colors::active_theme();
+    if theme.liquid_glass && !solid {
+        let tint = colors::page_elevated().with_a(if theme.colors.light { 222 } else { 208 });
+        glass::panel(rect(), &theme, rounded_px(10.), tint)
+    } else {
+        rect()
+            .corner_radius(rounded(8.))
+            .border(border_all_color(1., colors::component_border()))
+            .background(colors::page_elevated().with_a(255))
     }
 }
 
@@ -323,5 +362,56 @@ impl Component for DropdownOption {
                     }))
                     .into_element()
             }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use freya_testing::TestingRunner;
+    use std::time::Duration;
+
+    fn shows(runner: &TestingRunner, text: &str) -> bool {
+        runner
+            .find(|_, element| {
+                Label::try_downcast(element).filter(|label| label.text.as_ref() == text)
+            })
+            .is_some()
+    }
+
+    fn station() {
+        crate::hooks::use_provide_station(|| {
+            let mut app = crate::state::AppState::default();
+            app.settings.settings.animations_enabled = false;
+            app
+        });
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_tooltip_outlives_a_move_across_the_trigger() {
+        fn app() -> impl IntoElement {
+            station();
+            crate::components::use_provide_tooltips();
+            rect()
+                .padding(100.)
+                .child(
+                    Dropdown::new("All", vec!["All".into()])
+                        .width(Size::px(132.))
+                        .height(Size::px(34.))
+                        .tooltip("Pick one"),
+                )
+                .child(crate::components::TooltipHost)
+        }
+        let (mut runner, ()) = TestingRunner::new(app, (400., 300.).into(), |_| (), 1.);
+        runner.poll_n(Duration::ZERO, 4);
+        runner.move_cursor((150., 115.));
+        runner.poll(Duration::from_millis(20), Duration::from_millis(900));
+        assert!(shows(&runner, "Pick one"));
+        runner.move_cursor((190., 120.));
+        runner.poll_n(Duration::ZERO, 4);
+        assert!(shows(&runner, "Pick one"));
+        runner.move_cursor((350., 280.));
+        runner.poll_n(Duration::ZERO, 4);
+        assert!(!shows(&runner, "Pick one"));
     }
 }

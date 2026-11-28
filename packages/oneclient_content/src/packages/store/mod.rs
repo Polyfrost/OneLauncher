@@ -2,8 +2,8 @@ mod download;
 mod gc;
 mod link;
 pub mod manifest;
-pub mod undo;
 mod paths;
+pub mod undo;
 
 pub(crate) use download::store_release_dependencies;
 pub use download::{download_external, download_version_file, ensure_artifact_file};
@@ -116,17 +116,26 @@ impl PackageStore {
         child: Option<&GroupedProgressChild>,
         ctx: &ContentCtx,
     ) -> ContentResult<(ArtifactRow, LiveSync)> {
-        Self::install_to_cluster_recording_link(
-            provider_id, project, version, cluster_id, skip_compatibility, force_download, child, ctx,
+        Self::install_to_cluster_inner(
+            provider_id,
+            project,
+            version,
+            cluster_id,
+            skip_compatibility,
+            force_download,
+            false,
+            false,
+            child,
+            ctx,
         )
         .await
         .map(|(artifact, live, _)| (artifact, live))
     }
 
     /// Returns the new link's timestamp when this install created it. Upserts of
-    /// existing links return no timestamp, so an Undo cannot claim them.
+    /// existing links return no timestamp. Callers that already hold the guard
+    /// use `install_to_cluster`.
     #[allow(clippy::too_many_arguments)]
-    #[tracing::instrument(skip(project, version, child, ctx), fields(project_id = %project.id, version_id = %version.version_id))]
     pub async fn install_to_cluster_recording_link(
         provider_id: ProviderId,
         project: &ProjectDetail,
@@ -134,6 +143,63 @@ impl PackageStore {
         cluster_id: i64,
         skip_compatibility: bool,
         force_download: bool,
+        child: Option<&GroupedProgressChild>,
+        ctx: &ContentCtx,
+    ) -> ContentResult<(ArtifactRow, LiveSync, Option<String>)> {
+        Self::install_to_cluster_inner(
+            provider_id,
+            project,
+            version,
+            cluster_id,
+            skip_compatibility,
+            force_download,
+            true,
+            false,
+            child,
+            ctx,
+        )
+        .await
+    }
+
+    /// Like `install_to_cluster_recording_link`, but only returns a timestamp
+    /// when linking did not replace another release of the same project.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn install_to_cluster_recording_undo(
+        provider_id: ProviderId,
+        project: &ProjectDetail,
+        version: &VersionDetail,
+        cluster_id: i64,
+        skip_compatibility: bool,
+        force_download: bool,
+        child: Option<&GroupedProgressChild>,
+        ctx: &ContentCtx,
+    ) -> ContentResult<(ArtifactRow, LiveSync, Option<String>)> {
+        Self::install_to_cluster_inner(
+            provider_id,
+            project,
+            version,
+            cluster_id,
+            skip_compatibility,
+            force_download,
+            true,
+            true,
+            child,
+            ctx,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[tracing::instrument(skip(project, version, child, ctx), fields(project_id = %project.id, version_id = %version.version_id))]
+    async fn install_to_cluster_inner(
+        provider_id: ProviderId,
+        project: &ProjectDetail,
+        version: &VersionDetail,
+        cluster_id: i64,
+        skip_compatibility: bool,
+        force_download: bool,
+        guard_link: bool,
+        record_undo: bool,
         child: Option<&GroupedProgressChild>,
         ctx: &ContentCtx,
     ) -> ContentResult<(ArtifactRow, LiveSync, Option<String>)> {
@@ -148,7 +214,29 @@ impl PackageStore {
             Self::download_and_cache(provider_id, project, version, force_download, child, ctx)
                 .await?;
 
-        let (enabled, added_at) = Self::link_artifact_recording_addition(&artifact, &cluster, None, ctx).await?;
+        // Another release may have been linked during the download. This one then replaces it,
+        // and undoing it would leave neither.
+        let _mutation = if guard_link {
+            Some(crate::packages::package_mutation_guard().await)
+        } else {
+            None
+        };
+        let undo_safe = if record_undo {
+            match artifact_dao::list_cluster_release_identities(&ctx.db, cluster_id).await {
+                Ok(identities) => {
+                    undo_link_is_new(&identities, provider_id, &project.id, &artifact.hash)
+                }
+                Err(err) => {
+                    tracing::warn!(cluster_id, %err, "cannot offer Undo without checking current releases");
+                    false
+                }
+            }
+        } else {
+            true
+        };
+        let (enabled, added_at) =
+            Self::link_artifact_recording_addition(&artifact, &cluster, None, ctx).await?;
+        let added_at = added_at.filter(|_| undo_safe);
 
         Self::replace_other_versions(cluster_id, provider_id, &project.id, &artifact.hash, ctx)
             .await?;
@@ -266,8 +354,13 @@ impl PackageStore {
 
         let name = cluster_file_name.unwrap_or(&artifact.file_name);
 
-        let (link, added_at) =
-            artifact_dao::link_cluster_artifact_recording_addition(&ctx.db, cluster.id, &artifact.hash, name).await?;
+        let (link, added_at) = artifact_dao::link_cluster_artifact_recording_addition(
+            &ctx.db,
+            cluster.id,
+            &artifact.hash,
+            name,
+        )
+        .await?;
 
         Ok((link.enabled != 0, added_at))
     }
@@ -939,11 +1032,35 @@ fn ensure_takes_mods(content_type: ContentType, cluster: &ClusterRow) -> Content
     Ok(())
 }
 
+fn undo_link_is_new(
+    identities: &[oneclient_db::models::ClusterReleaseIdentityRow],
+    provider: ProviderId,
+    project_id: &str,
+    hash: &str,
+) -> bool {
+    !identities.iter().any(|row| {
+        row.hash == hash || (row.provider == provider as i64 && row.project_id == project_id)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::packages::types::PackageBody;
     use chrono::Utc;
+
+    #[test]
+    fn undo_link_rechecks_releases_that_arrived_during_download() {
+        let identities = vec![oneclient_db::models::ClusterReleaseIdentityRow {
+            hash: "old".into(),
+            provider: ProviderId::Modrinth as i64,
+            project_id: "p".into(),
+            version_id: "v1".into(),
+        }];
+        assert!(!undo_link_is_new(&identities, ProviderId::Modrinth, "p", "new"));
+        assert!(!undo_link_is_new(&identities, ProviderId::CurseForge, "alias", "old"));
+        assert!(undo_link_is_new(&identities, ProviderId::Modrinth, "other", "new"));
+    }
 
     fn project(content_type: ContentType) -> ProjectDetail {
         ProjectDetail {

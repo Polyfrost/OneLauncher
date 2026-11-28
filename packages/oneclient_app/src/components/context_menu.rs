@@ -2,7 +2,7 @@ use freya::prelude::*;
 
 use crate::components::{Icon, IconType, OVERLAY_BASE_LEVEL, OverlayPopup};
 use crate::theme::{colors, rounded, text_size};
-use crate::ui::clamp_to_window;
+use crate::ui::{EDGE_MARGIN, clamp_to_window, window_logical_size};
 
 /// Panel padding and border on both axes, which the measured list sits inside of
 const PANEL_INSET: f32 = 14.;
@@ -20,8 +20,8 @@ enum Entry {
 fn separator(item_width: Option<f32>) -> Rect {
     let mut sep = rect()
         .height(Size::px(1.))
-        .margin(Gaps::new_symmetric(4., 0.))
-        .background(colors::component_border_hover());
+        .margin(Gaps::new_symmetric(3., 0.))
+        .background(colors::component_border());
     if let Some(w) = item_width {
         sep = sep.width(Size::px(w));
     }
@@ -123,19 +123,24 @@ impl Component for ContextMenu {
         let measured = *size.read();
         let item_width = (measured.width > 0.).then_some(measured.width);
 
-        let mut list = rect().vertical().spacing(4.);
+        let mut keyboard = use_state(|| None::<usize>);
+        let mut count = 0;
+        let mut list = rect()
+            .vertical()
+            .min_width(Size::px(178.))
+            .max_width(Size::px(336.));
 
         if let Some(title) = &self.title {
             list = list
                 .child(
-                    // Asymmetric on purpose
-                    rect().padding(Gaps::new(6., 8., 4., 8.)).child(
+                    rect().padding(Gaps::new(7., 10., 5., 10.)).child(
                         label()
                             .text(title.clone())
-                            .font_size(text_size(11.))
+                            .font_size(text_size(12.))
                             .font_weight(FontWeight::SEMI_BOLD)
                             .max_lines(1)
-                            .color(colors::fg_secondary()),
+                            .text_overflow(TextOverflow::Ellipsis)
+                            .color(colors::fg_primary().with_a(230)),
                     ),
                 )
                 .child(separator(item_width));
@@ -149,17 +154,23 @@ impl Component for ContextMenu {
                     label,
                     danger,
                     on_select,
-                } => list.child(
-                    ContextMenuRow {
-                        icon: *icon,
-                        label: label.clone(),
-                        danger: *danger,
-                        width: item_width,
-                        on_select: on_select.clone(),
-                        on_close: on_close.clone(),
-                    }
-                    .into_element(),
-                ),
+                } => {
+                    let index = count;
+                    count += 1;
+                    list.child(
+                        ContextMenuRow {
+                            index,
+                            keyboard,
+                            icon: *icon,
+                            label: label.clone(),
+                            danger: *danger,
+                            width: item_width,
+                            on_select: on_select.clone(),
+                            on_close: on_close.clone(),
+                        }
+                        .into_element(),
+                    )
+                }
             };
         }
 
@@ -176,34 +187,68 @@ impl Component for ContextMenu {
         let menu_height = measured.height + PANEL_INSET;
 
         let (x, y) = if placed {
-            let top = if self.upwards && self.y - menu_height >= 0. {
-                self.y - menu_height
-            } else {
-                self.y
-            };
-            clamp_to_window(self.x, top, menu_width, menu_height)
+            let window = window_logical_size();
+            let x = menu_axis(self.x, menu_width, window.width, false);
+            let y = menu_axis(self.y, menu_height, window.height, self.upwards);
+            clamp_to_window(x, y, menu_width, menu_height)
         } else {
             (self.x, self.y)
         };
 
-        let panel = rect()
-            .vertical()
-            .padding(Gaps::new_all(6.))
-            .corner_radius(rounded(12.))
-            .background(colors::card())
-            .border(
-                Border::new()
-                    .fill(colors::component_border_hover())
-                    .width(BorderWidth {
-                        top: 1.,
-                        right: 1.,
-                        bottom: 1.,
-                        left: 1.,
-                    }),
-            )
-            .shadow(Shadow::from((0., 8., 24., 0., Color::from_argb(110, 0, 0, 0))))
-            .opacity(if placed { 1. } else { 0. })
-            .child(list);
+        let theme = colors::active_theme();
+        let panel =
+            crate::theme::glass::popup_panel(rect(), 12., colors::page_elevated().with_a(255))
+                .vertical()
+                .padding(Gaps::new_all(6.))
+                .border(
+                    Border::new()
+                        .fill(if theme.colors.light {
+                            colors::fg_primary().with_a(58)
+                        } else {
+                            colors::component_border_hover()
+                        })
+                        .alignment(BorderAlignment::Inner)
+                        .width(BorderWidth {
+                            top: 1.,
+                            right: 1.,
+                            bottom: 1.,
+                            left: 1.,
+                        }),
+                )
+                .shadow(Shadow::from((
+                    0.,
+                    6.,
+                    17.,
+                    0.,
+                    Color::from_argb(110, 0, 0, 0),
+                )))
+                .opacity(if placed { 1. } else { 0. })
+                .a11y_role(AccessibilityRole::Menu)
+                .map(self.title.clone(), |el, title| el.a11y_alt(title))
+                .on_global_key_down({
+                    let level = self.overlay_level;
+                    move |event: Event<KeyboardEventData>| {
+                        if count == 0 || !crate::components::overlay_is_topmost(level) {
+                            return;
+                        }
+                        let current = *keyboard.peek();
+                        let next = match event.key {
+                            Key::Named(NamedKey::ArrowDown) => {
+                                current.map_or(0, |n| (n + 1) % count)
+                            }
+                            Key::Named(NamedKey::ArrowUp) => {
+                                current.map_or(count - 1, |n| (n + count - 1) % count)
+                            }
+                            Key::Named(NamedKey::Home) => 0,
+                            Key::Named(NamedKey::End) => count - 1,
+                            _ => return,
+                        };
+                        event.prevent_default();
+                        event.stop_propagation();
+                        keyboard.set_if_modified(Some(next));
+                    }
+                })
+                .child(list);
 
         OverlayPopup::new()
             .backdrop(false)
@@ -214,8 +259,32 @@ impl Component for ContextMenu {
     }
 }
 
+fn menu_axis(anchor: f32, length: f32, limit: f32, prefer_before: bool) -> f32 {
+    let before = anchor - length - 2.;
+    let after = anchor + 2.;
+    if before >= EDGE_MARGIN && (prefer_before || after + length > limit - EDGE_MARGIN) {
+        before
+    } else {
+        after
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn popup_flips_clear_of_the_pointer_at_the_edge() {
+        assert_eq!(menu_axis(780., 192., 800., false), 586.);
+        assert_eq!(menu_axis(12., 290., 600., true), 14.);
+        assert_eq!(menu_axis(440., 290., 600., true), 148.);
+    }
+}
+
 #[derive(PartialEq)]
 struct ContextMenuRow {
+    index: usize,
+    keyboard: State<Option<usize>>,
     icon: IconType,
     label: String,
     danger: bool,
@@ -227,18 +296,34 @@ struct ContextMenuRow {
 impl Component for ContextMenuRow {
     fn render(&self) -> impl IntoElement {
         let mut hovered = use_state(|| false);
+        let mut pressed = use_state(|| false);
+        let id = use_a11y();
+        let focus = use_focus(id);
+        let is_key_target = *self.keyboard.read() == Some(self.index);
+        let pixel_icons = colors::active_theme().pixel_icons;
+        use_side_effect_with_deps(&is_key_target, move |active| {
+            if *active {
+                id.request_focus();
+            }
+        });
         let on_select = self.on_select.clone();
         let on_close = self.on_close.clone();
 
-        let base = if self.danger {
+        let color = if self.danger {
             colors::danger()
         } else {
-            colors::fg_secondary()
-        };
-        let color = if *hovered.read() {
             colors::fg_primary()
+        };
+        let highlight = if self.danger {
+            colors::danger()
         } else {
-            base
+            colors::brand()
+        };
+        let mut keyboard = self.keyboard;
+        let highlighted = if keyboard.read().is_some() {
+            is_key_target
+        } else {
+            hovered() || focus() == Focus::Keyboard
         };
 
         let mut root = rect();
@@ -248,26 +333,63 @@ impl Component for ContextMenuRow {
 
         root.horizontal()
             .cross_align(Alignment::Center)
-            .spacing(8.)
-            .padding(Gaps::new_symmetric(5., 8.))
+            .spacing(10.)
+            .min_height(Size::px(34.))
+            .padding(Gaps::new_symmetric(4., 10.))
             .corner_radius(rounded(6.))
-            .background(if *hovered.read() {
-                colors::component_bg_hover()
+            .background(if pressed() {
+                highlight.with_a(if colors::is_light() { 85 } else { 110 })
+            } else if highlighted {
+                highlight.with_a(if colors::is_light() { 46 } else { 66 })
             } else {
                 Color::TRANSPARENT
             })
             .cursor(CursorIcon::Pointer)
+            .maybe(is_key_target, |el| {
+                el.border(
+                    Border::new()
+                        .width(1.)
+                        .fill(if colors::is_light() {
+                            highlight.with_a(178)
+                        } else {
+                            colors::fg_primary().with_a(205)
+                        })
+                        .alignment(BorderAlignment::Inner),
+                )
+            })
+            .a11y_id(id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::MenuItem)
+            .a11y_alt(self.label.clone())
+            .on_pointer_down(move |_| {
+                keyboard.set_if_modified(None);
+                pressed.set(true);
+            })
+            .on_global_pointer_up(move |_| pressed.set_if_modified(false))
             .on_pointer_enter(move |_| hovered.set(true))
-            .on_pointer_leave(move |_| hovered.set(false))
-            .on_press(move |_| {
+            .on_pointer_move(move |_| keyboard.set_if_modified(None))
+            .on_pointer_leave(move |_| {
+                hovered.set(false);
+                pressed.set(false);
+            })
+            .on_press(move |event: Event<PressEventData>| {
+                event.stop_propagation();
                 on_select.call(());
                 on_close.call(());
             })
-            .child(Icon::new(self.icon).size(18.).color(color))
+            .child(
+                Icon::new(self.icon)
+                    .size(if pixel_icons { 20. } else { 16. })
+                    .color(if pixel_icons || self.danger || highlighted {
+                        color
+                    } else {
+                        color.with_a(205)
+                    }),
+            )
             .child(
                 label()
                     .text(self.label.clone())
-                    .font_size(text_size(12.))
+                    .font_size(text_size(if pixel_icons { 15. } else { 14. }))
                     .font_weight(FontWeight::MEDIUM)
                     .max_lines(1)
                     .color(color),

@@ -83,6 +83,11 @@ impl FileChoice {
         }
     }
 
+    #[must_use]
+    pub fn left_out_preserving(&self, previous: &BTreeSet<String>) -> BTreeSet<String> {
+        merge_left_out(previous, &self.all(), self.left_out())
+    }
+
     pub fn leave_out(mut self, left_out: &BTreeSet<String>) {
         if left_out.is_empty() {
             self.chosen.set(None);
@@ -91,6 +96,15 @@ impl FileChoice {
         let chosen: BTreeSet<String> = self.all().difference(left_out).cloned().collect();
         self.chosen.set(Some(chosen));
     }
+}
+
+fn merge_left_out(
+    previous: &BTreeSet<String>,
+    listed: &BTreeSet<String>,
+    mut current: BTreeSet<String>,
+) -> BTreeSet<String> {
+    current.extend(previous.difference(listed).cloned());
+    current
 }
 
 fn next_choice(
@@ -181,15 +195,10 @@ pub fn note(text: impl Into<String>, size: f32) -> Element {
 }
 
 pub fn settings_file_picker(choice: FileChoice, fill: bool) -> Vec<Element> {
-    let files = match choice.files.read().clone() {
-        None => return vec![note(t("oneclient.components.settings_files.loading"), 12.5)],
-        Some(files) if files.is_empty() => {
-            return vec![note(t("oneclient.components.settings_files.empty"), 12.5)];
-        }
-        Some(files) => files,
-    };
+    let files = choice.files.read().clone();
     let search = TextInput::new(choice.query)
         .width(Size::fill())
+        .enabled(files.as_ref().is_some_and(|files| !files.is_empty()))
         .placeholder(t("oneclient.components.settings_files.search"))
         .leading(
             Icon::new(IconType::SearchMd)
@@ -232,6 +241,7 @@ pub fn file_choice_header(choice: FileChoice) -> Element {
             Button::new()
                 .ghost()
                 .small()
+                .enabled(total > 0)
                 .on_press(move |_| chosen.set(Some(BTreeSet::new())))
                 .text(t("oneclient.components.settings_files.select_none")),
         )
@@ -239,18 +249,50 @@ pub fn file_choice_header(choice: FileChoice) -> Element {
             Button::new()
                 .primary()
                 .small()
+                .enabled(total > 0)
                 .on_press(move |_| chosen.set(None))
                 .text(t("oneclient.components.settings_files.select_all")),
         )
         .into_element()
 }
 
-fn file_list(choice: FileChoice, files: Vec<SettingFile>, fill: bool) -> Element {
+fn file_list(choice: FileChoice, files: Option<Vec<SettingFile>>, fill: bool) -> Element {
+    let frame = rect()
+        .width(Size::fill())
+        .height(if fill {
+            Size::flex(1.)
+        } else {
+            Size::px(LIST_HEIGHT)
+        })
+        .corner_radius(rounded(10.))
+        .background(colors::page())
+        .border(border_all_color(1., colors::component_border()))
+        .overflow(Overflow::Clip);
+    let message = |key| {
+        rect()
+            .width(Size::fill())
+            .padding(8.)
+            .child(note(t(key), 12.5))
+    };
+
+    let Some(files) = files else {
+        return frame
+            .child(message("oneclient.components.settings_files.loading"))
+            .into_element();
+    };
+    if files.is_empty() {
+        return frame
+            .child(message("oneclient.components.settings_files.empty"))
+            .into_element();
+    }
+
     let query = choice.query.read().clone();
     let searching = !query.trim().is_empty();
     let groups = group_files(&files, &query);
     if groups.is_empty() {
-        return note(t("oneclient.components.settings_files.no_match"), 12.5);
+        return frame
+            .child(message("oneclient.components.settings_files.no_match"))
+            .into_element();
     }
     let expanded = choice.expanded.read().clone();
     let mut rows = Vec::new();
@@ -265,21 +307,11 @@ fn file_list(choice: FileChoice, files: Vec<SettingFile>, fill: bool) -> Element
     let groups = Rc::new(groups);
     let rows = Rc::new(rows);
     let count = rows.len();
-    let scroll = ScrollArea::new().width(Size::fill());
-    let scroll = if fill {
-        scroll.height(Size::fill())
-    } else {
-        scroll.height(Size::Inner).max_height(Size::px(LIST_HEIGHT))
-    };
-    rect()
-        .width(Size::fill())
-        .height(if fill { Size::flex(1.) } else { Size::Inner })
-        .corner_radius(rounded(10.))
-        .background(colors::page())
-        .border(border_all_color(1., colors::component_border()))
-        .overflow(Overflow::Clip)
+    frame
         .child(
-            scroll
+            ScrollArea::new()
+                .width(Size::fill())
+                .height(Size::fill())
                 .padding(Gaps::new_all(4.))
                 .lazy(count, ROW_HEIGHT, ROW_GAP, move |i| match rows[i] {
                     Row::Group(group) => {
@@ -450,7 +482,25 @@ fn file_row(file: &SettingFile, choice: FileChoice) -> Element {
 mod tests {
     use std::collections::BTreeSet;
 
-    use super::{group_name, next_choice};
+    use super::{group_name, merge_left_out, next_choice};
+
+    #[test]
+    fn saving_sync_choices_preserves_unlisted_exclusions() {
+        let set = |paths: &[&str]| -> BTreeSet<String> {
+            paths.iter().map(|path| path.to_string()).collect()
+        };
+        let previous = set(&["previously-excluded", "missing"]);
+        let listed = set(&["previously-excluded", "now-excluded"]);
+        assert_eq!(
+            merge_left_out(&previous, &listed, set(&["now-excluded"])),
+            set(&["missing", "now-excluded"])
+        );
+        assert_eq!(
+            merge_left_out(&previous, &listed, set(&[])),
+            set(&["missing"])
+        );
+        assert_eq!(merge_left_out(&previous, &set(&[]), set(&[])), previous);
+    }
 
     #[test]
     fn groups_settings_by_mod() {

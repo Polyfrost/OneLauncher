@@ -5,13 +5,32 @@ use chrono::{Datelike, NaiveDate};
 use oneclient_common::domain::GameLoader;
 use oneclient_common::{ParsedMcVersion, VersionKey, format_mc_version, parse_mc_version};
 use oneclient_core::BundleArchive;
-use oneclient_core::clusters::Cluster;
+use oneclient_core::clusters::{Cluster, ClusterKind};
 
 pub use oneclient_common::total_ram_mb;
 
 use crate::i18n::{format_placeholders, t, tf};
 
 pub type ClusterGroups = BTreeMap<ReleaseLine, Vec<Cluster>>;
+
+/// Keep the built-in label independent of the loader and the stored instance name.
+pub fn builtin_oneclient_title(cluster: &Cluster) -> Option<String> {
+    builtin_version_title(&cluster.mc_version, cluster.kind, cluster.user_created)
+}
+
+pub fn builtin_version_title(
+    version: &str,
+    kind: ClusterKind,
+    user_created: bool,
+) -> Option<String> {
+    (kind == ClusterKind::OneClient && !user_created).then(|| format!("{version} OneClient"))
+}
+
+pub fn instance_display_name(cluster: &Cluster) -> String {
+    builtin_oneclient_title(cluster)
+        .map(|title| format!("{title} {}", cluster.mc_loader))
+        .unwrap_or_else(|| cluster.name.clone())
+}
 
 /// The modern scheme puts a full release in the first two components (`26.1`) so each
 /// minor is its own line. `1.21.x` is split the same way (`1.21.5`) since it spans many
@@ -428,6 +447,22 @@ mod tests {
             mc_version: mc_version.to_string(),
             ..cluster(id)
         }
+    }
+
+    #[test]
+    fn provisioned_oneclient_uses_brand_while_custom_names_are_preserved() {
+        let builtin = Cluster {
+            name: "26.3 Fabric".into(),
+            ..versioned(1, "26.3")
+        };
+        assert_eq!(instance_display_name(&builtin), "26.3 OneClient Fabric");
+
+        let custom = Cluster {
+            user_created: true,
+            name: "Survival Fabric".into(),
+            ..builtin
+        };
+        assert_eq!(instance_display_name(&custom), "Survival Fabric");
     }
 
     #[test]

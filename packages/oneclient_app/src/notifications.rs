@@ -34,6 +34,8 @@ pub enum NotificationActionKind {
     /// Routed through the link confirm popup rather than opened straight away
     OpenUrl(String),
     OpenChat(Option<i32>),
+    /// Takes back exactly what one install added, once
+    UndoInstall(crate::install::InstallUndo),
 }
 
 /// Carries core updates whole not a display projection the modal's Update button
@@ -273,6 +275,18 @@ impl InboxEntry {
     pub fn click_dismissable(&self) -> bool {
         self.dismissable() && self.actions.is_empty()
     }
+
+    fn offers_any_undo(&self) -> bool {
+        self.actions
+            .iter()
+            .any(|action| matches!(action.kind, NotificationActionKind::UndoInstall(_)))
+    }
+
+    pub(crate) fn offers_undo(&self, undo: &crate::install::InstallUndo) -> bool {
+        self.actions.iter().any(
+            |action| matches!(&action.kind, NotificationActionKind::UndoInstall(u) if u == undo),
+        )
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -358,12 +372,19 @@ pub struct ToastDismissTimer {
     pub after: Duration,
 }
 
+#[derive(Clone, Debug)]
+pub struct ClusterUpdateReview {
+    pub(crate) summaries: Vec<ClusterUpdateSummary>,
+    pub(crate) from_toast: bool,
+    pub(crate) generation: u64,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct NotificationSnapshot {
     pub inbox: Vec<InboxEntry>,
     pub center_open: bool,
     pub pending_prompt: Option<PendingPromptView>,
-    pub cluster_update: Option<Vec<ClusterUpdateSummary>>,
+    pub cluster_update: Option<ClusterUpdateReview>,
     pub optional_mods: Option<Vec<OptionalModsGroup>>,
     pub bundle_choices: Option<BundleChoices>,
     pub package_updates: Option<Vec<PackageUpdateGroup>>,
@@ -388,7 +409,7 @@ pub struct NotificationState {
     grouped_entries: HashMap<Uuid, u64>,
     grouped_tasks: HashMap<Uuid, GroupedTasks>,
     pending_timers: Vec<ToastDismissTimer>,
-    cluster_update: Option<Vec<ClusterUpdateSummary>>,
+    cluster_update: Option<ClusterUpdateReview>,
     optional_mods: Option<Vec<OptionalModsGroup>>,
     bundle_choices: Option<BundleChoices>,
     package_updates: Option<Vec<PackageUpdateGroup>>,
@@ -539,11 +560,19 @@ impl NotificationState {
         self.active_toasts.iter().map(|t| t.entry_id).collect()
     }
 
-    pub fn open_cluster_update(&mut self, summaries: Vec<ClusterUpdateSummary>) {
+    pub fn open_cluster_update(&mut self, summaries: Vec<ClusterUpdateSummary>, from_toast: bool) {
         if summaries.is_empty() {
             return;
         }
-        self.cluster_update = Some(summaries);
+        let generation = self
+            .cluster_update
+            .as_ref()
+            .map_or(0, |review| review.generation.wrapping_add(1));
+        self.cluster_update = Some(ClusterUpdateReview {
+            summaries,
+            from_toast,
+            generation,
+        });
     }
 
     pub fn close_cluster_update(&mut self) {
@@ -864,9 +893,55 @@ impl NotificationState {
             return;
         }
         let has_progress = entry.is_some_and(|e| e.progress.is_some());
+        // Closing the toast leaves an install's Undo in the notification center
+        let keeps_undo = entry.is_some_and(|e| !e.toast_only && e.offers_any_undo());
         self.active_toasts.remove(pos);
-        if !has_progress || entry.is_some_and(|e| e.toast_only) {
+        if (!has_progress && !keeps_undo) || entry.is_some_and(|e| e.toast_only) {
             self.forget_entry(inbox, entry_id);
+        }
+    }
+
+    /// An undo underway takes its toasts off screen but keeps its entry, which still offers Undo
+    /// if this attempt fails
+    pub fn hide_undo_toasts(&mut self, inbox: &[InboxEntry], undo: &crate::install::InstallUndo) {
+        let ids: HashSet<u64> = inbox
+            .iter()
+            .filter(|entry| entry.offers_undo(undo))
+            .map(|entry| entry.id)
+            .collect();
+        self.active_toasts
+            .retain(|toast| !ids.contains(&toast.entry_id));
+    }
+
+    /// An undo that ran is spent: every entry offering it goes, toast and center alike
+    pub fn consume_undo(
+        &mut self,
+        inbox: &mut Vec<InboxEntry>,
+        undo: &crate::install::InstallUndo,
+    ) {
+        self.consume_undos_where(inbox, |candidate| candidate == undo);
+    }
+
+    pub fn consume_cluster_undos(&mut self, inbox: &mut Vec<InboxEntry>, cluster_id: i64) {
+        self.consume_undos_where(inbox, |undo| undo.cluster_id == cluster_id);
+    }
+
+    fn consume_undos_where(
+        &mut self,
+        inbox: &mut Vec<InboxEntry>,
+        matches_undo: impl Fn(&crate::install::InstallUndo) -> bool,
+    ) {
+        let ids: Vec<u64> = inbox
+            .iter()
+            .filter(|entry| {
+                entry.actions.iter().any(
+                    |action| matches!(&action.kind, NotificationActionKind::UndoInstall(undo) if matches_undo(undo)),
+                )
+            })
+            .map(|entry| entry.id)
+            .collect();
+        for id in ids {
+            self.forget_entry(inbox, id);
         }
     }
 
@@ -1628,6 +1703,56 @@ mod package_update_tests {
         );
     }
 
+    fn undo_spec(undo: &crate::install::InstallUndo) -> NotificationSpec {
+        NotificationSpec {
+            actions: vec![NotificationAction {
+                label: "Undo".into(),
+                kind: NotificationActionKind::UndoInstall(undo.clone()),
+            }],
+            ..spec("Installed")
+        }
+    }
+
+    #[test]
+    fn an_install_keeps_its_undo_in_the_center_after_the_toast_goes() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+        let undo = crate::install::InstallUndo::for_test(3);
+
+        let expired = state.push_custom(&mut inbox, undo_spec(&undo));
+        state.expire_toast(&mut inbox, expired);
+        let dismissed = state.push_custom(&mut inbox, undo_spec(&undo));
+        state.dismiss_toast(&mut inbox, dismissed);
+
+        assert!(inbox.iter().any(|e| e.id == expired));
+        assert!(inbox.iter().any(|e| e.id == dismissed));
+        assert!(state.active_toast_entry_ids().is_empty());
+    }
+
+    #[test]
+    fn a_running_undo_hides_its_toast_and_a_successful_one_is_consumed() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+        let undo = crate::install::InstallUndo::for_test(3);
+        let other = crate::install::InstallUndo::for_test(3);
+
+        let id = state.push_custom(&mut inbox, undo_spec(&undo));
+        let kept = state.push_custom(&mut inbox, undo_spec(&other));
+        state.hide_undo_toasts(&inbox, &undo);
+        assert_eq!(state.active_toast_entry_ids(), vec![kept]);
+        assert!(
+            inbox.iter().any(|e| e.id == id),
+            "a failed attempt can still be retried from the center"
+        );
+
+        state.consume_undo(&mut inbox, &undo);
+        assert!(inbox.iter().all(|e| e.id != id));
+        assert!(
+            inbox.iter().any(|e| e.id == kept),
+            "only that install's undo is spent"
+        );
+    }
+
     #[test]
     fn a_toast_only_notice_is_dropped_when_its_toast_is_dismissed() {
         let mut state = NotificationState::default();
@@ -1640,6 +1765,29 @@ mod package_update_tests {
             inbox.iter().all(|e| e.id != id),
             "a toast-only notice must not linger in the inbox"
         );
+    }
+
+    #[test]
+    fn deleting_an_instance_consumes_only_its_undos() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+        let deleted = crate::install::InstallUndo::for_test(3);
+        let other = crate::install::InstallUndo::for_test(4);
+        let original = state.push_custom(&mut inbox, undo_spec(&deleted));
+        let retry = state.push_custom(&mut inbox, undo_spec(&deleted));
+        let kept = state.push_custom(&mut inbox, undo_spec(&other));
+        let regular = state.push_custom(&mut inbox, spec("Regular notice"));
+
+        state.consume_cluster_undos(&mut inbox, 3);
+
+        for id in [original, retry] {
+            assert!(!inbox.iter().any(|entry| entry.id == id));
+            assert!(!state.active_toast_entry_ids().contains(&id));
+        }
+        for id in [kept, regular] {
+            assert!(inbox.iter().any(|entry| entry.id == id));
+            assert!(state.active_toast_entry_ids().contains(&id));
+        }
     }
 }
 

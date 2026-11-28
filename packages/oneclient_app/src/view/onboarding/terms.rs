@@ -39,22 +39,29 @@ impl Component for OnboardingTerms {
 
         let tab = use_state(|| LegalTab::Terms);
         let confirming_decline = use_state(|| false);
+        // Opened from Launcher settings: Back, Accept and Decline all return there
+        let from_settings = use_hook(crate::view::app::settings::take_terms_review_from_settings);
 
         let returning = settings.seen_onboarding;
-        let next = if returning {
+        let next = if from_settings {
+            Route::SettingsLauncher {}
+        } else if returning {
             Route::Home {}
         } else if has_migration_data(&migration_query) {
             Route::OnboardingMigration {}
         } else {
             Route::OnboardingLanguage {}
         };
-        let back = (!returning).then(|| {
-            if *use_onboarding_selection().picks_location.read() {
-                Route::OnboardingLocation {}
-            } else {
-                Route::OnboardingWelcome {}
-            }
-        });
+        let selection = use_onboarding_selection();
+        let back = if from_settings {
+            Some(Route::SettingsLauncher {})
+        } else if returning {
+            None
+        } else if *selection.picks_location.read() {
+            Some(Route::OnboardingLocation {})
+        } else {
+            Some(Route::OnboardingWelcome {})
+        };
 
         let terms_version = document.as_ref().map(|doc| doc.version).unwrap_or(1);
         let privacy_version = document
@@ -89,12 +96,16 @@ impl Component for OnboardingTerms {
             .width(Size::fill())
             .spacing(16.)
             .child(step_heading(
-                if returning {
+                if from_settings {
+                    t("oneclient.onboarding.terms.review.title")
+                } else if returning {
                     t("oneclient.onboarding.terms.updated.title")
                 } else {
                     t("oneclient.onboarding.terms.title")
                 },
-                if returning {
+                if from_settings {
+                    t("oneclient.onboarding.terms.review.subtitle")
+                } else if returning {
                     t("oneclient.onboarding.terms.updated.subtitle")
                 } else {
                     t("oneclient.onboarding.terms.subtitle")

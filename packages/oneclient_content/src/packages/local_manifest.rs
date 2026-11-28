@@ -1,6 +1,8 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
+use async_zip::base::read1::seek::ZipArchiveReader;
+use futures_lite::io::{AsyncBufRead, AsyncReadExt, AsyncSeek, Cursor};
 use oneclient_common::domain::GameLoader;
 use serde::Deserialize;
 
@@ -530,43 +532,23 @@ fn is_nested_jar(name: &str) -> bool {
 
 #[tracing::instrument(level = "debug", fields(jar = %jar.display()))]
 pub async fn read_jar_dependencies(jar: &Path) -> JarDependencies {
-    read_dependencies(jar, false).await.unwrap_or_default()
-}
-
-/// Returns no dependency proof when nested jars or unfamiliar metadata could
-/// declare additional requirements or mod IDs.
-pub(crate) async fn verified_jar_dependencies(jar: &Path) -> Option<JarDependencies> {
-    read_dependencies(jar, true).await
-}
-
-async fn read_dependencies(jar: &Path, verify: bool) -> Option<JarDependencies> {
-    const JARJAR_METADATA: &str = "META-INF/jarjar/metadata.json";
     let entries = match polyio::read_zip_file_entries(jar, |name| {
-        MANIFESTS.contains(&name) || is_nested_jar(name) || (verify && name == JARJAR_METADATA)
+        MANIFESTS.contains(&name) || is_nested_jar(name)
     })
     .await
     {
         Ok(entries) => entries,
         Err(err) => {
             tracing::debug!("could not read {}: {err}", jar.display());
-            return None;
+            return JarDependencies::default();
         }
     };
 
     let mut out = JarDependencies::default();
     for (name, bytes) in &entries {
-        if is_nested_jar(name) || name == JARJAR_METADATA {
-            if verify {
-                return None;
-            }
+        if is_nested_jar(name) {
             out.bundled.extend(nested_provides(bytes).await);
             continue;
-        }
-        if verify {
-            let text = std::str::from_utf8(bytes).ok()?;
-            if !manifest_can_verify_dependencies(name, text) {
-                return None;
-            }
         }
         let Ok(text) = std::str::from_utf8(bytes) else {
             continue;
@@ -574,61 +556,178 @@ async fn read_dependencies(jar: &Path, verify: bool) -> Option<JarDependencies> 
         if let Some(parsed) = parse_dependencies(name, text) {
             out.provides.extend(parsed.provides);
             out.requires.extend(parsed.requires);
-        } else if verify {
-            return None;
         }
     }
 
-    out.provides.sort();
-    out.provides.dedup();
-    out.bundled.sort();
-    out.bundled.dedup();
-    out.bundled
-        .retain(|id| out.provides.binary_search(id).is_err());
-    out.requires.sort();
-    out.requires.dedup();
+    normalize_dependencies(&mut out);
     out.requires.retain(|id| {
         out.provides.binary_search(id).is_err() && out.bundled.binary_search(id).is_err()
     });
+    out
+}
+
+fn normalize_dependencies(out: &mut JarDependencies) {
+    for ids in [&mut out.provides, &mut out.bundled, &mut out.requires] {
+        ids.sort_unstable();
+        ids.dedup();
+    }
+    out.bundled
+        .retain(|id| out.provides.binary_search(id).is_err());
+}
+
+/// Returns no dependency proof when a relevant archive or manifest can't be verified.
+pub(crate) async fn verified_jar_dependencies(jar: &Path) -> Option<JarDependencies> {
+    let mut reader = polyio::open_bounded_zip_file(jar).await.ok()?;
+    // Bound total decompression across the tree as well as each individual entry.
+    let mut budget = polyio::MAX_METADATA_ENTRY_BYTES;
+    let mut nested = Vec::new();
+    let mut out = read_verified_archive(&mut reader, &mut nested, &mut budget).await?;
+    while let Some(bytes) = nested.pop() {
+        let mut reader = polyio::open_bounded_zip(Cursor::new(bytes)).await.ok()?;
+        let dependencies = read_verified_archive(&mut reader, &mut nested, &mut budget).await?;
+        out.bundled.extend(dependencies.provides);
+        out.requires.extend(dependencies.requires);
+    }
+    // A loader may select a different version of a nested mod. Check all the
+    // declared requirements without assuming that any bundled copy satisfies them.
+    normalize_dependencies(&mut out);
     Some(out)
 }
 
-fn manifest_can_verify_dependencies(name: &str, text: &str) -> bool {
-    fn no_declared_jars(value: &serde_json::Value) -> bool {
-        value
-            .get("jars")
-            .is_none_or(|jars| jars.as_array().is_some_and(Vec::is_empty))
+async fn read_verified_archive<R: AsyncBufRead + AsyncSeek + Unpin>(
+    reader: &mut ZipArchiveReader<R>,
+    nested: &mut Vec<Vec<u8>>,
+    budget: &mut u64,
+) -> Option<JarDependencies> {
+    const JARJAR_METADATA: &str = "META-INF/jarjar/metadata.json";
+    let mut indices = HashMap::new();
+    let mut jars = HashSet::new();
+    for (index, entry) in reader.cdrs().iter().enumerate() {
+        let Ok(name) = std::str::from_utf8(entry.insecure_file_name.as_bytes()) else {
+            continue;
+        };
+        if is_nested_jar(name) {
+            jars.insert(name.to_owned());
+        }
+        // Ambiguous ZIP names must not supply proof when the loader could read another entry.
+        indices
+            .entry(name.to_owned())
+            .and_modify(|index| *index = None)
+            .or_insert(Some(index));
     }
 
+    let mut out = JarDependencies::default();
+    for name in MANIFESTS.into_iter().chain([JARJAR_METADATA]) {
+        let Some(&index) = indices.get(name) else {
+            continue;
+        };
+        let bytes = read_verified_entry(reader, index?, budget).await?;
+        let text = std::str::from_utf8(&bytes).ok()?;
+        if matches!(name, FABRIC | QUILT | JARJAR_METADATA) {
+            let json: serde_json::Value = serde_json::from_str(text).ok()?;
+            match name {
+                FABRIC => collect_declared_jars(&json, Some("file"), &mut jars)?,
+                QUILT => {
+                    collect_declared_jars(&json, None, &mut jars)?;
+                    collect_declared_jars(json.get("quilt_loader")?, None, &mut jars)?;
+                }
+                _ => {
+                    json.get("jars")?;
+                    collect_declared_jars(&json, Some("path"), &mut jars)?;
+                    continue;
+                }
+            }
+        }
+        if !manifest_can_verify_dependencies(name, text) {
+            return None;
+        }
+        let parsed = parse_dependencies(name, text)?;
+        if parsed.provides.is_empty() {
+            return None;
+        }
+        out.provides.extend(parsed.provides);
+        out.requires.extend(parsed.requires);
+    }
+    for name in jars {
+        nested.push(read_verified_entry(reader, (*indices.get(&name)?)?, budget).await?);
+    }
+    Some(out)
+}
+
+async fn read_verified_entry<R: AsyncBufRead + AsyncSeek + Unpin>(
+    reader: &mut ZipArchiveReader<R>,
+    index: usize,
+    budget: &mut u64,
+) -> Option<Vec<u8>> {
+    let cap = polyio::MAX_ZIP_ENTRY_BYTES.min(*budget);
+    let size = reader.cdrs()[index].uncompressed_size().ok()?;
+    if size > cap {
+        return None;
+    }
+    let mut entry = reader.file(index).await.ok()?;
+    let mut bytes = Vec::new();
+    (&mut entry)
+        .take(size + 1)
+        .read_to_end(&mut bytes)
+        .await
+        .ok()?;
+    // The reader also verifies the CRC at EOF.
+    if bytes.len() as u64 != size {
+        return None;
+    }
+    *budget -= size;
+    Some(bytes)
+}
+
+fn collect_declared_jars(
+    metadata: &serde_json::Value,
+    path_field: Option<&str>,
+    jars: &mut HashSet<String>,
+) -> Option<()> {
+    if let Some(entries) = metadata.get("jars") {
+        for entry in entries.as_array()? {
+            let path = match path_field {
+                Some(field) => entry.get(field)?.as_str()?,
+                None => entry.as_str()?,
+            };
+            jars.insert(path.strip_prefix("./").unwrap_or(path).to_owned());
+        }
+    }
+    Some(())
+}
+
+fn manifest_can_verify_dependencies(name: &str, text: &str) -> bool {
     match name {
         FABRIC => serde_json::from_str::<serde_json::Value>(text).is_ok_and(|value| {
-            no_declared_jars(&value)
-                && value.get("requires").is_none()
+            value.get("requires").is_none()
+                && value.get("provides").is_none_or(|entries| {
+                    entries
+                        .as_array()
+                        .is_some_and(|entries| entries.iter().all(|id| id.is_string()))
+                })
                 && value
                     .get("depends")
                     .is_none_or(serde_json::Value::is_object)
         }),
         QUILT => serde_json::from_str::<serde_json::Value>(text).is_ok_and(|value| {
-            no_declared_jars(&value)
-                && value.get("quilt_loader").is_some_and(|loader| {
-                    no_declared_jars(loader)
-                        && ["depends", "provides"].into_iter().all(|key| {
-                            loader.get(key).is_none_or(|entries| {
-                                entries.as_array().is_some_and(|entries| {
-                                    entries.iter().all(|entry| {
-                                        // Group-qualified IDs and dependency
-                                        // alternatives require more than a literal ID.
-                                        quilt_id(entry)
-                                            .is_some_and(|id| !id.is_empty() && !id.contains(':'))
-                                            && entry.get("group").is_none()
-                                            && entry
-                                                .get("optional")
-                                                .is_none_or(serde_json::Value::is_boolean)
-                                    })
-                                })
+            value.get("quilt_loader").is_some_and(|loader| {
+                ["depends", "provides"].into_iter().all(|key| {
+                    loader.get(key).is_none_or(|entries| {
+                        entries.as_array().is_some_and(|entries| {
+                            entries.iter().all(|entry| {
+                                // Group-qualified IDs and dependency
+                                // alternatives require more than a literal ID.
+                                quilt_id(entry)
+                                    .is_some_and(|id| !id.is_empty() && !id.contains(':'))
+                                    && entry.get("group").is_none()
+                                    && entry
+                                        .get("optional")
+                                        .is_none_or(serde_json::Value::is_boolean)
                             })
                         })
+                    })
                 })
+            })
         }),
         LEGACY_FORGE => false,
         _ => true,
@@ -784,7 +883,72 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_fabric_jar_outside_standard_prefixes_is_unverified() {
+    async fn a_nested_zip64_directory_over_the_limits_is_unverified() {
+        use async_zip::error::ZipError;
+        use async_zip::{Compression, ZipEntryBuilder};
+
+        let mut writer = async_zip::base::write::ZipFileWriter::new(Vec::new()).force_zip64();
+        writer
+            .write_entry_whole(
+                ZipEntryBuilder::new(FABRIC.into(), Compression::Stored),
+                br#"{"id":"library"}"#,
+            )
+            .await
+            .unwrap();
+        let valid = writer.close().await.unwrap();
+        let record = valid.len() - (56 + 20 + 22);
+        let eocd = valid.len() - 22;
+        assert_eq!(&valid[record..record + 4], b"PK\x06\x06");
+
+        let mut excessive_count = valid.clone();
+        excessive_count[eocd + 8..eocd + 12].fill(0xff); // Read both counts from ZIP64.
+        let count = 64 * 1024 + 1u64;
+        excessive_count[record + 24..record + 32].copy_from_slice(&count.to_le_bytes());
+        excessive_count[record + 32..record + 40].copy_from_slice(&count.to_le_bytes());
+        assert!(matches!(
+            polyio::open_bounded_zip(Cursor::new(&excessive_count)).await,
+            Err(polyio::IOError::AsyncZipError(ZipError::NumFilesAboveMax(
+                _
+            )))
+        ));
+
+        let mut excessive_size = valid.clone();
+        excessive_size[eocd + 12..eocd + 16].fill(0xff); // Read the size from ZIP64.
+        let size = 16 * 1024 * 1024 + 1u64;
+        excessive_size[record + 40..record + 48].copy_from_slice(&size.to_le_bytes());
+        assert!(matches!(
+            polyio::open_bounded_zip(Cursor::new(&excessive_size)).await,
+            Err(polyio::IOError::AsyncZipError(ZipError::CDSizeAboveMax(_)))
+        ));
+
+        let dir = polyio::testing::ScratchDir::new("undo_nested_zip64");
+        polyio::create_dir_all(dir.path()).await.unwrap();
+        let jar = dir.path().join("outer.jar");
+        for (bytes, verified) in [
+            (&valid, true),
+            (&excessive_count, false),
+            (&excessive_size, false),
+        ] {
+            let file = tokio::fs::File::create(&jar).await.unwrap();
+            let mut outer = async_zip::tokio::write::ZipFileWriter::with_tokio(file);
+            outer
+                .write_entry_whole(
+                    ZipEntryBuilder::new("META-INF/jars/library.jar".into(), Compression::Stored),
+                    bytes,
+                )
+                .await
+                .unwrap();
+            outer.close().await.unwrap();
+            let dependencies = verified_jar_dependencies(&jar).await;
+            assert_eq!(
+                dependencies.map(|metadata| metadata.bundled),
+                verified.then(|| vec!["library".into()])
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn an_unreadable_declared_jar_outside_standard_prefixes_is_unverified() {
         let dir = polyio::testing::ScratchDir::new("undo_external_embedded_jar");
         let jar = dir.path().join("outer.jar");
         polyio::create_dir_all(dir.path()).await.unwrap();

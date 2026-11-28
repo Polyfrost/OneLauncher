@@ -1,4 +1,5 @@
 mod index;
+mod install_target;
 mod package;
 
 pub use index::Browser;
@@ -22,12 +23,27 @@ fn preferred_version(
         versions
             .iter()
             .find(|v| v.loaders.is_empty())
-            .or_else(|| versions.first())
     } else {
         versions.first()
     }
 }
+// Limit a latest-data-pack lookup without restricting the version-history pager.
+const DATAPACK_VERSION_LIMIT: usize = 200;
+
 pub use package::BrowserPackage;
+
+fn ownership_ready(required: bool, busy: bool, failed: bool) -> bool {
+    !required || (!busy && !failed)
+}
+
+fn settled_page(page: usize, total: usize, page_size: usize, settled: bool) -> usize {
+    if settled {
+        page.min(total.div_ceil(page_size).saturating_sub(1))
+    } else {
+        page
+    }
+}
+
 
 pub(crate) fn use_saved_override(cluster_id: i64, package_type: &str) -> Option<SearchOverride> {
     use_browser_state_store()
@@ -70,7 +86,9 @@ use std::collections::HashMap;
 use freya::prelude::*;
 use oneclient_common::domain::GameLoader;
 use oneclient_content::packages::{ContentType, ProviderId};
-use oneclient_core::{BundleFileKind, BundleWithUpdateStatus, LinkedArtifactInfo};
+use oneclient_core::{
+    BundleFileKind, BundleWithUpdateStatus, FileUpdateStatus, LinkedArtifactInfo,
+};
 use oneclient_db::models::OverrideType;
 
 use crate::components::{Button, Icon, IconType, set_enabled_action};
@@ -82,6 +100,70 @@ use crate::i18n::t;
 use crate::install::IncompatibleMode;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::{ImageFallbackExt, border_all_color};
+
+/// Small controls follow the glass capsules next to them instead of adding a third corner size
+pub(crate) fn control_radius(height: f32, fallback: f32) -> CornerRadius {
+    if colors::active_theme().liquid_glass {
+        CornerRadius::new_all(height / 2.)
+    } else {
+        rounded(fallback)
+    }
+}
+
+/// How a provider list stands: kept apart so a failure or a fetch in flight never reads as "nothing here"
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ListStatus {
+    Loading,
+    Failed,
+    Ready,
+}
+
+impl ListStatus {
+    /// Whatever is already on screen wins: a failed refetch over shown results keeps the results
+    pub(crate) fn of(has_items: bool, loading: bool, failed: bool) -> Self {
+        if has_items {
+            Self::Ready
+        } else if failed {
+            Self::Failed
+        } else if loading {
+            Self::Loading
+        } else {
+            Self::Ready
+        }
+    }
+}
+
+/// A provider request that failed: says so and offers Retry, in place of the empty or loading copy
+pub(crate) fn load_failed(message: &'static str, on_retry: impl FnMut(()) + 'static) -> Element {
+    let mut on_retry = on_retry;
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .cross_align(Alignment::Center)
+        .padding(Gaps::new_all(32.))
+        .spacing(10.)
+        .child(
+            Icon::new(IconType::AlertCircle)
+                .size(24.)
+                .color(colors::fg_secondary()),
+        )
+        .child(
+            label()
+                .text(message)
+                .text_align(TextAlign::Center)
+                .font_size(text_size(13.))
+                .color(colors::fg_primary()),
+        )
+        .child(
+            Button::new()
+                .secondary()
+                .small()
+                .on_press(move |_| on_retry(()))
+                .child(Icon::new(IconType::RefreshCw01).size(13.))
+                .text(t("oneclient.common.retry")),
+        )
+        .into_element()
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum InstallSource {
@@ -111,6 +193,7 @@ pub(crate) struct BundlePin {
     pub bundle_name: String,
     pub package_id: String,
     pub manifest_default: bool,
+    pub removed: bool,
 }
 
 #[derive(Clone, PartialEq)]
@@ -128,6 +211,15 @@ pub(crate) struct InstalledVersion {
 impl InstalledVersion {
     pub fn enable_action(&self, cluster_id: i64) -> Option<ClusterAction> {
         let pin = self.bundle.as_ref()?;
+        if pin.removed || self.hash.is_none() {
+            return Some(ClusterAction::SetBundlePackageRemoved {
+                cluster_id,
+                bundle_name: pin.bundle_name.clone(),
+                package_id: pin.package_id.clone(),
+                hash: self.hash.clone(),
+                removed: false,
+            });
+        }
         set_enabled_action(
             cluster_id,
             self.hash.as_deref(),
@@ -146,11 +238,18 @@ pub(crate) struct Installed {
     pub source: InstallSource,
     pub bundled_version: Option<String>,
     pub versions: Vec<InstalledVersion>,
+    unversioned_enabled: Option<bool>,
 }
 
 impl Installed {
     pub fn is_version(&self, version_id: &str) -> bool {
-        self.find_version(version_id).is_some()
+        self.versions
+            .iter()
+            .any(|v| v.version_id == version_id && v.hash.is_some())
+    }
+
+    fn has_link(&self) -> bool {
+        self.unversioned_enabled.is_some() || self.versions.iter().any(|v| v.hash.is_some())
     }
 
     pub fn find_version(&self, version_id: &str) -> Option<&InstalledVersion> {
@@ -177,7 +276,7 @@ impl Installed {
     }
 
     pub fn disabled_bundled(&self) -> Option<&InstalledVersion> {
-        if self.versions.iter().any(|v| v.enabled) {
+        if self.unversioned_enabled == Some(true) || self.versions.iter().any(|v| v.enabled) {
             return None;
         }
         self.versions.iter().find(|v| v.bundle.is_some())
@@ -202,6 +301,7 @@ pub(crate) fn installed_map(
             source: InstallSource::Manual,
             bundled_version: None,
             versions: Vec::new(),
+            unversioned_enabled: None,
         });
 
         if let Some(version_id) = item.version_id {
@@ -213,67 +313,75 @@ pub(crate) fn installed_map(
                 source: InstallSource::Manual,
                 bundle: None,
             });
+        } else {
+            installed.unversioned_enabled =
+                Some(installed.unversioned_enabled.unwrap_or(false) || item.enabled);
         }
     }
 
-    // Bundle membership wins a bundle's files would otherwise read as hand-installed
-    // The manifest pin is only a fallback for a missing linked version
+    // Look up the bundle's tracked release when it differs from the current
+    // manifest. A missing pin still belongs in the map alongside manual links.
     for bundle in bundles {
         let bundle_name = &bundle.archive.manifest.name;
-        for (file, _status) in &bundle.files {
-            if let BundleFileKind::Managed {
+        for (file, status) in &bundle.files {
+            if !bundle.opted_in_types.contains(&file.content_type()) {
+                continue;
+            }
+            let BundleFileKind::Managed {
                 provider,
                 project_id,
                 version_id,
                 ..
             } = &file.kind
+            else {
+                continue;
+            };
+            let bundle_version = match status {
+                FileUpdateStatus::UpdateAvailable {
+                    installed_version_id,
+                    ..
+                } if !installed_version_id.is_empty() => installed_version_id,
+                _ => version_id,
+            };
+            let pin = BundlePin {
+                bundle_name: bundle_name.clone(),
+                package_id: file.kind.package_id(),
+                manifest_default: file.enabled,
+                removed: overrides.iter().any(|((_, package_id), value)| {
+                    package_id == &file.kind.package_id()
+                        && OverrideType::parse(value) == Some(OverrideType::Removed)
+                }),
+            };
+            let installed = map
+                .entry((*provider, project_id.clone()))
+                .or_insert_with(|| Installed {
+                    source: InstallSource::Bundled,
+                    bundled_version: None,
+                    versions: Vec::new(),
+                    unversioned_enabled: None,
+                });
+            installed.source = InstallSource::Bundled;
+            installed.bundled_version = Some(bundle_version.clone());
+
+            if let Some(version) = installed
+                .versions
+                .iter_mut()
+                .find(|v| v.version_id == *bundle_version)
             {
-                let pin = BundlePin {
-                    bundle_name: bundle_name.clone(),
-                    package_id: file.kind.package_id(),
-                    manifest_default: file.enabled,
-                };
-                match map.get_mut(&(*provider, project_id.clone())) {
-                    Some(installed) => {
-                        installed.source = InstallSource::Bundled;
-                        installed.bundled_version = Some(version_id.clone());
-                        let only_copy = installed.versions.len() == 1;
-                        match installed
-                            .versions
-                            .iter_mut()
-                            .find(|v| &v.version_id == version_id)
-                        {
-                            Some(version) => {
-                                version.source = InstallSource::Bundled;
-                                version.bundle.get_or_insert(pin);
-                            }
-                            None if only_copy => {
-                                installed.versions[0].bundle.get_or_insert(pin);
-                            }
-                            None => {}
-                        }
-                    }
-                    None => {
-                        let user_override = overrides
-                            .get(&(bundle_name.clone(), pin.package_id.clone()))
-                            .and_then(|o| OverrideType::parse(o));
-                        map.insert(
-                            (*provider, project_id.clone()),
-                            Installed {
-                                source: InstallSource::Bundled,
-                                bundled_version: Some(version_id.clone()),
-                                versions: vec![InstalledVersion {
-                                    version_id: version_id.clone(),
-                                    display_version: None,
-                                    hash: None,
-                                    enabled: oneclient_core::effective_enabled(file, user_override),
-                                    source: InstallSource::Bundled,
-                                    bundle: Some(pin),
-                                }],
-                            },
-                        );
-                    }
-                }
+                version.source = InstallSource::Bundled;
+                version.bundle.get_or_insert(pin);
+            } else {
+                let user_override = overrides
+                    .get(&(bundle_name.clone(), pin.package_id.clone()))
+                    .and_then(|o| OverrideType::parse(o));
+                installed.versions.push(InstalledVersion {
+                    version_id: bundle_version.clone(),
+                    display_version: None,
+                    hash: None,
+                    enabled: !pin.removed && oneclient_core::effective_enabled(file, user_override),
+                    source: InstallSource::Bundled,
+                    bundle: Some(pin),
+                });
             }
         }
     }
@@ -323,6 +431,7 @@ impl Component for EnableButton {
                         .small()
                         .height(Size::px(height))
                         .padding(Gaps::new_symmetric(0., 11.))
+                        .corner_radius(control_radius(height, 6.))
                         .child(
                             Icon::new(if running {
                                 IconType::Loading02
@@ -487,8 +596,6 @@ fn thumbnail_placeholder(size: f32, radius: f32, icon_ratio: f32) -> Element {
 pub(crate) struct PackageBanner {
     icon_url: Option<String>,
     height: f32,
-    backdrop_only: bool,
-    sharp: bool,
     key: DiffKey,
 }
 
@@ -497,21 +604,8 @@ impl PackageBanner {
         Self {
             icon_url,
             height,
-            backdrop_only: false,
-            sharp: false,
             key: DiffKey::None,
         }
-    }
-
-    /// Drops the centred icon so a caller can place its own artwork over the blur
-    pub fn backdrop_only(mut self) -> Self {
-        self.backdrop_only = true;
-        self
-    }
-
-    pub fn sharp(mut self) -> Self {
-        self.sharp = true;
-        self
     }
 }
 
@@ -525,7 +619,7 @@ impl Component for PackageBanner {
     fn render(&self) -> impl IntoElement {
         let h = self.height;
         let icon = h * 0.62;
-        let query = use_cached_image(self.icon_url.clone(), if self.sharp { 384 } else { 256 });
+        let query = use_cached_image(self.icon_url.clone(), 256);
         let loaded = loaded_image(self.icon_url.as_deref(), &query);
 
         let banner = rect()
@@ -536,7 +630,6 @@ impl Component for PackageBanner {
             .background(colors::page_elevated());
 
         let icon_placeholder = thumbnail_placeholder(icon, 10., 0.45);
-        let backdrop_only = self.backdrop_only;
 
         match loaded {
             Some((url, bytes)) => banner
@@ -556,7 +649,7 @@ impl Component for PackageBanner {
                         )
                         .layer(Layer::Relative(1)),
                 )
-                .maybe_child((!self.sharp).then(|| {
+                .child({
                     rect()
                         .position(Position::new_absolute().top(0.).left(0.))
                         .width(Size::fill())
@@ -566,8 +659,8 @@ impl Component for PackageBanner {
                         .overflow(Overflow::Clip)
                         .layer(Layer::Relative(3))
                         .into_element()
-                }))
-                .maybe_child((!backdrop_only).then(|| {
+                })
+                .child({
                     rect()
                         .width(Size::px(icon))
                         .height(Size::px(icon))
@@ -581,8 +674,7 @@ impl Component for PackageBanner {
                         )
                         .layer(Layer::Relative(5))
                         .into_element()
-                })),
-            None if backdrop_only => banner,
+                }),
             None => banner.child(icon_placeholder),
         }
     }
@@ -593,7 +685,23 @@ mod tests {
     use super::*;
     use crate::view::onboarding::test_support::archive;
     use oneclient_content::packages::ContentType;
-    use oneclient_core::{BundleFile, FileUpdateStatus};
+    use oneclient_core::BundleFile;
+
+    #[test]
+    fn ownership_must_finish_successfully_before_installing() {
+        assert!(!ownership_ready(true, true, false));
+        assert!(!ownership_ready(true, false, true));
+        assert!(ownership_ready(true, false, false));
+        assert!(ownership_ready(false, true, true));
+    }
+
+    #[test]
+    fn settled_totals_clamp_the_requested_page_but_loading_does_not() {
+        assert_eq!(settled_page(4, 21, 20, false), 4);
+        assert_eq!(settled_page(4, 21, 20, true), 1);
+        assert_eq!(settled_page(4, 0, 20, true), 0);
+        assert_eq!(settled_page(1, 40, 20, true), 1);
+    }
 
     fn linked(project_id: &str, version_id: Option<&str>, hash: &str) -> LinkedArtifactInfo {
         disabled_linked(project_id, version_id, hash, true)
@@ -754,6 +862,8 @@ mod tests {
 
         let sodium = entry(&map, "sodium");
         assert_eq!(sodium.source, InstallSource::Bundled);
+        assert!(!sodium.has_link());
+        assert!(!sodium.is_version("v1"));
         assert_eq!(
             sodium.find_version("v1").map(|v| v.hash.clone()),
             Some(None),
@@ -762,18 +872,32 @@ mod tests {
     }
 
     #[test]
-    fn a_bundle_pin_is_not_listed_beside_a_linked_version() {
+    fn a_declined_bundle_does_not_claim_a_manual_link_or_an_unlinked_pin() {
+        let mut declined = bundles(vec![managed("sodium", "v1"), managed("lithium", "v1")]);
+        declined[0].opted_in_types.clear();
+        let map = installed_map(vec![linked("sodium", Some("v1"), "hash-1")], &declined);
+
+        let sodium = entry(&map, "sodium");
+        assert_eq!(sodium.source, InstallSource::Manual);
+        assert!(sodium.is_version("v1"));
+        assert!(!sodium.conflicts_with_bundle("v2"));
+        assert!(!map.contains_key(&(ProviderId::Modrinth, "lithium".into())));
+    }
+
+    #[test]
+    fn the_unlinked_bundle_pin_stays_separate_from_a_linked_version() {
         let map = installed_map(
             vec![linked("sodium", Some("v2"), "hash-2")],
-            &bundles(vec![managed("sodium", "v1")]),
+            &bundles(vec![optional("sodium", "v1")]),
         );
 
         let sodium = entry(&map, "sodium");
-        assert!(
-            !sodium.is_version("v1"),
-            "a pin the cluster never downloaded is not installed"
-        );
-        assert_eq!(sodium.versions.len(), 1);
+        let pin = sodium.find_version("v1").unwrap();
+        assert_eq!(pin.hash, None);
+        assert!(!pin.enabled);
+        assert!(sodium.find_version("v2").unwrap().bundle.is_none());
+        assert!(!sodium.is_duplicated());
+        assert!(sodium.disabled_bundled().is_none());
     }
 
     #[test]
@@ -871,10 +995,9 @@ mod tests {
         let disabled = sodium.disabled_bundled().expect("offers enable");
         assert!(matches!(
             disabled.enable_action(7),
-            Some(ClusterAction::SetBundlePackageEnabled {
+            Some(ClusterAction::SetBundlePackageRemoved {
                 cluster_id: 7,
-                enabled: true,
-                manifest_default: false,
+                removed: false,
                 ..
             })
         ));
@@ -898,8 +1021,8 @@ mod tests {
         let sodium = entry(&map, "sodium");
         assert!(matches!(
             sodium.disabled_bundled().and_then(|v| v.enable_action(7)),
-            Some(ClusterAction::SetBundlePackageEnabled {
-                manifest_default: true,
+            Some(ClusterAction::SetBundlePackageRemoved {
+                removed: false,
                 ..
             })
         ));
@@ -921,12 +1044,22 @@ mod tests {
 
     #[test]
     fn a_disabled_copy_from_an_older_bundle_pin_still_offers_enable() {
+        let mut bundles = bundles(vec![managed("sodium", "v2")]);
+        bundles[0].files[0].1 = FileUpdateStatus::UpdateAvailable {
+            installed_version_id: "v1".into(),
+            new_version_id: "v2".into(),
+        };
         let map = installed_map(
             vec![disabled_linked("sodium", Some("v1"), "hash-1", false)],
-            &bundles(vec![managed("sodium", "v2")]),
+            &bundles,
         );
 
-        assert!(entry(&map, "sodium").disabled_bundled().is_some());
+        let sodium = entry(&map, "sodium");
+        assert_eq!(
+            sodium.disabled_bundled().unwrap().hash.as_deref(),
+            Some("hash-1")
+        );
+        assert!(sodium.conflicts_with_bundle("v2"));
     }
 
     #[test]
@@ -953,5 +1086,15 @@ mod tests {
         );
 
         assert!(entry(&map, "sodium").disabled_bundled().is_none());
+    }
+
+    #[test]
+    fn a_failed_or_pending_list_never_reads_as_empty() {
+        assert_eq!(ListStatus::of(false, true, false), ListStatus::Loading);
+        assert_eq!(ListStatus::of(false, false, true), ListStatus::Failed);
+        // A settled empty answer is the only real "nothing here"
+        assert_eq!(ListStatus::of(false, false, false), ListStatus::Ready);
+        // Results already on screen stay through a failed refetch
+        assert_eq!(ListStatus::of(true, false, true), ListStatus::Ready);
     }
 }

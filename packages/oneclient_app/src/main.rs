@@ -9,11 +9,10 @@ use oneclient_app::ipc::{self, Claim};
 use oneclient_app::state::{AppState, LauncherInit};
 use oneclient_app::{
     Actions, ConfirmLinkOverlay, DisableConfirmState, DisableDependentsOverlay,
-    EssentialConfirmOverlay, EssentialGuardState, EventPump, LinkConfirmState, StartMaximizedState,
-    cli, constants, events, microsoft_java, platform, router, theme, translations,
-    use_provide_actions, use_provide_disable_confirm, use_provide_essential_guard,
-    use_provide_link_confirm, use_provide_start_maximized, use_provide_station,
-    use_settings_snapshot,
+    EssentialConfirmOverlay, EssentialGuardState, EventPump, StartMaximizedState, cli, constants,
+    events, microsoft_java, platform, router, theme, translations, use_provide_actions,
+    use_provide_disable_confirm, use_provide_essential_guard, use_provide_link_confirm,
+    use_provide_start_maximized, use_provide_station, use_settings_snapshot,
 };
 use std::cell::Cell;
 use tokio::runtime::Builder;
@@ -101,8 +100,7 @@ impl App for OneClientApp {
 
         use_provide_actions(&actions);
 
-        let link_confirm = use_state(|| None::<String>);
-        use_provide_link_confirm(LinkConfirmState(link_confirm));
+        use_provide_link_confirm();
 
         let disable_confirm = use_state(|| None);
         use_provide_disable_confirm(DisableConfirmState(disable_confirm));
@@ -280,13 +278,14 @@ fn main() {
                 .and_then(|v| v.parse::<usize>().ok())
                 .unwrap_or(128 * 1024 * 1024),
         )
-        .with_plugin(freya::borderless::BorderlessPlugin::new())
+        .with_plugin(oneclient_app::DialogFocusPlugin::default())
         .with_plugin(freya::metrics::MetricsPlugin::default())
         .with_default_font(theme::DEFAULT_FONT);
 
     #[cfg(target_os = "windows")]
     {
-        launch_config = launch_config.with_plugin(platform::frame::FramePlugin(settings.window_frame_fix));
+        launch_config =
+            launch_config.with_plugin(platform::frame::FramePlugin(settings.window_frame_fix));
     }
 
     if show_tray_icon {
@@ -302,26 +301,26 @@ fn main() {
 
 fn main_window_config(app: OneClientApp, start_maximized: bool) -> WindowConfig {
     let window_config = WindowConfig::new_app(app)
-    .with_title(constants::WINDOW_TITLE)
-    .with_app_id(constants::WINDOW_APP_ID)
-    .with_icon(LaunchConfig::window_icon(include_bytes!(
-        "../icons/128x128.png"
-    )))
-    .with_size(1200., 800.)
-    .with_min_size(800., 600.)
-    .with_transparency(false)
-    .with_background(Color::BLACK)
-    // A half-copied data folder is unrecoverable, so the window refuses to
-    // close while one is being moved; the move screen says as much
-    .with_on_close(|_, _| {
-        if oneclient_core::relocate::in_progress() {
-            tracing::warn!("close request ignored, the data folder is still being moved");
-        } else {
-            oneclient_app::close_chat_window();
-            ipc::send(ipc::IpcCommand::Close);
-        }
-        CloseDecision::KeepOpen
-    });
+        .with_title(constants::WINDOW_TITLE)
+        .with_app_id(constants::WINDOW_APP_ID)
+        .with_icon(LaunchConfig::window_icon(include_bytes!(
+            "../icons/128x128.png"
+        )))
+        .with_size(1200., 800.)
+        .with_min_size(800., 600.)
+        .with_transparency(false)
+        .with_background(Color::BLACK)
+        // A half-copied data folder is unrecoverable, so the window refuses to
+        // close while one is being moved; the move screen says as much
+        .with_on_close(|_, _| {
+            if oneclient_core::relocate::in_progress() {
+                tracing::warn!("close request ignored, the data folder is still being moved");
+            } else {
+                oneclient_app::close_chat_window();
+                ipc::send(ipc::IpcCommand::Close);
+            }
+            CloseDecision::KeepOpen
+        });
 
     #[cfg(target_os = "macos")]
     let window_config =

@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use freya::prelude::*;
 use oneclient_content::packages::ContentType;
+use oneclient_core::game::DuplicateMods;
 
 use crate::components::{CopyStatus, PackageEntry};
 use crate::hooks::{
@@ -18,7 +19,7 @@ use super::cluster_not_found;
 use super::package_manager::{
     PackageManager, bundle_categories, bundle_packages, use_content_meta,
 };
-use crate::hooks::use_cluster;
+use crate::hooks::{query_is_loading, use_cluster};
 
 #[derive(PartialEq)]
 pub struct ClusterMods {
@@ -36,6 +37,7 @@ impl Component for ClusterMods {
         let bisect = use_bisect(self.cluster_id);
         let bundle_items = bundles_with_status_items(&bundles);
         let content_items = cluster_content_items(&content);
+        let loading = query_is_loading(&content);
         let meta = use_content_meta(&content_items, &bundle_items, ContentType::Mod);
 
         let Some(cluster) = use_cluster(self.cluster_id) else {
@@ -65,62 +67,7 @@ impl Component for ClusterMods {
             item.copy_status = skipped.contains(hash).then_some(CopyStatus::Skipped);
             item.bisect_role = bisect.as_ref().and_then(|status| status.role_of(hash));
         }
-        let present: HashSet<&String> =
-            items.iter().filter_map(|item| item.hash.as_ref()).collect();
-        let ignored: HashSet<String> = shadowed
-            .copies
-            .iter()
-            .filter(|(used, _)| present.contains(used))
-            .flat_map(|(_, hashes)| hashes.iter().cloned())
-            .collect();
-        let (copies, mut items): (Vec<_>, Vec<_>) = items.into_iter().partition(|item| {
-            item.hash
-                .as_ref()
-                .is_some_and(|hash| ignored.contains(hash))
-        });
-        for item in &mut items {
-            if let Some(hashes) = item
-                .hash
-                .as_ref()
-                .and_then(|hash| shadowed.copies.get(hash))
-            {
-                item.copies = copies
-                    .iter()
-                    .filter(|copy| copy.hash.as_ref().is_some_and(|hash| hashes.contains(hash)))
-                    .cloned()
-                    .collect();
-            }
-        }
-        let identity = |item: &PackageEntry| {
-            (!item.author.is_empty()).then(|| (item.name.to_lowercase(), item.author.to_lowercase()))
-        };
-        let mut folded = HashSet::new();
-        for i in 0..items.len() {
-            if items[i].in_bundle() {
-                continue;
-            }
-            let Some(own) = identity(&items[i]) else {
-                continue;
-            };
-            let matches: Vec<usize> = (0..items.len())
-                .filter(|&j| {
-                    items[j].in_bundle()
-                        && items[j].copies.is_empty()
-                        && !folded.contains(&j)
-                        && identity(&items[j]).as_ref() == Some(&own)
-                })
-                .collect();
-            for j in matches {
-                folded.insert(j);
-                let copy = items[j].clone();
-                items[i].copies.push(copy);
-            }
-        }
-        let mut index = 0;
-        items.retain(|_| {
-            index += 1;
-            !folded.contains(&(index - 1))
-        });
+        let items = fold_mod_copies(items, &shadowed);
 
         cluster_content()
             .child(ModsFolderSync {
@@ -138,10 +85,74 @@ impl Component for ClusterMods {
                     all_categories,
                 )
                 .bisecting(bisect.is_some())
+                .loading(loading)
                 .into_element(),
             )
             .into_element()
     }
+}
+
+/// Fold the copies the loader ignores and the matching bundle rows into the same entries as Mods
+pub(super) fn fold_mod_copies(
+    items: Vec<PackageEntry>,
+    shadowed: &DuplicateMods,
+) -> Vec<PackageEntry> {
+    let present: HashSet<&String> = items.iter().filter_map(|item| item.hash.as_ref()).collect();
+    let ignored: HashSet<String> = shadowed
+        .copies
+        .iter()
+        .filter(|(used, _)| present.contains(used))
+        .flat_map(|(_, hashes)| hashes.iter().cloned())
+        .collect();
+    let (copies, mut items): (Vec<_>, Vec<_>) = items.into_iter().partition(|item| {
+        item.hash
+            .as_ref()
+            .is_some_and(|hash| ignored.contains(hash))
+    });
+    for item in &mut items {
+        if let Some(hashes) = item
+            .hash
+            .as_ref()
+            .and_then(|hash| shadowed.copies.get(hash))
+        {
+            item.copies = copies
+                .iter()
+                .filter(|copy| copy.hash.as_ref().is_some_and(|hash| hashes.contains(hash)))
+                .cloned()
+                .collect();
+        }
+    }
+    let identity = |item: &PackageEntry| {
+        (!item.author.is_empty()).then(|| (item.name.to_lowercase(), item.author.to_lowercase()))
+    };
+    let mut folded = HashSet::new();
+    for i in 0..items.len() {
+        if items[i].in_bundle() {
+            continue;
+        }
+        let Some(own) = identity(&items[i]) else {
+            continue;
+        };
+        let matches: Vec<usize> = (0..items.len())
+            .filter(|&j| {
+                items[j].in_bundle()
+                    && items[j].copies.is_empty()
+                    && !folded.contains(&j)
+                    && identity(&items[j]).as_ref() == Some(&own)
+            })
+            .collect();
+        for j in matches {
+            folded.insert(j);
+            let copy = items[j].clone();
+            items[i].copies.push(copy);
+        }
+    }
+    let mut index = 0;
+    items.retain(|_| {
+        index += 1;
+        !folded.contains(&(index - 1))
+    });
+    items
 }
 
 #[derive(PartialEq)]

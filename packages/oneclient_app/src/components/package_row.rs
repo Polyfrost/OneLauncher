@@ -1,9 +1,14 @@
+use std::collections::BTreeMap;
+
 use freya::prelude::*;
 use freya::router::RouterContext;
+use freya::text_edit::Clipboard;
 use oneclient_content::packages::{ContentType, ProviderId};
 use oneclient_core::{BisectRole, SeenStatus};
 
-use crate::components::{ContextMenu, Icon, IconType, toggle_controlled};
+use crate::components::{
+    ContextMenu, Icon, IconType, TooltipPlacement, toggle_controlled, use_tooltip_anchor,
+};
 use crate::disable::{self, BundlePackage, DisableRequest, DisableRoot};
 use crate::essential::EssentialPackage;
 use freya::query::UseMutation;
@@ -19,11 +24,24 @@ use crate::theme::{colors, rounded, text_size};
 use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::format_size;
 
-pub(crate) const CARD_H: f32 = 84.;
+/// List row height on every instance content page (mods, packs, worlds, screenshots)
+pub(crate) const CARD_H: f32 = 64.;
+/// Padding of every content row and card
+pub(crate) const ROW_PAD: f32 = 12.;
+/// Icon edge in content rows and cards
+pub(crate) const ROW_ICON: f32 = 40.;
+pub(crate) const ROW_RADIUS: f32 = 12.;
+/// Gap between list rows
+pub(crate) const ROW_GAP: f32 = 8.;
+/// Grid card height when a description has room for two lines
 pub(crate) const CARD_GRID_H: f32 = 112.;
+/// Grid card height when no card in its row has a description
+pub(crate) const CARD_GRID_MIN_H: f32 = 88.;
 pub(crate) const GRID_GAP: f32 = 12.;
 pub(crate) const GRID_MIN_W: f32 = 290.;
-const GRID_CARD_PADDING: f32 = 14.;
+/// Narrowest grid column on the instance content pages
+pub(crate) const CONTENT_GRID_MIN_W: f32 = 280.;
+const GRID_CARD_PADDING: f32 = ROW_PAD;
 const BADGE_STRIP_H: f32 = 20.;
 const BADGE_STRIP_LIFT: f32 = 2.;
 /// Tint and outline of a selected card
@@ -48,6 +66,140 @@ impl From<oneclient_core::settings::ViewLayout> for CardLayout {
             oneclient_core::settings::ViewLayout::List => CardLayout::List,
         }
     }
+}
+
+/// Grid cards in a row share the height required by the longest content.
+pub(crate) fn content_card_height(any_description: bool) -> f32 {
+    if any_description {
+        CARD_GRID_H
+    } else {
+        CARD_GRID_MIN_H
+    }
+}
+
+/// How a grid card reads its on/off state
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum CardTone {
+    /// Content without an on/off state (worlds, data packs)
+    Neutral,
+    Enabled,
+    Disabled,
+}
+
+/// Content alpha of a switched-off card, as upstream's Mods grid draws it
+const DISABLED_ALPHA: u8 = 115;
+
+/// The surface of a list row on every instance content page
+pub(crate) fn row_surface(mut hovered: State<bool>) -> Rect {
+    rect()
+        .horizontal()
+        .width(Size::fill())
+        .height(Size::px(CARD_H))
+        .cross_align(Alignment::Center)
+        .spacing(12.)
+        .padding(Gaps::new_all(ROW_PAD))
+        .corner_radius(rounded(ROW_RADIUS))
+        .background(colors::card())
+        .border(
+            border_all_color(
+                1.,
+                if hovered() {
+                    colors::component_border_hover()
+                } else {
+                    colors::component_border()
+                },
+            )
+            .alignment(BorderAlignment::Inner),
+        )
+        .on_pointer_enter(move |_| hovered.set_if_modified(true))
+        .on_pointer_leave(move |_| hovered.set_if_modified(false))
+        .content(Content::Flex)
+}
+
+/// The surface of a grid card on every instance content page
+///
+/// Enabled content is brand tinted and switched-off content is dimmed, the way upstream's Mods grid
+/// draws it, so every content type reads its state the same way.
+pub(crate) fn card_surface(mut hovered: State<bool>, tone: CardTone) -> Rect {
+    let hovering = hovered();
+    // Hover keeps the card's own tint and only lifts it, so a blue (enabled) or dimmed (disabled)
+    // card never flips to a flat grey under the pointer
+    let background = match (tone, hovering) {
+        (CardTone::Enabled, false) => colors::brand().with_a(38),
+        (CardTone::Enabled, true) => colors::brand().with_a(58),
+        (CardTone::Disabled, false) => colors::component_bg_disabled().with_a(DISABLED_ALPHA),
+        (CardTone::Disabled, true) => colors::component_bg_disabled().with_a(DISABLED_ALPHA + 40),
+        (CardTone::Neutral, _) => colors::card(),
+    };
+    let border = match (tone, hovering) {
+        (CardTone::Enabled, _) => colors::brand(),
+        (_, true) => colors::component_border_hover(),
+        _ => colors::component_border(),
+    };
+
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .height(Size::fill())
+        .spacing(8.)
+        .padding(Gaps::new_all(GRID_CARD_PADDING))
+        .corner_radius(rounded(ROW_RADIUS))
+        .background(background)
+        .border(border_all_color(1., border).alignment(BorderAlignment::Inner))
+        .content(Content::Flex)
+        .on_pointer_enter(move |_| hovered.set_if_modified(true))
+        .on_pointer_leave(move |_| hovered.set_if_modified(false))
+}
+
+/// Title line of a content row or card
+fn row_title_label(text: String, color: Color) -> Label {
+    label()
+        .text(text)
+        .font_size(text_size(14.))
+        .font_weight(FontWeight::SEMI_BOLD)
+        .max_lines(1)
+        .text_overflow(TextOverflow::Ellipsis)
+        .color(color)
+}
+
+/// One secondary line under a row title: meta and description share it
+pub(crate) fn row_line(text: String, color: Color) -> Element {
+    label()
+        .text(text)
+        .font_size(text_size(12.))
+        .max_lines(1)
+        .text_overflow(TextOverflow::Ellipsis)
+        .width(Size::fill())
+        .color(color)
+        .into_element()
+}
+
+/// The body text of a grid card; one line on short cards, two on tall ones
+pub(crate) fn card_description(text: String, color: Color) -> Element {
+    card_description_label(text, color, 2).into_element()
+}
+
+const DESCRIPTION_LINE_HEIGHT: f32 = 1.4;
+
+fn card_description_label(text: String, color: Color, lines: usize) -> Label {
+    label()
+        .text(text)
+        .font_size(text_size(12.))
+        .line_height(DESCRIPTION_LINE_HEIGHT)
+        .max_lines(lines)
+        .text_overflow(TextOverflow::Ellipsis)
+        .width(Size::fill())
+        .color(color)
+}
+
+/// Joins the non-empty parts of a row's secondary line
+pub(crate) fn joined_line<'a>(parts: impl IntoIterator<Item = &'a str>) -> String {
+    parts
+        .into_iter()
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" \u{b7} ")
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -187,7 +339,7 @@ pub struct PackageRow {
     cluster_id: i64,
     package_type: &'static str,
     layout: CardLayout,
-    on_context: EventHandler<(f32, f32)>,
+    on_context: EventHandler<(f32, f32, Vec<String>)>,
     selected: bool,
     selecting: bool,
     on_select: EventHandler<()>,
@@ -216,8 +368,8 @@ impl PackageRow {
         self
     }
 
-    pub fn on_context(mut self, on_context: impl Into<EventHandler<(f32, f32)>>) -> Self {
-        self.on_context = on_context.into();
+    pub fn on_context(mut self, handler: impl Into<EventHandler<(f32, f32, Vec<String>)>>) -> Self {
+        self.on_context = handler.into();
         self
     }
 
@@ -256,12 +408,8 @@ impl Component for PackageRow {
         let warnings_query = use_disable_warnings();
         let hovered = use_state(|| false);
 
-        let icon_size = match layout {
-            CardLayout::List => 44.,
-            CardLayout::Grid => 40.,
-        };
         let icon_query = use_cached_image(item.icon_url.clone(), 256);
-        let icon = package_icon(&item, &icon_query, icon_size);
+        let icon = package_icon(&item, &icon_query, ROW_ICON);
 
         let on_toggle: EventHandler<()> = {
             let action = toggle_action(&item, cluster_id, !item.enabled).filter(|_| !item.locked);
@@ -292,35 +440,42 @@ impl Component for PackageRow {
             .into()
         };
 
-        let on_context = Some(self.on_context.clone());
+        let hidden_badges = use_state(Vec::<String>::new);
+        let on_context = self.on_context.clone();
+        let on_context = Some(EventHandler::new(move |(x, y)| {
+            let hidden = if layout == CardLayout::List {
+                hidden_badges.peek().clone()
+            } else {
+                Vec::new()
+            };
+            on_context.call((x, y, hidden));
+        }));
         let on_copies = self.on_copies.clone().filter(|_| !item.copies.is_empty());
 
-        let (card, radius) = match layout {
-            CardLayout::List => (
-                list_card(
-                    &item,
-                    package_type,
-                    cluster_id,
-                    icon,
-                    on_toggle,
-                    on_context.clone(),
-                    on_copies,
-                ),
-                8.,
+        let radius = ROW_RADIUS;
+        let card = match layout {
+            CardLayout::List => list_card(
+                &item,
+                package_type,
+                cluster_id,
+                icon,
+                on_toggle,
+                on_context.clone(),
+                on_copies,
+                hovered,
+                hidden_badges,
             ),
-            CardLayout::Grid => (
-                grid_card(
-                    &item,
-                    package_type,
-                    cluster_id,
-                    icon,
-                    on_toggle,
-                    true,
-                    on_context.clone(),
-                    on_copies,
-                    hovered,
-                ),
-                6.,
+            CardLayout::Grid => render_grid_card(
+                &item,
+                package_type,
+                cluster_id,
+                icon,
+                on_toggle,
+                GRID_TITLE_LINES,
+                true,
+                on_context.clone(),
+                on_copies,
+                hovered,
             ),
         };
 
@@ -557,6 +712,7 @@ pub fn package_context_menu(
     on_bundled: Option<EventHandler<()>>,
     on_select: EventHandler<()>,
     on_check_update: Option<EventHandler<()>>,
+    hidden_badges: Vec<String>,
 ) -> ContextMenu {
     let mut menu = ContextMenu::new(x, y).title(item.name.clone()).action(
         IconType::Check,
@@ -577,6 +733,7 @@ pub fn package_context_menu(
                     package_type: package_type.clone(),
                     package_id: format!("{}:{}", provider as u8, package_id),
                     add_to_cluster: false,
+                    in_instance: true,
                 });
             },
         );
@@ -629,6 +786,18 @@ pub fn package_context_menu(
         };
     }
 
+    if !hidden_badges.is_empty() {
+        menu = menu.separator();
+        for text in hidden_badges {
+            let label = text.clone();
+            menu = menu.action(IconType::Copy01, label, move |()| {
+                if let Err(err) = Clipboard::set(text.clone()) {
+                    tracing::warn!("clipboard copy failed: {err:?}");
+                }
+            });
+        }
+    }
+
     let delete_key = item.hash.clone().or_else(|| {
         item.folder_pack()
             .map(|(name, enabled)| folder_pack_id(name, enabled))
@@ -659,6 +828,7 @@ pub(crate) fn on_secondary(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn list_card(
     item: &PackageEntry,
     package_type: &'static str,
@@ -667,25 +837,24 @@ fn list_card(
     on_toggle: EventHandler<()>,
     on_context: Option<EventHandler<(f32, f32)>>,
     on_copies: Option<EventHandler<()>>,
+    hovered: State<bool>,
+    hidden_badges: State<Vec<String>>,
 ) -> Element {
     let copies = item.copies.len();
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .height(Size::px(CARD_H))
-        .cross_align(Alignment::Center)
-        .spacing(12.)
-        .padding(Gaps::new_all(10.))
-        .corner_radius(rounded(8.))
-        .background(colors::card())
-        .content(Content::Flex)
+    row_surface(hovered)
         .maybe(item.copy_status == Some(CopyStatus::Skipped), |el| {
             el.opacity(0.5)
         })
         .on_secondary_down(on_secondary(on_context.clone()))
-        .child(package_info(item, package_type, cluster_id, icon))
+        .child(package_info(
+            item,
+            package_type,
+            cluster_id,
+            icon,
+            hidden_badges,
+        ))
         .maybe_child(on_copies.map(|on_press| copies_button(copies, on_press)))
-        .child(meta_size(item.size))
+        .maybe_child((item.size > 0).then(|| meta_size(item.size)))
         .child(toggle_controlled(item.enabled, on_toggle).disabled(item.locked))
         .maybe_child(on_context.map(kebab_button))
         .into_element()
@@ -701,71 +870,81 @@ pub(crate) fn grid_card(
     navigable: bool, // if true, it takes the user to the mod page
     on_context: Option<EventHandler<(f32, f32)>>,
     on_copies: Option<EventHandler<()>>,
-    mut hovered: State<bool>,
+    hovered: State<bool>,
+) -> Element {
+    render_grid_card(
+        item,
+        package_type,
+        cluster_id,
+        icon,
+        on_toggle,
+        1,
+        navigable,
+        on_context,
+        on_copies,
+        hovered,
+    )
+}
+
+/// Instance grid cards give long names a second line before they trail off
+const GRID_TITLE_LINES: usize = 2;
+
+#[allow(clippy::too_many_arguments)]
+fn render_grid_card(
+    item: &PackageEntry,
+    package_type: &'static str,
+    cluster_id: i64,
+    icon: impl IntoElement,
+    on_toggle: EventHandler<()>,
+    title_lines: usize,
+    navigable: bool,
+    on_context: Option<EventHandler<(f32, f32)>>,
+    on_copies: Option<EventHandler<()>>,
+    hovered: State<bool>,
 ) -> Element {
     let enabled = item.enabled;
-    let title = item.name.clone();
-    let hovering = *hovered.read();
 
     let alpha = if enabled && item.copy_status != Some(CopyStatus::Skipped) {
         255u8
     } else {
-        115u8
+        DISABLED_ALPHA
     };
-
-    let bg = match (enabled, hovering) {
-        (_, true) => colors::component_bg_hover().with_a(alpha),
-        (true, false) => colors::brand().with_a(scale_a(alpha, 38. / 255.)),
-        (false, false) => colors::component_bg_disabled().with_a(alpha),
+    let tone = if enabled {
+        CardTone::Enabled
+    } else {
+        CardTone::Disabled
     };
-
-    let border = match (enabled, hovering) {
-        (_, true) => colors::component_border_hover(),
-        (true, false) => colors::brand(),
-        (false, false) => colors::component_border(),
-    };
+    let details = grid_meta(item, package_type, cluster_id, navigable, alpha);
 
     let header = rect()
         .horizontal()
         .width(Size::fill())
-        // .cross_align(Alignment::Center)
-        .spacing(11.)
+        .cross_align(Alignment::Center)
+        .spacing(12.)
         .content(Content::Flex)
         .child(rect().opacity(alpha as f32 / 255.).child(icon))
         .child(
             rect()
                 .vertical()
                 .width(Size::flex(1.0))
-                .spacing(3.)
-                .child(
-                    label()
-                        .text(title)
-                        .font_size(text_size(14.))
-                        .font_weight(FontWeight::SEMI_BOLD)
-                        .max_lines(1)
-                        .text_overflow(TextOverflow::Ellipsis)
-                        .width(Size::fill())
-                        .color(if enabled {
-                            colors::fg_strong()
-                        } else {
-                            colors::fg_primary().with_a(alpha)
-                        }),
-                )
-                .child(grid_meta(item, package_type, cluster_id, navigable, alpha)),
+                .spacing(2.)
+                .child(HoverTitle {
+                    title: item.name.clone(),
+                    color: if enabled {
+                        colors::fg_strong()
+                    } else {
+                        colors::fg_primary().with_a(alpha)
+                    },
+                    lines: title_lines,
+                })
+                .child(details),
         )
         .maybe_child(on_context.clone().map(kebab_button))
         .into_element();
 
-    let description = (!item.description.is_empty()).then(|| {
-        label()
-            .text(item.description.clone())
-            .font_size(text_size(11.))
-            .line_height(1.45)
-            .max_lines(2)
-            .text_overflow(TextOverflow::Ellipsis)
-            .width(Size::fill())
-            .color(colors::fg_primary().with_a(scale_a(alpha, 0.72)))
-            .into_element()
+    let description = (!item.description.trim().is_empty()).then(|| GridDescription {
+        text: item.description.clone(),
+        color: colors::fg_primary().with_a(scale_a(alpha, 0.72)),
     });
 
     let badged = item.is_outdated()
@@ -797,32 +976,40 @@ pub(crate) fn grid_card(
             .into_element()
     });
 
-    rect()
-        .vertical()
-        .width(Size::fill())
-        .height(Size::fill())
-        .spacing(9.)
-        .padding(Gaps::new_all(GRID_CARD_PADDING))
-        .corner_radius(rounded(6.))
-        .background(bg)
-        .border(border_all_color(1., border))
-        .content(Content::Flex)
+    card_surface(hovered, tone)
         .cursor(CursorIcon::Pointer)
-        .on_pointer_enter(move |_| hovered.set(true))
-        .on_pointer_leave(move |_| hovered.set(false))
         .on_secondary_down(on_secondary(on_context))
         .on_press(move |_| on_toggle.call(()))
         .child(header)
-        .child(
-            rect()
-                .vertical()
-                .width(Size::fill())
-                .height(Size::flex(1.0))
-                .overflow(Overflow::Clip)
-                .maybe_child(description),
-        )
+        .maybe_child(description)
         .maybe_child(floating)
         .into_element()
+}
+
+#[derive(PartialEq)]
+struct GridDescription {
+    text: String,
+    color: Color,
+}
+
+impl Component for GridDescription {
+    fn render(&self) -> impl IntoElement {
+        let mut lines = use_state(|| 2);
+        let two_lines_height = text_size(12.) * DESCRIPTION_LINE_HEIGHT * 2.;
+        rect()
+            .width(Size::fill())
+            .height(Size::flex(1.0))
+            .overflow(Overflow::Clip)
+            .on_sized(move |event: Event<SizedEventData>| {
+                let fits_two = event.data().area.height() >= two_lines_height;
+                lines.set_if_modified(if fits_two { 2 } else { 1 });
+            })
+            .child(card_description_label(
+                self.text.clone(),
+                self.color,
+                lines(),
+            ))
+    }
 }
 
 fn scale_a(alpha: u8, factor: f32) -> u8 {
@@ -858,6 +1045,7 @@ fn grid_meta(
                     package_type: package_type.to_string(),
                     package_id: format!("{}:{}", provider as u8, package_id),
                     add_to_cluster: false,
+                    in_instance: true,
                 });
             }),
             alpha,
@@ -872,39 +1060,44 @@ fn grid_meta(
         )
     };
 
-    let mut parts: Vec<Element> = Vec::new();
+    let mut details: Vec<String> = Vec::new();
     if !item.author.is_empty() {
-        parts.push(meta_text(
-            tf(
-                "oneclient.components.package_row.by_author",
-                &[&item.author],
-            ),
-            muted,
+        details.push(tf(
+            "oneclient.components.package_row.by_author",
+            &[&item.author],
         ));
     }
     if let Some(added) = item.added_label() {
-        parts.push(meta_text(added, muted));
+        details.push(added);
     }
     if let Some(version) = &item.version {
-        parts.push(meta_text(version.clone(), muted));
+        details.push(version.clone());
     }
-    parts.push(source);
 
-    let mut row = rect()
+    // The source leads and always shows in full; the details follow and trail off with an
+    // ellipsis on a narrow card instead of being cut mid-word
+    let row = rect()
         .horizontal()
         .width(Size::fill())
+        .content(Content::Flex)
         .cross_align(Alignment::Center)
         .spacing(5.)
-        .overflow(Overflow::Clip);
-
-    for (i, part) in parts.into_iter().enumerate() {
-        if i > 0 {
-            row = row.child(meta_text("\u{b7}".to_string(), muted));
-        }
-        row = row.child(part);
+        .overflow(Overflow::Clip)
+        .child(source);
+    if details.is_empty() {
+        return row.into_element();
     }
-
-    row.into_element()
+    row.child(meta_text("\u{b7}".to_string(), muted))
+        .child(
+            label()
+                .text(details.join(" \u{b7} "))
+                .width(Size::flex(1.))
+                .font_size(text_size(12.))
+                .max_lines(1)
+                .text_overflow(TextOverflow::Ellipsis)
+                .color(muted),
+        )
+        .into_element()
 }
 
 #[derive(PartialEq)]
@@ -949,7 +1142,7 @@ impl Component for SourceLink {
 pub(crate) fn meta_text(text: String, color: Color) -> Element {
     label()
         .text(text)
-        .font_size(text_size(11.))
+        .font_size(text_size(12.))
         .max_lines(1)
         .color(color)
         .into_element()
@@ -1007,8 +1200,7 @@ fn reveal_in_cluster(cluster_id: i64, content_type: ContentType, file_name: Stri
             return;
         };
         use oneclient_content::packages::{PackageStore, store::materialized_root};
-        let cluster = match PackageStore::get_cluster(cluster_id, &state.services.content()).await
-        {
+        let cluster = match PackageStore::get_cluster(cluster_id, &state.services.content()).await {
             Ok(cluster) => cluster,
             Err(err) => {
                 tracing::warn!(%err, "failed to look up cluster for reveal");
@@ -1030,31 +1222,246 @@ fn reveal_in_cluster(cluster_id: i64, content_type: ContentType, file_name: Stri
     });
 }
 
+const TITLE_BADGE_GAP: f32 = 8.;
+
+fn title_badge_budget(
+    info_width: f32,
+    desired_title_width: f32,
+    badges: &[f32],
+) -> (f32, Vec<bool>) {
+    let mut title_width = info_width;
+    let visible = badges
+        .iter()
+        .map(|&width| {
+            let cost = width + TITLE_BADGE_GAP;
+            let fits = width > 0. && title_width >= desired_title_width + cost;
+            if fits {
+                title_width -= cost;
+            }
+            fits
+        })
+        .collect();
+    (title_width, visible)
+}
+
+struct TitleBadge {
+    text: String,
+    element: Element,
+}
+
+fn title_badges(item: &PackageEntry) -> Vec<TitleBadge> {
+    let (source, element) = if item.github_url.is_some() || item.github_hosted {
+        ("GitHub".to_string(), github_badge())
+    } else if item.is_remote() {
+        (item.provider.to_string(), provider_badge(item.provider))
+    } else {
+        (
+            t("oneclient.components.package_row.local_file").into(),
+            local_badge(),
+        )
+    };
+    let mut badges = vec![TitleBadge {
+        text: source,
+        element,
+    }];
+    let mut add = |text: String, element| badges.push(TitleBadge { text, element });
+    if let Some(name) = &item.modpack {
+        add(name.clone(), modpack_badge(name));
+    }
+    if item.is_outdated() {
+        add(
+            t("oneclient.components.package_row.update_available").into(),
+            outdated_badge(),
+        );
+    }
+    if let Some(status) = item.copy_status
+        && let Some(badge) = item.copy_badge()
+    {
+        let text = match status {
+            CopyStatus::Loaded => t("oneclient.components.package_row.loaded"),
+            CopyStatus::Skipped => t("oneclient.components.package_row.skipped"),
+        };
+        add(text.into(), badge);
+    }
+    if let Some(role) = item.bisect_role
+        && let Some(badge) = item.bisect_badge()
+    {
+        add(role.label().into(), badge);
+    }
+    if let Some(badge) = item.recency_badge() {
+        let text = if item.seen_status == SeenStatus::New {
+            t("oneclient.components.package_row.new")
+        } else {
+            t("oneclient.components.package_row.updated")
+        };
+        add(text.into(), badge);
+    }
+    badges
+}
+
+pub(crate) fn row_title(title: String, color: Color) -> Element {
+    HoverTitle {
+        title,
+        color,
+        lines: 1,
+    }
+    .into_element()
+}
+
+#[derive(PartialEq)]
+struct HoverTitle {
+    title: String,
+    color: Color,
+    lines: usize,
+}
+
+impl Component for HoverTitle {
+    fn render(&self) -> impl IntoElement {
+        use_tooltip_anchor(Some(self.title.clone().into()), TooltipPlacement::Top).attach(
+            rect().width(Size::fill()).child(
+                row_title_label(self.title.clone(), self.color)
+                    .width(Size::fill())
+                    .max_lines(self.lines),
+            ),
+        )
+    }
+}
+
+#[derive(PartialEq)]
+struct PackageTitle {
+    item: PackageEntry,
+    hidden_badges: State<Vec<String>>,
+}
+
+impl Component for PackageTitle {
+    fn render(&self) -> impl IntoElement {
+        let mut info_width = use_state(|| 0f32);
+        let mut title_width = use_state(|| 0f32);
+        let mut measured_badges = use_state(BTreeMap::<(usize, String), f32>::new);
+        let item = &self.item;
+        let badges = title_badges(item);
+        let widths: Vec<_> = {
+            let widths = measured_badges.read();
+            badges
+                .iter()
+                .enumerate()
+                .map(|(index, badge)| {
+                    widths
+                        .get(&(index, badge.text.clone()))
+                        .copied()
+                        .unwrap_or(0.)
+                })
+                .collect()
+        };
+        let (title_budget, visible) = title_badge_budget(info_width(), title_width(), &widths);
+        let hidden = badges
+            .iter()
+            .zip(&visible)
+            .filter(|(_, visible)| !**visible)
+            .map(|(badge, _)| badge.text.clone())
+            .collect::<Vec<_>>();
+        let mut hidden_badges = self.hidden_badges;
+        use_side_effect_with_deps(&hidden, move |hidden| {
+            hidden_badges.set_if_modified(hidden.clone())
+        });
+
+        // These probes only need natural widths. Global positioning keeps them out of
+        // Freya's scroll translation, which otherwise sends every probe a Sized event per tick.
+        let measurement = rect()
+            .position(Position::new_global().left(0.).top(0.))
+            .width(Size::window_percent(100.))
+            .height(Size::px(0.))
+            .interactive(false)
+            .overflow(Overflow::Clip)
+            .opacity(0.)
+            .child(
+                rect()
+                    .on_sized(move |e: Event<SizedEventData>| {
+                        title_width.set_if_modified(e.area.width());
+                    })
+                    .child(row_title_label(item.name.clone(), colors::fg_primary())),
+            )
+            .children(badges.iter().enumerate().map(|(index, badge)| {
+                let key = (index, badge.text.clone());
+                rect()
+                    .key(format!("{index}:{}", badge.text))
+                    .on_sized(move |e: Event<SizedEventData>| {
+                        let width = e.area.width();
+                        if measured_badges.peek().get(&key) != Some(&width) {
+                            measured_badges.write().insert(key.clone(), width);
+                        }
+                    })
+                    .child(badge.element.clone())
+                    .into_element()
+            }));
+
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .cross_align(Alignment::Center)
+            .spacing(TITLE_BADGE_GAP)
+            .on_sized(move |e: Event<SizedEventData>| {
+                info_width.set_if_modified(e.area.width());
+            })
+            .child(measurement)
+            .child(
+                rect()
+                    .max_width(Size::px(title_budget))
+                    .child(row_title_label(item.name.clone(), colors::fg_primary())),
+            )
+            .children(badges.into_iter().zip(visible).enumerate().filter_map(
+                |(index, (badge, visible))| {
+                    visible.then(|| {
+                        if let Some(url) = item.github_url.clone().filter(|_| index == 0) {
+                            rect()
+                                .cursor(CursorIcon::Pointer)
+                                .on_press(move |e: Event<PressEventData>| {
+                                    e.stop_propagation();
+                                    crate::platform::open_url(&url);
+                                })
+                                .child(badge.element)
+                                .into_element()
+                        } else {
+                            badge.element
+                        }
+                    })
+                },
+            ))
+    }
+}
+
 fn package_info(
     item: &PackageEntry,
     package_type: &'static str,
     cluster_id: i64,
     icon: impl IntoElement,
+    hidden_badges: State<Vec<String>>,
 ) -> impl IntoElement {
     let remote = item.is_remote();
     let provider = item.provider;
     let package_id = item.package_id.clone();
     let package_type = package_type.to_string();
-    let title = item.name.clone();
     let author = (!item.author.is_empty()).then(|| {
         tf(
             "oneclient.components.package_row.by_author",
             &[&item.author],
         )
     });
+    // Meta and description share one line so every list row keeps the same height
+    let added = item.added_label();
     // Copies of one mod often differ only by version, which is why one got skipped
-    let version = item.copy_status.as_ref().and_then(|_| item.version.clone());
-    let byline = author
-        .into_iter()
-        .chain(item.added_label())
-        .chain(version)
-        .collect::<Vec<_>>()
-        .join(" \u{b7} ");
+    let version = item.copy_status.as_ref().and(item.version.as_deref());
+    let mut line = joined_line(
+        author
+            .iter()
+            .chain(added.iter())
+            .map(String::as_str)
+            .chain(version)
+            .chain([item.description.as_str()]),
+    );
+    if line.is_empty() && item.file_name != item.name {
+        line = item.file_name.clone();
+    }
 
     rect()
         .horizontal()
@@ -1069,6 +1476,7 @@ fn package_info(
                     package_type: package_type.clone(),
                     package_id: format!("{}:{}", provider as u8, package_id),
                     add_to_cluster: false,
+                    in_instance: true,
                 });
             })
         })
@@ -1077,66 +1485,13 @@ fn package_info(
             rect()
                 .vertical()
                 .width(Size::flex(1.0))
-                .spacing(3.)
-                .child(
-                    rect()
-                        .horizontal()
-                        .width(Size::fill())
-                        .cross_align(Alignment::Center)
-                        .spacing(8.)
-                        .child(
-                            label()
-                                .text(title)
-                                .font_size(text_size(15.))
-                                .font_weight(FontWeight::MEDIUM)
-                                .max_lines(1)
-                                .text_overflow(TextOverflow::Ellipsis)
-                                .max_width(Size::percent(60.))
-                                .color(colors::fg_primary()),
-                        )
-                        .child(if let Some(url) = item.github_url.clone() {
-                            rect()
-                                .cursor(CursorIcon::Pointer)
-                                .on_press(move |e: Event<PressEventData>| {
-                                    e.stop_propagation();
-                                    crate::platform::open_url(&url);
-                                })
-                                .child(github_badge())
-                                .into_element()
-                        } else if item.github_hosted {
-                            github_badge()
-                        } else if remote {
-                            provider_badge(item.provider)
-                        } else {
-                            local_badge()
-                        })
-                        .maybe_child(item.modpack.as_deref().map(modpack_badge))
-                        .maybe_child(item.is_outdated().then(outdated_badge))
-                        .maybe_child(item.copy_badge())
-                        .maybe_child(item.bisect_badge())
-                        .maybe_child(item.recency_badge()),
-                )
-                .maybe(!byline.is_empty(), |el| {
-                    el.child(
-                        label()
-                            .text(byline)
-                            .font_size(text_size(10.))
-                            .max_lines(1)
-                            .text_overflow(TextOverflow::Ellipsis)
-                            .width(Size::fill())
-                            .color(colors::fg_secondary()),
-                    )
+                .spacing(4.)
+                .child(PackageTitle {
+                    item: item.clone(),
+                    hidden_badges,
                 })
-                .maybe(!item.description.is_empty(), |el| {
-                    el.child(
-                        label()
-                            .text(item.description.clone())
-                            .font_size(text_size(11.))
-                            .max_lines(2)
-                            .text_overflow(TextOverflow::Ellipsis)
-                            .width(Size::fill())
-                            .color(colors::fg_secondary()),
-                    )
+                .maybe(!line.is_empty(), |el| {
+                    el.child(row_line(line, colors::fg_secondary()))
                 }),
         )
         .into_element()
@@ -1177,7 +1532,8 @@ pub(crate) fn icon_box(icon: IconType, size: f32) -> Element {
         .width(Size::px(size))
         .height(Size::px(size))
         .corner_radius(rounded(8.))
-        .background(colors::component_bg())
+        .background(colors::component_bg_hover())
+        .border(border_all_color(1., colors::component_border()).alignment(BorderAlignment::Inner))
         .child(
             Icon::new(icon)
                 .size(size * 0.4)
@@ -1191,7 +1547,7 @@ pub(crate) fn meta_size(size: u64) -> impl IntoElement {
         .maybe_child((size > 0).then(|| {
             label()
                 .text(format_size(size))
-                .font_size(text_size(11.))
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary())
         }))
         .into_element()
@@ -1314,4 +1670,25 @@ pub(crate) fn pill(icon: Option<Element>, text: String, accent: Color) -> Elemen
                 .color(accent),
         )
         .into_element()
+}
+
+#[cfg(test)]
+mod title_tests {
+    use super::*;
+
+    #[test]
+    fn title_budget_reserves_only_visible_badge_widths_and_gaps() {
+        assert_eq!(
+            title_badge_budget(252., 190., &[54., 60.]),
+            (190., vec![true, false])
+        );
+        assert_eq!(
+            title_badge_budget(251., 190., &[54., 30.]),
+            (213., vec![false, true])
+        );
+        assert_eq!(
+            title_badge_budget(180., 190., &[54., 30.]),
+            (180., vec![false, false])
+        );
+    }
 }

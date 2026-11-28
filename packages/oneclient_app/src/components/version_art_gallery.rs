@@ -9,7 +9,7 @@ use crate::components::{
 use crate::hooks::{refresh_version_art_gallery, use_version_art_gallery};
 use crate::i18n::t;
 use crate::theme::{colors, rounded, text_size};
-use crate::ui::border_all_color;
+use crate::ui::{Edge, border_all_color, edge_line};
 
 const DIALOG_WIDTH: f32 = 880.;
 const DIALOG_HEIGHT: f32 = 620.;
@@ -273,23 +273,16 @@ fn footer(
         ),
     };
 
+    let padding = Gaps::new(16., PANE_PADDING, 16., PANE_PADDING);
+
     rect()
         .horizontal()
         .width(Size::fill())
         .content(Content::Flex)
         .cross_align(Alignment::Center)
         .spacing(20.)
-        .padding(Gaps::new(16., PANE_PADDING, 16., PANE_PADDING))
-        .border(
-            Border::new()
-                .fill(colors::component_border())
-                .width(BorderWidth {
-                    top: 1.,
-                    right: 0.,
-                    bottom: 0.,
-                    left: 0.,
-                }),
-        )
+        .padding(padding)
+        .child(edge_line(Edge::Top, colors::component_border(), padding))
         .child(
             label()
                 .text(note)

@@ -1,5 +1,6 @@
 mod account_switcher;
 mod active_cluster_panel;
+mod art_zoom;
 mod asset_image;
 mod avatar;
 mod blocked_downloads_popup;
@@ -27,6 +28,7 @@ mod generic_prompt;
 mod home_stack;
 mod icons;
 mod incompatible_install_popup;
+mod instance_play;
 mod instance_row;
 mod invite_join_popup;
 mod java_install_manager;
@@ -45,6 +47,7 @@ mod notifications;
 mod onedrive_warning;
 mod optional_mods_popup;
 mod overlay_popup;
+pub(crate) use overlay_popup::{MountedDialog, mounted_dialogs};
 mod package_delete_dialog;
 mod package_row;
 mod package_update_popup;
@@ -80,14 +83,12 @@ pub use avatar::Avatar;
 pub use blocked_downloads_popup::BlockedDownloadsPopup;
 pub use bundle_choices_popup::BundleChoicesPopup;
 pub use bundled_install_warning::{BundledInstallWarning, PendingBundledInstall};
-pub use button::{
-    Button, ButtonSize, ButtonVariant, copy_button, link_button, open_folder_button,
-    sized_open_folder_button,
-};
+pub use button::{Button, ButtonSize, ButtonVariant, copy_button, link_button, open_folder_button};
 pub use charts::{BarChart, PieChart, ValueUnit, slice_color};
 pub use checkbox::checkbox_labeled;
-pub use cluster_menu::{ClusterContextMenu, ClusterMenuTarget};
 pub(crate) use cluster_menu::open_menu_at;
+pub use cluster_menu::{ClusterContextMenu, ClusterMenuTarget};
+pub(crate) use cluster_menu::{InstanceOverviewButton, InstanceOverviewSurface};
 pub use cluster_update_popup::ClusterUpdatePopup;
 pub use code_block::CodeBlock;
 pub use color_picker::ColorPicker;
@@ -106,6 +107,7 @@ pub use generic_prompt::GenericPromptOverlay;
 pub use home_stack::{HomeStack, WheelEdgeChain, use_home_stack, use_provide_home_stack};
 pub use icons::{Icon, IconTint, IconType};
 pub use incompatible_install_popup::IncompatibleInstallPopup;
+pub(crate) use instance_play::InstancePlay;
 pub use instance_row::InstanceRow;
 pub use invite_join_popup::InviteJoinPopup;
 pub use java_install_manager::JavaInstallManager;
@@ -124,8 +126,8 @@ pub use modpack_confirm_popup::ModpackConfirmPopup;
 pub use navbar::{AppNavbar, OnboardingNavbar};
 pub(crate) use navbar::{window_controls, window_controls_with};
 pub use notifications::{ChevronToggle, NotificationCenter};
-pub(crate) use optional_mods_popup::OptionalModCard;
 pub use onedrive_warning::onedrive_warning;
+pub(crate) use optional_mods_popup::OptionalModCard;
 pub use optional_mods_popup::OptionalModsPopup;
 pub use overlay_popup::{
     OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, OverlayPopup, overlay_is_topmost, popup_surface,
@@ -133,9 +135,11 @@ pub use overlay_popup::{
 };
 pub use package_delete_dialog::use_shared_delete;
 pub(crate) use package_row::{
-    CARD_GRID_H, CARD_H, GRID_GAP, GRID_MIN_W, badge, bundled_delete_action, disable_request,
-    grid_card, guard_disable, icon_box, kebab_button, meta_size, meta_text, on_secondary,
-    package_icon, pill, remote_icon, run_guarded, set_enabled_action, toggle_action,
+    CARD_GRID_H, CARD_H, CONTENT_GRID_MIN_W, CardTone, GRID_GAP, GRID_MIN_W, ROW_GAP, ROW_ICON,
+    ROW_RADIUS, bundled_delete_action, card_description, card_surface, content_card_height,
+    disable_request, grid_card, guard_disable, icon_box, joined_line, kebab_button, meta_size,
+    meta_text, on_secondary, package_icon, pill, remote_icon, row_line, row_surface, row_title,
+    run_guarded, set_enabled_action, toggle_action,
 };
 pub use package_row::{
     CardLayout, CopyStatus, PackageEntry, PackageRow, github_badge, package_context_menu,
@@ -149,7 +153,7 @@ pub use progress_track::progress_track;
 pub use recents_row::RecentsRow;
 pub use release_migration_popup::ReleaseMigrationPopup;
 pub use screenshot_viewer::{ScreenshotViewer, screenshot_context_menu};
-pub use scrollview::{LazySection, ScrollArea, ScrollAreaCtx};
+pub use scrollview::{LazySection, PageWheelInput, PrimaryList, ScrollArea, ScrollAreaCtx};
 pub(crate) use scrollview::{corrected_scroll, normalize_wheel_delta};
 pub use segmented_control::{Segment, SegmentedControl};
 pub use settings_files::{FileChoice, file_choice_header, note, settings_file_picker};

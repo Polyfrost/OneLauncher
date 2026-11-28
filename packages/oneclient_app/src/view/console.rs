@@ -10,7 +10,9 @@ use tokio::sync::broadcast::error::RecvError;
 use tracing::Level;
 
 use crate::components::{Button, Icon, IconType, LogViewer, Segment, SegmentedControl, TextInput};
+use crate::hooks::{OverlayClaims, use_provide_search_targets, use_search_targets};
 use crate::i18n::{t, tf};
+use crate::keyboard_shortcuts::{AppShortcut, app_shortcut};
 use crate::theme::{colors, text_size};
 use crate::view::single_window::{Claim, SingleWindow};
 
@@ -162,6 +164,10 @@ impl Component for LogConsole {
             })
         });
 
+        // This window has its own root, so its search is the only one the shortcut can reach here
+        use_provide_search_targets();
+        let search_targets = use_search_targets();
+
         let floor = severity.read().floor();
         let query = search.read().to_lowercase();
         let lines: Arc<Vec<Arc<str>>> = Arc::new(
@@ -179,6 +185,14 @@ impl Component for LogConsole {
             .height(Size::fill())
             .padding(Gaps::new_all(12.))
             .background(colors::page())
+            .on_global_key_down(move |e: Event<KeyboardEventData>| {
+                if app_shortcut(&e.key, e.code, e.modifiers, Modifiers::ctrl_or_meta())
+                    == Some(AppShortcut::FocusSearch)
+                    && search_targets.focus(&OverlayClaims::default())
+                {
+                    e.prevent_default();
+                }
+            })
             .child(
                 LogViewer::new(t("oneclient.console.launcher_logs"), lines.clone())
                     .streaming(true)
@@ -220,6 +234,7 @@ fn view_row(
         .child(
             rect().width(Size::flex(1.0)).child(
                 TextInput::new(search)
+                    .search()
                     .placeholder(t("oneclient.console.filter_placeholder"))
                     .leading(
                         Icon::new(IconType::SearchMd)

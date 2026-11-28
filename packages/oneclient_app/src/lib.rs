@@ -16,6 +16,7 @@ pub mod hooks;
 pub(crate) mod i18n;
 mod install;
 pub mod ipc;
+mod keyboard_shortcuts;
 mod launcher;
 mod layout;
 pub mod loader_update;

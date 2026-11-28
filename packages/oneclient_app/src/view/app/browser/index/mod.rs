@@ -622,6 +622,7 @@ fn header(
         )
         .child(
             TextInput::new(query)
+                .search()
                 .width(Size::px(search_width))
                 .placeholder(t("oneclient.browser.index.search"))
                 .leading(

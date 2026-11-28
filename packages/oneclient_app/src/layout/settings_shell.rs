@@ -293,6 +293,7 @@ fn search_width_for(header_width: f32) -> f32 {
 fn search_box(mut search: State<String>, width: f32) -> impl IntoElement {
     let has_query = !search.read().trim().is_empty();
     let base = TextInput::new(search)
+        .search()
         .placeholder(t("oneclient.layout.settings.search.placeholder"))
         .width(Size::px(width))
         .leading(

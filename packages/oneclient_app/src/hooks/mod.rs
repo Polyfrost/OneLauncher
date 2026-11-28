@@ -5,6 +5,7 @@ mod debounce;
 mod hold_countdown;
 mod overlay_claims;
 mod queries;
+mod search_targets;
 mod selection;
 mod shortcut_actions;
 mod sync_actions;
@@ -21,6 +22,9 @@ pub use hold_countdown::use_hold_countdown;
 pub use overlay_claims::{
     OverlayClaims, use_overlay_claim, use_overlay_claim_when, use_overlay_claims,
     use_provide_overlay_claims,
+};
+pub use search_targets::{
+    SearchTargets, use_provide_search_targets, use_search_target, use_search_targets,
 };
 pub use selection::{Selection, use_selection};
 pub use view_state::{PersistedView, use_view_state};

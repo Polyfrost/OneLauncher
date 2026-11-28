@@ -9,7 +9,9 @@ use crate::components::{
     ReleaseMigrationPopup, SplashCurtain, StatusBar, Toasts, TooltipHost, UnpublishedImportPopup,
     UpdatePromptOverlay, use_provide_tooltips,
 };
-use crate::hooks::{SplashState, use_provide_overlay_claims, use_provide_splash};
+use crate::hooks::{
+    SplashState, use_provide_overlay_claims, use_provide_search_targets, use_provide_splash,
+};
 use crate::layout::{HomeArtPrefetch, PendingLaunchDriver, use_ipc_commands};
 use crate::motion::AnimationClockDriver;
 use crate::routes::Route;
@@ -24,6 +26,7 @@ impl Component for RootLayout {
         let home_ready = use_state(|| false);
         use_provide_splash(SplashState { active, home_ready });
         use_provide_overlay_claims();
+        use_provide_search_targets();
         use_provide_tooltips();
         use_ipc_commands();
 

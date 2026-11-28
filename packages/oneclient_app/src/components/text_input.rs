@@ -1,7 +1,9 @@
 use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
+use crate::hooks::use_search_target;
 use crate::i18n::t;
+use crate::keyboard_shortcuts::app_shortcut;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::clamp_to_window;
 
@@ -50,6 +52,10 @@ pub struct TextInput {
     on_submit: Option<EventHandler<String>>,
     multiline: bool,
     expandable: bool,
+    enabled: bool,
+    search: bool,
+    a11y_id: Option<AccessibilityId>,
+    pre_key_down: Option<Callback<Event<KeyboardEventData>, bool>>,
     layout: LayoutData,
     style: StyleState,
     text_style: TextStyleData,
@@ -67,6 +73,10 @@ impl TextInput {
             on_submit: None,
             multiline: false,
             expandable: false,
+            enabled: true,
+            search: false,
+            a11y_id: None,
+            pre_key_down: None,
             layout: LayoutData::default(),
             style: StyleState::default(),
             text_style: TextStyleData::default(),
@@ -77,7 +87,14 @@ impl TextInput {
     }
 
     pub fn enabled(mut self, enabled: impl Into<bool>) -> Self {
-        self.input = self.input.enabled(enabled);
+        self.enabled = enabled.into();
+        self.input = self.input.enabled(self.enabled);
+        self
+    }
+
+    /// Lets Ctrl/Cmd+F and Ctrl/Cmd+L focus this field while it is on screen.
+    pub fn search(mut self) -> Self {
+        self.search = true;
         self
     }
 
@@ -138,6 +155,8 @@ impl TextInput {
     }
 
     pub fn a11y_id(mut self, a11y_id: impl Into<AccessibilityId>) -> Self {
+        let a11y_id = a11y_id.into();
+        self.a11y_id = Some(a11y_id);
         self.input = self.input.a11y_id(a11y_id);
         self
     }
@@ -156,7 +175,7 @@ impl TextInput {
         mut self,
         on_pre_key_down: impl Into<Callback<Event<KeyboardEventData>, bool>>,
     ) -> Self {
-        self.input = self.input.on_pre_key_down(on_pre_key_down);
+        self.pre_key_down = Some(on_pre_key_down.into());
         self
     }
 }
@@ -215,10 +234,26 @@ fn submit_on_modifier_enter(
     })
 }
 
+/// What Freya's `Input` does with a key when no pre-handler is set.
+fn default_pre_key_down(e: &Event<KeyboardEventData>, multiline: bool) -> bool {
+    match &e.key {
+        Key::Named(NamedKey::Enter) if !multiline => true,
+        Key::Named(NamedKey::Escape) | Key::Named(NamedKey::Shift) => true,
+        Key::Named(NamedKey::Tab) => false,
+        _ => {
+            e.stop_propagation();
+            e.prevent_default();
+            true
+        }
+    }
+}
+
 impl Component for TextInput {
     fn render(&self) -> impl IntoElement {
         let mut expanded = use_state(|| false);
         let mut area = use_state(Area::default);
+        let a11y_id = use_hook(|| self.a11y_id.unwrap_or_else(AccessibilityId::new_unique));
+        use_search_target(a11y_id, self.search && self.enabled);
 
         let mut card = rect()
             .layout(self.layout.clone())
@@ -231,11 +266,26 @@ impl Component for TextInput {
         card.style_mut().clone_from(&self.style);
 
         let mut input = self.input.clone();
-        if self.multiline
-            && let Some(on_submit) = self.on_submit.clone()
-        {
-            input = input.on_pre_key_down(submit_on_modifier_enter(self.value.clone(), on_submit));
+        if self.search {
+            input = input.a11y_id(a11y_id);
         }
+        let pre_key_down = self.pre_key_down.clone().or_else(|| {
+            self.on_submit
+                .clone()
+                .filter(|_| self.multiline)
+                .map(|on_submit| submit_on_modifier_enter(self.value.clone(), on_submit))
+        });
+        let multiline = self.multiline;
+        input = input.on_pre_key_down(move |e: Event<KeyboardEventData>| {
+            // A focused input swallows every key, which would leave the app-wide shortcuts dead while typing
+            if app_shortcut(&e.key, e.code, e.modifiers, Modifiers::ctrl_or_meta()).is_some() {
+                return false;
+            }
+            match &pre_key_down {
+                Some(pre_key_down) => pre_key_down.call(e),
+                None => default_pre_key_down(&e, multiline),
+            }
+        });
         if !matches!(self.layout.height, Size::Inner) {
             input = input.height(Size::fill());
         }

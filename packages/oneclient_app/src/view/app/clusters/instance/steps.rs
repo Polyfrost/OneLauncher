@@ -660,6 +660,7 @@ fn version_controls(mut wizard: Wizard, picks: &Picks) -> Element {
         .child(
             rect().width(Size::flex(1.0)).child(
                 TextInput::new(wizard.query)
+                    .search()
                     .placeholder(t("oneclient.clusters.instance.steps.version.search"))
                     .width(Size::fill())
                     .leading(Icon::new(IconType::SearchMd).size(14.)),

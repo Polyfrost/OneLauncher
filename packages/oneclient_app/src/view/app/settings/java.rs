@@ -11,7 +11,7 @@ use crate::i18n::t;
 use crate::invalidate_java_queries;
 use crate::layout::SearchItem;
 use crate::theme::{colors, rounded, text_size};
-use crate::ui::border_all_color;
+use crate::ui::{border_all_color, underlined};
 use crate::view::app::settings::section_header;
 
 #[derive(PartialEq)]
@@ -246,23 +246,13 @@ impl Component for RuntimeRow {
                 .into_element()
         }
 
-        rect()
+        let row = rect()
             .horizontal()
             .width(Size::fill())
             .content(Content::Flex)
             .cross_align(Alignment::Center)
             .spacing(12.)
             .padding(Gaps::new_symmetric(8., 14.))
-            .maybe(!self.last, |el| {
-                el.border(
-                    Border::new()
-                        .width(BorderWidth {
-                            bottom: 1.,
-                            ..Default::default()
-                        })
-                        .fill(colors::component_border()),
-                )
-            })
             .child(cell(
                 format!("{} {}", runtime.vendor, runtime.major),
                 Size::px(130.),
@@ -295,7 +285,16 @@ impl Component for RuntimeRow {
                             ),
                     ),
             )
-            .child(remove_button(self.pending_remove, path))
+            .child(remove_button(self.pending_remove, path));
+
+        underlined(
+            row,
+            if self.last {
+                Color::TRANSPARENT
+            } else {
+                colors::component_border()
+            },
+        )
     }
 }
 

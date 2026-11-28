@@ -22,8 +22,8 @@ use crate::i18n::{t, tf};
 use crate::routes::Route;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::{
-    border_all_color, columns_for, fixed_grid, grid_columns_for_width, last_played_label,
-    window_logical_size,
+    Edge, border_all_color, columns_for, edge_line, fixed_grid, grid_columns_for_width,
+    last_played_label, window_logical_size,
 };
 use crate::utils::{
     ClusterGroups, GridSelection, ReleaseLine, default_line, default_loader, default_version_key,
@@ -548,17 +548,6 @@ fn default_line_cluster(clusters: &[Cluster], active: Option<&Cluster>) -> Optio
     .map(|c| c.id)
 }
 
-fn bottom_border() -> Border {
-    Border::new()
-        .fill(colors::component_border())
-        .width(BorderWidth {
-            top: 0.,
-            right: 0.,
-            bottom: 1.,
-            left: 0.,
-        })
-}
-
 fn section(title: &str, caption: &str, grid: Element) -> Element {
     rect()
         .vertical()
@@ -602,7 +591,11 @@ pub(crate) fn toolbar(
         .cross_align(Alignment::Center)
         .content(Content::Flex)
         .spacing(12.)
-        .border(bottom_border())
+        .child(edge_line(
+            Edge::Bottom,
+            colors::component_border(),
+            Gaps::default(),
+        ))
         .maybe_child(
             inline_filters
                 .as_ref()

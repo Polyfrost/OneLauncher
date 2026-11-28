@@ -6,6 +6,8 @@ use crate::theme::{colors, text_size};
 use crate::ui::border_all_color;
 use crate::utils::capitalize;
 
+const CATEGORY_SCROLLBAR_GUTTER: f32 = 14.;
+
 #[derive(PartialEq)]
 pub(super) struct CategorySidebar {
     pub(super) categories: Vec<String>,
@@ -84,6 +86,8 @@ impl Component for CategorySidebar {
                 ScrollArea::new()
                     .width(Size::fill())
                     .height(Size::flex(1.0))
+                    // Reserve the thumb's track even when the list fits.
+                    .padding(Gaps::new(0., CATEGORY_SCROLLBAR_GUTTER, 0., 0.))
                     .bottom_fade(self.fade_surface)
                     .children([list.into_element()]),
             )
@@ -157,5 +161,46 @@ impl Component for CategoryRow {
                     })
                     .color(color),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use freya_testing::TestingRunner;
+
+    use super::*;
+
+    #[test]
+    fn category_rows_keep_the_same_gutter_with_and_without_overflow() {
+        for count in [1, 30] {
+            let (mut test, ()) = TestingRunner::new(
+                move || {
+                    rect()
+                        .vertical()
+                        .width(Size::px(CATEGORY_SIDEBAR_W))
+                        .height(Size::fill())
+                        .child(CategorySidebar {
+                            categories: (0..count).map(|i| format!("Category {i}")).collect(),
+                            selected: use_state(Vec::new),
+                            fade_surface: colors::card(),
+                        })
+                },
+                (800., 180.).into(),
+                |_| (),
+                1.,
+            );
+            test.poll_n(Duration::ZERO, 5);
+
+            let row = test
+                .find(|node, element| {
+                    (element.accessibility().builder.role() == AccessibilityRole::Button)
+                        .then(|| node.layout().area)
+                })
+                .unwrap();
+            assert_eq!(row.min_x(), 0.);
+            assert_eq!(row.max_x(), CATEGORY_SIDEBAR_W - CATEGORY_SCROLLBAR_GUTTER);
+        }
     }
 }

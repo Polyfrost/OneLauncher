@@ -854,7 +854,7 @@ fn list_card(
             hidden_badges,
         ))
         .maybe_child(on_copies.map(|on_press| copies_button(copies, on_press)))
-        .child(meta_size(item.size))
+        .maybe_child((item.size > 0).then(|| meta_size(item.size)))
         .child(toggle_controlled(item.enabled, on_toggle).disabled(item.locked))
         .maybe_child(on_context.map(kebab_button))
         .into_element()

@@ -276,7 +276,7 @@ impl Component for ClusterLogs {
         });
 
         if !running && try_cluster_logs(&logs_query).is_some_and(|files| files.is_empty()) {
-            use super::folder_list::folder_button;
+            use super::folder_list::{folder_button, toolbar_secondary};
             use super::package_manager::{empty_hint, empty_shell, empty_title};
             return cluster_content()
                 .child(
@@ -292,15 +292,15 @@ impl Component for ClusterLogs {
                                     folder_button(folder, t("oneclient.layout.cluster.logs_folder"))
                                 }))
                                 .child(
-                                    Button::new()
-                                        .small()
-                                        .secondary()
-                                        .on_press(move |_| {
-                                            spawn(async {
-                                                invalidate_logs_queries().await;
-                                            });
-                                        })
-                                        .text(t("oneclient.common.refresh")),
+                                    toolbar_secondary(
+                                        IconType::RefreshCw01,
+                                        t("oneclient.common.refresh"),
+                                    )
+                                    .on_press(move |_| {
+                                        spawn(async {
+                                            invalidate_logs_queries().await;
+                                        });
+                                    }),
                                 ),
                         ),
                 )
@@ -326,19 +326,21 @@ impl Component for ClusterLogs {
                 dump_button,
                 compact,
             ))
-            .child(rect().width(Size::fill()).height(Size::flex(1.0)).child(
-                LogViewer::new("", viewer_lines)
-                    .numbers(viewer_numbers)
-                    .on_jump(on_jump)
-                    .header(viewer_header(
-                        search,
-                        level,
-                        confirm,
-                        has_log,
-                        upload_path,
-                        search_id,
-                    )),
-            ));
+            .child(
+                rect().width(Size::fill()).height(Size::flex(1.0)).child(
+                    LogViewer::new("", viewer_lines)
+                        .numbers(viewer_numbers)
+                        .on_jump(on_jump)
+                        .header(viewer_header(
+                            search,
+                            level,
+                            confirm,
+                            has_log,
+                            upload_path,
+                            search_id,
+                        )),
+                ),
+            );
 
         cluster_content()
             .child(body.into_element())

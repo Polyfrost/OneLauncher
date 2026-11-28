@@ -65,7 +65,6 @@ fn card_surface(rect: Rect, focused: bool, hovered: bool) -> Rect {
 struct CardInstalled {
     source: InstallSource,
     enable: Option<ClusterAction>,
-    claimed_only: bool,
 }
 
 fn installed_for(
@@ -78,21 +77,14 @@ fn installed_for(
         .map(|installed| card_installed(installed, cluster_id))
 }
 
+/// A bundled mod that hasn't been downloaded yet still reads as bundled: the bundle fetches it on
+/// the next launch, so offering Install would only add a second copy
 fn card_installed(installed: &Installed, cluster_id: i64) -> CardInstalled {
-    let enable = installed
-        .disabled_bundled()
-        .and_then(|version| version.enable_action(cluster_id));
-    let claimed_only = enable.is_none() && !installed.has_link();
-    let source = installed
-        .versions
-        .iter()
-        .find(|version| version.hash.is_some() && version.source == InstallSource::Bundled)
-        .map(|version| version.source)
-        .unwrap_or(InstallSource::Manual);
     CardInstalled {
-        source,
-        enable,
-        claimed_only,
+        source: installed.source,
+        enable: installed
+            .disabled_bundled()
+            .and_then(|version| version.enable_action(cluster_id)),
     }
 }
 
@@ -661,10 +653,7 @@ impl Component for InstallButton {
             use_version_filter(cluster_id, self.content_type, self.search_override.clone());
 
         let versions = version_list(&use_package_versions_when(
-            self.installed
-                .as_ref()
-                .is_none_or(|entry| entry.claimed_only)
-                && !choose_target,
+            self.installed.is_none() && !choose_target,
             provider,
             project_id.clone(),
             game_version,
@@ -695,10 +684,7 @@ impl Component for InstallButton {
         let (installing, waiting) =
             use_installs_snapshot().package_busy(is_modpack, cluster_id, provider, &project_id);
 
-        if ownership_ready
-            && let Some(installed) = &self.installed
-            && !installed.claimed_only
-        {
+        if ownership_ready && let Some(installed) = &self.installed {
             if let Some(action) = installed.enable.clone() {
                 return EnableButton {
                     action,
@@ -732,12 +718,6 @@ impl Component for InstallButton {
         }
 
         let incompatible = add_to_cluster && latest.is_none() && !versions.is_empty();
-        let claimed_only = self
-            .installed
-            .as_ref()
-            .is_some_and(|entry| entry.claimed_only);
-        let package_type = self.package_type.clone();
-
         rect()
             // The card behind is one big press target stop here so the package page doesn't open on top of the install
             .on_press(|e: Event<PressEventData>| e.stop_propagation())
@@ -759,16 +739,6 @@ impl Component for InstallButton {
                         move |_| {
                             if choose_target {
                                 target_prompt.set(true);
-                                return;
-                            }
-                            if claimed_only {
-                                open_package(
-                                    cluster_id,
-                                    &package_type,
-                                    provider,
-                                    &project_id,
-                                    add_to_cluster,
-                                );
                                 return;
                             }
                             let Some(version_id) = latest.clone() else {
@@ -900,7 +870,7 @@ mod tests {
     use crate::view::app::browser::{BundlePin, InstalledVersion};
 
     #[test]
-    fn unlinked_pin_is_a_claim_and_linked_copy_is_installed() {
+    fn a_bundled_mod_reads_as_bundled_before_and_after_its_download() {
         let mut installed = Installed {
             source: InstallSource::Bundled,
             bundled_version: Some("v1".into()),
@@ -919,9 +889,10 @@ mod tests {
             }],
             unversioned_enabled: None,
         };
-        assert!(card_installed(&installed, 7).claimed_only);
+        let waiting = card_installed(&installed, 7);
+        assert_eq!(waiting.source, InstallSource::Bundled);
+        assert!(waiting.enable.is_none());
         installed.versions[0].hash = Some("hash".into());
-        assert!(!card_installed(&installed, 7).claimed_only);
         assert_eq!(card_installed(&installed, 7).source, InstallSource::Bundled);
     }
 }

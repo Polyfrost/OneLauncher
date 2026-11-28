@@ -29,7 +29,7 @@ use crate::hooks::{
 use crate::i18n::{t, tf};
 use crate::routes::Route;
 use crate::theme::{colors, text_size};
-use crate::ui::grid_columns_for_width;
+use crate::ui::{Edge, edge_line, grid_columns_for_width};
 use crate::view::app::cluster::supports_datapacks;
 use crate::view::app::clusters::ClusterPickerButton;
 
@@ -1109,16 +1109,11 @@ impl Component for TypePicker {
             .width(Size::fill())
             .height(Size::px(38.))
             .cross_align(Alignment::Center)
-            .border(
-                Border::new()
-                    .fill(colors::component_border())
-                    .width(BorderWidth {
-                        top: 0.,
-                        right: 0.,
-                        bottom: 1.,
-                        left: 0.,
-                    }),
-            )
+            .child(edge_line(
+                Edge::Bottom,
+                colors::component_border(),
+                Gaps::default(),
+            ))
             .child(
                 TabBar::new()
                     .width(Size::auto())

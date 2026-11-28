@@ -163,6 +163,66 @@ pub fn divider() -> Rect {
         .background(theme::colors::component_border())
 }
 
+/// An element's edge for [`edge_line`]
+#[derive(Clone, Copy)]
+pub enum Edge {
+    Top,
+    Right,
+    Bottom,
+}
+
+/// A 1 px line along one edge of the parent, given the parent's own `padding`. Unlike a one-sided
+/// border it paints nothing on the other sides, and it takes no part in the parent's layout.
+///
+/// Absolute children resolve against the parent's content box before it wraps its children, so
+/// `Bottom` and `Right` need a parent whose height and width aren't auto; see [`underlined`].
+pub fn edge_line(edge: Edge, color: Color, padding: Gaps) -> Rect {
+    // Negative margins stretch the line over the padding and, unlike a size function, follow the
+    // window's scale factor
+    let across = Gaps::new(0., -padding.right(), 0., -padding.left());
+    let down = Gaps::new(-padding.top(), 0., -padding.bottom(), 0.);
+
+    let (position, width, height, margin) = match edge {
+        Edge::Top => (
+            Position::new_absolute().top(-padding.top()),
+            Size::percent(100.),
+            Size::px(1.),
+            across,
+        ),
+        Edge::Right => (
+            Position::new_absolute().right(-padding.right()),
+            Size::px(1.),
+            Size::percent(100.),
+            down,
+        ),
+        Edge::Bottom => (
+            Position::new_absolute().bottom(-padding.bottom()),
+            Size::percent(100.),
+            Size::px(1.),
+            across,
+        ),
+    };
+
+    rect()
+        .position(position)
+        .width(width)
+        .height(height)
+        .margin(margin)
+        .interactive(false)
+        .background(color)
+}
+
+/// Wraps a full-width row of any height with a line along the inside of its bottom edge
+pub fn underlined(row: impl IntoElement, color: Color) -> Rect {
+    rect().vertical().width(Size::fill()).child(row).child(
+        // Empty, so the line hangs up into the row's last pixel
+        rect()
+            .width(Size::fill())
+            .height(Size::px(0.))
+            .child(edge_line(Edge::Bottom, color, Gaps::default())),
+    )
+}
+
 pub fn centered_note(text: &str) -> Element {
     rect()
         .width(Size::fill())
@@ -319,5 +379,133 @@ mod last_played_tests {
         assert_eq!(last_played_days(365), "1 year ago");
         assert_eq!(last_played_days(729), "1 year ago");
         assert_eq!(last_played_days(730), "2 years ago");
+    }
+}
+
+#[cfg(test)]
+mod edge_line_tests {
+    use super::*;
+    use freya_testing::TestingRunner;
+
+    const ROW: Color = Color::from_rgb(1, 0, 0);
+    const CONTENT: Color = Color::from_rgb(2, 0, 0);
+    const LINE: Color = Color::from_rgb(3, 0, 0);
+
+    #[derive(Clone, Copy, PartialEq)]
+    enum Case {
+        Plain,
+        Top,
+        Underlined,
+        FixedPlain,
+        FixedBottom,
+        FixedRight,
+    }
+
+    fn app() -> impl IntoElement {
+        let case = *use_consume::<State<Case>>().read();
+        let padding = Gaps::new(16., 24., 10., 14.);
+        let block = |width: Size, height: f32| {
+            rect()
+                .width(width)
+                .height(Size::px(height))
+                .background(CONTENT)
+        };
+        let fixed = matches!(
+            case,
+            Case::FixedPlain | Case::FixedBottom | Case::FixedRight
+        );
+        let edge = match case {
+            Case::Top => Some(Edge::Top),
+            Case::FixedBottom => Some(Edge::Bottom),
+            Case::FixedRight => Some(Edge::Right),
+            _ => None,
+        };
+        let row = rect()
+            .horizontal()
+            .width(Size::fill())
+            .height(if fixed { Size::px(60.) } else { Size::auto() })
+            .content(Content::Flex)
+            .cross_align(Alignment::Center)
+            .spacing(12.)
+            .padding(padding)
+            .background(ROW)
+            .maybe_child(edge.map(|edge| edge_line(edge, LINE, padding)))
+            .child(block(Size::px(30.), 20.))
+            .child(block(Size::flex(1.), 10.))
+            .child(block(Size::px(40.), 30.));
+        let row = if case == Case::Underlined {
+            underlined(row, LINE).into_element()
+        } else {
+            row.into_element()
+        };
+
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .child(row)
+            .child(block(Size::fill(), 20.))
+    }
+
+    fn areas(case: Case, scale: f64) -> [Vec<Area>; 3] {
+        let (mut runner, _) = TestingRunner::new(
+            app,
+            (600., 300.).into(),
+            |runner| runner.provide_root_context(|| State::create(case)),
+            scale,
+        );
+        runner.sync_and_update();
+        [ROW, CONTENT, LINE].map(|color| {
+            let fill: Fill = color.into();
+            runner.find_many(|node, element| {
+                (element.style().background == fill).then(|| node.layout().visible_area())
+            })
+        })
+    }
+
+    fn assert_area(actual: &Area, x: f32, y: f32, width: f32, height: f32) {
+        let expected = [x, y, width, height];
+        let actual = [
+            actual.min_x(),
+            actual.min_y(),
+            actual.width(),
+            actual.height(),
+        ];
+        assert!(
+            actual
+                .iter()
+                .zip(expected)
+                .all(|(a, e)| (a - e).abs() < 0.01),
+            "{actual:?} is not {expected:?}"
+        );
+    }
+
+    #[test]
+    fn a_line_covers_its_edge_and_moves_nothing() {
+        for scale in [1., 1.5] {
+            let px = scale as f32;
+            for (case, plain) in [
+                (Case::Top, Case::Plain),
+                (Case::Underlined, Case::Plain),
+                (Case::FixedBottom, Case::FixedPlain),
+                (Case::FixedRight, Case::FixedPlain),
+            ] {
+                let [rows, content, lines] = areas(case, scale);
+                let [plain_rows, plain_content, none] = areas(plain, scale);
+                assert!(none.is_empty());
+                assert_eq!(rows, plain_rows);
+                assert_eq!(content.len(), 4);
+                assert_eq!(content, plain_content);
+                assert_eq!(lines.len(), 1);
+
+                let (row, line) = (rows[0], &lines[0]);
+                let (x, y) = (row.min_x(), row.min_y());
+                let (w, h) = (row.width(), row.height());
+                match case {
+                    Case::Top => assert_area(line, x, y, w, px),
+                    Case::FixedRight => assert_area(line, row.max_x() - px, y, px, h),
+                    _ => assert_area(line, x, row.max_y() - px, w, px),
+                }
+            }
+        }
     }
 }

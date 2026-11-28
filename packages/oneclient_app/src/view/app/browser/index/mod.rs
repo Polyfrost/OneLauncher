@@ -502,6 +502,7 @@ impl Component for BrowserBody {
                 sort,
                 loader: loader_filterable.then_some(loader),
                 side: side_filterable.then_some(side),
+                side_slot: content_type == ContentType::Mod,
                 packages,
                 installed,
                 add_to_cluster: cluster_modpacks,

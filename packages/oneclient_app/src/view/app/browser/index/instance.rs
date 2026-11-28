@@ -131,6 +131,9 @@ pub(super) struct InstanceBrowse {
     pub sort: State<SearchSort>,
     pub loader: Option<State<Option<GameLoader>>>,
     pub side: Option<State<Option<SearchSide>>>,
+    /// Mods can be filtered by side on some providers. The toolbar keeps the picker's room either
+    /// way, so switching provider never slides the provider switch or the sort picker.
+    pub side_slot: bool,
     pub packages: Vec<ProjectSummary>,
     pub installed: InstalledMap,
     pub add_to_cluster: bool,
@@ -255,6 +258,7 @@ impl InstanceBrowse {
                 sort: self.sort,
                 loader: self.loader,
                 side: self.side,
+                side_slot: self.side_slot,
             },
             toolbar_width,
             chips_width,
@@ -307,6 +311,7 @@ struct Toolbar {
     sort: State<SearchSort>,
     loader: Option<State<Option<GameLoader>>>,
     side: Option<State<Option<SearchSide>>>,
+    side_slot: bool,
 }
 
 fn toolbar(
@@ -317,7 +322,8 @@ fn toolbar(
     icon_controls_width: State<f32>,
 ) -> Element {
     let has_chips = parts.target.is_some() || parts.override_button.is_some();
-    let pickers = usize::from(parts.loader.is_some()) + usize::from(parts.side.is_some());
+    let pickers =
+        usize::from(parts.loader.is_some()) + usize::from(parts.side.is_some() || parts.side_slot);
     let mut fit = toolbar_fit(
         *width.read(),
         *chips_width.read(),
@@ -397,12 +403,25 @@ fn toolbar(
                 target.set(next);
             }
         })
+        // The side picker leads the group, so on a provider without it the reserved room reads as
+        // part of the gap before the controls instead of a hole between them
+        .maybe_child(match parts.side {
+            Some(side) => Some(
+                SidePicker {
+                    side,
+                    width: PICKER_W,
+                    height: CONTROL_H,
+                }
+                .into_element(),
+            ),
+            None => parts.side_slot.then(|| {
+                rect()
+                    .width(Size::px(PICKER_W))
+                    .height(Size::px(CONTROL_H))
+                    .into_element()
+            }),
+        })
         .child(providers)
-        .maybe_child(parts.side.map(|side| SidePicker {
-            side,
-            width: PICKER_W,
-            height: CONTROL_H,
-        }))
         .maybe_child(parts.loader.map(|loader| LoaderPicker {
             loader,
             width: PICKER_W,

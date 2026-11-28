@@ -860,6 +860,10 @@ pub(crate) async fn finalize_session(
         }
         crate::game::unlink_cluster_logs(cwd).await;
     }
+    state
+        .services
+        .events
+        .signal(oneclient_events::Signal::ClustersChanged);
 
     let name = &cluster.name;
     let reported = end.watch.as_ref().is_some_and(CrashWatch::reported_crash);

@@ -1,6 +1,7 @@
 use freya::query::{Mutation, MutationCapability, QueriesStorage, UseMutation, use_mutation};
-use oneclient_common::domain::GameLoader;
+use oneclient_common::domain::{ContentType, GameLoader};
 use oneclient_content::packages::LiveSync;
+use oneclient_core::clusters::Cluster;
 use oneclient_db::models::{ClusterId, ClusterKind};
 use std::path::PathBuf;
 
@@ -266,11 +267,13 @@ pub enum ClusterAction {
     },
     SetFolderPackEnabled {
         cluster_id: ClusterId,
+        content_type: ContentType,
         name: String,
         enabled: bool,
     },
     RemoveFolderPack {
         cluster_id: ClusterId,
+        content_type: ContentType,
         name: String,
         enabled: bool,
     },
@@ -398,21 +401,39 @@ impl MutationCapability for ClusterMutation {
             }
             ClusterAction::SetFolderPackEnabled {
                 cluster_id,
+                content_type,
                 name,
                 enabled,
             } => {
-                folder_pack_op(&state, *cluster_id, |dir| async move {
-                    oneclient_core::game::set_folder_pack_enabled(&dir, name, *enabled).await
+                let launcher = state.clone();
+                folder_pack_op(&state, *cluster_id, |cluster| async move {
+                    oneclient_core::game::set_folder_pack_enabled(
+                        &launcher.services,
+                        &cluster,
+                        *content_type,
+                        name,
+                        *enabled,
+                    )
+                    .await
                 })
                 .await
             }
             ClusterAction::RemoveFolderPack {
                 cluster_id,
+                content_type,
                 name,
                 enabled,
             } => {
-                folder_pack_op(&state, *cluster_id, |dir| async move {
-                    oneclient_core::game::remove_folder_pack(&dir, name, *enabled).await
+                let launcher = state.clone();
+                folder_pack_op(&state, *cluster_id, |cluster| async move {
+                    oneclient_core::game::remove_folder_pack(
+                        &launcher.services,
+                        &cluster,
+                        *content_type,
+                        name,
+                        *enabled,
+                    )
+                    .await
                 })
                 .await
             }
@@ -907,7 +928,7 @@ async fn folder_pack_op<F, Fut>(
     op: F,
 ) -> Result<(), oneclient_content::ContentError>
 where
-    F: FnOnce(PathBuf) -> Fut,
+    F: FnOnce(Cluster) -> Fut,
     Fut: std::future::Future<Output = std::io::Result<()>>,
 {
     let invalid = |err: &dyn std::fmt::Display| oneclient_content::ContentError::InvalidData {
@@ -918,8 +939,7 @@ where
         .get(cluster_id)
         .await
         .map_err(|e| invalid(&e))?;
-    let dir = cluster.game_dir().map_err(|e| invalid(&e))?;
-    op(dir).await.map_err(|e| invalid(&e))
+    op(cluster).await.map_err(|e| invalid(&e))
 }
 
 fn notify_reset(

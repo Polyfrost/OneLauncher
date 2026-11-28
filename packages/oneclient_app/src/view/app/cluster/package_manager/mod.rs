@@ -866,7 +866,7 @@ impl Component for PackageManager {
                     chosen.iter().filter(|p| p.enabled != enabled).collect();
                 let actions: Vec<ClusterAction> = targets
                     .iter()
-                    .filter_map(|p| toggle_action(p, cluster_id, enabled))
+                    .filter_map(|p| toggle_action(p, cluster_id, content_type, enabled))
                     .collect();
                 if actions.is_empty() {
                     return;
@@ -877,13 +877,13 @@ impl Component for PackageManager {
                 }
                 let (folders, targets): (Vec<&PackageEntry>, Vec<&PackageEntry>) = targets
                     .into_iter()
-                    .filter(|p| toggle_action(p, cluster_id, false).is_some())
+                    .filter(|p| toggle_action(p, cluster_id, content_type, false).is_some())
                     .partition(|p| p.folder_pack().is_some());
                 if !folders.is_empty() {
                     mutation.mutate(ClusterAction::Batch(
                         folders
                             .iter()
-                            .filter_map(|p| toggle_action(p, cluster_id, false))
+                            .filter_map(|p| toggle_action(p, cluster_id, content_type, false))
                             .collect(),
                     ));
                 }
@@ -979,6 +979,7 @@ impl Component for PackageManager {
                             .chain(folder_deletable.iter().map(|(name, enabled)| {
                                 ClusterAction::RemoveFolderPack {
                                     cluster_id,
+                                    content_type,
                                     name: name.clone(),
                                     enabled: *enabled,
                                 }

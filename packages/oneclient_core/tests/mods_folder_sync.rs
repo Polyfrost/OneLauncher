@@ -1,8 +1,8 @@
-use oneclient_common::domain::GameLoader;
+use oneclient_common::domain::{ContentType, GameLoader};
 use oneclient_content::packages::PackageStore;
 use oneclient_content::packages::store::manifest::{self, MaterializedManifest};
 use oneclient_core::clusters::CreateClusterOptions;
-use oneclient_core::game::sync_cluster_mods;
+use oneclient_core::game::{import_manual_content, list_folder_packs, sync_cluster_mods};
 
 fn jar(tag: &str) -> Vec<u8> {
     let mut bytes = b"PK\x05\x06".to_vec();
@@ -121,4 +121,45 @@ async fn a_mod_removed_in_the_launcher_stays_removed_before_the_first_launch() {
 
     assert!(!mods.join("a.jar").exists());
     assert!(!sync_cluster_mods(&state, cluster.id).await);
+}
+
+#[tokio::test]
+async fn loose_packs_are_listed_until_the_launch_import_takes_them() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let global = state.settings.read().global_game_settings.clone();
+    let cluster = state
+        .clusters
+        .create(
+            &global,
+            CreateClusterOptions::new("Packs", "1.21.1", GameLoader::Fabric),
+        )
+        .await
+        .unwrap();
+    assert!(cluster.shares_content(ContentType::ResourcePack));
+
+    let names = |content_type| {
+        let (state, cluster) = (&state, &cluster);
+        async move {
+            list_folder_packs(&state.services, cluster, content_type)
+                .await
+                .into_iter()
+                .map(|pack| pack.name)
+                .collect::<Vec<_>>()
+        }
+    };
+
+    let game_dir = cluster.game_dir().unwrap();
+    let shared_packs = game_dir.join("resourcepacks");
+    std::fs::create_dir_all(&shared_packs).unwrap();
+    std::fs::write(shared_packs.join("a.zip"), jar("pack a")).unwrap();
+    let own_shaders = cluster.dir().unwrap().join("shaderpacks");
+    std::fs::create_dir_all(&own_shaders).unwrap();
+    std::fs::write(own_shaders.join("b.zip"), jar("shader b")).unwrap();
+
+    assert_eq!(names(ContentType::ResourcePack).await, vec!["a.zip"]);
+    assert_eq!(names(ContentType::Shader).await, vec!["b.zip"]);
+
+    import_manual_content(&state.services, &cluster, &game_dir).await;
+    assert!(shared_packs.join("a.zip").exists());
+    assert!(names(ContentType::ResourcePack).await.is_empty());
 }

@@ -1,5 +1,5 @@
 use freya::prelude::{spawn, use_hook};
-use freya::query::{Query, QueryCapability, UseQuery, use_query};
+use freya::query::{QueriesStorage, Query, QueryCapability, UseQuery, use_query};
 use notify::{Event, EventKind};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -65,17 +65,21 @@ pub struct FolderPacksQuery;
 impl QueryCapability for FolderPacksQuery {
     type Ok = Vec<FolderPack>;
     type Err = LauncherError;
-    type Keys = ClusterId;
+    type Keys = (ClusterId, ContentType);
 
-    async fn run(&self, cluster_id: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+    async fn run(&self, (cluster_id, content_type): &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state()?;
-        let game_dir = state.clusters.get(*cluster_id).await?.game_dir()?;
-        Ok(off_ui(async move { list_folder_packs(&game_dir).await }).await)
+        let cluster = state.clusters.get(*cluster_id).await?;
+        let content_type = *content_type;
+        Ok(
+            off_ui(async move { list_folder_packs(&state.services, &cluster, content_type).await })
+                .await,
+        )
     }
 }
 
-pub fn use_folder_packs(cluster_id: ClusterId) -> Vec<FolderPack> {
-    let query = use_query(Query::new(cluster_id, FolderPacksQuery));
+pub fn use_folder_packs(cluster_id: ClusterId, content_type: ContentType) -> Vec<FolderPack> {
+    let query = use_query(Query::new((cluster_id, content_type), FolderPacksQuery));
     super::state::settled_or_loading(&query).unwrap_or_default()
 }
 
@@ -166,6 +170,34 @@ pub fn use_mods_folder_sync(cluster_id: ClusterId, folder: Option<PathBuf>) {
 
     use_hook(sync);
     super::folder_watch::use_folder_watch(folder, false, touches_jar, sync);
+}
+
+pub fn use_packs_folder_watch(game_folder: Option<PathBuf>, cluster_folder: Option<PathBuf>) {
+    let refresh = || {
+        spawn(async {
+            QueriesStorage::<FolderPacksQuery>::invalidate_all().await;
+            QueriesStorage::<ClusterContentQuery>::invalidate_all().await;
+        });
+    };
+    super::folder_watch::use_folder_watch(game_folder, true, touches_pack, refresh);
+    super::folder_watch::use_folder_watch(cluster_folder, true, touches_pack, refresh);
+}
+
+fn touches_pack(_root: &Path, event: &Event) -> bool {
+    if matches!(event.kind, EventKind::Access(_)) {
+        return false;
+    }
+
+    event.paths.iter().any(|path| {
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            return false;
+        };
+        !name.starts_with('.')
+            && (name == "pack.mcmeta"
+                || name.to_ascii_lowercase().ends_with(".zip")
+                || !path.exists()
+                || path.is_dir())
+    })
 }
 
 fn touches_jar(_root: &Path, event: &Event) -> bool {

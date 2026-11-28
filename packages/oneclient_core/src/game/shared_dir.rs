@@ -439,7 +439,7 @@ async fn adopt_into_global(own_root: &Path, global_root: &Path) {
     let folders = GLOBAL_TYPES
         .map(ContentType::folder_name)
         .into_iter()
-        .chain([super::folder_packs::STASH_DIR]);
+        .chain(super::folder_packs::STASH_DIRS);
     for folder in folders {
         let own = own_root.join(folder);
         let shared = global_root.join(folder);
@@ -2340,6 +2340,39 @@ async fn import_manual_content_with(
     }
 
     failed_mods
+}
+
+pub(super) async fn managed_pack_names(
+    services: &LauncherServices,
+    cluster: &Cluster,
+    content_type: ContentType,
+) -> Option<HashSet<String>> {
+    if !cluster.shares_content(content_type) {
+        let linked = PackageStore::list_linked_artifacts(cluster.id, &services.content())
+            .await
+            .ok()?;
+        let game_dir = cluster.game_dir().ok()?;
+        let manifest = {
+            let _guard = manifest::lock().await;
+            manifest::load(&game_dir, manifest::MANIFEST_NAME).await
+        };
+        return Some(ours_in_folder(content_type, &linked, manifest.as_ref()));
+    }
+
+    let sharing = oneclient_content::packages::store::sharing_cluster_ids(
+        &services.db,
+        cluster.shared_group().as_deref(),
+    )
+    .await
+    .ok()?;
+    let global = artifact_dao::list_global_artifacts(&services.db, content_type as i64, &sharing)
+        .await
+        .ok()?;
+    let root = paths::cluster_shared_dir(&cluster.folder_name).ok()?;
+    let manifest = manifest::load(&root, manifest::GLOBAL_MANIFEST_NAME).await;
+    let mut names = ours_in_folder(content_type, &[], manifest.as_ref());
+    names.extend(global.into_iter().map(|row| row.file_name));
+    Some(names)
 }
 
 fn names_linked_here(

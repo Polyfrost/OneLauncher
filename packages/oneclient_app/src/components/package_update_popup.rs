@@ -77,6 +77,14 @@ impl Component for PackageUpdatePopup {
 
         let groups = snapshot.package_updates.clone();
 
+        let prompt_clusters: Vec<ClusterId> =
+            groups.iter().flatten().map(|group| group.cluster_id).collect();
+        let mut shown_clusters = use_state(Vec::<ClusterId>::new);
+        if *shown_clusters.peek() != prompt_clusters {
+            shown_clusters.set(prompt_clusters.clone());
+            dont_show_again.set_if_modified(false);
+        }
+
         // Hooks run unconditionally so this must precede the early return below
         let mut meta = MetaMap::new();
         for provider in ProviderId::REMOTE_PROVIDERS.iter().copied() {
@@ -107,13 +115,11 @@ impl Component for PackageUpdatePopup {
         };
 
         let Some(groups) = groups.filter(|groups| !groups.is_empty()) else {
-            // The popup stays mounted, so the tick must not survive into the next prompt
-            dont_show_again.set_if_modified(false);
             return rect().into_element();
         };
 
         let close = dispatch.clone();
-        let close_clusters: Vec<ClusterId> = groups.iter().map(|group| group.cluster_id).collect();
+        let close_clusters = prompt_clusters;
 
         OverlayPopup::new()
             .on_close(move |_| {

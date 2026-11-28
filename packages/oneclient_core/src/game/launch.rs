@@ -321,7 +321,10 @@ async fn start(
         .await?;
     let java = match pinned {
         Some(runtime) if !oneclient_java::wrong_arch_for_game(&runtime.os_arch, native_ok) => {
-            runtime
+            state
+                .java
+                .replace_below_floor(runtime, native_ok, search_for_java, Some(&progress))
+                .await
         }
         pinned => {
             let major = match &pinned {

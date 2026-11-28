@@ -18,9 +18,9 @@ mod cluster_content;
 mod clusters;
 mod disable_warnings;
 mod external_launchers;
-mod import_screening;
 mod folder_watch;
 mod image;
+mod import_screening;
 mod java;
 mod logs;
 mod migration;
@@ -45,14 +45,15 @@ pub use analytics::{
 pub use auth::{
     AddOfflineAccountKeys, BeginMicrosoftLoginMutation, CancelMicrosoftLoginKeys,
     CancelMicrosoftLoginMutation, FinishMicrosoftLoginMutation, RefreshAccountKeys,
-    RemoveAccountKeys, SetDefaultAccountKeys, UseRefreshAccount, UseRemoveAccount,
-    UseSetDefaultAccount, accounts_have_microsoft, invalidate_auth_queries,
+    RemoveAccountKeys, SetDefaultAccountKeys, SetOfflineAppearanceKeys,
+    SetOfflineAppearanceMutation, UseRefreshAccount, UseRemoveAccount, UseSetDefaultAccount,
+    UseSetOfflineAppearance, accounts_have_microsoft, invalidate_auth_queries,
     login_code_already_handled, mutation_error, mutation_is_pending, mutation_is_running,
     mutation_ok, reset_login_code_dedup, try_account, try_accounts, try_default_account,
     use_account, use_accounts, use_add_microsoft_account, use_add_offline_account,
     use_begin_microsoft_login, use_cancel_microsoft_login, use_current_account,
     use_default_account, use_finish_microsoft_login, use_refresh_account, use_refresh_all_accounts,
-    use_remove_account, use_set_default_account,
+    use_remove_account, use_set_default_account, use_set_offline_appearance,
 };
 pub use bisect::{BisectAction, BisectMutation, bisect_report, use_bisect, use_bisect_mutation};
 pub use bundles::{
@@ -78,11 +79,9 @@ pub use clusters::{
 };
 pub use disable_warnings::{DisableWarningsQuery, disable_warnings, use_disable_warnings};
 pub use external_launchers::{external_launchers, use_external_launchers};
-pub use import_screening::{
-    import_screening, use_import_screening, use_modpack_header,
-};
 pub(crate) use folder_watch::use_folder_watch;
 pub use image::{CachedImageQuery, loaded_image, use_cached_image};
+pub use import_screening::{import_screening, use_import_screening, use_modpack_header};
 pub use java::{
     invalidate_java_queries, java_runtimes, provider_versions, use_java_runtimes,
     use_provider_versions,
@@ -93,12 +92,14 @@ pub use logs::{
     use_log_action, use_log_content, use_upload_log,
 };
 pub use migration::{MigrationQuery, has_migration_data, migration_detection, use_migration};
-pub(crate) use mutations::{take_bundles, turn_on_bundles};
 pub use mutations::{
     ClusterAction, ClusterMutation, invalidate_cluster_content_queries, invalidate_cluster_queries,
     invalidate_profile_queries, use_cluster_mutation,
 };
-pub use package_updates::{PackageUpdatesQuery, package_updates, stale_hashes, use_package_updates};
+pub(crate) use mutations::{take_bundles, turn_on_bundles};
+pub use package_updates::{
+    PackageUpdatesQuery, package_updates, stale_hashes, use_package_updates,
+};
 pub use packages::ALL_VERSIONS;
 pub use packages::{
     BROWSE_PAGE_SIZE, VERSIONS_PAGE_SIZE, category_list, content_type_for_slug, package_meta_batch,

@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::data::{MicrosoftLoginSession, MinecraftAccount};
+use crate::data::{AccountAppearance, MicrosoftLoginSession, MinecraftAccount};
 use crate::error::{AuthError, AuthResult, MinecraftAuthError};
 use crate::msa::{self, PendingBrowserLogin};
 use crate::store::{self, CredentialsStore};
@@ -195,6 +195,21 @@ impl AuthService {
             .lock()
             .await
             .add_offline_account_and_save(username)
+            .await
+    }
+
+    /// Stores custom skin/cape data on an offline account the launcher renders
+    /// these itself because offline profiles have no session-server textures
+    #[tracing::instrument(level = "debug", skip(self), fields(%id))]
+    pub async fn set_offline_appearance(
+        &self,
+        id: Uuid,
+        appearance: AccountAppearance,
+    ) -> AuthResult<()> {
+        self.store
+            .lock()
+            .await
+            .set_offline_appearance(id, appearance)
             .await
     }
 
@@ -386,10 +401,6 @@ impl AuthService {
             }
             Err(err) => return Err(err),
         };
-
-        if account.is_offline() && !self.has_microsoft_account().await {
-            return Err(AuthError::OfflineRequiresMicrosoft);
-        }
 
         Ok(account)
     }

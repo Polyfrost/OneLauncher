@@ -527,8 +527,25 @@ impl GameState {
     }
 
     /// Returns false if a launch is already in flight the re-entrancy guard
-    pub fn begin_launch(&mut self, cluster_id: i64) -> bool {
-        if self.block_for(cluster_id).is_some() || self.is_checking_updates(cluster_id) {
+    /// With `allow_duplicate` (the parallel-clusters setting) a running
+    /// instance no longer blocks its own re-launch the duplicate run is
+    /// tracked by core under the cluster's shadow id
+    pub fn begin_launch(&mut self, cluster_id: i64, allow_duplicate: bool) -> bool {
+        if self.is_checking_updates(cluster_id) {
+            return false;
+        }
+        match self.block_for(cluster_id) {
+            Some(LaunchBlock::Running(_)) if allow_duplicate => {}
+            Some(_) => return false,
+            None => {}
+        }
+        // The click guard is kept even when duplicating so a burst of clicks
+        // cannot prepare two games at once
+        if self.is_launch_pending(cluster_id) {
+            return false;
+        }
+        // One duplicate per cluster the shadow id only tracks a single run
+        if allow_duplicate && self.is_active(-cluster_id) {
             return false;
         }
         self.pending.insert(cluster_id);
@@ -568,7 +585,8 @@ impl GameState {
 
     /// `shared` lists the other clusters that would share the launch's game dir
     /// empty for a dedicated cluster with parallel clusters allowed only those
-    /// can be in the way
+    /// can be in the way a running instance of the launched cluster itself
+    /// stops blocking once duplicates are allowed
     #[must_use]
     pub fn launch_block(
         &self,
@@ -576,8 +594,10 @@ impl GameState {
         parallel: bool,
         shared: &[i64],
     ) -> Option<LaunchBlock> {
-        if let Some(block) = self.block_for(cluster_id) {
-            return Some(block);
+        match self.block_for(cluster_id) {
+            Some(LaunchBlock::Running(_)) if parallel => {}
+            Some(block) => return Some(block),
+            None => {}
         }
 
         self.stages
@@ -658,7 +678,10 @@ mod tests {
         use MigrationDirection::{From, Into};
         let inbound = [cluster(2)];
         let outbound = [cluster(3)];
-        assert_eq!(opening_direction(&inbound, &outbound, From, Some(3)), Some(From));
+        assert_eq!(
+            opening_direction(&inbound, &outbound, From, Some(3)),
+            Some(From)
+        );
         assert_eq!(opening_direction(&inbound, &outbound, From, Some(9)), None);
         assert_eq!(opening_direction(&inbound, &[], From, Some(3)), None);
         assert_eq!(opening_direction(&inbound, &[], From, None), Some(Into));
@@ -669,9 +692,9 @@ mod tests {
     fn a_second_click_is_refused_before_core_answers() {
         let mut game = GameState::default();
 
-        assert!(game.begin_launch(1));
-        assert!(!game.begin_launch(1));
-        assert!(game.begin_launch(2));
+        assert!(game.begin_launch(1, false));
+        assert!(!game.begin_launch(1, false));
+        assert!(game.begin_launch(2, false));
     }
 
     #[test]
@@ -679,16 +702,41 @@ mod tests {
         let mut game = GameState::default();
         game.stages.insert(1, LaunchStage::Running);
 
-        assert!(!game.begin_launch(1));
+        assert!(!game.begin_launch(1, false));
+    }
+
+    #[test]
+    fn parallel_allows_one_duplicate_run_of_a_running_cluster() {
+        let mut game = GameState::default();
+        game.stages.insert(1, LaunchStage::Running);
+
+        assert!(game.begin_launch(1, true));
+        // The click guard holds so a burst of clicks cannot queue two games
+        assert!(!game.begin_launch(1, true));
+        game.finish_launch(1);
+        // The duplicate itself once core answers
+        game.stages.insert(-1, LaunchStage::Running);
+        assert!(!game.begin_launch(1, true));
+
+        game.stages.remove(&-1);
+        assert!(game.begin_launch(1, true));
+    }
+
+    #[test]
+    fn duplicates_wait_like_any_other_launch() {
+        let mut game = GameState::default();
+        game.stages.insert(1, LaunchStage::Downloading);
+
+        assert!(!game.begin_launch(1, true));
     }
 
     #[test]
     fn the_claim_is_released_when_the_launch_settles() {
         let mut game = GameState::default();
 
-        assert!(game.begin_launch(1));
+        assert!(game.begin_launch(1, false));
         game.finish_launch(1);
-        assert!(game.begin_launch(1));
+        assert!(game.begin_launch(1, false));
     }
 
     #[test]
@@ -698,10 +746,10 @@ mod tests {
         assert!(game.begin_update_check(1));
         assert!(!game.begin_update_check(1));
         assert!(!game.begin_update_check(3));
-        assert!(!game.begin_launch(1));
-        assert!(game.begin_launch(2));
+        assert!(!game.begin_launch(1, false));
+        assert!(game.begin_launch(2, false));
         game.finish_update_check(1);
-        assert!(game.begin_launch(1));
+        assert!(game.begin_launch(1, false));
         assert!(!game.begin_update_check(1));
     }
 
@@ -722,23 +770,6 @@ mod tests {
     }
 
     #[test]
-    fn parallel_clusters_still_hold_one_shared_game() {
-        let mut game = GameState::default();
-        game.stages.insert(1, LaunchStage::Running);
-
-        // 2 shares the game dir with 1 and 3 has its own
-        assert_eq!(
-            game.launch_block(2, true, &[1]),
-            Some(LaunchBlock::Running(1))
-        );
-        assert_eq!(game.launch_block(3, true, &[]), None);
-        assert_eq!(
-            game.launch_block(1, true, &[]),
-            Some(LaunchBlock::Running(1))
-        );
-    }
-
-    #[test]
     fn a_game_that_is_still_coming_up_still_blocks() {
         let mut game = GameState::default();
         game.stages.insert(1, LaunchStage::Downloading);
@@ -756,7 +787,7 @@ mod tests {
     #[test]
     fn a_claim_with_no_stage_yet_blocks_too() {
         let mut game = GameState::default();
-        game.begin_launch(1);
+        game.begin_launch(1, false);
 
         assert_eq!(
             game.launch_block(1, false, &[]),
@@ -781,26 +812,26 @@ mod tests {
     fn the_button_disables_on_the_claim_alone() {
         let mut game = GameState::default();
         assert_eq!(
-            launch_button_state(&game, 1, false, false),
+            launch_button_state(&game, 1, false, false, false),
             ("Launch", true)
         );
 
-        game.begin_launch(1);
+        game.begin_launch(1, false);
         assert_eq!(
-            launch_button_state(&game, 1, false, false),
+            launch_button_state(&game, 1, false, false, false),
             ("Launching", false)
         );
 
         // Held past a failure which parks the stage at `Exited`
         game.stages.insert(1, LaunchStage::Exited);
         assert_eq!(
-            launch_button_state(&game, 1, false, false),
+            launch_button_state(&game, 1, false, false, false),
             ("Launching", false)
         );
 
         game.finish_launch(1);
         assert_eq!(
-            launch_button_state(&game, 1, false, false),
+            launch_button_state(&game, 1, false, false, false),
             ("Launch", true)
         );
     }
@@ -811,7 +842,7 @@ mod tests {
         game.stages.insert(1, LaunchStage::Waiting);
 
         assert_eq!(
-            launch_button_state(&game, 1, false, false),
+            launch_button_state(&game, 1, false, false, false),
             ("Waiting", false)
         );
         assert!(game.is_busy(1));
@@ -944,7 +975,7 @@ mod tests {
         assert!(!shared_dir_taken(&game, &clusters, 2));
         assert!(!shared_dir_taken(&game, &clusters, 4));
         assert_eq!(
-            launch_button_state(&game, 3, false, false),
+            launch_button_state(&game, 3, false, false, false),
             ("Syncing", false)
         );
 

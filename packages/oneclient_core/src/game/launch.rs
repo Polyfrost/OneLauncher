@@ -66,17 +66,25 @@ pub async fn launch_cluster_with(
 
     // Parallel clusters or not a cluster runs only once a second game would
     // share its directory and its slot in the process manager
-    if state.games.is_active(cluster_id) {
+    // With parallel launches allowed a running cluster may instead host a
+    // duplicate run tracked under a shadow id (the negated cluster id) so both
+    // sessions keep their own process, kill channel and dir claim
+    let allow_parallel = state.settings.read().allow_parallel_running_clusters;
+    let duplicate = allow_parallel && state.games.is_active(cluster_id);
+    if state.games.is_active(cluster_id) && !duplicate {
         tracing::warn!(
             cluster_id,
             "cluster already launching or running; refusing launch"
         );
         return Err(GameError::AlreadyRunning(cluster_id).into());
     }
+    let track_id = if duplicate { -cluster_id } else { cluster_id };
 
     let result = start(
         state,
         cluster_id,
+        track_id,
+        duplicate,
         account,
         search_for_java,
         extra_jvm_arg,
@@ -85,11 +93,11 @@ pub async fn launch_cluster_with(
     .await;
 
     if result.is_err() {
-        state.games.remove(cluster_id);
+        state.games.remove(track_id);
         state
             .services
             .events
-            .game_stage(cluster_id, LaunchStage::Exited);
+            .game_stage(track_id, LaunchStage::Exited);
     }
 
     result
@@ -103,9 +111,12 @@ fn jvm_args_with(profile_args: Option<&str>, extra: Option<&str>) -> String {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn start(
     state: &Arc<LauncherState>,
     cluster_id: i64,
+    track_id: i64,
+    duplicate: bool,
     account: &MinecraftAccount,
     search_for_java: bool,
     extra_jvm_arg: Option<&str>,
@@ -113,8 +124,8 @@ async fn start(
 ) -> LauncherResult<LaunchedGame> {
     let events = state.services.events.clone();
     let stage = |s: LaunchStage| {
-        state.games.set_stage(cluster_id, s);
-        events.game_stage(cluster_id, s);
+        state.games.set_stage(track_id, s);
+        events.game_stage(track_id, s);
     };
 
     // The stage goes first so a click while this waits is refused as already
@@ -156,9 +167,24 @@ async fn start(
     let game_dir = existing.game_dir()?;
     let dedicated = existing.uses_dedicated_dir();
 
+    // A duplicate run needs the cluster's own folder one game per shared
+    // directory still holds no matter what the setting says
+    if duplicate && !dedicated {
+        tracing::warn!(
+            cluster_id,
+            "cluster shares its folder; refusing duplicate run"
+        );
+        return Err(GameError::AlreadyRunning(cluster_id).into());
+    }
+
     // Non-dedicated clusters share one directory so a second game there would
     // materialize over the running one's
-    match state.games.claim_dir(cluster_id, &game_dir, !dedicated) {
+    match state.games.claim_dir(
+        track_id,
+        &game_dir,
+        !dedicated,
+        duplicate.then_some(cluster_id),
+    ) {
         Ok(()) => {}
         Err(DirBusy::Syncing(syncing)) if syncing == cluster_id => {
             return Err(GameError::Syncing.into());
@@ -309,7 +335,7 @@ async fn start(
     );
 
     if let Some(dir) = crate::game::natives::natives_dir(&version_name) {
-        state.games.set_natives(cluster_id, dir);
+        state.games.set_natives(track_id, dir);
     }
 
     let native_ok = crate::game::natives::native_java_ok(&version_info);
@@ -363,7 +389,7 @@ async fn start(
                 .await;
             stage(LaunchStage::Downloading);
             let natives_mode =
-                crate::game::natives::natives_mode(state, &version_name, Some(cluster_id));
+                crate::game::natives::natives_mode(state, &version_name, Some(track_id));
             if let Err(err) = download_minecraft(
                 &state.services.mc(),
                 &progress,
@@ -568,7 +594,11 @@ async fn start(
     let header = format!(
         "OneClient {} ({})\nOS: {} {}\nGame Version: {}\nGame Loader: {loader}\nJava: {} ({java_name})\nPWD: {}\nCommand: {}\n\n",
         env!("CARGO_PKG_VERSION"),
-        if cfg!(debug_assertions) { "debug" } else { "release" },
+        if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        },
         sysinfo::System::kernel_long_version(),
         std::env::consts::ARCH,
         cluster.mc_version,
@@ -577,7 +607,20 @@ async fn start(
         command_line(command.as_std()),
     );
 
-    let log_path = oneclient_cluster::logs::cluster_output_log(&cluster)?;
+    let mut log_path = oneclient_cluster::logs::cluster_output_log(&cluster)?;
+    if duplicate {
+        // The primary log is truncated on spawn a duplicate run writes beside
+        // it so the first session's log survives
+        let file = log_path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "cluster-output.log".to_string());
+        let suffixed = match file.rsplit_once('.') {
+            Some((stem, ext)) => format!("{stem}-2.{ext}"),
+            None => format!("{file}-2"),
+        };
+        log_path = log_path.with_file_name(suffixed);
+    }
     if let Some(parent) = log_path.parent() {
         polyio::create_dir_all(parent).await.ok();
     }
@@ -618,7 +661,7 @@ async fn start(
     let pid = child.id();
 
     stage(LaunchStage::Running);
-    state.games.set_pid(cluster_id, pid);
+    state.games.set_pid(track_id, pid);
     state.discord.set_presence(Presence::Playing {
         cluster: cluster.name.clone(),
         mc_version: cluster.mc_version.clone(),
@@ -656,7 +699,7 @@ async fn start(
     );
 
     let (kill_tx, kill_rx) = tokio::sync::oneshot::channel::<()>();
-    state.games.register_kill(cluster_id, kill_tx);
+    state.games.register_kill(track_id, kill_tx);
 
     let state = Arc::clone(state);
     let post_hook = profile.hook_post.clone();
@@ -691,6 +734,7 @@ async fn start(
                 ended_at: Utc::now(),
                 outcome,
                 owns_slot: true,
+                track_id,
                 diagnosis: crash_watch.take(),
                 watch: Some(crash_watch),
             },
@@ -798,6 +842,9 @@ pub(crate) struct SessionEnd {
     pub ended_at: DateTime<Utc>,
     pub outcome: Exit,
     pub owns_slot: bool,
+    /// The process manager key this session was tracked under the real
+    /// cluster id for original runs the negated one for duplicate runs
+    pub track_id: i64,
     pub diagnosis: Option<CrashDiagnosis>,
     pub watch: Option<CrashWatch>,
 }
@@ -817,11 +864,11 @@ pub(crate) async fn finalize_session(
     let played = (end.ended_at - end.started_at).to_std().unwrap_or_default();
 
     if end.owns_slot {
-        state.games.remove(cluster_id);
+        state.games.remove(end.track_id);
         state
             .services
             .events
-            .game_stage(cluster_id, LaunchStage::Exited);
+            .game_stage(end.track_id, LaunchStage::Exited);
 
         if state.games.running_ids().is_empty() {
             state.discord.set_presence(Presence::Idle);

@@ -1,9 +1,12 @@
 use freya::prelude::*;
+use freya::query::MutationStateData;
 use oneclient_auth::MinecraftAccount;
 
-use crate::components::{Avatar, Button, Icon, IconType, use_microsoft_login};
-use crate::hooks::{try_default_account, use_current_account};
-use crate::i18n::t;
+use crate::components::{Avatar, Button, Icon, IconType, TextInput, use_microsoft_login};
+use crate::hooks::{
+    AddOfflineAccountKeys, try_default_account, use_add_offline_account, use_current_account,
+};
+use crate::i18n::{t, tf};
 use crate::routes::Route;
 use crate::theme::{colors, text_size};
 use crate::view::onboarding::{
@@ -33,7 +36,13 @@ impl Component for OnboardingAccount {
                 Some(account) => account_preview(account).into_element(),
                 None => {
                     let start = msa.clone();
-                    sign_in_card(msa.pending, msa.error.clone(), move |_| start.start())
+                    rect()
+                        .vertical()
+                        .spacing(20.)
+                        .child(sign_in_card(msa.pending, msa.error.clone(), move |_| {
+                            start.start()
+                        }))
+                        .child(OfflineAccountCard)
                         .into_element()
                 }
             })
@@ -135,4 +144,91 @@ fn sign_in_card(
                 .into_element()
         }))
         .into_element()
+}
+
+/// Inline offline account creation so someone without a Microsoft account can
+/// finish onboarding too the created account becomes the default immediately
+#[derive(PartialEq)]
+struct OfflineAccountCard;
+
+impl Component for OfflineAccountCard {
+    fn render(&self) -> impl IntoElement {
+        let name = use_state(String::new);
+        let add = use_add_offline_account();
+
+        let trimmed = name.read().trim().to_string();
+        // Vanilla profiles can never carry such a name so online servers will
+        // reject it, but it is still useful for local testing
+        let warning = (!trimmed.is_empty())
+            .then(|| oneclient_auth::offline_username_warning(&trimmed))
+            .flatten();
+        let error = match &*add.read().state() {
+            MutationStateData::Settled { res: Err(err), .. } => Some(err.to_string()),
+            MutationStateData::Loading {
+                res: Some(Err(err)),
+            } => Some(err.to_string()),
+            _ => None,
+        };
+
+        let on_confirm = move |_| {
+            let trimmed = name.peek().trim().to_string();
+            if trimmed.is_empty() {
+                return;
+            }
+            add.mutate(AddOfflineAccountKeys { username: trimmed });
+        };
+
+        rect()
+            .vertical()
+            .spacing(8.)
+            .cross_align(Alignment::Start)
+            .child(
+                label()
+                    .text(t("oneclient.onboarding.account.offline_title"))
+                    .font_size(text_size(12.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .color(colors::fg_secondary()),
+            )
+            .child(
+                rect()
+                    .horizontal()
+                    .spacing(8.)
+                    .cross_align(Alignment::Center)
+                    .child(
+                        TextInput::new(name)
+                            .width(Size::px(220.))
+                            .placeholder(t("oneclient.onboarding.account.offline_placeholder")),
+                    )
+                    .child(
+                        Button::new()
+                            .secondary()
+                            .enabled(!trimmed.is_empty())
+                            .on_press(on_confirm)
+                            .child(Icon::new(IconType::Plus).size(14.))
+                            .text(t("oneclient.onboarding.account.offline_create")),
+                    ),
+            )
+            .map(warning, |el, warning| {
+                el.child(
+                    label()
+                        .text(tf(
+                            "oneclient.settings.accounts.offline.username_warning",
+                            &[&warning],
+                        ))
+                        .font_size(text_size(11.))
+                        .width(Size::fill())
+                        .color(colors::fg_secondary()),
+                )
+            })
+            .map(error, |el, msg| {
+                el.child(
+                    label()
+                        .text(msg)
+                        .font_size(text_size(11.))
+                        .width(Size::fill())
+                        .color(colors::danger()),
+                )
+            })
+            .into_element()
+    }
 }

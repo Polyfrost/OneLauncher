@@ -182,8 +182,17 @@ impl GameProcessManager {
     /// threads cannot both find the directory free
     /// `exclusive` is for the shared game directory which holds one game at a
     /// time whoever it belongs to counting the cluster's own session too
+    /// `alias` lists a claim that counts as the caller's own a duplicate run of
+    /// the same cluster claims under a different key but must not collide with
+    /// its own original session
     /// Returns the cluster already holding `dir`
-    pub fn claim_dir(&self, cluster_id: i64, dir: &Path, exclusive: bool) -> Result<(), DirBusy> {
+    pub fn claim_dir(
+        &self,
+        cluster_id: i64,
+        dir: &Path,
+        exclusive: bool,
+        alias: Option<i64>,
+    ) -> Result<(), DirBusy> {
         let mut dirs = self.dirs.lock().unwrap();
 
         let syncing = self
@@ -199,7 +208,13 @@ impl GameProcessManager {
 
         let holder = dirs
             .iter()
-            .find(|(id, d)| (exclusive || **id != cluster_id) && d.as_path() == dir)
+            .find(|(id, d)| {
+                // The caller's own claims are the cluster's key and, for a
+                // duplicate run, its original session's claim a shared dir
+                // (`exclusive`) still counts them every time
+                let own = **id == cluster_id || Some(**id) == alias;
+                (exclusive || !own) && d.as_path() == dir
+            })
             .map(|(id, _)| *id);
         if let Some(holder) = holder {
             return Err(DirBusy::Game(holder));
@@ -317,21 +332,59 @@ mod tests {
         let games = GameProcessManager::new();
         let shared = Path::new("shared");
 
-        assert_eq!(games.claim_dir(1, shared, true), Ok(()));
-        assert_eq!(games.claim_dir(2, shared, true), Err(DirBusy::Game(1)));
+        assert_eq!(games.claim_dir(1, shared, true, None), Ok(()));
+        assert_eq!(
+            games.claim_dir(2, shared, true, None),
+            Err(DirBusy::Game(1))
+        );
 
         games.remove(1);
-        assert_eq!(games.claim_dir(2, shared, true), Ok(()));
+        assert_eq!(games.claim_dir(2, shared, true, None), Ok(()));
+    }
+
+    #[test]
+    fn a_duplicate_run_may_reclaim_its_own_dedicated_dir() {
+        let games = GameProcessManager::new();
+        let dir = Path::new("dedicated");
+
+        assert_eq!(games.claim_dir(7, dir, false, None), Ok(()));
+        // The original session runs under key 7 the duplicate claims as -7
+        assert_eq!(games.claim_dir(-7, dir, false, Some(7)), Ok(()));
+        // A different cluster may still not take the dir
+        assert!(matches!(
+            games.claim_dir(8, dir, false, None),
+            Err(DirBusy::Game(_))
+        ));
+
+        games.remove(-7);
+        assert!(matches!(
+            games.claim_dir(8, dir, false, None),
+            Err(DirBusy::Game(_))
+        ));
+        games.remove(7);
+        assert_eq!(games.claim_dir(8, dir, false, None), Ok(()));
+    }
+
+    #[test]
+    fn duplicates_never_take_a_shared_dir_twice() {
+        let games = GameProcessManager::new();
+        let shared = Path::new("shared");
+
+        assert_eq!(games.claim_dir(7, shared, true, None), Ok(()));
+        assert_eq!(
+            games.claim_dir(-7, shared, true, Some(7)),
+            Err(DirBusy::Game(7))
+        );
     }
 
     #[test]
     fn dedicated_dirs_do_not_get_in_each_others_way() {
         let games = GameProcessManager::new();
 
-        assert_eq!(games.claim_dir(1, Path::new("one"), false), Ok(()));
-        assert_eq!(games.claim_dir(2, Path::new("two"), false), Ok(()));
+        assert_eq!(games.claim_dir(1, Path::new("one"), false, None), Ok(()));
+        assert_eq!(games.claim_dir(2, Path::new("two"), false, None), Ok(()));
         assert_eq!(
-            games.claim_dir(3, Path::new("one"), false),
+            games.claim_dir(3, Path::new("one"), false, None),
             Err(DirBusy::Game(1))
         );
     }
@@ -349,19 +402,22 @@ mod tests {
             Some(SyncBlock::AlreadySyncing)
         );
         assert_eq!(
-            games.claim_dir(1, Path::new("one"), false),
+            games.claim_dir(1, Path::new("one"), false, None),
             Err(DirBusy::Syncing(1))
         );
-        assert_eq!(games.claim_dir(2, shared, true), Err(DirBusy::Syncing(1)));
-        assert_eq!(games.claim_dir(3, Path::new("three"), false), Ok(()));
-        assert_eq!(games.claim_dir(6, Path::new("group"), true), Ok(()));
+        assert_eq!(
+            games.claim_dir(2, shared, true, None),
+            Err(DirBusy::Syncing(1))
+        );
+        assert_eq!(games.claim_dir(3, Path::new("three"), false, None), Ok(()));
+        assert_eq!(games.claim_dir(6, Path::new("group"), true, None), Ok(()));
         assert!(games.is_syncing(1));
         assert!(games.is_dir_syncing(shared));
         assert!(!games.is_dir_syncing(Path::new("group")));
 
         drop(sync);
         assert!(!games.any_syncing());
-        assert_eq!(games.claim_dir(2, shared, true), Ok(()));
+        assert_eq!(games.claim_dir(2, shared, true, None), Ok(()));
         assert_eq!(
             games.begin_sync(4, shared, Path::new("four")).err(),
             Some(SyncBlock::SharedInUse)

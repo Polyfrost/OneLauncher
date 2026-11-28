@@ -1,18 +1,20 @@
 use freya::{
     animation::{AnimNum, Ease, OnCreation, use_animation},
     prelude::*,
+    query::MutationStateData,
     router::RouterContext,
 };
 use oneclient_auth::MinecraftAccount;
 
 use crate::{
     Route,
-    components::{Avatar, Button, Icon, IconType, OverlayPopup},
+    components::{Avatar, Button, Icon, IconType, OverlayPopup, TextInput},
     hooks::{
-        SetDefaultAccountKeys, try_accounts, try_default_account, use_account_switcher_open,
-        use_accounts, use_current_account, use_dispatch, use_set_default_account,
+        AddOfflineAccountKeys, SetDefaultAccountKeys, try_accounts, try_default_account,
+        use_account_switcher_open, use_accounts, use_add_offline_account, use_current_account,
+        use_dispatch, use_set_default_account,
     },
-    i18n::t,
+    i18n::{t, tf},
     theme::{colors, rounded, text_size},
     ui::divider,
 };
@@ -270,20 +272,157 @@ struct Footer;
 impl Component for Footer {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
-        let open_accounts = move |_| {
-            dispatch.close_account_switcher();
-            let _ = RouterContext::get().push(Route::SettingsAccounts {});
+        let mut adding = use_state(|| false);
+        let open_accounts = {
+            let dispatch = dispatch.clone();
+            move |_| {
+                dispatch.close_account_switcher();
+                let _ = RouterContext::get().push(Route::SettingsAccounts {});
+            }
         };
 
-        Button::new()
-            .ghost()
-            .small()
-            .on_press(open_accounts)
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(8.)
+            .maybe_child((*adding.read()).then(|| {
+                AddOfflineRow {
+                    adding,
+                    dispatch: dispatch.clone(),
+                }
+                .into_element()
+            }))
             .child(
-                Icon::new(IconType::Users01)
-                    .size(16.)
-                    .color(colors::fg_primary()),
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .content(Content::Flex)
+                    .spacing(4.)
+                    .child(
+                        Button::new()
+                            .ghost()
+                            .small()
+                            .on_press(move |_| adding.set(true))
+                            .child(Icon::new(IconType::Plus).size(16.))
+                            .text(t("oneclient.components.account_switcher.add_offline")),
+                    )
+                    .child(
+                        Button::new()
+                            .ghost()
+                            .small()
+                            .on_press(open_accounts)
+                            .child(
+                                Icon::new(IconType::Users01)
+                                    .size(16.)
+                                    .color(colors::fg_primary()),
+                            )
+                            .text(t("oneclient.components.account_switcher.manage")),
+                    ),
             )
-            .text(t("oneclient.components.account_switcher.manage"))
+    }
+}
+
+/// Inline offline account creation so someone without a Microsoft account can
+/// start playing right from the switcher
+struct AddOfflineRow {
+    adding: State<bool>,
+    dispatch: crate::Actions,
+}
+
+impl PartialEq for AddOfflineRow {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl Component for AddOfflineRow {
+    fn render(&self) -> impl IntoElement {
+        let mut name = use_state(String::new);
+        let add = use_add_offline_account();
+        let mut closing = use_state(|| false);
+
+        let trimmed = name.read().trim().to_string();
+        // Vanilla profiles can never carry such a name so online servers will
+        // reject it, but it is still useful for local testing
+        let warning = (!trimmed.is_empty())
+            .then(|| oneclient_auth::offline_username_warning(&trimmed))
+            .flatten();
+        let error = match &*add.read().state() {
+            MutationStateData::Settled { res: Err(err), .. } => Some(err.to_string()),
+            MutationStateData::Loading {
+                res: Some(Err(err)),
+            } => Some(err.to_string()),
+            _ => None,
+        };
+
+        {
+            let adding = self.adding;
+            let mut adding = adding;
+            let dispatch = self.dispatch.clone();
+            use_side_effect(move || {
+                if !*closing.read() {
+                    return;
+                }
+                match &*add.read().state() {
+                    MutationStateData::Settled { res: Ok(_), .. } => {
+                        closing.set(false);
+                        name.set(String::new());
+                        adding.set(false);
+                        dispatch.close_account_switcher();
+                    }
+                    MutationStateData::Settled { res: Err(_), .. } => {
+                        closing.set(false);
+                    }
+                    _ => {}
+                }
+            });
+        }
+
+        let on_confirm = {
+            let mut closing = closing;
+            move |_| {
+                let trimmed = name.peek().trim().to_string();
+                if trimmed.is_empty() {
+                    return;
+                }
+                add.mutate(AddOfflineAccountKeys { username: trimmed });
+                closing.set(true);
+            }
+        };
+
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(6.)
+            .child(TextInput::new(name).placeholder(t(
+                "oneclient.settings.accounts.offline.username_placeholder",
+            )))
+            .map(warning, |el, warning| {
+                el.child(
+                    label()
+                        .text(tf(
+                            "oneclient.settings.accounts.offline.username_warning",
+                            &[&warning],
+                        ))
+                        .font_size(text_size(11.))
+                        .color(colors::fg_secondary()),
+                )
+            })
+            .map(error, |el, msg| {
+                el.child(
+                    label()
+                        .text(msg)
+                        .font_size(text_size(11.))
+                        .color(colors::danger()),
+                )
+            })
+            .child(
+                Button::new()
+                    .primary()
+                    .small()
+                    .on_press(on_confirm)
+                    .child(Icon::new(IconType::Plus).size(14.))
+                    .text(t("oneclient.settings.accounts.offline.confirm")),
+            )
     }
 }

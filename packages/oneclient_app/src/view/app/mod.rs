@@ -20,12 +20,15 @@ pub fn launch_button_state(
     cluster_id: i64,
     syncing: bool,
     shared_dir_taken: bool,
+    allow_duplicate: bool,
 ) -> (&'static str, bool) {
     let state = match game.stage(cluster_id) {
         Some(LaunchStage::Checking) => (t("oneclient.app.launch.checking"), false),
         Some(LaunchStage::Waiting) => (t("oneclient.app.launch.waiting"), false),
         Some(LaunchStage::Downloading) => (t("oneclient.app.launch.downloading"), false),
         Some(LaunchStage::Launching) => (t("oneclient.app.launch.launching"), false),
+        // With parallel clusters a running instance may host a duplicate run
+        Some(LaunchStage::Running) if allow_duplicate => (t("oneclient.app.launch.launch"), true),
         Some(LaunchStage::Running) => (t("oneclient.app.launch.running"), false),
         // The click's own flag held for a beat after a failure so a burst of clicks starts one game
         _ if game.is_launch_pending(cluster_id) => (t("oneclient.app.launch.launching"), false),
@@ -69,12 +72,11 @@ pub fn launch_syncing(launcher: &LauncherInit, uses_bundles: bool) -> bool {
 }
 
 pub(crate) use analytics::{analytics_body, analytics_placeholder};
-pub use clusters::{Clusters, ExportInstanceModal};
 pub(crate) use clusters::{
     BUNDLE_CARD_H, BUNDLE_COLUMNS, CellCard, ClusterPickerButton, ClusterPickerModal,
-    CreateInstanceModal, DeleteInstanceModal, bundle_blurb, cell_card, file_keys,
-    package_names,
+    CreateInstanceModal, DeleteInstanceModal, bundle_blurb, cell_card, file_keys, package_names,
 };
+pub use clusters::{Clusters, ExportInstanceModal};
 pub use debug::Debug;
 pub use home::Home;
 pub use stats::Stats;

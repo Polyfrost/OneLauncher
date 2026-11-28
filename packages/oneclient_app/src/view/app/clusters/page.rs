@@ -15,7 +15,7 @@ use crate::components::{
 };
 use crate::hooks::{
     settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot,
-    use_launcher, use_version_metadata, use_view_state,
+    use_launcher, use_settings_snapshot, use_version_metadata, use_view_state,
 };
 use crate::i18n::{t, tf};
 use crate::routes::Route;
@@ -806,6 +806,9 @@ impl Component for Sidebar {
         let cluster_id = self.cluster_id;
         let syncing = launch_syncing(&launcher, self.uses_bundles);
         let shared_dir_taken = use_shared_dir_taken(cluster_id);
+        let allow_duplicate = use_settings_snapshot()
+            .settings
+            .allow_parallel_running_clusters;
         let art_height = art_height_for(*sidebar_height.read());
         let top_padding = if art_height.is_some() { 4. } else { 22. };
 
@@ -880,7 +883,13 @@ impl Component for Sidebar {
                             .child(play_button(
                                 cluster_id,
                                 dispatch,
-                                launch_button_state(&game, cluster_id, syncing, shared_dir_taken),
+                                launch_button_state(
+                                    &game,
+                                    cluster_id,
+                                    syncing,
+                                    shared_dir_taken,
+                                    allow_duplicate,
+                                ),
                             ))
                             .child(
                                 Button::new()

@@ -561,6 +561,7 @@ async fn account_from_msa_token(
         expires: Utc::now() + chrono::TimeDelta::seconds(minecraft_token.expires_in as i64),
         kind: AccountKind::Microsoft,
         signed_out: false,
+        appearance: None,
     })
 }
 

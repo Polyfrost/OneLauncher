@@ -13,13 +13,16 @@ use super::local_image::decode;
 use crate::components::{
     ART_PREVIEW_EDGE, ContextMenu, DynamicArt, Icon, IconType, LocalImage, use_home_stack,
 };
-use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters};
+use crate::hooks::{
+    settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch, use_settings_snapshot,
+};
+use crate::i18n::t;
 use crate::motion::use_animations_enabled;
 use crate::routes::Route;
 use crate::theme;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all, border_all_color};
-use crate::utils::sort_clusters_for_home;
+use crate::utils::sort_clusters_for_home_pinned;
 
 const ROW_HEIGHT_PX: f32 = 208.0;
 const CARD_GAP_PX: f32 = 24.0;
@@ -51,8 +54,9 @@ impl Component for RecentsRow {
         let root_size = Platform::get().current_window().root_size;
 
         let clusters = settled_or_loading(&clusters_query).unwrap_or_default();
+        let pinned = use_settings_snapshot().settings.pinned_cluster_ids;
 
-        let sorted: Vec<Cluster> = sort_clusters_for_home(clusters);
+        let sorted: Vec<Cluster> = sort_clusters_for_home_pinned(clusters, &pinned);
 
         let slots =
             recent_card_slots_for_width(root_size.read().width - theme::HOME_PADDING_PX * 2.);
@@ -84,6 +88,7 @@ impl Component for RecentsRow {
                     index,
                     items,
                     progress,
+                    pinned: pinned.contains(&cluster.id),
                     key: DiffKey::None,
                 }
                 .key(cluster.id)
@@ -118,6 +123,7 @@ struct ClusterCard {
     index: usize,
     items: usize,
     progress: f32,
+    pinned: bool,
     key: DiffKey,
 }
 
@@ -137,6 +143,7 @@ impl PartialEq for ClusterCard {
             && self.index == other.index
             && self.items == other.items
             && self.progress == other.progress
+            && self.pinned == other.pinned
     }
 }
 
@@ -171,6 +178,9 @@ impl Component for ClusterCard {
             *active_id.write() = Some(cluster_id);
         };
 
+        let dispatch = use_dispatch();
+        let pins = use_settings_snapshot().settings.pinned_cluster_ids;
+
         let menu_overlay = (*menu.read()).map(|(x, y)| {
             let mut context = ContextMenu::new(x, y)
                 .open_upwards()
@@ -191,6 +201,40 @@ impl Component for ClusterCard {
                     let _ = RouterContext::get().push(route.clone());
                 });
             }
+
+            let pin_index = pins.iter().position(|id| *id == cluster_id);
+            if let Some(index) = pin_index {
+                if index > 0 {
+                    let dispatch = dispatch.clone();
+                    context = context.action(
+                        IconType::ArrowLeft,
+                        t("oneclient.components.cluster_menu.move_earlier"),
+                        move |()| dispatch.move_pinned_cluster(cluster_id, -1),
+                    );
+                }
+                if index < pins.len() - 1 {
+                    let dispatch = dispatch.clone();
+                    context = context.action(
+                        IconType::ArrowRight,
+                        t("oneclient.components.cluster_menu.move_later"),
+                        move |()| dispatch.move_pinned_cluster(cluster_id, 1),
+                    );
+                }
+                let dispatch = dispatch.clone();
+                context = context.action(
+                    IconType::Pin01,
+                    t("oneclient.components.cluster_menu.unpin"),
+                    move |()| dispatch.unpin_cluster(cluster_id),
+                );
+            } else {
+                let dispatch = dispatch.clone();
+                context = context.action(
+                    IconType::Pin01,
+                    t("oneclient.components.cluster_menu.pin"),
+                    move |()| dispatch.pin_cluster(cluster_id),
+                );
+            }
+
             context.into_element()
         });
 
@@ -318,7 +362,30 @@ impl Component for ClusterCard {
                                     } else {
                                         Color::TRANSPARENT
                                     }),
-                            ),
+                            )
+                            .maybe_child(self.pinned.then(|| {
+                                rect()
+                                    .position(Position::new_absolute())
+                                    .width(Size::fill())
+                                    .horizontal()
+                                    .main_align(Alignment::End)
+                                    .padding(Gaps::new_all(10.))
+                                    .layer(Layer::Relative(8))
+                                    .child(
+                                        rect()
+                                            .horizontal()
+                                            .cross_align(Alignment::Center)
+                                            .padding(Gaps::new_symmetric(3., 6.))
+                                            .corner_radius(rounded(999.))
+                                            .background(Color::from_af32rgb(0.45, 17, 17, 21))
+                                            .child(
+                                                Icon::new(IconType::Pin01)
+                                                    .size(13.)
+                                                    .color(colors::on_art()),
+                                            ),
+                                    )
+                                    .into_element()
+                            })),
                     ),
             )
             .maybe_child(menu_overlay)

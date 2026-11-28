@@ -376,6 +376,29 @@ pub fn sort_clusters_for_home(mut clusters: Vec<Cluster>) -> Vec<Cluster> {
     clusters
 }
 
+/// The home screen rail order pinned clusters first in the user's own order
+/// everything else keeps its recency spot missing or deleted pins are skipped
+pub fn sort_clusters_for_home_pinned(mut clusters: Vec<Cluster>, pinned: &[i64]) -> Vec<Cluster> {
+    let pins: Vec<i64> = pinned
+        .iter()
+        .copied()
+        .filter(|id| clusters.iter().any(|cluster| cluster.id == *id))
+        .collect();
+
+    clusters.sort_by(|a, b| {
+        match (
+            pins.iter().position(|id| *id == a.id),
+            pins.iter().position(|id| *id == b.id),
+        ) {
+            (Some(a), Some(b)) => a.cmp(&b),
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (None, None) => compare_recent_activity(a, b),
+        }
+    });
+    clusters
+}
+
 fn recent_activity(cluster: &Cluster) -> Option<chrono::DateTime<chrono::Utc>> {
     let created = cluster.created_at.filter(|_| cluster.user_created);
     cluster.last_played.max(created)

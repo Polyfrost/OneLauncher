@@ -233,6 +233,7 @@ async fn readopt(
                 // With parallel clusters a newer game may already own this
                 // cluster's slot only tear down if it is still ours
                 owns_slot: state.games.pid(cluster_id) == Some(pid),
+                track_id: cluster_id,
                 diagnosis: crash_watch.take(),
                 watch: Some(crash_watch),
             },
@@ -326,6 +327,7 @@ async fn reconcile(
             // The cluster may have a newer session playing right now so only
             // claim the slot if nothing else holds it
             owns_slot: !state.games.is_active(cluster_id),
+            track_id: cluster_id,
             // Nothing watched this log while it ran so no crash was recognised
             diagnosis: None,
             watch: None,

@@ -1,5 +1,5 @@
 use freya::prelude::{spawn, use_hook};
-use freya::query::{Query, QueryCapability, UseQuery, use_query};
+use freya::query::{QueriesStorage, Query, QueryCapability, UseQuery, use_query};
 use notify::{Event, EventKind};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -166,6 +166,50 @@ pub fn use_mods_folder_sync(cluster_id: ClusterId, folder: Option<PathBuf>) {
 
     use_hook(sync);
     super::folder_watch::use_folder_watch(folder, false, touches_jar, sync);
+}
+
+pub fn use_packs_folder_sync(
+    cluster_id: ClusterId,
+    game_folder: Option<PathBuf>,
+    cluster_folder: Option<PathBuf>,
+) {
+    let sync = move || {
+        spawn(async move {
+            let changed = off_ui(async move {
+                let Ok(state) = crate::launcher::state() else {
+                    return false;
+                };
+                oneclient_core::game::sync_cluster_packs(&state, cluster_id).await
+            })
+            .await;
+
+            if changed {
+                super::mutations::invalidate_cluster_queries().await;
+            } else {
+                QueriesStorage::<FolderPacksQuery>::invalidate_all().await;
+            }
+        });
+    };
+
+    use_hook(sync);
+    super::folder_watch::use_folder_watch(game_folder, false, touches_pack, sync);
+    super::folder_watch::use_folder_watch(cluster_folder, false, touches_pack, sync);
+}
+
+fn touches_pack(_root: &Path, event: &Event) -> bool {
+    if matches!(event.kind, EventKind::Access(_)) {
+        return false;
+    }
+
+    event.paths.iter().any(|path| {
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            return false;
+        };
+        !name.starts_with('.')
+            && (name.to_ascii_lowercase().ends_with(".zip")
+                || !path.exists()
+                || path.join("pack.mcmeta").is_file())
+    })
 }
 
 fn touches_jar(_root: &Path, event: &Event) -> bool {

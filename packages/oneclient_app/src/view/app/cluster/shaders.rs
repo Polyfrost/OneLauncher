@@ -12,6 +12,7 @@ use super::cluster_not_found;
 use super::package_manager::{
     PackageManager, bundle_categories, bundle_packages, use_content_meta,
 };
+use super::textures::PacksFolderSync;
 use crate::hooks::use_cluster;
 
 #[derive(PartialEq)]
@@ -29,7 +30,7 @@ impl Component for ClusterShaders {
         let content_items = cluster_content_items(&content);
         let meta = use_content_meta(&content_items, &bundle_items, ContentType::Shader);
 
-        let Some(_cluster) = use_cluster(self.cluster_id) else {
+        let Some(cluster) = use_cluster(self.cluster_id) else {
             return cluster_not_found();
         };
 
@@ -44,6 +45,7 @@ impl Component for ClusterShaders {
         );
 
         cluster_content()
+            .child(PacksFolderSync::new(&cluster, ContentType::Shader))
             .child(
                 PackageManager::new(
                     t("oneclient.cluster.shaders.title"),

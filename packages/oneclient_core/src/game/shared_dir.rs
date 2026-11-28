@@ -1000,6 +1000,41 @@ pub async fn sync_cluster_mods(state: &LauncherState, cluster_id: i64) -> bool {
     import_added(&state.services, &cluster, &dir, &added, true).await
 }
 
+pub async fn sync_cluster_packs(state: &LauncherState, cluster_id: i64) -> bool {
+    let _mutation = oneclient_content::packages::package_mutation_guard().await;
+    let _sync = lock_mods_sync(cluster_id).await;
+    if state.games.is_active(cluster_id) {
+        return false;
+    }
+    let Ok(cluster) = state.clusters.get(cluster_id).await else {
+        return false;
+    };
+    let (Ok(cluster_dir), Ok(game_dir)) = (cluster.dir(), cluster.game_dir()) else {
+        return false;
+    };
+
+    if cluster.shares_content(ContentType::ResourcePack)
+        && let Ok(global_root) = paths::cluster_shared_dir(&cluster.folder_name)
+    {
+        adopt_into_global(&cluster_dir, &global_root).await;
+    }
+
+    let linked =
+        match PackageStore::list_linked_artifacts(cluster.id, &state.services.content()).await {
+            Ok(linked) => linked,
+            Err(err) => {
+                tracing::warn!(error = %err, "failed to list links; skipping the pack sync");
+                return false;
+            }
+        };
+    let manifest = {
+        let _guard = manifest::lock().await;
+        manifest::load(&game_dir, manifest::MANIFEST_NAME).await
+    };
+
+    import_global_content(&state.services, &cluster, &linked, manifest.as_ref(), false).await
+}
+
 async fn launch_uses_cluster_mods(state: &LauncherState, cluster: &Cluster) -> bool {
     let global = state.settings.read().global_game_settings.clone();
     let custom_args = state
@@ -2266,7 +2301,7 @@ async fn import_manual_content_with(
         ),
     };
 
-    let failed_mods = import_from_dir(
+    let (failed_mods, _) = import_from_dir(
         services,
         cluster,
         &mods_dir,
@@ -2277,22 +2312,40 @@ async fn import_manual_content_with(
     )
     .await;
 
+    import_global_content(
+        services,
+        cluster,
+        &linked,
+        manifest.as_ref(),
+        discard_originals,
+    )
+    .await;
+
+    failed_mods
+}
+
+async fn import_global_content(
+    services: &LauncherServices,
+    cluster: &Cluster,
+    linked: &[oneclient_content::packages::LinkedArtifactInfo],
+    game_manifest: Option<&MaterializedManifest>,
+    discard_originals: bool,
+) -> bool {
     let own_packs = !cluster.shares_content(ContentType::ResourcePack);
     let global_root = if own_packs {
-        let Ok(dir) = cluster.dir() else {
-            return failed_mods;
-        };
-        dir
+        cluster.dir()
     } else {
-        let Ok(dir) = paths::cluster_shared_dir(&cluster.folder_name) else {
-            return failed_mods;
-        };
-        dir
+        paths::cluster_shared_dir(&cluster.folder_name).map_err(Into::into)
     };
+    let Ok(global_root) = global_root else {
+        return false;
+    };
+    let loaded_global;
     let global_manifest = if own_packs {
-        manifest.clone()
+        game_manifest
     } else {
-        manifest::load(&global_root, manifest::GLOBAL_MANIFEST_NAME).await
+        loaded_global = manifest::load(&global_root, manifest::GLOBAL_MANIFEST_NAME).await;
+        loaded_global.as_ref()
     };
     let sharing = if own_packs {
         Vec::new()
@@ -2306,15 +2359,16 @@ async fn import_manual_content_with(
             Ok(ids) => ids,
             Err(err) => {
                 tracing::warn!(error = %err, "cannot list the shared clusters; skipping the pack import");
-                return failed_mods;
+                return false;
             }
         }
     };
 
+    let mut adopted = false;
     for content_type in GLOBAL_TYPES {
         let dir = global_root.join(content_type.folder_name());
         let known = if own_packs {
-            names_linked_here(&linked, content_type)
+            names_linked_here(linked, content_type)
         } else {
             match artifact_dao::list_global_artifacts(&services.db, content_type as i64, &sharing)
                 .await
@@ -2327,19 +2381,20 @@ async fn import_manual_content_with(
             }
         };
 
-        import_from_dir(
+        let (_, any) = import_from_dir(
             services,
             cluster,
             &dir,
             content_type,
             &known,
-            global_manifest.as_ref(),
+            global_manifest,
             discard_originals,
         )
         .await;
+        adopted |= any;
     }
 
-    failed_mods
+    adopted
 }
 
 fn names_linked_here(
@@ -2361,10 +2416,11 @@ async fn import_from_dir(
     known: &HashSet<String>,
     manifest: Option<&MaterializedManifest>,
     discard_originals: bool,
-) -> HashSet<String> {
+) -> (HashSet<String>, bool) {
     let mut failed = HashSet::new();
+    let mut adopted = false;
     let Ok(mut entries) = polyio::read_dir(dir).await else {
-        return failed;
+        return (failed, adopted);
     };
 
     while let Ok(Some(entry)) = entries.next_entry().await {
@@ -2415,6 +2471,7 @@ async fn import_from_dir(
         {
             Some(Ok(row)) => {
                 tracing::debug!(file = name, "registered manually-added content");
+                adopted = true;
                 if discard_originals {
                     discard_adopted_original(&row, &path, name).await;
                 }
@@ -2426,7 +2483,7 @@ async fn import_from_dir(
         }
     }
 
-    failed
+    (failed, adopted)
 }
 
 async fn adopt_file(
